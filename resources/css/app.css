@@ -2,8 +2,84 @@
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../js/**/*.{ts,tsx}';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+@keyframes cloud-float {
+    0%, 100% {
+        transform: translateY(0px) scale(1);
+    }
+    50% {
+        transform: translateY(-10px) scale(1.02);
+    }
+}
+
+@keyframes cloud-drift {
+    0% {
+        transform: translateX(-5%) translateY(0);
+    }
+    50% {
+        transform: translateX(5%) translateY(-8px);
+    }
+    100% {
+        transform: translateX(-5%) translateY(0);
+    }
+}
+
+@keyframes pulse-subtle {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.65;
+        transform: scale(1.08);
+    }
+}
+
+@keyframes bar-rise {
+    from {
+        height: 0%;
+        opacity: 0.4;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.animate-cloud-float {
+    animation: cloud-float 8s ease-in-out infinite;
+}
+
+.animate-cloud-drift {
+    animation: cloud-drift 18s ease-in-out infinite;
+}
+
+.animate-pulse-subtle {
+    animation: pulse-subtle 2.5s ease-in-out infinite;
+}
+
+.animate-bar-rise {
+    animation: bar-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom Cloud UI glassmorphism */
+.cloud-glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.cloud-glass-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05), 0 20px 25px -5px rgba(0, 0, 0, 0.02);
+}
+
+.cloud-glass-card:hover {
+    box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.08), 0 1px 3px 0 rgba(0, 0, 0, 0.05);
 }

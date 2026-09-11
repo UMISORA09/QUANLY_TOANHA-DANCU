@@ -1,58 +1,109 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# HỆ THỐNG QUẢN LÝ TÒA NHÀ & CƯ DÂN - SMART CASSAVAS
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+> Đề án hệ thống quản lý tòa nhà chung cư thông minh, kết nối cư dân, ban quản lý, lễ tân và admin.  
+> Ngăn xếp công nghệ: **Laravel 12 + React 19 (TypeScript) + Vite + Tailwind CSS + Microsoft SQL Server (Docker)**.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🚀 HƯỚNG DẪN CHẠY ĐỒ ÁN VỚI DOCKER (1-CLICK DÀNH CHO NHÓM & GIẢNG VIÊN)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Hệ thống đã được đóng gói toàn diện bằng **Docker Compose**. Khi chuyển sang máy tính khác hoặc clone từ GitHub về, bạn **không cần** cài đặt PHP, Composer hay Microsoft SQL Server thủ công. File cơ sở dữ liệu `CSDL_CHUNGCU&DANCU.sql` (với hơn 100 bảng và dữ liệu mẫu) sẽ được **tự động nạp vào database** ngay khi khởi động.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
+### Bước 1: Clone dự án từ GitHub
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone https://github.com/UMISORA09/QUANLY_TOANHA-DANCU.git
+cd QUANLY_TOANHA-DANCU
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### Bước 2: Tạo tệp môi trường
+```bash
+# Trên Windows PowerShell:
+Copy-Item .env.example .env
 
-## Contributing
+# Trên Linux / macOS / Git Bash:
+cp .env.example .env
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Bước 3: Khởi động hệ thống bằng Docker
+```bash
+docker compose up -d
+```
 
-## Code of Conduct
+Quá trình tự động diễn ra:
+1. Container `smart_cassavas_db` khởi chạy Microsoft SQL Server 2022.
+2. Container `smart_cassavas_db_init` tự động thực thi tệp `CSDL_CHUNGCU&DANCU.sql` để tạo database `[CSDL_CHUNGCU&DANCU]` và toàn bộ các bảng, views, dữ liệu ban đầu.
+3. Container `smart_cassavas_app` cài đặt dependencies, biên dịch assets và khởi chạy ứng dụng web.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### Bước 4: Mở ứng dụng
+- **Giao diện Web**: [http://localhost:8000](http://localhost:8000)
+- **Cổng kết nối CSDL**: `localhost:1433`
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## 🗄️ THÔNG TIN KẾT NỐI CƠ SỞ DỮ LIỆU (SSMS / DBeaver / Azure Data Studio)
 
-## License
+Các thành viên có thể kết nối trực tiếp vào SQL Server trên máy để xem ERD, truy vấn hoặc kiểm tra bảng:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+| Thông số | Giá trị kết nối |
+| :--- | :--- |
+| **DBMS** | Microsoft SQL Server 2022 |
+| **Server / Host** | `localhost,1433` hoặc `127.0.0.1,1433` |
+| **Database** | `CSDL_CHUNGCU&DANCU` |
+| **Authentication** | SQL Server Authentication |
+| **Username (`User ID`)** | `sa` |
+| **Password** | `SmartCassavas@2026` |
+| **Encrypt / Trust Certificate** | Trust Server Certificate: `True` (Encrypt: `Optional/No`) |
+
+---
+
+## 🛠️ CÁC LỆNH HỮU ÍCH KHI SỬ DỤNG DOCKER
+
+- **Xem trạng thái các container**:
+  ```bash
+  docker compose ps
+  ```
+- **Xem logs của ứng dụng hoặc database**:
+  ```bash
+  docker compose logs -f app
+  docker compose logs -f db-init
+  ```
+- **Khởi động lại toàn bộ hệ thống**:
+  ```bash
+  docker compose restart
+  ```
+- **Dừng hệ thống**:
+  ```bash
+  docker compose down
+  ```
+- **Dừng hệ thống và xóa sạch dữ liệu để nạp lại từ đầu**:
+  ```bash
+  docker compose down -v
+  docker compose up -d
+  ```
+
+---
+
+## 💻 CHẠY CỤC BỘ & QUẢN TRỊ DATABASE (PHPMYADMIN / MIGRATIONS)
+
+### 1. Quản lý cơ sở dữ liệu qua Migrations
+Hệ thống hỗ trợ cơ chế nạp toàn bộ 109 bảng và 6 views tự động tương thích đa nền tảng (MySQL, SQLite, SQL Server):
+```bash
+php artisan migrate:fresh
+```
+
+### 2. Quản trị trực quan qua phpMyAdmin
+- **URL phpMyAdmin**: [http://localhost:8888](http://localhost:8888)
+- **Cấu hình kết nối**:
+  - Server / Host: `host.docker.internal` (hoặc `localhost`)
+  - Username: `root`
+  - Password: `123567`
+  - Database: `quanly_toanha`
+
+### 3. Chạy môi trường phát triển cục bộ
+Nếu bạn phát triển trực tiếp trên máy:
+1. Cài đặt thư viện: `composer install` và `npm install`
+2. Cấu hình `.env` (MySQL Docker hoặc SQLite)
+3. Chạy migration: `php artisan migrate:fresh`
+4. Khởi chạy:
+   - Terminal 1: `php artisan serve`
+   - Terminal 2: `npm run dev`
