@@ -2,8 +2,378 @@
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../js/**/*.{ts,tsx}';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+@keyframes cloud-float {
+    0%, 100% {
+        transform: translateY(0px) scale(1);
+    }
+    50% {
+        transform: translateY(-10px) scale(1.02);
+    }
+}
+
+@keyframes cloud-drift {
+    0% {
+        transform: translateX(-5%) translateY(0);
+    }
+    50% {
+        transform: translateX(5%) translateY(-8px);
+    }
+    100% {
+        transform: translateX(-5%) translateY(0);
+    }
+}
+
+@keyframes float-orb {
+    0%, 100% {
+        transform: translate(0px, 0px) scale(1);
+    }
+    33% {
+        transform: translate(25px, -20px) scale(1.06);
+    }
+    66% {
+        transform: translate(-20px, 15px) scale(0.95);
+    }
+}
+
+@keyframes float-orb-reverse {
+    0%, 100% {
+        transform: translate(0px, 0px) scale(1);
+    }
+    33% {
+        transform: translate(-20px, 20px) scale(1.05);
+    }
+    66% {
+        transform: translate(20px, -15px) scale(0.95);
+    }
+}
+
+@keyframes pulse-subtle {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.65;
+        transform: scale(1.08);
+    }
+}
+
+@keyframes radar-wave {
+    0% {
+        transform: scale(0.9);
+        opacity: 0.8;
+    }
+    70% {
+        transform: scale(2.2);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(2.2);
+        opacity: 0;
+    }
+}
+
+@keyframes shimmer-sweep {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(200%);
+    }
+}
+
+@keyframes charging-stream {
+    0% {
+        background-position: 0% 50%;
+    }
+    100% {
+        background-position: 200% 50%;
+    }
+}
+
+@keyframes bar-rise {
+    from {
+        height: 0%;
+        opacity: 0.4;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.animate-cloud-float {
+    animation: cloud-float 8s ease-in-out infinite;
+}
+
+.animate-cloud-drift {
+    animation: cloud-drift 18s ease-in-out infinite;
+}
+
+.animate-float-orb {
+    animation: float-orb 14s ease-in-out infinite;
+}
+
+.animate-float-orb-reverse {
+    animation: float-orb-reverse 16s ease-in-out infinite;
+}
+
+.animate-pulse-subtle {
+    animation: pulse-subtle 2.5s ease-in-out infinite;
+}
+
+.animate-radar {
+    animation: radar-wave 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.animate-shimmer {
+    animation: shimmer-sweep 2.5s infinite;
+}
+
+.animate-charging {
+    background-size: 200% 100%;
+    animation: charging-stream 1.5s linear infinite;
+}
+
+.animate-bar-rise {
+    animation: bar-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ========================================================
+   TEXT LIGHTING & MOVING GLOW ANIMATIONS
+   ======================================================== */
+@keyframes text-light-sweep {
+    0% {
+        background-position: -200% center;
+    }
+    100% {
+        background-position: 200% center;
+    }
+}
+
+@keyframes text-glow-pulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.25));
+    }
+    50% {
+        filter: drop-shadow(0 0 28px rgba(56, 189, 248, 0.65)) drop-shadow(0 0 8px rgba(255, 255, 255, 0.4));
+    }
+}
+
+@keyframes text-amber-pulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.2));
+    }
+    50% {
+        filter: drop-shadow(0 0 24px rgba(245, 158, 11, 0.6));
+    }
+}
+
+.animate-text-light {
+    background: linear-gradient(
+        110deg,
+        #0a0a0a 0%,
+        #0a0a0a 25%,
+        #38bdf8 45%,
+        #ffffff 50%,
+        #38bdf8 55%,
+        #0a0a0a 75%,
+        #0a0a0a 100%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: text-light-sweep 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-text-light-dark {
+    background: linear-gradient(
+        110deg,
+        #cbd5e1 0%,
+        #e2e8f0 30%,
+        #38bdf8 48%,
+        #ffffff 52%,
+        #38bdf8 56%,
+        #94a3b8 75%,
+        #cbd5e1 100%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: text-light-sweep 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-text-light-brand {
+    background: linear-gradient(
+        110deg,
+        #171717 0%,
+        #404040 30%,
+        #38bdf8 48%,
+        #ffffff 52%,
+        #38bdf8 56%,
+        #404040 75%,
+        #171717 100%
+    );
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: text-light-sweep 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-text-glow {
+    animation: text-glow-pulse 3s ease-in-out infinite;
+}
+
+.animate-text-amber-glow {
+    animation: text-amber-pulse 3s ease-in-out infinite;
+}
+
+/* ========================================================
+   GLASSMORPHISM DESIGN SYSTEM
+   ======================================================== */
+.cloud-glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-panel {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 
+        0 12px 36px -10px rgba(0, 0, 0, 0.07),
+        0 4px 12px -2px rgba(0, 0, 0, 0.03),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.glass-panel:hover {
+    box-shadow: 
+        0 20px 45px -10px rgba(0, 0, 0, 0.1),
+        0 6px 16px -2px rgba(0, 0, 0, 0.04),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.glass-panel-dark {
+    background: rgba(11, 19, 43, 0.82);
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    box-shadow: 
+        0 16px 40px -10px rgba(2, 6, 23, 0.85),
+        0 0 30px -5px rgba(56, 189, 248, 0.12),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.glass-pill {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.glass-pill-dark {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-specular-edge {
+    position: relative;
+}
+
+.glass-specular-edge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+    pointer-events: none;
+}
+
+/* ========================================================
+   3D BUILDING MODEL ANIMATIONS & TRANSFORMS
+   ======================================================== */
+.preserve-3d {
+    transform-style: preserve-3d;
+}
+
+.perspective-1000 {
+    perspective: 1000px;
+}
+
+.perspective-1200 {
+    perspective: 1200px;
+}
+
+@keyframes elevator-glide {
+    0% {
+        top: 86%;
+    }
+    20% {
+        top: 86%;
+    }
+    35% {
+        top: 52%;
+    }
+    50% {
+        top: 52%;
+    }
+    68% {
+        top: 14%;
+    }
+    82% {
+        top: 14%;
+    }
+    100% {
+        top: 86%;
+    }
+}
+
+.animate-elevator {
+    animation: elevator-glide 12s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+@keyframes radar-scan-3d {
+    0% {
+        top: 0%;
+        opacity: 0.8;
+    }
+    50% {
+        top: 100%;
+        opacity: 0.4;
+    }
+    100% {
+        top: 0%;
+        opacity: 0.8;
+    }
+}
+
+.animate-radar-scan {
+    animation: radar-scan-3d 4s ease-in-out infinite;
+}
+
+@keyframes window-twinkle {
+    0%, 100% {
+        opacity: 0.95;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-window-twinkle {
+    animation: window-twinkle 3s ease-in-out infinite;
 }

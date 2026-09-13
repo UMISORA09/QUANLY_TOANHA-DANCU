@@ -1,0 +1,73 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: smart_cassavas_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/var/www/html
+      - /var/www/html/node_modules
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=sqlsrv
+      - DB_HOST=db
+      - DB_PORT=1433
+      - DB_DATABASE=CSDL_CHUNGCU&DANCU
+      - DB_USERNAME=sa
+      - DB_PASSWORD=SmartCassavas@2026
+      - DB_ENCRYPT=no
+      - DB_TRUST_SERVER_CERTIFICATE=true
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    networks:
+      - cassavas_network
+
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: smart_cassavas_db
+    restart: unless-stopped
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=SmartCassavas@2026
+      - MSSQL_PID=Developer
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SmartCassavas@2026' -C -Q 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - cassavas_network
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: smart_cassavas_db_init
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - MSSQL_SA_PASSWORD=SmartCassavas@2026
+    volumes:
+      - "./CSDL_CHUNGCU&DANCU.sql:/docker-entrypoint-initdb.d/CSDL_CHUNGCU&DANCU.sql:ro"
+      - "./docker/db/init-db.sh:/init-db.sh:ro"
+    entrypoint: ["/bin/bash", "/init-db.sh"]
+    networks:
+      - cassavas_network
+
+volumes:
+  mssql_data:
+    driver: local
+
+networks:
+  cassavas_network:
+    driver: bridge
