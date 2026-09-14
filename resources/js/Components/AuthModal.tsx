@@ -1,0 +1,546 @@
+import React, { useState, useEffect } from 'react';
+import { MorphIcon } from 'morphicons/react';
+import {
+  X as XData,
+  ArrowRight as ArrowRightData,
+  Check as CheckData,
+  Eye as EyeData,
+  EyeOff as EyeOffData,
+  ShieldCheck as ShieldCheckData,
+  Users as UsersData,
+  Receipt as ReceiptData,
+  LayoutDashboard as LayoutDashboardData,
+  Sparkles as SparklesData
+} from 'lucide';
+import {
+  Building2,
+  X,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  LayoutGrid,
+  Users,
+  Receipt,
+  ShieldCheck,
+  CheckCircle2,
+  Sparkles
+} from 'lucide-react';
+
+export type AuthMode = 'login' | 'register';
+export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin';
+
+interface AuthModalProps {
+  isOpen: boolean;
+  initialMode?: AuthMode;
+  onClose: () => void;
+  onSuccess?: (role: UserRole, email: string) => void;
+}
+
+const ROLE_DEMOS: Record<
+  UserRole,
+  {
+    title: string;
+    subtitle: string;
+    email: string;
+    icon: any;
+    morphIcon: any;
+  }
+> = {
+  manager: {
+    title: 'Quản lý',
+    subtitle: 'Vận hành & tài chính',
+    email: 'quanly@smartcassavas.vn',
+    icon: LayoutGrid,
+    morphIcon: LayoutDashboardData,
+  },
+  resident: {
+    title: 'Người dùng',
+    subtitle: 'Cư dân & căn hộ',
+    email: 'cudan@smartcassavas.vn',
+    icon: Users,
+    morphIcon: UsersData,
+  },
+  receptionist: {
+    title: 'Lễ tân',
+    subtitle: 'Khách & gói hàng',
+    email: 'letan@smartcassavas.vn',
+    icon: Receipt,
+    morphIcon: ReceiptData,
+  },
+  admin: {
+    title: 'Admin',
+    subtitle: 'Quản trị hệ thống',
+    email: 'admin@smartcassavas.vn',
+    icon: ShieldCheck,
+    morphIcon: ShieldCheckData,
+  },
+};
+
+export const AuthModal: React.FC<AuthModalProps> = ({
+  isOpen,
+  initialMode = 'login',
+  onClose,
+  onSuccess,
+}) => {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isForgotPwOpen, setIsForgotPwOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+
+  // Sync mode with props
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  // Handle escape key to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const handleSelectRole = (roleKey: UserRole) => {
+    setSelectedRole(roleKey);
+    const demo = ROLE_DEMOS[roleKey];
+    setEmail(demo.email);
+    setPassword('Cassavas@2026');
+    setToastMessage(`Đã chọn vai trò: ${demo.title} (${demo.subtitle})`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    setTimeout(() => {
+      setIsSubmitting(false);
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        setSubmitSuccess(false);
+        if (onSuccess && selectedRole) {
+          onSuccess(selectedRole, email);
+        }
+        onClose();
+      }, 1200);
+    }, 800);
+  };
+
+  const handleForgotPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setToastMessage(`Đã gửi liên kết khôi phục tới: ${forgotEmail || email || 'email của bạn'}`);
+    setTimeout(() => {
+      setIsForgotPwOpen(false);
+      setToastMessage(null);
+    }, 2500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      {/* Backdrop with Frosted Glass & Atmospheric Glows */}
+      <div
+        onClick={onClose}
+        className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xl transition-opacity animate-in fade-in duration-300"
+      />
+
+      {/* Floating Aurora Orbs behind modal */}
+      <div className="pointer-events-none fixed inset-0 flex items-center justify-center -z-10 overflow-hidden">
+        <div className="w-[500px] h-[500px] bg-gradient-to-tr from-sky-400/20 via-blue-500/15 to-transparent rounded-full blur-3xl animate-aurora" />
+        <div className="w-[450px] h-[450px] bg-gradient-to-br from-indigo-300/20 via-sky-200/10 to-transparent rounded-full blur-3xl animate-float-orb-reverse" />
+      </div>
+
+      {/* Main Glass Card */}
+      <div className="relative w-full max-w-[460px] glass-auth-card rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-2xl glass-specular-edge border border-white/90 animate-in zoom-in-95 duration-200 my-auto text-[#171717]">
+        {/* Top Close Button */}
+        <button
+          onClick={onClose}
+          type="button"
+          className="absolute top-4 sm:top-5 right-4 sm:right-5 p-1.5 text-neutral-400 hover:text-neutral-900 rounded-full hover:bg-neutral-200/60 backdrop-blur-sm transition-all active:scale-95"
+          title="Đóng"
+        >
+          <MorphIcon icon={XData} size={18} strokeWidth={2} spring="snappy" />
+        </button>
+
+        {/* Brand Header */}
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-neutral-950 text-white rounded-lg flex items-center justify-center shadow-md">
+            {/* Custom Monogram Building Icon matching brand */}
+            <svg
+              className="w-5 h-5 text-white"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="4" y="3" width="16" height="18" rx="2" />
+              <path d="M9 3v18" />
+              <path d="M15 3v18" />
+              <path d="M4 9h16" />
+              <path d="M4 15h16" />
+            </svg>
+          </div>
+          <span className="font-bold text-sm tracking-[0.18em] text-neutral-950 uppercase">
+            SMART CASSAVAS
+          </span>
+        </div>
+
+        {/* Sub-label & Main Titles */}
+        <div className="mt-6">
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-neutral-400 uppercase">
+            HỆ THỐNG QUẢN LÝ TÒA NHÀ
+          </p>
+          <h2 className="text-2xl sm:text-[28px] font-bold text-neutral-950 tracking-tight leading-tight mt-1">
+            {mode === 'login' ? 'Chào mừng trở lại' : 'Tạo tài khoản'}
+          </h2>
+          <p className="text-xs sm:text-[13px] text-neutral-500 font-normal mt-1">
+            {mode === 'login'
+              ? 'Đăng nhập để tiếp tục vào SMART CASSAVAS.'
+              : 'Đăng ký để truy cập không gian quản lý của bạn.'}
+          </p>
+        </div>
+
+        {/* Toast Badge (If role preselected or alert) */}
+        {toastMessage && (
+          <div className="mt-3 px-3 py-1.5 rounded-lg bg-neutral-950 text-white text-xs flex items-center gap-2 shadow-md animate-in fade-in slide-in-from-top-2 duration-150">
+            <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+            <span className="truncate">{toastMessage}</span>
+          </div>
+        )}
+
+        {/* LOGIN MODE: Quick Role Selector & Form */}
+        {mode === 'login' && !isForgotPwOpen && (
+          <div className="mt-6">
+            {/* Quick Access Role Header */}
+            <div className="pt-4 border-t border-neutral-200/80">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-bold tracking-wider text-neutral-800 uppercase">
+                  TRUY CẬP NHANH
+                </span>
+                <span className="text-[11px] text-neutral-400 font-normal">
+                  Chọn vai trò
+                </span>
+              </div>
+
+              {/* 2x2 Role Grid */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {(Object.keys(ROLE_DEMOS) as UserRole[]).map((roleKey) => {
+                  const item = ROLE_DEMOS[roleKey];
+                  const Icon = item.icon;
+                  const isSelected = selectedRole === roleKey;
+
+                  return (
+                    <button
+                      key={roleKey}
+                      type="button"
+                      onClick={() => handleSelectRole(roleKey)}
+                      className={`glass-role-card p-2.5 sm:p-3 rounded-lg text-left flex items-start gap-2.5 relative group ${
+                        isSelected ? 'active-role' : ''
+                      }`}
+                    >
+                      <div
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-white/20 text-white'
+                            : 'bg-neutral-100 text-neutral-800 group-hover:bg-neutral-200/80'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 pr-2">
+                        <div
+                          className={`text-xs font-bold leading-tight ${
+                            isSelected ? 'text-white' : 'text-neutral-900'
+                          }`}
+                        >
+                          {item.title}
+                        </div>
+                        <div
+                          className={`text-[10px] leading-snug truncate mt-0.5 ${
+                            isSelected ? 'text-neutral-300' : 'text-neutral-500'
+                          }`}
+                        >
+                          {item.subtitle}
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="text-[11px] text-neutral-400 mt-2.5 font-normal">
+                Chọn một vai trò để vào thẳng khu vực làm việc.
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-neutral-200/80 my-5" />
+
+            {/* Login Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@smartcassavas.vn"
+                  className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                  Mật khẩu
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
+                    title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Forgot Password Link */}
+              <div className="flex justify-end pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setIsForgotPwOpen(true)}
+                  className="text-xs text-neutral-600 hover:text-neutral-950 underline underline-offset-2 transition-colors font-medium"
+                >
+                  Quên mật khẩu?
+                </button>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full mt-2 py-3 bg-neutral-950 hover:bg-neutral-800 active:scale-[0.99] text-white text-sm font-semibold rounded-md transition-all shadow-sm flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Đang xác thực...</span>
+                  </span>
+                ) : submitSuccess ? (
+                  <span className="flex items-center gap-2 text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Đăng nhập thành công!</span>
+                  </span>
+                ) : (
+                  <>
+                    <span>Đăng nhập</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Bottom Switch to Register */}
+            <div className="text-center pt-5 text-xs text-neutral-600">
+              Chưa có tài khoản?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setSelectedRole(null);
+                }}
+                className="font-semibold text-neutral-950 underline underline-offset-2 hover:text-neutral-800 transition-colors cursor-pointer"
+              >
+                Đăng ký ngay
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* FORGOT PASSWORD SUB-VIEW */}
+        {mode === 'login' && isForgotPwOpen && (
+          <div className="mt-6 pt-4 border-t border-neutral-200/80 animate-in fade-in duration-200">
+            <h3 className="text-sm font-bold text-neutral-900 mb-1">
+              Khôi phục mật khẩu
+            </h3>
+            <p className="text-xs text-neutral-500 mb-4">
+              Nhập email đã đăng ký của bạn. Chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu an toàn.
+            </p>
+
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                  Email đã đăng ký
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="admin@smartcassavas.vn"
+                  className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold rounded-md shadow-sm transition-all"
+              >
+                Gửi liên kết khôi phục
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsForgotPwOpen(false)}
+                  className="text-xs text-neutral-600 hover:text-neutral-950 font-medium underline"
+                >
+                  Quay lại đăng nhập
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* SIGNUP / REGISTER MODE: Matching Screenshot 2 */}
+        {mode === 'register' && (
+          <div className="mt-6 pt-4 border-t border-neutral-200/80 animate-in fade-in duration-200">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                  Họ và tên
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="VD: Nguyễn Văn A"
+                  className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="user@smartcassavas.vn"
+                  className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                  Mật khẩu
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
+                    title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Register Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full mt-2 py-3 bg-neutral-950 hover:bg-neutral-800 active:scale-[0.99] text-white text-sm font-semibold rounded-md transition-all shadow-sm flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Đang xử lý đăng ký...</span>
+                  </span>
+                ) : submitSuccess ? (
+                  <span className="flex items-center gap-2 text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Đăng ký thành công!</span>
+                  </span>
+                ) : (
+                  <>
+                    <span>Đăng ký tài khoản</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Bottom Switch to Login */}
+            <div className="text-center pt-5 text-xs text-neutral-600">
+              Đã có tài khoản?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setSelectedRole(null);
+                }}
+                className="font-semibold text-neutral-950 underline underline-offset-2 hover:text-neutral-800 transition-colors cursor-pointer"
+              >
+                Đăng nhập
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AuthModal;
