@@ -112,7 +112,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [email, setEmail] = useState('');
   const [nationalId, setNationalId] = useState(''); // Số CCCD/Passport
   const [apartmentNumber, setApartmentNumber] = useState(''); // Số căn hộ
-  const [residentType, setResidentType] = useState<'OWNER' | 'TENANT' | 'STAFF'>('OWNER');
+  const [residentType, setResidentType] = useState<'OWNER' | 'TENANT'>('OWNER');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(true);
@@ -166,12 +166,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     // Validation for register
     if (mode === 'register') {
-      if (password !== confirmPassword) {
-        setErrorMessage('Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại!');
-        return;
-      }
       if (!phoneNumber.trim()) {
         setErrorMessage('Số điện thoại là trường bắt buộc theo cơ sở dữ liệu tòa nhà!');
+        return;
+      }
+      if (!apartmentNumber) {
+        setErrorMessage('Vui lòng chọn căn hộ / tòa nhà cư trú của bạn!');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setErrorMessage('Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại!');
         return;
       }
       if (!termsAccepted) {
@@ -628,26 +632,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <select
                     value={residentType}
-                    onChange={(e) => setResidentType(e.target.value as any)}
+                    onChange={(e) => setResidentType(e.target.value as 'OWNER' | 'TENANT')}
                     className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 focus:outline-none cursor-pointer"
                   >
                     <option value="OWNER">Chủ sở hữu căn hộ</option>
                     <option value="TENANT">Khách thuê căn hộ</option>
-                    <option value="STAFF">Nhân sự vận hành / Ban QL</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                    Mã căn hộ / Tòa nhà
+                    Mã căn hộ / Tòa nhà <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
+                    required
                     value={apartmentNumber}
                     onChange={(e) => setApartmentNumber(e.target.value)}
-                    placeholder="VD: Căn A-12.04 (Tháp A)"
-                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
-                  />
+                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- Chọn căn hộ / tòa nhà --</option>
+                    <optgroup label="Tòa A — Ruby Tower">
+                      <option value="A-1204">Căn A-1204 (Tầng 12 • 2PN)</option>
+                      <option value="A-1201">Căn A-1201 (Tầng 12 • 3PN)</option>
+                      <option value="A-0803">Căn A-0803 (Tầng 08 • 2PN)</option>
+                      <option value="A-1506">Căn A-1506 (Tầng 15 • 2PN)</option>
+                      <option value="A-1802">Căn A-1802 (Tầng 18 • Duplex)</option>
+                      <option value="A-2401">Căn A-2401 (Tầng 24 • Sky Penthouse)</option>
+                    </optgroup>
+                    <optgroup label="Tòa B — Sapphire Tower">
+                      <option value="B-0802">Căn B-0802 (Tầng 08 • 3PN)</option>
+                      <option value="B-0805">Căn B-0805 (Tầng 08 • 2PN)</option>
+                      <option value="B-1403">Căn B-1403 (Tầng 14 • 2PN)</option>
+                      <option value="B-1901">Căn B-1901 (Tầng 19 • 3PN)</option>
+                      <option value="B-2006">Căn B-2006 (Tầng 20 • 3PN)</option>
+                      <option value="B-2602">Căn B-2602 (Tầng 26 • Sky Villa)</option>
+                    </optgroup>
+                  </select>
                 </div>
               </div>
 
