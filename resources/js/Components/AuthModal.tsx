@@ -10,7 +10,9 @@ import {
   Users as UsersData,
   Receipt as ReceiptData,
   LayoutDashboard as LayoutDashboardData,
-  Sparkles as SparklesData
+  Sparkles as SparklesData,
+  Lock as LockData,
+  Smartphone as SmartphoneData
 } from 'lucide';
 import {
   Building2,
@@ -23,7 +25,13 @@ import {
   Receipt,
   ShieldCheck,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Phone,
+  CreditCard,
+  Home as HomeIcon,
+  ShieldAlert,
+  KeyRound,
+  FileCheck
 } from 'lucide-react';
 
 export type AuthMode = 'login' | 'register';
@@ -33,7 +41,7 @@ interface AuthModalProps {
   isOpen: boolean;
   initialMode?: AuthMode;
   onClose: () => void;
-  onSuccess?: (role: UserRole, email: string) => void;
+  onSuccess?: (role: UserRole, emailOrPhone: string) => void;
 }
 
 const ROLE_DEMOS: Record<
@@ -42,6 +50,7 @@ const ROLE_DEMOS: Record<
     title: string;
     subtitle: string;
     email: string;
+    phone: string;
     icon: any;
     morphIcon: any;
   }
@@ -50,6 +59,7 @@ const ROLE_DEMOS: Record<
     title: 'Quản lý',
     subtitle: 'Vận hành & tài chính',
     email: 'quanly@smartcassavas.vn',
+    phone: '0901234567',
     icon: LayoutGrid,
     morphIcon: LayoutDashboardData,
   },
@@ -57,6 +67,7 @@ const ROLE_DEMOS: Record<
     title: 'Người dùng',
     subtitle: 'Cư dân & căn hộ',
     email: 'cudan@smartcassavas.vn',
+    phone: '0912345678',
     icon: Users,
     morphIcon: UsersData,
   },
@@ -64,6 +75,7 @@ const ROLE_DEMOS: Record<
     title: 'Lễ tân',
     subtitle: 'Khách & gói hàng',
     email: 'letan@smartcassavas.vn',
+    phone: '0923456789',
     icon: Receipt,
     morphIcon: ReceiptData,
   },
@@ -71,6 +83,7 @@ const ROLE_DEMOS: Record<
     title: 'Admin',
     subtitle: 'Quản trị hệ thống',
     email: 'admin@smartcassavas.vn',
+    phone: '0934567890',
     icon: ShieldCheck,
     morphIcon: ShieldCheckData,
   },
@@ -84,19 +97,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 }) => {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+
+  // Common & DB-matched fields (users & residents schema)
+  const [loginIdentifier, setLoginIdentifier] = useState(''); // email or phone_number
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true); // user_sessions
+
+  // Register fields mapped from database schema:
+  // users: full_name, phone_number, email, national_id_number, password_hash
+  // residents / apartments: apartment_number, resident_type
+  const [fullName, setFullName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [nationalId, setNationalId] = useState(''); // Số CCCD/Passport
+  const [apartmentNumber, setApartmentNumber] = useState(''); // Số căn hộ
+  const [residentType, setResidentType] = useState<'OWNER' | 'TENANT' | 'STAFF'>('OWNER');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(true);
+
+  // MFA 2FA support (users.mfa_enabled)
+  const [isMfaActive, setIsMfaActive] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+
+  // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isForgotPwOpen, setIsForgotPwOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
 
   // Sync mode with props
   useEffect(() => {
     setMode(initialMode);
+    setErrorMessage(null);
   }, [initialMode]);
 
   // Handle escape key to close
@@ -117,14 +153,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSelectRole = (roleKey: UserRole) => {
     setSelectedRole(roleKey);
     const demo = ROLE_DEMOS[roleKey];
-    setEmail(demo.email);
+    setLoginIdentifier(demo.email);
     setPassword('Cassavas@2026');
-    setToastMessage(`Đã chọn vai trò: ${demo.title} (${demo.subtitle})`);
+    setErrorMessage(null);
+    setToastMessage(`Đã chọn vai trò: ${demo.title} • Điền tài khoản demo`);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
+    // Validation for register
+    if (mode === 'register') {
+      if (password !== confirmPassword) {
+        setErrorMessage('Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại!');
+        return;
+      }
+      if (!phoneNumber.trim()) {
+        setErrorMessage('Số điện thoại là trường bắt buộc theo cơ sở dữ liệu tòa nhà!');
+        return;
+      }
+      if (!termsAccepted) {
+        setErrorMessage('Vui lòng đồng ý với Quy chế & Điều khoản quản lý chung cư!');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     setTimeout(() => {
@@ -132,17 +187,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setSubmitSuccess(true);
       setTimeout(() => {
         setSubmitSuccess(false);
-        if (onSuccess && selectedRole) {
-          onSuccess(selectedRole, email);
+        if (onSuccess) {
+          onSuccess(selectedRole || 'resident', loginIdentifier || email || phoneNumber);
         }
         onClose();
       }, 1200);
-    }, 800);
+    }, 700);
   };
 
   const handleForgotPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    setToastMessage(`Đã gửi liên kết khôi phục tới: ${forgotEmail || email || 'email của bạn'}`);
+    setToastMessage(`Đã gửi mã khôi phục tới: ${forgotIdentifier || loginIdentifier || 'thông tin của bạn'}`);
     setTimeout(() => {
       setIsForgotPwOpen(false);
       setToastMessage(null);
@@ -154,17 +209,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       {/* Backdrop with Frosted Glass & Atmospheric Glows */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xl transition-opacity animate-in fade-in duration-300"
+        className="fixed inset-0 bg-neutral-950/45 backdrop-blur-xl transition-opacity animate-in fade-in duration-300"
       />
 
       {/* Floating Aurora Orbs behind modal */}
       <div className="pointer-events-none fixed inset-0 flex items-center justify-center -z-10 overflow-hidden">
-        <div className="w-[500px] h-[500px] bg-gradient-to-tr from-sky-400/20 via-blue-500/15 to-transparent rounded-full blur-3xl animate-aurora" />
-        <div className="w-[450px] h-[450px] bg-gradient-to-br from-indigo-300/20 via-sky-200/10 to-transparent rounded-full blur-3xl animate-float-orb-reverse" />
+        <div className="w-[520px] h-[520px] bg-gradient-to-tr from-sky-400/20 via-blue-500/15 to-transparent rounded-full blur-3xl animate-aurora" />
+        <div className="w-[480px] h-[480px] bg-gradient-to-br from-indigo-300/20 via-sky-200/10 to-transparent rounded-full blur-3xl animate-float-orb-reverse" />
       </div>
 
       {/* Main Glass Card */}
-      <div className="relative w-full max-w-[460px] glass-auth-card rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-2xl glass-specular-edge border border-white/90 animate-in zoom-in-95 duration-200 my-auto text-[#171717]">
+      <div
+        className={`relative w-full ${
+          mode === 'register' ? 'max-w-[560px]' : 'max-w-[460px]'
+        } glass-auth-card rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-2xl glass-specular-edge border border-white/90 animate-in zoom-in-95 duration-200 my-auto text-[#171717] transition-all max-h-[92vh] overflow-y-auto`}
+      >
         {/* Top Close Button */}
         <button
           onClick={onClose}
@@ -177,8 +236,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Brand Header */}
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-neutral-950 text-white rounded-lg flex items-center justify-center shadow-md">
-            {/* Custom Monogram Building Icon matching brand */}
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-neutral-950 text-white rounded-lg flex items-center justify-center shadow-md shrink-0">
             <svg
               className="w-5 h-5 text-white"
               viewBox="0 0 24 24"
@@ -211,15 +269,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <p className="text-xs sm:text-[13px] text-neutral-500 font-normal mt-1">
             {mode === 'login'
               ? 'Đăng nhập để tiếp tục vào SMART CASSAVAS.'
-              : 'Đăng ký để truy cập không gian quản lý của bạn.'}
+              : 'Đăng ký thông tin định danh để truy cập không gian quản lý của bạn.'}
           </p>
         </div>
 
-        {/* Toast Badge (If role preselected or alert) */}
+        {/* Toast / Error Badge */}
         {toastMessage && (
-          <div className="mt-3 px-3 py-1.5 rounded-lg bg-neutral-950 text-white text-xs flex items-center gap-2 shadow-md animate-in fade-in slide-in-from-top-2 duration-150">
-            <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+          <div className="mt-3 px-3 py-2 rounded-lg bg-neutral-950 text-white text-xs flex items-center gap-2 shadow-md animate-in fade-in slide-in-from-top-2 duration-150">
+            <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse shrink-0" />
             <span className="truncate">{toastMessage}</span>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shadow-xs animate-in fade-in duration-150">
+            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -249,7 +314,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       key={roleKey}
                       type="button"
                       onClick={() => handleSelectRole(roleKey)}
-                      className={`glass-role-card p-2.5 sm:p-3 rounded-lg text-left flex items-start gap-2.5 relative group ${
+                      className={`glass-role-card p-2.5 sm:p-3 rounded-lg text-left flex items-start gap-2.5 relative group cursor-pointer ${
                         isSelected ? 'active-role' : ''
                       }`}
                     >
@@ -299,16 +364,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Email
+                  Email hoặc Số điện thoại
                 </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@smartcassavas.vn"
-                  className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(e.target.value)}
+                    placeholder="admin@smartcassavas.vn hoặc 0901234567"
+                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>
@@ -327,7 +394,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
                     title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
                     {showPassword ? (
@@ -339,15 +406,64 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </div>
 
-              {/* Forgot Password Link */}
-              <div className="flex justify-end pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => setIsForgotPwOpen(true)}
-                  className="text-xs text-neutral-600 hover:text-neutral-950 underline underline-offset-2 transition-colors font-medium"
-                >
-                  Quên mật khẩu?
-                </button>
+              {/* MFA 2FA Code Input (users.mfa_enabled in schema) */}
+              {isMfaActive && (
+                <div className="p-3 bg-sky-50/70 border border-sky-200 rounded-lg animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-semibold text-sky-900 flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-sky-600" />
+                      Mã xác thực 2 bước (MFA / OTP)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsMfaActive(false)}
+                      className="text-[10px] text-sky-700 hover:underline"
+                    >
+                      Bỏ qua
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value)}
+                    placeholder="Nhập 6 số bảo mật (VD: 123456)"
+                    className="w-full px-3 py-2 glass-input rounded text-sm text-center font-mono tracking-widest text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Remember Me & Forgot Password Row */}
+              <div className="flex items-center justify-between pt-0.5 text-xs">
+                <label className="inline-flex items-center gap-2 text-neutral-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                  />
+                  <span>Ghi nhớ đăng nhập</span>
+                </label>
+
+                <div className="flex items-center gap-3">
+                  {!isMfaActive && (
+                    <button
+                      type="button"
+                      onClick={() => setIsMfaActive(true)}
+                      className="text-neutral-500 hover:text-neutral-800 text-[11px] underline"
+                      title="Sử dụng mã OTP/MFA hai lớp"
+                    >
+                      Mã 2FA
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotPwOpen(true)}
+                    className="text-neutral-600 hover:text-neutral-950 underline underline-offset-2 transition-colors font-medium"
+                  >
+                    Quên mật khẩu?
+                  </button>
+                </div>
               </div>
 
               {/* Submit Button */}
@@ -383,6 +499,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onClick={() => {
                   setMode('register');
                   setSelectedRole(null);
+                  setErrorMessage(null);
                 }}
                 className="font-semibold text-neutral-950 underline underline-offset-2 hover:text-neutral-800 transition-colors cursor-pointer"
               >
@@ -399,36 +516,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               Khôi phục mật khẩu
             </h3>
             <p className="text-xs text-neutral-500 mb-4">
-              Nhập email đã đăng ký của bạn. Chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu an toàn.
+              Nhập email hoặc số điện thoại đã đăng ký. Hệ thống sẽ gửi mã OTP/liên kết đặt lại mật khẩu an toàn.
             </p>
 
             <form onSubmit={handleForgotPassword} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Email đã đăng ký
+                  Email hoặc Số điện thoại
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="admin@smartcassavas.vn"
+                  value={forgotIdentifier}
+                  onChange={(e) => setForgotIdentifier(e.target.value)}
+                  placeholder="admin@smartcassavas.vn hoặc 0901234567"
                   className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold rounded-md shadow-sm transition-all"
+                className="w-full py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold rounded-md shadow-sm transition-all cursor-pointer"
               >
-                Gửi liên kết khôi phục
+                Gửi hướng dẫn khôi phục
               </button>
 
               <div className="text-center pt-2">
                 <button
                   type="button"
                   onClick={() => setIsForgotPwOpen(false)}
-                  className="text-xs text-neutral-600 hover:text-neutral-950 font-medium underline"
+                  className="text-xs text-neutral-600 hover:text-neutral-950 font-medium underline cursor-pointer"
                 >
                   Quay lại đăng nhập
                 </button>
@@ -437,64 +554,178 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* SIGNUP / REGISTER MODE: Matching Screenshot 2 */}
+        {/* SIGNUP / REGISTER MODE: Database Schema Enhanced */}
         {mode === 'register' && (
           <div className="mt-6 pt-4 border-t border-neutral-200/80 animate-in fade-in duration-200">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Họ và tên
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="VD: Nguyễn Văn A"
-                  className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="user@smartcassavas.vn"
-                  className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Mật khẩu
-                </label>
-                <div className="relative">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
+              {/* Row 1: Full Name & Phone Number (phone_number is NOT NULL UNIQUE in DB) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Họ và tên <span className="text-rose-500">*</span>
+                  </label>
                   <input
-                    type={showPassword ? 'text' : 'password'}
+                    type="text"
                     required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="VD: Nguyễn Văn A"
+                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
-                    title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
                 </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Số điện thoại <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      required
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="0912345678"
+                      className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Email & National ID Number (national_id_number in DB schema for eKYC) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="cudan@smartcassavas.vn"
+                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Số CCCD / Hộ chiếu
+                  </label>
+                  <input
+                    type="text"
+                    value={nationalId}
+                    onChange={(e) => setNationalId(e.target.value)}
+                    placeholder="12 số CCCD định danh"
+                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Resident Role Type & Apartment Number (apartments & residents schema) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Đối tượng cư trú
+                  </label>
+                  <select
+                    value={residentType}
+                    onChange={(e) => setResidentType(e.target.value as any)}
+                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 focus:outline-none cursor-pointer"
+                  >
+                    <option value="OWNER">Chủ sở hữu căn hộ</option>
+                    <option value="TENANT">Khách thuê căn hộ</option>
+                    <option value="STAFF">Nhân sự vận hành / Ban QL</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Mã căn hộ / Tòa nhà
+                  </label>
+                  <input
+                    type="text"
+                    value={apartmentNumber}
+                    onChange={(e) => setApartmentNumber(e.target.value)}
+                    placeholder="VD: Căn A-12.04 (Tháp A)"
+                    className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Password & Confirm Password (password_hash) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Mật khẩu <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
+                      title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
+                    Xác nhận mật khẩu <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
+                      title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Terms Checkbox */}
+              <div className="pt-1">
+                <label className="inline-flex items-start gap-2 text-xs text-neutral-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    className="mt-0.5 w-3.5 h-3.5 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                  />
+                  <span>
+                    Tôi cam kết thông tin cá nhân chính xác và đồng ý với{' '}
+                    <span className="text-neutral-900 font-semibold underline">
+                      Quy chế quản lý & bảo mật tòa nhà
+                    </span>.
+                  </span>
+                </label>
               </div>
 
               {/* Submit Register Button */}
@@ -506,12 +737,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {isSubmitting ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Đang xử lý đăng ký...</span>
+                    <span>Đang khởi tạo tài khoản...</span>
                   </span>
                 ) : submitSuccess ? (
                   <span className="flex items-center gap-2 text-emerald-400">
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Đăng ký thành công!</span>
+                    <span>Đăng ký thành công! Đang chuyển hướng...</span>
                   </span>
                 ) : (
                   <>
@@ -530,6 +761,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onClick={() => {
                   setMode('login');
                   setSelectedRole(null);
+                  setErrorMessage(null);
                 }}
                 className="font-semibold text-neutral-950 underline underline-offset-2 hover:text-neutral-800 transition-colors cursor-pointer"
               >
