@@ -20,13 +20,25 @@ const App: React.FC = () => {
   };
 
   // Valid paths for single-page application
-  const isHomePage = currentPath === '/' || currentPath === '';
+  const isAuthPath =
+    currentPath === '/login' ||
+    currentPath === '/register' ||
+    currentPath === '/dang-nhap' ||
+    currentPath === '/dang-ky';
+  const isHomePage = currentPath === '/' || currentPath === '' || isAuthPath;
 
   if (!isHomePage) {
     return <NotFound onBackHome={navigateToHome} />;
   }
 
-  return <Home />;
+  const initialAuthMode =
+    currentPath === '/register' || currentPath === '/dang-ky'
+      ? 'register'
+      : currentPath === '/login' || currentPath === '/dang-nhap'
+      ? 'login'
+      : null;
+
+  return <Home initialAuthModal={initialAuthMode} />;
 };
 
 const rootElement = document.getElementById('app');
@@ -39,4 +51,5 @@ if (rootElement) {
     </React.StrictMode>
   );
 }
+
 

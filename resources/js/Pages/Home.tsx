@@ -62,6 +62,7 @@ import {
   Car
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
+import { AuthModal, UserRole } from '../Components/AuthModal';
 
 type WorkspaceTab = 'overview' | 'residents' | 'billing' | 'maintenance';
 
@@ -73,14 +74,31 @@ interface NotificationItem {
   type: 'billing' | 'maintenance' | 'security';
 }
 
-export const Home: React.FC = () => {
+interface HomeProps {
+  initialAuthModal?: 'login' | 'register' | null;
+}
+
+export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
   // Navigation & Interactive states
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
   const [showNotification, setShowNotification] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [authModal, setAuthModal] = useState<'login' | 'register' | null>(null);
+  const [authModal, setAuthModal] = useState<'login' | 'register' | null>(initialAuthModal);
+  const [loginFeedback, setLoginFeedback] = useState<string | null>(null);
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const [liveUptimeSeconds, setLiveUptimeSeconds] = useState(0);
+
+  const openAuth = (mode: 'login' | 'register') => {
+    setAuthModal(mode);
+    window.history.pushState({}, '', mode === 'login' ? '/login' : '/register');
+  };
+
+  const closeAuth = () => {
+    setAuthModal(null);
+    if (window.location.pathname === '/login' || window.location.pathname === '/register') {
+      window.history.pushState({}, '', '/');
+    }
+  };
 
   // Morphicons interactive states
   const [isHeroCtaHovered, setIsHeroCtaHovered] = useState(false);
@@ -297,13 +315,13 @@ export const Home: React.FC = () => {
           {/* Actions */}
           <div className="hidden md:flex items-center gap-4">
             <button
-              onClick={() => setAuthModal('register')}
+              onClick={() => openAuth('register')}
               className="text-sm font-medium text-neutral-700 hover:text-neutral-950 px-3 py-2 rounded-md transition-colors"
             >
               Đăng ký
             </button>
             <button
-              onClick={() => setAuthModal('login')}
+              onClick={() => openAuth('login')}
               className="text-sm font-medium text-white bg-neutral-950 hover:bg-neutral-800 active:scale-95 px-5 py-2.5 rounded-md shadow-sm transition-all flex items-center gap-2"
             >
               <span>Đăng nhập</span>
@@ -376,7 +394,7 @@ export const Home: React.FC = () => {
               <button
                 onClick={() => {
                   setIsMobileMenuOpen(false);
-                  setAuthModal('register');
+                  openAuth('register');
                 }}
                 className="w-full text-center py-2.5 border border-neutral-300 rounded-md text-sm font-medium text-neutral-800"
               >
@@ -385,7 +403,7 @@ export const Home: React.FC = () => {
               <button
                 onClick={() => {
                   setIsMobileMenuOpen(false);
-                  setAuthModal('login');
+                  openAuth('login');
                 }}
                 className="w-full text-center py-2.5 bg-neutral-950 text-white rounded-md text-sm font-medium"
               >
@@ -447,11 +465,80 @@ export const Home: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setAuthModal('register')}
+                onClick={() => openAuth('register')}
                 className="inline-flex items-center justify-center bg-white/80 hover:bg-white active:scale-[0.98] text-neutral-900 font-medium text-sm px-5 py-3.5 rounded-sm border border-neutral-300/70 shadow-xs hover:border-neutral-400 transition-all"
               >
                 Tạo tài khoản
               </button>
+            </div>
+
+            {/* Quick Glass Role Showcase Bar matching user screenshot */}
+            <div className="pt-2">
+              <div className="glass-panel rounded-xl p-3 sm:p-3.5 border border-white/80 shadow-xs relative overflow-hidden group">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Truy cập nhanh theo vai trò
+                  </span>
+                  <span className="text-[10px] text-neutral-500 font-mono">
+                    Chọn vai trò để vào thẳng
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openAuth('login')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                  >
+                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                      🏢
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-neutral-900 leading-tight">Quản lý</div>
+                      <div className="text-[10px] text-neutral-500 truncate">Vận hành</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAuth('login')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                  >
+                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                      👥
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-neutral-900 leading-tight">Cư dân</div>
+                      <div className="text-[10px] text-neutral-500 truncate">Căn hộ</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAuth('login')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                  >
+                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                      📋
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-neutral-900 leading-tight">Lễ tân</div>
+                      <div className="text-[10px] text-neutral-500 truncate">Khách hàng</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAuth('login')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                  >
+                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                      🛡️
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-neutral-900 leading-tight">Admin</div>
+                      <div className="text-[10px] text-neutral-500 truncate">Hệ thống</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Micro Cloud Highlights */}
@@ -1532,117 +1619,29 @@ export const Home: React.FC = () => {
         </div>
       </footer>
 
-      {/* ================= MODAL LOGIN / REGISTER SIMULATION ================= */}
-      {authModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="glass-panel rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative animate-in zoom-in-95 duration-150 glass-specular-edge border border-white/60">
-            <button
-              onClick={() => setAuthModal(null)}
-              className="absolute top-4 right-4 p-1.5 text-neutral-400 hover:text-neutral-700 rounded-full hover:bg-neutral-100 transition-colors"
-              title="Đóng cửa sổ"
-            >
-              <MorphIcon icon={XData} size={18} strokeWidth={2} spring="snappy" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-9 h-9 bg-neutral-950 text-white rounded-md flex items-center justify-center shadow-xs">
-                <MorphIcon
-                  icon={authModal === 'login' ? LockData : UserPlusData}
-                  size={18}
-                  strokeWidth={2}
-                  spring="bouncy"
-                  className="text-white"
-                />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-neutral-900 leading-tight">
-                  {authModal === 'login' ? 'Đăng nhập SMART CASSAVAS' : 'Đăng ký trải nghiệm hệ thống'}
-                </h3>
-                <p className="text-[11px] text-neutral-500">Hệ sinh thái quản lý tòa nhà số một</p>
-              </div>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                alert(authModal === 'login' ? 'Đăng nhập hệ thống thành công!' : 'Đã gửi yêu cầu đăng ký tài khoản!');
-                setAuthModal(null);
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">Email công việc</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="admin@toanha.vn"
-                  className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:border-neutral-900 transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">Mật khẩu</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2 pr-10 border border-neutral-300 rounded text-sm focus:outline-none focus:border-neutral-900 transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 p-1 rounded transition-colors"
-                    title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                  >
-                    <MorphIcon
-                      icon={showPassword ? EyeOffData : EyeData}
-                      size={16}
-                      strokeWidth={2}
-                      spring="snappy"
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {authModal === 'register' && (
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Tên Tòa nhà / Dự án</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="VD: Chung cư Cassavas Complex"
-                    className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:border-neutral-900 transition-colors"
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full mt-2 py-3 bg-neutral-950 hover:bg-neutral-800 text-white text-sm font-semibold rounded transition-all shadow-sm flex items-center justify-center gap-2 active:scale-[0.99]"
-              >
-                <span>{authModal === 'login' ? 'Đăng nhập ngay' : 'Bắt đầu dùng thử miễn phí'}</span>
-                <MorphIcon
-                  icon={authModal === 'login' ? ArrowRightData : CheckData}
-                  size={16}
-                  strokeWidth={2}
-                  spring="snappy"
-                />
-              </button>
-
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAuthModal(authModal === 'login' ? 'register' : 'login')}
-                  className="text-xs text-neutral-600 hover:text-neutral-950 font-medium"
-                >
-                  {authModal === 'login' ? 'Chưa có tài khoản? Đăng ký ngay' : 'Đã có tài khoản? Đăng nhập'}
-                </button>
-              </div>
-            </form>
+      {/* Toast Feedback for Login */}
+      {loginFeedback && (
+        <div className="fixed bottom-6 right-6 z-50 glass-panel rounded-xl px-4 py-3 shadow-xl border border-white/90 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-200">
+          <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+            ✓
+          </div>
+          <div>
+            <div className="text-xs font-bold text-neutral-900">Xác thực thành công</div>
+            <div className="text-[11px] text-neutral-600">{loginFeedback}</div>
           </div>
         </div>
       )}
+
+      {/* ================= ULTRA GLASSMORPHISM AUTH MODAL ================= */}
+      <AuthModal
+        isOpen={authModal !== null}
+        initialMode={authModal || 'login'}
+        onClose={closeAuth}
+        onSuccess={(role, userEmail) => {
+          setLoginFeedback(`Đã đăng nhập thành công với vai trò: ${role} (${userEmail})`);
+          setTimeout(() => setLoginFeedback(null), 4000);
+        }}
+      />
     </div>
   );
 };
