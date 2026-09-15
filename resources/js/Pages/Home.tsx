@@ -83,6 +83,7 @@ interface HomeProps {
   initialAuthModal?: 'login' | 'register' | null;
   onLoginSuccess?: (role: UserRole, userEmail: string) => void;
   onNavigateAdmin?: () => void;
+  onNavigateResident?: () => void;
   currentUserRole?: string;
 }
 
@@ -90,6 +91,7 @@ export const Home: React.FC<HomeProps> = ({
   initialAuthModal = null,
   onLoginSuccess,
   onNavigateAdmin,
+  onNavigateResident,
   currentUserRole,
 }) => {
   // Navigation & Interactive states
@@ -320,7 +322,7 @@ export const Home: React.FC<HomeProps> = ({
           </a>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-8">
+          <nav className="hidden md:flex items-center gap-6 lg:gap-8">
             <a
               href="#home"
               onClick={(e) => {
@@ -330,6 +332,24 @@ export const Home: React.FC<HomeProps> = ({
               className="text-sm font-semibold text-neutral-900 transition-colors relative py-1 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-neutral-900"
             >
               Trang chủ
+            </a>
+            <a
+              href="/cu-dan"
+              onClick={(e) => {
+                e.preventDefault();
+                if (onNavigateResident) {
+                  onNavigateResident();
+                } else {
+                  window.history.pushState({}, '', '/cu-dan');
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }
+              }}
+              className="text-sm font-bold text-sky-700 hover:text-sky-900 transition-all flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 hover:bg-sky-100 border border-sky-200/80 shadow-xs"
+              title="Vào Trang Cư Dân Home"
+            >
+              <Users className="w-3.5 h-3.5 text-sky-600" />
+              <span>Trang cư dân</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             </a>
             <a
               href="#model3d"
@@ -405,6 +425,30 @@ export const Home: React.FC<HomeProps> = ({
                         </div>
                       </div>
 
+                      {/* Menu Item: Vào Cổng Cư Dân */}
+                      <a
+                        href="/cu-dan"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsUserDropdownOpen(false);
+                          if (onNavigateResident) {
+                            onNavigateResident();
+                          } else {
+                            window.history.pushState({}, '', '/cu-dan');
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                          }
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-sky-950 bg-sky-50/80 hover:bg-sky-100 border border-sky-200/70 rounded-xl transition-all shadow-2xs cursor-pointer group mb-1.5"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col text-left">
+                          <span className="font-bold text-sky-950">Vào Cổng Cư Dân</span>
+                          <span className="text-[10px] text-sky-600 font-normal">Căn hộ, Tiện ích & Hóa đơn</span>
+                        </div>
+                      </a>
+
                       {/* Menu Item: Vào Trang Quản lý */}
                       <a
                         href="/admin"
@@ -418,14 +462,14 @@ export const Home: React.FC<HomeProps> = ({
                             window.dispatchEvent(new PopStateEvent('popstate'));
                           }
                         }}
-                        className="flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold text-sky-950 bg-sky-50/80 hover:bg-sky-100 border border-sky-200/70 rounded-xl transition-all shadow-2xs cursor-pointer group"
+                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer group"
                       >
-                        <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                        <div className="w-7 h-7 rounded-lg bg-slate-800 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
                           <LayoutDashboard className="w-4 h-4" />
                         </div>
                         <div className="flex flex-col text-left">
-                          <span className="font-bold text-sky-950">Vào trang quản lý</span>
-                          <span className="text-[10px] text-sky-600 font-normal">Dashboard & Vận hành</span>
+                          <span className="font-bold text-slate-900">Vào trang quản lý</span>
+                          <span className="text-[10px] text-slate-500 font-normal">Dashboard & Vận hành</span>
                         </div>
                       </a>
 
@@ -460,6 +504,14 @@ export const Home: React.FC<HomeProps> = ({
               </div>
             ) : (
               <>
+                <button
+                  onClick={() => (onNavigateResident ? onNavigateResident() : openAuth('login'))}
+                  className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 px-3.5 py-2 rounded-xl transition-all shadow-sm active:scale-95"
+                  title="Truy cập Cổng Cư Dân"
+                >
+                  <Users className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Cổng Cư Dân</span>
+                </button>
                 <button
                   onClick={() => openAuth('register')}
                   className="text-sm font-medium text-neutral-700 hover:text-neutral-950 px-3 py-2 rounded-md transition-colors"
@@ -587,6 +639,20 @@ export const Home: React.FC<HomeProps> = ({
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
+                    if (onNavigateResident) {
+                      onNavigateResident();
+                    } else {
+                      openAuth('login');
+                    }
+                  }}
+                  className="w-full text-center py-2.5 bg-sky-50 border border-sky-200 text-sky-800 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                >
+                  <Users className="w-4 h-4 text-sky-600" />
+                  <span>Cổng Cư Dân (Resident Portal)</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
                     openAuth('register');
                   }}
                   className="w-full text-center py-2.5 border border-neutral-300 rounded-md text-sm font-medium text-neutral-800"
@@ -607,6 +673,25 @@ export const Home: React.FC<HomeProps> = ({
           </div>
         )}
       </header>
+
+      {/* Resident Active Banner */}
+      {(currentUserRole === 'resident' || currentUser?.role === 'resident') && (
+        <div className="bg-gradient-to-r from-sky-600 via-indigo-600 to-cyan-600 text-white py-2.5 px-4 shadow-md animate-in fade-in">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs sm:text-sm font-medium">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-bold">CƯ DÂN</span>
+              <span>Bạn đang đăng nhập tài khoản cư dân Căn hộ A1-05 (Nguyễn Văn An).</span>
+            </div>
+            <button
+              onClick={() => (onNavigateResident ? onNavigateResident() : (window.location.href = '/cu-dan'))}
+              className="px-3.5 py-1 rounded-lg bg-white text-slate-900 font-bold text-xs hover:bg-slate-100 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+            >
+              <span>Vào Trang Cư Dân Home</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ================= HERO SECTION ================= */}
       <main id="home" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-24 lg:pt-16 lg:pb-32">
