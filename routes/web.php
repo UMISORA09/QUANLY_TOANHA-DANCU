@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ManagementDashboardController;
+use App\Http\Controllers\ResidentPortalController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -40,7 +41,30 @@ Route::get('/manager', function () {
     return view('welcome');
 });
 
+Route::get('/cu-dan', function () {
+    return view('welcome');
+});
+
+Route::get('/cu-dan/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
+Route::get('/resident', function () {
+    return view('welcome');
+});
+
+Route::get('/resident/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/api/management/overview', [ManagementDashboardController::class, 'overview']);
+
+// API Resident Portal
+Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview']);
+Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket']);
+Route::post('/api/v1/resident/amenity-bookings', [ResidentPortalController::class, 'createAmenityBooking']);
+Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
+Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
 
 Route::post('/api/v1/auth/login', [AuthController::class, 'login']);
 Route::post('/api/auth/login', [AuthController::class, 'login']);
