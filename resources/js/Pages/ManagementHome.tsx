@@ -45,6 +45,7 @@ import {
   Compass
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
+import { AmenityManagement } from './Admin/AmenityManagement';
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -52,6 +53,7 @@ export interface ManagementHomeProps {
   userRole?: 'manager' | 'admin' | string;
   userName?: string;
   userEmail?: string;
+  initialTab?: string;
 }
 
 interface TicketItem {
@@ -103,9 +105,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   userRole = 'admin',
   userName = 'Admin Cassavas',
   userEmail = 'admin@cassavas.vn',
+  initialTab,
 }) => {
   // Navigation & Interactive states
-  const [activeMenuId, setActiveMenuId] = useState<string>('overview');
+  const [activeMenuId, setActiveMenuId] = useState<string>(initialTab || 'overview');
   const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
   const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
@@ -252,7 +255,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
       { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
       { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
-      { id: 'amenities', label: 'Tiện ích & Lịch đặt', icon: Sparkles, badge: String(kpis.amenityBookings) },
+      { id: 'amenities', label: 'Quản lý & Danh mục tiện ích', icon: Sparkles, badge: String(kpis.amenityBookings) },
       { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${notifications.filter(n => !n.isRead).length || 2} mới` },
       { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
       { id: 'ekyc', label: 'eKYC & Xác thực CCCD', icon: ShieldCheck, badge: 'AI' },
@@ -888,7 +891,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
         {/* ================= DASHBOARD MAIN BODY (CUỘN ĐỘC LẬP & TỰ ĐỘNG CĂN CHỈNH) ================= */}
         <main className="flex-1 overflow-y-auto w-full custom-scrollbar transition-all duration-300 ease-in-out">
-          <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">
+          {activeMenuId === 'amenities' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <AmenityManagement embedded={true} />
+            </div>
+          ) : (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">
           {/* Top Title & Subtitle + Export Report Button */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
             <div>
@@ -1361,7 +1369,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           </div>
         </div>
-      </main>
+      )}
+        </main>
     </div>
 
       {/* ========================================================
