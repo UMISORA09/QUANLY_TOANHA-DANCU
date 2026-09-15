@@ -59,32 +59,32 @@ const ROLE_DEMOS: Record<
   manager: {
     title: 'Quản lý',
     subtitle: 'Vận hành & tài chính',
-    email: 'quanly@smartcassavas.vn',
-    phone: '0901234567',
+    email: 'quanly@cassavas.vn',
+    phone: '0900000002',
     icon: LayoutGrid,
     morphIcon: LayoutDashboardData,
   },
   resident: {
-    title: 'Người dùng',
+    title: 'Cư dân',
     subtitle: 'Cư dân & căn hộ',
-    email: 'cudan@smartcassavas.vn',
-    phone: '0912345678',
+    email: 'nguyenvanan@cassavas.vn',
+    phone: '0901234567',
     icon: Users,
     morphIcon: UsersData,
   },
   receptionist: {
     title: 'Lễ tân',
     subtitle: 'Khách & gói hàng',
-    email: 'letan@smartcassavas.vn',
-    phone: '0923456789',
+    email: 'letan@cassavas.vn',
+    phone: '0900000004',
     icon: Receipt,
     morphIcon: ReceiptData,
   },
   admin: {
     title: 'Admin',
     subtitle: 'Quản trị hệ thống',
-    email: 'admin@smartcassavas.vn',
-    phone: '0934567890',
+    email: 'admin@cassavas.vn',
+    phone: '0900000001',
     icon: ShieldCheck,
     morphIcon: ShieldCheckData,
   },
@@ -155,9 +155,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setSelectedRole(roleKey);
     const demo = ROLE_DEMOS[roleKey];
     setLoginIdentifier(demo.email);
-    setPassword('Cassavas@2026');
+    setPassword('123567');
     setErrorMessage(null);
-    setToastMessage(`Đã chọn vai trò: ${demo.title} • Điền tài khoản demo`);
+    setToastMessage(`Đã chọn: ${demo.title} • Tài khoản: ${demo.email} (Mật khẩu: 123567)`);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -397,23 +397,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     value={loginIdentifier}
                     onChange={(e) => setLoginIdentifier(e.target.value)}
-                    placeholder="admin@smartcassavas.vn hoặc 0901234567"
+                    placeholder="admin@cassavas.vn hoặc 0900000001"
                     className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Mật khẩu
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-neutral-900">
+                    Mật khẩu
+                  </label>
+                  <span className="text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded font-mono">
+                    MK mẫu: 123567
+                  </span>
+                </div>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Nhập 123567"
                     className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                   />
                   <button

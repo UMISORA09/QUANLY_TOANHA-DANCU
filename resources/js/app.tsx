@@ -97,7 +97,16 @@ const App: React.FC = () => {
   const isHomePage = currentPath === '/' || currentPath === '' || isAuthPath;
 
   if (isAmenityAdminPath) {
-    return <AmenityManagement />;
+    return (
+      <ManagementHome
+        onLogout={handleLogout}
+        onNavigateHome={() => navigateTo('/')}
+        userRole={currentUser?.role || 'admin'}
+        userName={currentUser?.name || 'Admin Cassavas'}
+        userEmail={currentUser?.email || 'admin@cassavas.vn'}
+        initialTab="amenities"
+      />
+    );
   }
 
   if (!isHomePage) {

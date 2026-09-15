@@ -103,6 +103,17 @@ export const Home: React.FC<HomeProps> = ({
 
   // Authenticated user state
   const [currentUser, setCurrentUser] = useState<any>(() => api.getUser());
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.user-dropdown-container')) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('smart_cassavas_token');
@@ -351,72 +362,90 @@ export const Home: React.FC<HomeProps> = ({
             >
               Liên hệ
             </a>
-
-            {/* Quản lý tiện ích Admin */}
-            <div className="relative group">
-              <button
-                type="button"
-                className="text-sm font-medium text-neutral-600 hover:text-neutral-950 transition-colors flex items-center gap-1 py-1 cursor-pointer"
-              >
-                <span>Quản lý</span>
-                <ChevronDown className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-200" />
-              </button>
-              <div className="absolute top-full left-0 pt-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-150 z-50">
-                <div className="bg-white/95 backdrop-blur-xl border border-neutral-200/80 rounded-xl p-1.5 shadow-xl min-w-[220px]">
-                  <a
-                    href="/admin/amenities"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.history.pushState({}, '', '/admin/amenities');
-                      window.dispatchEvent(new PopStateEvent('popstate'));
-                    }}
-                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-neutral-100/80 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Building2 className="w-4 h-4 text-neutral-700" />
-                    <div className="flex flex-col">
-                      <span>Tiện ích & Cấu hình Slot</span>
-                      <span className="text-[10px] text-neutral-400 font-normal">Quản trị danh mục dịch vụ</span>
-                    </div>
-                  </a>
-                </div>
-              </div>
-            </div>
           </nav>
 
           {/* Actions */}
           <div className="hidden md:flex items-center gap-3">
             {currentUser ? (
               <div className="flex items-center gap-2.5">
-                {/* User Info Badge */}
-                <div className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-neutral-100/90 border border-neutral-200/80 shadow-2xs backdrop-blur-sm">
-                  <div className="w-7 h-7 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
-                    {currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-xs font-bold text-neutral-900 leading-tight">
-                      {currentUser.full_name || currentUser.username || 'Quản trị viên'}
-                    </span>
-                    <span className="text-[10px] text-neutral-500 font-medium">
-                      {currentUser.roles?.includes('SUPER_ADMIN')
-                        ? 'Quản trị hệ thống'
-                        : currentUser.roles?.[0] || 'Cư dân'}
-                    </span>
-                  </div>
-                </div>
+                {/* User Info Badge with Dropdown */}
+                <div className="relative user-dropdown-container">
+                  <button
+                    type="button"
+                    onClick={() => setIsUserDropdownOpen((prev) => !prev)}
+                    className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-full bg-neutral-100/90 hover:bg-neutral-200/80 border border-neutral-200/80 shadow-2xs backdrop-blur-sm transition-all cursor-pointer group"
+                    title="Menu tài khoản"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                      {currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'A'}
+                    </div>
+                    <div className="flex flex-col text-left">
+                      <span className="text-xs font-bold text-neutral-900 leading-tight">
+                        {currentUser.full_name || currentUser.name || currentUser.username || 'Admin Cassavas'}
+                      </span>
+                      <span className="text-[10px] text-neutral-500 font-medium">
+                        {currentUser.roles?.includes('SUPER_ADMIN') || currentUser.role === 'admin'
+                          ? 'admin'
+                          : currentUser.roles?.[0] || currentUser.role || 'Cư dân'}
+                      </span>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 ${isUserDropdownOpen ? 'rotate-180 text-neutral-900' : ''}`} />
+                  </button>
 
-                {/* Quản lý tiện ích link */}
-                <a
-                  href="/admin/amenities"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.history.pushState({}, '', '/admin/amenities');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }}
-                  className="text-xs font-semibold text-white bg-neutral-950 hover:bg-neutral-800 active:scale-95 px-3.5 py-2 rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Building2 className="w-3.5 h-3.5 text-neutral-200" />
-                  <span>Quản lý tiện ích</span>
-                </a>
+                  {/* Dropdown Menu sổ xuống */}
+                  {isUserDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white/95 backdrop-blur-2xl border border-neutral-200/90 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                      {/* User Info Header */}
+                      <div className="px-3 py-2 border-b border-neutral-100 mb-1">
+                        <div className="text-xs font-bold text-neutral-900 truncate">
+                          {currentUser.full_name || currentUser.name || currentUser.username || 'Admin Cassavas'}
+                        </div>
+                        <div className="text-[10px] text-neutral-500 truncate font-mono">
+                          {currentUser.email || 'admin@cassavas.vn'}
+                        </div>
+                      </div>
+
+                      {/* Menu Item: Vào Trang Quản lý */}
+                      <a
+                        href="/admin"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsUserDropdownOpen(false);
+                          if (onNavigateAdmin) {
+                            onNavigateAdmin();
+                          } else {
+                            window.history.pushState({}, '', '/admin');
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                          }
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold text-sky-950 bg-sky-50/80 hover:bg-sky-100 border border-sky-200/70 rounded-xl transition-all shadow-2xs cursor-pointer group"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                          <LayoutDashboard className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col text-left">
+                          <span className="font-bold text-sky-950">Vào trang quản lý</span>
+                          <span className="text-[10px] text-sky-600 font-normal">Dashboard & Vận hành</span>
+                        </div>
+                      </a>
+
+                      <div className="my-1.5 border-t border-neutral-100" />
+
+                      {/* Menu Item: Đăng xuất */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUserDropdownOpen(false);
+                          handleLogout();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer text-left"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Đăng xuất</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 {/* Đăng xuất button */}
                 <button
@@ -509,18 +538,6 @@ export const Home: React.FC<HomeProps> = ({
             >
               Liên hệ
             </a>
-            <a
-              href="/admin/amenities"
-              onClick={(e) => {
-                e.preventDefault();
-                setIsMobileMenuOpen(false);
-                window.history.pushState({}, '', '/admin/amenities');
-                window.dispatchEvent(new PopStateEvent('popstate'));
-              }}
-              className="block px-3 py-2 text-base font-semibold text-neutral-900 bg-neutral-100 rounded-md"
-            >
-              Quản lý: Tiện ích & Slot
-            </a>
             {currentUser ? (
               <div className="pt-4 border-t border-neutral-100 flex flex-col gap-2.5">
                 <div className="flex items-center gap-3 p-3 bg-neutral-100/80 rounded-xl border border-neutral-200/60">
@@ -537,17 +554,21 @@ export const Home: React.FC<HomeProps> = ({
                   </div>
                 </div>
                 <a
-                  href="/admin/amenities"
+                  href="/admin"
                   onClick={(e) => {
                     e.preventDefault();
                     setIsMobileMenuOpen(false);
-                    window.history.pushState({}, '', '/admin/amenities');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
+                    if (onNavigateAdmin) {
+                      onNavigateAdmin();
+                    } else {
+                      window.history.pushState({}, '', '/admin');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }
                   }}
-                  className="w-full text-center py-2.5 bg-neutral-950 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                  className="w-full text-center py-2.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-950 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
-                  <Building2 className="w-4 h-4" />
-                  <span>Vào Quản lý Tiện ích</span>
+                  <LayoutDashboard className="w-4 h-4 text-sky-600" />
+                  <span>Vào trang quản lý</span>
                 </a>
                 <button
                   type="button"
@@ -638,18 +659,13 @@ export const Home: React.FC<HomeProps> = ({
               </button>
 
               {currentUser ? (
-                <a
-                  href="/admin/amenities"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.history.pushState({}, '', '/admin/amenities');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }}
+                <button
+                  onClick={() => scrollToSection('amenities')}
                   className="inline-flex items-center justify-center bg-neutral-900 hover:bg-neutral-800 active:scale-[0.98] text-white font-medium text-sm px-5 py-3.5 rounded-sm shadow-xs transition-all gap-2 cursor-pointer"
                 >
-                  <Building2 className="w-4 h-4 text-emerald-400" />
-                  <span>Vào Quản lý tiện ích</span>
-                </a>
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>Khám phá tiện ích</span>
+                </button>
               ) : (
                 <button
                   onClick={() => openAuth('register')}

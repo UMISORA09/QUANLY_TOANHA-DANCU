@@ -1,7 +1,7 @@
 // Real HTTP REST API Client for Smart Apartment Management
 
-const API_BASE_URL = window.location.port === '5173' || window.location.port === '8000'
-  ? 'http://127.0.0.1:8001/api/v1'
+const API_BASE_URL = window.location.port === '5173'
+  ? 'http://127.0.0.1:8000/api/v1'
   : '/api/v1';
 
 export interface Category {
@@ -157,7 +157,7 @@ class ApiService {
       user: any;
     }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ identifier, password }),
+      body: JSON.stringify({ username: identifier, identifier, password }),
     });
     if (res.access_token) {
       this.setToken(res.access_token);
