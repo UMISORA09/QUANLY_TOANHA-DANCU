@@ -59,8 +59,12 @@ import {
   PhoneCall,
   Play,
   Pause,
-  Car
+  Car,
+  ChevronDown,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
+import { api } from '../Services/api';
 import { Building3DModel } from '../Components/Building3DModel';
 import { AuthModal, UserRole } from '../Components/AuthModal';
 
@@ -87,6 +91,34 @@ export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
   const [loginFeedback, setLoginFeedback] = useState<string | null>(null);
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const [liveUptimeSeconds, setLiveUptimeSeconds] = useState(0);
+
+  // Authenticated user state
+  const [currentUser, setCurrentUser] = useState<any>(() => api.getUser());
+
+  useEffect(() => {
+    const token = localStorage.getItem('smart_cassavas_token');
+    if (token) {
+      api.getMe()
+        .then((user) => {
+          api.setUser(user);
+          setCurrentUser(user);
+        })
+        .catch(() => {
+          // Token expired or invalid
+          api.logout();
+          setCurrentUser(null);
+        });
+    } else {
+      setCurrentUser(null);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(null);
+    setLoginFeedback('Đã đăng xuất tài khoản thành công.');
+    setTimeout(() => setLoginFeedback(null), 3000);
+  };
 
   const openAuth = (mode: 'login' | 'register') => {
     setAuthModal(mode);
@@ -310,23 +342,101 @@ export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
             >
               Liên hệ
             </a>
+
+            {/* Quản lý tiện ích Admin */}
+            <div className="relative group">
+              <button
+                type="button"
+                className="text-sm font-medium text-neutral-600 hover:text-neutral-950 transition-colors flex items-center gap-1 py-1 cursor-pointer"
+              >
+                <span>Quản lý</span>
+                <ChevronDown className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-200" />
+              </button>
+              <div className="absolute top-full left-0 pt-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-150 z-50">
+                <div className="bg-white/95 backdrop-blur-xl border border-neutral-200/80 rounded-xl p-1.5 shadow-xl min-w-[220px]">
+                  <a
+                    href="/admin/amenities"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.history.pushState({}, '', '/admin/amenities');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-neutral-100/80 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Building2 className="w-4 h-4 text-neutral-700" />
+                    <div className="flex flex-col">
+                      <span>Tiện ích & Cấu hình Slot</span>
+                      <span className="text-[10px] text-neutral-400 font-normal">Quản trị danh mục dịch vụ</span>
+                    </div>
+                  </a>
+                </div>
+              </div>
+            </div>
           </nav>
 
           {/* Actions */}
-          <div className="hidden md:flex items-center gap-4">
-            <button
-              onClick={() => openAuth('register')}
-              className="text-sm font-medium text-neutral-700 hover:text-neutral-950 px-3 py-2 rounded-md transition-colors"
-            >
-              Đăng ký
-            </button>
-            <button
-              onClick={() => openAuth('login')}
-              className="text-sm font-medium text-white bg-neutral-950 hover:bg-neutral-800 active:scale-95 px-5 py-2.5 rounded-md shadow-sm transition-all flex items-center gap-2"
-            >
-              <span>Đăng nhập</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+          <div className="hidden md:flex items-center gap-3">
+            {currentUser ? (
+              <div className="flex items-center gap-2.5">
+                {/* User Info Badge */}
+                <div className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-neutral-100/90 border border-neutral-200/80 shadow-2xs backdrop-blur-sm">
+                  <div className="w-7 h-7 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                    {currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-xs font-bold text-neutral-900 leading-tight">
+                      {currentUser.full_name || currentUser.username || 'Quản trị viên'}
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-medium">
+                      {currentUser.roles?.includes('SUPER_ADMIN')
+                        ? 'Quản trị hệ thống'
+                        : currentUser.roles?.[0] || 'Cư dân'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quản lý tiện ích link */}
+                <a
+                  href="/admin/amenities"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/admin/amenities');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="text-xs font-semibold text-white bg-neutral-950 hover:bg-neutral-800 active:scale-95 px-3.5 py-2 rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-neutral-200" />
+                  <span>Quản lý tiện ích</span>
+                </a>
+
+                {/* Đăng xuất button */}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 px-2.5 py-2 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Đăng xuất tài khoản"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Đăng xuất</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => openAuth('register')}
+                  className="text-sm font-medium text-neutral-700 hover:text-neutral-950 px-3 py-2 rounded-md transition-colors"
+                >
+                  Đăng ký
+                </button>
+                <button
+                  onClick={() => openAuth('login')}
+                  className="text-sm font-medium text-white bg-neutral-950 hover:bg-neutral-800 active:scale-95 px-5 py-2.5 rounded-md shadow-sm transition-all flex items-center gap-2"
+                >
+                  <span>Đăng nhập</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -390,26 +500,80 @@ export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
             >
               Liên hệ
             </a>
-            <div className="pt-4 border-t border-neutral-100 flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  openAuth('register');
-                }}
-                className="w-full text-center py-2.5 border border-neutral-300 rounded-md text-sm font-medium text-neutral-800"
-              >
-                Đăng ký
-              </button>
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  openAuth('login');
-                }}
-                className="w-full text-center py-2.5 bg-neutral-950 text-white rounded-md text-sm font-medium"
-              >
-                Đăng nhập
-              </button>
-            </div>
+            <a
+              href="/admin/amenities"
+              onClick={(e) => {
+                e.preventDefault();
+                setIsMobileMenuOpen(false);
+                window.history.pushState({}, '', '/admin/amenities');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+              className="block px-3 py-2 text-base font-semibold text-neutral-900 bg-neutral-100 rounded-md"
+            >
+              Quản lý: Tiện ích & Slot
+            </a>
+            {currentUser ? (
+              <div className="pt-4 border-t border-neutral-100 flex flex-col gap-2.5">
+                <div className="flex items-center gap-3 p-3 bg-neutral-100/80 rounded-xl border border-neutral-200/60">
+                  <div className="w-9 h-9 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                    {currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold text-neutral-900 truncate">
+                      {currentUser.full_name || currentUser.username}
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                      {currentUser.email || currentUser.phone_number}
+                    </div>
+                  </div>
+                </div>
+                <a
+                  href="/admin/amenities"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setIsMobileMenuOpen(false);
+                    window.history.pushState({}, '', '/admin/amenities');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="w-full text-center py-2.5 bg-neutral-950 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Vào Quản lý Tiện ích</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="w-full text-center py-2.5 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Đăng xuất</span>
+                </button>
+              </div>
+            ) : (
+              <div className="pt-4 border-t border-neutral-100 flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    openAuth('register');
+                  }}
+                  className="w-full text-center py-2.5 border border-neutral-300 rounded-md text-sm font-medium text-neutral-800"
+                >
+                  Đăng ký
+                </button>
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    openAuth('login');
+                  }}
+                  className="w-full text-center py-2.5 bg-neutral-950 text-white rounded-md text-sm font-medium"
+                >
+                  Đăng nhập
+                </button>
+              </div>
+            )}
           </div>
         )}
       </header>
@@ -464,12 +628,27 @@ export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
                 <span>Mô hình 3D Live</span>
               </button>
 
-              <button
-                onClick={() => openAuth('register')}
-                className="inline-flex items-center justify-center bg-white/80 hover:bg-white active:scale-[0.98] text-neutral-900 font-medium text-sm px-5 py-3.5 rounded-sm border border-neutral-300/70 shadow-xs hover:border-neutral-400 transition-all"
-              >
-                Tạo tài khoản
-              </button>
+              {currentUser ? (
+                <a
+                  href="/admin/amenities"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/admin/amenities');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="inline-flex items-center justify-center bg-neutral-900 hover:bg-neutral-800 active:scale-[0.98] text-white font-medium text-sm px-5 py-3.5 rounded-sm shadow-xs transition-all gap-2 cursor-pointer"
+                >
+                  <Building2 className="w-4 h-4 text-emerald-400" />
+                  <span>Vào Quản lý tiện ích</span>
+                </a>
+              ) : (
+                <button
+                  onClick={() => openAuth('register')}
+                  className="inline-flex items-center justify-center bg-white/80 hover:bg-white active:scale-[0.98] text-neutral-900 font-medium text-sm px-5 py-3.5 rounded-sm border border-neutral-300/70 shadow-xs hover:border-neutral-400 transition-all cursor-pointer"
+                >
+                  Tạo tài khoản
+                </button>
+              )}
             </div>
 
             {/* Quick Glass Role Showcase Bar matching user screenshot */}
@@ -1637,8 +1816,12 @@ export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
         isOpen={authModal !== null}
         initialMode={authModal || 'login'}
         onClose={closeAuth}
-        onSuccess={(role, userEmail) => {
-          setLoginFeedback(`Đã đăng nhập thành công với vai trò: ${role} (${userEmail})`);
+        onSuccess={(role, userEmail, userObj) => {
+          const user = userObj || api.getUser();
+          if (user) {
+            setCurrentUser(user);
+          }
+          setLoginFeedback(`Đã đăng nhập thành công với vai trò: ${role} (${user?.full_name || userEmail})`);
           setTimeout(() => setLoginFeedback(null), 4000);
         }}
       />

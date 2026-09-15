@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import Home from './Pages/Home';
 import NotFound from './Pages/NotFound';
+import AmenityManagement from './Pages/Admin/AmenityManagement';
 
 const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname);
@@ -25,7 +26,14 @@ const App: React.FC = () => {
     currentPath === '/register' ||
     currentPath === '/dang-nhap' ||
     currentPath === '/dang-ky';
+  const isAmenityAdminPath =
+    currentPath === '/admin/amenities' ||
+    currentPath === '/admin/tien-ich';
   const isHomePage = currentPath === '/' || currentPath === '' || isAuthPath;
+
+  if (isAmenityAdminPath) {
+    return <AmenityManagement />;
+  }
 
   if (!isHomePage) {
     return <NotFound onBackHome={navigateToHome} />;

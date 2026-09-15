@@ -33,6 +33,7 @@ import {
   KeyRound,
   FileCheck
 } from 'lucide-react';
+import { api } from '../Services/api';
 
 export type AuthMode = 'login' | 'register';
 export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin';
@@ -41,7 +42,7 @@ interface AuthModalProps {
   isOpen: boolean;
   initialMode?: AuthMode;
   onClose: () => void;
-  onSuccess?: (role: UserRole, emailOrPhone: string) => void;
+  onSuccess?: (role: UserRole, emailOrPhone: string, user?: any) => void;
 }
 
 const ROLE_DEMOS: Record<
@@ -160,7 +161,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -185,6 +186,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     setIsSubmitting(true);
+
+    if (mode === 'login') {
+      try {
+        const res = await api.login(loginIdentifier.trim(), password);
+        setSubmitSuccess(true);
+        setTimeout(() => {
+          setSubmitSuccess(false);
+          if (onSuccess) {
+            const role = (res.user?.roles?.[0]?.toLowerCase().includes('admin') ? 'admin' : (res.user?.roles?.[0] || selectedRole || 'resident')) as UserRole;
+            onSuccess(role, res.user?.email || res.user?.username || loginIdentifier, res.user);
+          }
+          onClose();
+        }, 500);
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản và mật khẩu.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     setTimeout(() => {
       setIsSubmitting(false);
