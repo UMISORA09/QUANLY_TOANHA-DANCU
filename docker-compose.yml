@@ -13,34 +13,35 @@ services:
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
-      - DB_CONNECTION=sqlsrv
+      - DB_CONNECTION=mysql
       - DB_HOST=db
-      - DB_PORT=1433
-      - DB_DATABASE=CSDL_CHUNGCU&DANCU
-      - DB_USERNAME=sa
-      - DB_PASSWORD=SmartCassavas@2026
-      - DB_ENCRYPT=no
-      - DB_TRUST_SERVER_CERTIFICATE=true
+      - DB_PORT=3306
+      - DB_DATABASE=quanly_toanha
+      - DB_USERNAME=root
+      - DB_PASSWORD=123567
+      - SESSION_DRIVER=file
+      - CACHE_STORE=file
+      - QUEUE_CONNECTION=sync
     depends_on:
-      db-init:
-        condition: service_completed_successfully
+      db:
+        condition: service_healthy
     networks:
       - cassavas_network
 
   db:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mysql:8.0
     container_name: smart_cassavas_db
     restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
-      - "1433:1433"
+      - "3306:3306"
     environment:
-      - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=SmartCassavas@2026
-      - MSSQL_PID=Developer
+      - MYSQL_ROOT_PASSWORD=123567
+      - MYSQL_DATABASE=quanly_toanha
     volumes:
-      - mssql_data:/var/opt/mssql
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SmartCassavas@2026' -C -Q 'SELECT 1' || exit 1"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p123567 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -48,24 +49,26 @@ services:
     networks:
       - cassavas_network
 
-  db-init:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: smart_cassavas_db_init
-    restart: "no"
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: smart_cassavas_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    environment:
+      - PMA_HOST=db
+      - PMA_PORT=3306
+      - PMA_USER=root
+      - PMA_PASSWORD=123567
+      - UPLOAD_LIMIT=128M
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      - MSSQL_SA_PASSWORD=SmartCassavas@2026
-    volumes:
-      - "./CSDL_CHUNGCU&DANCU.sql:/docker-entrypoint-initdb.d/CSDL_CHUNGCU&DANCU.sql:ro"
-      - "./docker/db/init-db.sh:/init-db.sh:ro"
-    entrypoint: ["/bin/bash", "/init-db.sh"]
     networks:
       - cassavas_network
 
 volumes:
-  mssql_data:
+  mysql_data:
     driver: local
 
 networks:

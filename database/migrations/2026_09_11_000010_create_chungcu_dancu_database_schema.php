@@ -52,6 +52,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('external_providers')) {
+            return;
+        }
+
         $driver = DB::getDriverName();
         
         // Tìm tệp SQL
@@ -88,6 +92,7 @@ return new class extends Migration
                 $msg = $e->getMessage();
                 if (
                     str_contains($msg, 'already exists') ||
+                    str_contains($msg, 'already an object named') ||
                     str_contains($msg, 'Duplicate key name') ||
                     str_contains($msg, 'Duplicate column name') ||
                     str_contains($msg, 'Duplicate entry')
