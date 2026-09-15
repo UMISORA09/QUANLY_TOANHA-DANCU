@@ -500,5 +500,133 @@
     animation: aurora-pulse 8s ease-in-out infinite;
 }
 
+/* ========================================================
+   CUSTOM GLASSMORPHIC SCROLLBAR WITH AURORA GLOW & EFFECTS
+   ======================================================== */
+@keyframes scrollbar-aurora-glow {
+    0%, 100% {
+        background-position: 0% 0%;
+        filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.4));
+    }
+    50% {
+        background-position: 0% 100%;
+        filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.6));
+    }
+}
+
+/* Global scrollbar for the entire application */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(248, 250, 252, 0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 9999px;
+    margin: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.55) 0%, rgba(99, 102, 241, 0.55) 100%);
+    border-radius: 9999px;
+    border: 1.5px solid rgba(255, 255, 255, 0.85);
+    box-shadow: 0 2px 6px rgba(14, 165, 233, 0.2), inset 0 1px 1.5px rgba(255, 255, 255, 0.9);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #0284c7 0%, #6366f1 50%, #0ea5e9 100%);
+    background-size: 100% 200%;
+    animation: scrollbar-aurora-glow 2.5s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.8), 0 0 20px rgba(99, 102, 241, 0.4), inset 0 1px 2px #ffffff;
+    border-color: #ffffff;
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(180deg, #0369a1 0%, #4338ca 100%);
+    box-shadow: 0 0 16px rgba(14, 165, 233, 0.95), 0 0 24px rgba(99, 102, 241, 0.6), inset 0 1px 2px #ffffff;
+}
+
+/* Dedicated custom-scrollbar class for Sidebar & Dashboard Containers (Auto-hide on Idle) */
+.custom-scrollbar {
+    overflow-x: hidden !important;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.3s ease;
+}
+
+.custom-scrollbar:hover {
+    scrollbar-color: rgba(56, 189, 248, 0.7) rgba(241, 245, 249, 0.35);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 9999px;
+    margin: 6px 0;
+    transition: background 0.3s ease;
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-track {
+    background: rgba(241, 245, 249, 0.3);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+    border: 1.5px solid transparent;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.6) 0%, rgba(99, 102, 241, 0.65) 100%);
+    border-color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 6px rgba(14, 165, 233, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #0284c7 0%, #6366f1 50%, #0ea5e9 100%);
+    background-size: 100% 200%;
+    animation: scrollbar-aurora-glow 2.2s ease-in-out infinite;
+    box-shadow: 0 0 14px rgba(14, 165, 233, 0.85), 0 0 24px rgba(99, 102, 241, 0.5), inset 0 1px 2px #ffffff;
+    border-color: #ffffff;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(180deg, #0369a1 0%, #4338ca 100%);
+    box-shadow: 0 0 18px rgba(14, 165, 233, 1), 0 0 28px rgba(99, 102, 241, 0.7), inset 0 1px 2px #ffffff;
+}
+
+/* Completely hidden scrollbar with scrolling functionality preserved */
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* Smooth Bottom & Vertical Fade Masks */
+.mask-fade-bottom {
+    mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent 100%);
+}
+
+.mask-fade-y {
+    mask-image: linear-gradient(to bottom, transparent 0%, black 28px, black calc(100% - 36px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 28px, black calc(100% - 36px), transparent 100%);
+}
+
+
 
 
