@@ -62,7 +62,8 @@ import {
   Car,
   ChevronDown,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  LayoutDashboard
 } from 'lucide-react';
 import { api } from '../Services/api';
 import { Building3DModel } from '../Components/Building3DModel';
@@ -80,9 +81,17 @@ interface NotificationItem {
 
 interface HomeProps {
   initialAuthModal?: 'login' | 'register' | null;
+  onLoginSuccess?: (role: UserRole, userEmail: string) => void;
+  onNavigateAdmin?: () => void;
+  currentUserRole?: string;
 }
 
-export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
+export const Home: React.FC<HomeProps> = ({
+  initialAuthModal = null,
+  onLoginSuccess,
+  onNavigateAdmin,
+  currentUserRole,
+}) => {
   // Navigation & Interactive states
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
   const [showNotification, setShowNotification] = useState(false);
@@ -1823,6 +1832,9 @@ export const Home: React.FC<HomeProps> = ({ initialAuthModal = null }) => {
           }
           setLoginFeedback(`Đã đăng nhập thành công với vai trò: ${role} (${user?.full_name || userEmail})`);
           setTimeout(() => setLoginFeedback(null), 4000);
+          if (onLoginSuccess) {
+            onLoginSuccess(role, userEmail);
+          }
         }}
       />
     </div>

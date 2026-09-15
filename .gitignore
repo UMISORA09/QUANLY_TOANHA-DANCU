@@ -30,3 +30,6 @@ __pycache__/
 .pytest_cache/
 backend/.env
 backend/**/__pycache__/
+/boost.json
+/images/
+

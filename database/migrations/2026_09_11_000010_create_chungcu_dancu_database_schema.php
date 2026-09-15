@@ -32,7 +32,7 @@ return new class extends Migration
         'departments', 'staff_profiles', 'shift_types', 'staff_schedules', 'staff_attendance', 'staff_tasks', 'shift_handover_logs',
         'ai_models', 'ai_prompts', 'ai_knowledge_documents', 'ai_knowledge_chunks', 'ai_conversations', 'ai_messages',
         'ai_ocr_logs', 'ai_ticket_triages', 'ai_anomaly_alerts',
-        'audit_logs', 'system_configs', 'feature_flags', 'scheduled_jobs', 'scheduled_job_logs', 'system_error_logs'
+        'audit_logs', 'system_configs', 'feature_flags', 'scheduled_jobs', 'scheduled_job_logs', 'system_error_logs',
     ];
 
     /**
@@ -44,7 +44,7 @@ return new class extends Migration
         'v_apartment_occupancy_rate',
         'v_receptionist_live_dashboard',
         'v_security_live_dashboard',
-        'v_ticket_sla_performance'
+        'v_ticket_sla_performance',
     ];
 
     /**
@@ -57,15 +57,15 @@ return new class extends Migration
         }
 
         $driver = DB::getDriverName();
-        
+
         // Tìm tệp SQL
         $sqlPath = base_path('database/schema/CSDL_CHUNGCU_DANCU.sql');
-        if (!file_exists($sqlPath)) {
+        if (! file_exists($sqlPath)) {
             $sqlPath = base_path('CSDL_CHUNGCU&DANCU.sql');
         }
 
-        if (!file_exists($sqlPath)) {
-            throw new \RuntimeException("Không tìm thấy tệp CSDL_CHUNGCU&DANCU.sql để nạp migration!");
+        if (! file_exists($sqlPath)) {
+            throw new RuntimeException('Không tìm thấy tệp CSDL_CHUNGCU&DANCU.sql để nạp migration!');
         }
 
         $rawSql = file_get_contents($sqlPath);
@@ -88,7 +88,7 @@ return new class extends Migration
 
             try {
                 DB::unprepared($trimmed);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $msg = $e->getMessage();
                 if (
                     str_contains($msg, 'already exists') ||
@@ -169,7 +169,7 @@ return new class extends Migration
             $sql = preg_replace('/\bDATETIME2\(\d+\)/i', 'DATETIME', $sql);
             $sql = preg_replace('/\bDATETIME2\b/i', 'DATETIME', $sql);
             $sql = preg_replace('/\bBIT\b/i', 'INTEGER', $sql);
-            
+
             $sql = preg_replace("/N'((?:''|[^'])*)'/", "'$1'", $sql);
             $sql = preg_replace("/DEFAULT\s+N?'(\[\]|\{\})'/i", "DEFAULT ('$1')", $sql);
             $sql = preg_replace("/DEFAULT\s+'(\[\]|\{\})'/i", "DEFAULT ('$1')", $sql);
