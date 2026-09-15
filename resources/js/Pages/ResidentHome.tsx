@@ -18,6 +18,9 @@ import {
   ArrowUpRight,
   Clock,
   CheckCircle2,
+  PanelLeft,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { api } from '../Services/api';
 
@@ -46,6 +49,67 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   const [activeMenuId, setActiveMenuId] = useState<string>('overview');
   const [data, setData] = useState<any>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Sidebar Collapse / Expand State
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('smartcassavas_resident_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('smartcassavas_resident_sidebar_collapsed', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  // Fullscreen State & Handler
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [hoveredTooltip, setHoveredTooltip] = useState<{
+    label: string;
+    badge?: string | null;
+    top: number;
+  } | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        showToast('Đã chuyển sang chế độ Toàn màn hình');
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+          showToast('Đã thoát chế độ Toàn màn hình');
+        }
+      }
+    } catch {
+      showToast('Trình duyệt không hỗ trợ hoặc bị chặn toàn màn hình');
+    }
+  };
 
   // Menu items matching the exact skeleton structure
   const menuItems: MenuItem[] = [
@@ -116,20 +180,32 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
 
       {/* ================= TOP HEADER BAR (Glassmorphism & Specular Edge) ================= */}
       <header className="h-16 border-b border-neutral-200/70 px-4 sm:px-6 flex items-center justify-between bg-white/75 backdrop-blur-xl sticky top-0 z-30 shadow-xs glass-specular-edge transition-all">
-        {/* Left: Brand Logo & Portal Name */}
-        <div className="flex items-center gap-3 w-60">
-          <div className="w-8 h-8 rounded-lg bg-neutral-950 text-white flex items-center justify-center shrink-0 shadow-xs hover:scale-105 transition-transform duration-200">
-            <Building2 className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <div className="text-xs font-bold tracking-wider text-neutral-950 leading-tight flex items-center gap-1.5">
-              SMART CASSAVAS
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        {/* Left: Brand Logo, Portal Name & Sidebar Toggle */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-56 sm:w-60 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-neutral-950 text-white flex items-center justify-center shrink-0 shadow-xs hover:scale-105 transition-transform duration-200">
+              <Building2 className="w-4 h-4 text-white" />
             </div>
-            <div className="text-[10px] tracking-widest text-neutral-500 font-medium uppercase leading-tight">
-              RESIDENT PORTAL
+            <div className="min-w-0">
+              <div className="text-xs font-bold tracking-wider text-neutral-950 leading-tight flex items-center gap-1.5 truncate">
+                SMART CASSAVAS
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              </div>
+              <div className="text-[10px] tracking-widest text-neutral-500 font-medium uppercase leading-tight truncate">
+                RESIDENT PORTAL
+              </div>
             </div>
           </div>
+
+          {/* Sidebar Collapse Toggle Button */}
+          <button
+            type="button"
+            onClick={toggleSidebarCollapse}
+            className="p-2 rounded-xl bg-white/80 hover:bg-white border border-neutral-200/80 text-neutral-600 hover:text-sky-600 shadow-xs hover:shadow-sm transition-all flex items-center justify-center cursor-pointer group shrink-0 active:scale-95"
+            title={isSidebarCollapsed ? 'Mở rộng menu (sidebar)' : 'Thu nhỏ menu (sidebar)'}
+          >
+            <PanelLeft className={`w-4 h-4 transition-transform duration-200 ${isSidebarCollapsed ? 'text-sky-600 rotate-180' : 'group-hover:scale-105'}`} />
+          </button>
         </div>
 
         {/* Center-Left: Date & Greeting */}
@@ -142,8 +218,22 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           </span>
         </div>
 
-        {/* Right: Quick actions & Apartment badge */}
+        {/* Right: Quick actions, Fullscreen & Apartment badge */}
         <div className="flex items-center gap-2.5">
+          {/* Nút Hiển thị Toàn màn hình (Fullscreen) */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="w-8 h-8 rounded-lg border border-neutral-200/80 bg-white/80 backdrop-blur-md flex items-center justify-center text-neutral-600 hover:text-neutral-950 hover:bg-white hover:border-neutral-300 hover:shadow-xs transition-all duration-200 group active:scale-95 cursor-pointer"
+            title={isFullscreen ? 'Thoát toàn màn hình (Esc)' : 'Toàn màn hình (F11)'}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4 text-sky-600" />
+            ) : (
+              <Maximize2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+            )}
+          </button>
+
           {/* Help button */}
           <button
             type="button"
@@ -173,20 +263,35 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
 
       {/* ================= BODY: SIDEBAR + MAIN CONTENT ================= */}
       <div className="flex-1 flex overflow-hidden">
-        {/* LEFT SIDEBAR (Glass backdrop, custom scrollbar & bottom peek indicator from ManagementHome) */}
-        <aside className="w-64 border-r border-neutral-200/70 bg-white/70 backdrop-blur-xl flex flex-col justify-between shrink-0 relative z-20">
+        {/* LEFT SIDEBAR (Collapsible, glass backdrop, custom scrollbar & bottom peek indicator) */}
+        <aside
+          className={`border-r border-neutral-200/70 bg-white/70 backdrop-blur-xl flex flex-col justify-between shrink-0 relative z-20 transition-all duration-300 ease-in-out ${
+            isSidebarCollapsed ? 'w-20' : 'w-64'
+          }`}
+        >
           {/* Scrollable Navigation Menu container */}
           <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden group/nav">
-            <div className="pt-4 pb-2 px-4 shrink-0">
+            <div className={`pt-4 pb-2 px-4 shrink-0 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
               {/* Section label */}
-              <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                KHÔNG GIAN CƯ DÂN
-              </div>
+              {isSidebarCollapsed ? (
+                <div className="w-8 h-1 rounded-full bg-neutral-200 flex items-center justify-center relative my-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                </div>
+              ) : (
+                <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                  KHÔNG GIAN CƯ DÂN
+                </div>
+              )}
             </div>
 
             {/* Menu List with custom-scrollbar */}
-            <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 pb-10 space-y-1 custom-scrollbar">
+            <nav
+              onScroll={() => setHoveredTooltip(null)}
+              className={`flex-1 overflow-y-auto overflow-x-hidden ${
+                isSidebarCollapsed ? 'px-2' : 'px-3'
+              } py-2 pb-10 space-y-1 custom-scrollbar`}
+            >
               {menuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeMenuId === item.id;
@@ -194,14 +299,30 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setActiveMenuId(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 relative group active:scale-[0.98] ${
+                    onClick={() => {
+                      setHoveredTooltip(null);
+                      setActiveMenuId(item.id);
+                    }}
+                    onMouseEnter={(e) => {
+                      if (isSidebarCollapsed) {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoveredTooltip({
+                          label: item.label,
+                          badge: item.badge,
+                          top: rect.top + rect.height / 2,
+                        });
+                      }
+                    }}
+                    onMouseLeave={() => setHoveredTooltip(null)}
+                    className={`w-full flex items-center ${
+                      isSidebarCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2.5'
+                    } rounded-xl text-xs font-medium transition-all duration-200 relative group active:scale-[0.98] ${
                       isActive
                         ? 'bg-neutral-950 text-white shadow-md shadow-neutral-900/15'
                         : 'text-neutral-600 hover:text-neutral-950 hover:bg-white/90 hover:shadow-xs'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} min-w-0`}>
                       <div
                         className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${
                           isActive
@@ -211,10 +332,12 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                       >
                         <Icon className="w-4 h-4 transition-transform group-hover:scale-110" />
                       </div>
-                      <span className="truncate font-medium">{item.label}</span>
+                      {!isSidebarCollapsed && (
+                        <span className="truncate font-medium">{item.label}</span>
+                      )}
                     </div>
 
-                    {item.badge && (
+                    {!isSidebarCollapsed && item.badge && (
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold transition-all shrink-0 ${
                           isActive
@@ -226,7 +349,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                       </span>
                     )}
 
-                    {isActive && (
+                    {isActive && !isSidebarCollapsed && (
                       <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-l-full bg-sky-400" />
                     )}
                   </button>
@@ -241,33 +364,55 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           </div>
 
           {/* Bottom Sidebar: User & Logout */}
-          <div className="p-3 border-t border-neutral-200/70 bg-white/60 backdrop-blur-md space-y-2 shrink-0">
+          <div className={`p-3 border-t border-neutral-200/70 bg-white/60 backdrop-blur-md space-y-2 shrink-0 ${isSidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
             {/* User Profile Info */}
-            <div className="flex items-center justify-between p-2 rounded-xl hover:bg-white/90 hover:shadow-xs border border-transparent hover:border-neutral-200/60 transition-all cursor-pointer group">
-              <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              onMouseEnter={(e) => {
+                if (isSidebarCollapsed) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setHoveredTooltip({
+                    label: `${userDisplayName} · ${userDisplayEmail}`,
+                    top: rect.top + rect.height / 2,
+                  });
+                }
+              }}
+              onMouseLeave={() => setHoveredTooltip(null)}
+              className={`flex items-center ${
+                isSidebarCollapsed ? 'justify-center w-full p-1.5' : 'justify-between p-2'
+              } rounded-xl hover:bg-white/90 hover:shadow-xs border border-transparent hover:border-neutral-200/60 transition-all cursor-pointer group`}
+              title={isSidebarCollapsed ? `${userDisplayName} (${userDisplayEmail})` : undefined}
+            >
+              <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2.5'} min-w-0`}>
                 <div className="w-8 h-8 rounded-lg bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs group-hover:scale-105 transition-transform">
                   {getInitials(userDisplayName)}
                 </div>
-                <div className="min-w-0 text-left">
-                  <div className="text-xs font-bold text-neutral-900 truncate">
-                    {userDisplayName}
+                {!isSidebarCollapsed && (
+                  <div className="min-w-0 text-left">
+                    <div className="text-xs font-bold text-neutral-900 truncate">
+                      {userDisplayName}
+                    </div>
+                    <div className="text-[11px] text-neutral-400 truncate">
+                      {userDisplayEmail}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-neutral-400 truncate">
-                    {userDisplayEmail}
-                  </div>
-                </div>
+                )}
               </div>
-              <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0 group-hover:text-neutral-700 transition-colors" />
+              {!isSidebarCollapsed && (
+                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0 group-hover:text-neutral-700 transition-colors" />
+              )}
             </div>
 
             {/* Logout button */}
             <button
               type="button"
               onClick={onLogout}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-neutral-200/70 bg-white/70 hover:bg-white rounded-lg text-xs font-medium text-neutral-700 hover:text-rose-600 hover:border-rose-200 shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-[0.98]"
+              className={`flex items-center justify-center gap-2 ${
+                isSidebarCollapsed ? 'w-8 h-8 p-0' : 'w-full px-3 py-2'
+              } border border-neutral-200/70 bg-white/70 hover:bg-white rounded-lg text-xs font-medium text-neutral-700 hover:text-rose-600 hover:border-rose-200 shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-[0.98]`}
+              title="Đăng xuất"
             >
               <LogOut className="w-3.5 h-3.5 text-neutral-500" />
-              <span>Đăng xuất</span>
+              {!isSidebarCollapsed && <span>Đăng xuất</span>}
             </button>
           </div>
         </aside>
@@ -492,6 +637,34 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           )}
         </main>
       </div>
+
+      {/* ================= FLOATING TOOLTIP FOR COLLAPSED SIDEBAR ================= */}
+      {isSidebarCollapsed && hoveredTooltip && (
+        <div
+          style={{
+            top: `${hoveredTooltip.top}px`,
+            left: '84px',
+          }}
+          className="fixed -translate-y-1/2 z-[70] px-3.5 py-2 rounded-xl bg-neutral-950/95 text-white text-xs font-bold shadow-2xl backdrop-blur-xl border border-white/20 pointer-events-none flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-black/40"
+        >
+          <span className="tracking-wide">{hoveredTooltip.label}</span>
+          {hoveredTooltip.badge && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sky-500/25 text-sky-300 font-extrabold border border-sky-400/40">
+              {hoveredTooltip.badge}
+            </span>
+          )}
+          {/* Pointer arrow */}
+          <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-neutral-950 rotate-45 border-l border-b border-white/20" />
+        </div>
+      )}
+
+      {/* ================= TOAST NOTIFICATION ================= */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-neutral-900/90 text-white text-xs font-medium shadow-2xl backdrop-blur-md border border-white/10 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };
