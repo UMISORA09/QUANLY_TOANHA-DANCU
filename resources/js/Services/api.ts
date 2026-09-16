@@ -1,6 +1,8 @@
 // Real HTTP REST API Client for Smart Apartment Management
 
-const API_BASE_URL = '/api/v1';
+const API_BASE_URL = window.location.port === '5173'
+  ? 'http://127.0.0.1:8000/api/v1'
+  : '/api/v1';
 
 export interface Category {
   id: string;
@@ -181,7 +183,7 @@ class ApiService {
       user: any;
     }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ identifier, password }),
+      body: JSON.stringify({ username: identifier, identifier, password }),
     });
     if (res.access_token) {
       this.setToken(res.access_token);
@@ -394,6 +396,63 @@ class ApiService {
     } catch {
       return await this.request<BlockOption[]>('/meta/blocks');
     }
+  }
+
+  // ================= RESIDENT PORTAL =================
+  async getResidentOverview(userId?: string): Promise<any> {
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+    return this.request<any>(`/resident/overview${query}`);
+  }
+
+  async createResidentTicket(payload: {
+    title: string;
+    description: string;
+    category_id?: string;
+    priority?: string;
+    preferred_service_time?: string;
+    apartment_id?: string;
+    user_id?: string;
+  }): Promise<any> {
+    return this.request<any>('/resident/tickets', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async createResidentBooking(payload: {
+    amenity_id: string;
+    booking_date: string;
+    start_time: string;
+    end_time: string;
+    attendee_count?: number;
+    apartment_id?: string;
+    user_id?: string;
+  }): Promise<any> {
+    return this.request<any>('/resident/amenity-bookings', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async createResidentVisitor(payload: {
+    visitor_name: string;
+    visitor_phone?: string;
+    visit_purpose?: string;
+    expected_arrival_time: string;
+    vehicle_license_plate?: string;
+    apartment_id?: string;
+    user_id?: string;
+  }): Promise<any> {
+    return this.request<any>('/resident/visitors', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async payResidentInvoice(invoiceId: string): Promise<any> {
+    return this.request<any>(`/resident/invoices/${invoiceId}/pay`, {
+      method: 'POST',
+    });
   }
 }
 

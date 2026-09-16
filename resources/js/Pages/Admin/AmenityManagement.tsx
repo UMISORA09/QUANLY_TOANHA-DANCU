@@ -42,7 +42,11 @@ export interface AmenityManagementProps {
 }
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
+<<<<<<< HEAD
   // Data states (khởi tạo ngay từ cache nếu có để dropdown hiển thị 0ms không bị giật)
+=======
+  // Data states
+>>>>>>> origin/master
   const [amenities, setAmenities] = useState<Amenity[]>([]);
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
@@ -347,76 +351,78 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         </div>
       )}
 
-      {/* Top Breadcrumb & Actions Bar */}
-      <div className="bg-white/80 backdrop-blur-xl border-b border-neutral-200/80 sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <a href="/" className="hover:text-neutral-950 flex items-center gap-1 transition-colors">
-              <Home className="w-3.5 h-3.5" />
-              <span>Trang chủ</span>
-            </a>
-            <span>/</span>
-            <span className="font-semibold text-neutral-600">Quản lý</span>
-            <span>/</span>
-            <span className="font-bold text-neutral-950">Tiện ích & Cấu hình Slot</span>
-          </div>
+      {/* Top Breadcrumb & Actions Bar (Only if not embedded) */}
+      {!embedded && (
+        <div className="bg-white/80 backdrop-blur-xl border-b border-neutral-200/80 sticky top-0 z-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Breadcrumbs */}
+            <div className="flex items-center gap-2 text-xs text-neutral-500">
+              <a href="/" className="hover:text-neutral-950 flex items-center gap-1 transition-colors">
+                <Home className="w-3.5 h-3.5" />
+                <span>Trang chủ</span>
+              </a>
+              <span>/</span>
+              <span className="font-semibold text-neutral-600">Quản lý</span>
+              <span>/</span>
+              <span className="font-bold text-neutral-950">Tiện ích & Cấu hình Slot</span>
+            </div>
 
-          {/* Action Buttons & Auth Info */}
-          <div className="flex items-center gap-2 shrink-0">
-            {currentUser ? (
-              <div className="flex items-center gap-2 mr-1 sm:mr-2 pr-2 border-r border-neutral-200/80">
-                <div className="text-right hidden sm:block">
-                  <div className="text-[11px] font-bold text-neutral-900 leading-tight">
-                    {currentUser.full_name || currentUser.username}
+            {/* Action Buttons & Auth Info */}
+            <div className="flex items-center gap-2 shrink-0">
+              {currentUser ? (
+                <div className="flex items-center gap-2 mr-1 sm:mr-2 pr-2 border-r border-neutral-200/80">
+                  <div className="text-right hidden sm:block">
+                    <div className="text-[11px] font-bold text-neutral-900 leading-tight">
+                      {currentUser.full_name || currentUser.username}
+                    </div>
+                    <div className="text-[10px] text-neutral-500 font-mono">
+                      {currentUser.roles?.[0] || 'ADMIN'}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-neutral-500 font-mono">
-                    {currentUser.roles?.[0] || 'ADMIN'}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="p-1.5 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                    title="Đăng xuất khỏi phiên quản trị"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
                 </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={handleLogout}
-                  className="p-1.5 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                  title="Đăng xuất khỏi phiên quản trị"
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer mr-1"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Đăng nhập Admin</span>
                 </button>
-              </div>
-            ) : (
+              )}
+
               <button
                 type="button"
-                onClick={() => setIsAuthModalOpen(true)}
-                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer mr-1"
+                onClick={() => setIsCategoryModalOpen(true)}
+                className="px-3.5 py-2 bg-white hover:bg-neutral-50 active:scale-95 border border-neutral-200/90 text-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
               >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Đăng nhập Admin</span>
+                <Tag className="w-3.5 h-3.5 text-neutral-600" />
+                <span>Quản lý danh mục</span>
               </button>
-            )}
 
-            <button
-              type="button"
-              onClick={() => setIsCategoryModalOpen(true)}
-              className="px-3.5 py-2 bg-white hover:bg-neutral-50 active:scale-95 border border-neutral-200/90 text-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
-            >
-              <Tag className="w-3.5 h-3.5 text-neutral-600" />
-              <span>Quản lý danh mục</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleOpenCreate}
-              className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Thêm tiện ích</span>
-            </button>
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Thêm tiện ích</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Page Header */}
-      <div className={`${embedded ? 'w-full pb-5' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4'}`}>
+      <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${embedded ? 'pt-0' : 'pt-6'} pb-4`}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
@@ -431,22 +437,22 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0 self-start md:self-end">
+          <div className="flex items-center gap-2 shrink-0 self-start md:self-end">
             {embedded && (
               <>
                 <button
                   type="button"
                   onClick={() => setIsCategoryModalOpen(true)}
-                  className="px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                  className="px-3.5 py-2 bg-white hover:bg-neutral-50 active:scale-95 border border-neutral-200/90 text-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                 >
-                  <Tag className="w-3.5 h-3.5 text-slate-500" />
+                  <Tag className="w-3.5 h-3.5 text-neutral-600" />
                   <span>Quản lý danh mục</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleOpenCreate}
-                  className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-neutral-900/15 cursor-pointer"
+                  className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Thêm tiện ích</span>

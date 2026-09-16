@@ -479,7 +479,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     } else {
       window.history.pushState({ tab: id }, '', `/admin?tab=${id}`);
     }
-
     if (id === 'buildings') {
       setIs3DModelOpen(true);
     } else if (id !== 'overview') {

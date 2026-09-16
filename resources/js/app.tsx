@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import Home from './Pages/Home';
 import ManagementHome from './Pages/ManagementHome';
+import ResidentHome from './Pages/ResidentHome';
 import NotFound from './Pages/NotFound';
 import AmenityManagement from './Pages/Admin/AmenityManagement';
 
@@ -36,10 +37,11 @@ const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (role: string, email: string) => {
+    const isResident = role === 'resident' || role.toLowerCase().includes('resident');
     const session: UserSession = {
-      role,
-      email: email || (role === 'admin' ? 'admin@cassavas.vn' : 'quanly@cassavas.vn'),
-      name: role === 'admin' ? 'Admin Cassavas' : role === 'manager' ? 'Ban Quản Lý' : 'Cư Dân Cassavas',
+      role: isResident ? 'resident' : role,
+      email: email || (role === 'admin' ? 'admin@cassavas.vn' : isResident ? 'nguyenvanan@cassavas.vn' : 'quanly@cassavas.vn'),
+      name: role === 'admin' ? 'Admin Cassavas' : isResident ? 'Nguyễn Văn An' : role === 'manager' ? 'Ban Quản Lý' : 'Cư Dân Cassavas',
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
@@ -52,6 +54,10 @@ const App: React.FC = () => {
     if (role === 'manager' || role === 'admin') {
       setTimeout(() => {
         navigateTo('/admin');
+      }, 400);
+    } else if (isResident) {
+      setTimeout(() => {
+        navigateTo('/cu-dan');
       }, 400);
     }
   };
@@ -96,6 +102,32 @@ const App: React.FC = () => {
     );
   }
 
+  // Các đường dẫn Cổng Cư Dân
+  const isExplicitLanding = window.location.search.includes('landing=true');
+  const isResidentSession =
+    currentUser?.role === 'resident' || currentUser?.role?.toLowerCase().includes('resident');
+
+  const isResidentPath =
+    currentPath === '/cu-dan' ||
+    currentPath.startsWith('/cu-dan') ||
+    currentPath === '/resident' ||
+    currentPath.startsWith('/resident') ||
+    currentPath === '/resident-portal' ||
+    (isResidentSession && (currentPath === '/' || currentPath === '') && !isExplicitLanding);
+
+  if (isResidentPath) {
+    return (
+      <ResidentHome
+        onLogout={handleLogout}
+        onNavigateHome={() => navigateTo('/?landing=true')}
+        onNavigateAdmin={() => navigateTo('/admin')}
+        userRole={currentUser?.role || 'resident'}
+        userName={currentUser?.name || 'Nguyễn Văn An'}
+        userEmail={currentUser?.email || 'nguyenvanan@cassavas.vn'}
+      />
+    );
+  }
+
   // Valid paths for single-page application
   const isAuthPath =
     currentPath === '/login' ||
@@ -120,6 +152,7 @@ const App: React.FC = () => {
       initialAuthModal={initialAuthMode}
       onLoginSuccess={handleLoginSuccess}
       onNavigateAdmin={() => navigateTo('/admin')}
+      onNavigateResident={() => navigateTo('/cu-dan')}
       currentUserRole={currentUser?.role}
     />
   );
