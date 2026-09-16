@@ -14,7 +14,9 @@ if [ ! -d "vendor" ] || [ ! -f "vendor/autoload.php" ]; then
 fi
 
 # Đảm bảo APP_KEY đã được tạo
-php artisan key:generate --force
+if ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then
+    php artisan key:generate --force
+fi
 
 # Cài đặt NPM và build assets nếu chưa có
 if [ ! -d "node_modules" ]; then

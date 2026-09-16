@@ -21,11 +21,9 @@ RUN apt-get update && apt-get install -y \
 # Sử dụng công cụ cài đặt extensions chính thức
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
-# Cài đặt PHP extensions (bao gồm pdo_sqlsrv cho Microsoft SQL Server)
+# Cài đặt PHP extensions cho MySQL & hệ thống
 RUN chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions \
-    pdo_sqlsrv \
-    sqlsrv \
     pdo_mysql \
     pdo_sqlite \
     zip \

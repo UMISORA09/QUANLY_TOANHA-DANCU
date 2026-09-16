@@ -40,6 +40,7 @@ services:
       - MYSQL_DATABASE=quanly_toanha
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./dump_quanly_toanha.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p123567 || exit 1"]
       interval: 5s

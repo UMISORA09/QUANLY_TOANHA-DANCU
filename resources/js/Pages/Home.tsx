@@ -489,14 +489,6 @@ export const Home: React.FC<HomeProps> = ({
             ) : (
               <>
                 <button
-                  onClick={() => (onNavigateResident ? onNavigateResident() : openAuth('login'))}
-                  className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 px-3.5 py-2 rounded-xl transition-all shadow-sm active:scale-95"
-                  title="Truy cập Cổng Cư Dân"
-                >
-                  <Users className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Cổng Cư Dân</span>
-                </button>
-                <button
                   onClick={() => openAuth('register')}
                   className="text-sm font-medium text-neutral-700 hover:text-neutral-950 px-3 py-2 rounded-md transition-colors"
                 >
@@ -637,20 +629,6 @@ export const Home: React.FC<HomeProps> = ({
               </div>
             ) : (
               <div className="pt-4 border-t border-neutral-100 flex flex-col gap-2">
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    if (onNavigateResident) {
-                      onNavigateResident();
-                    } else {
-                      openAuth('login');
-                    }
-                  }}
-                  className="w-full text-center py-2.5 bg-sky-50 border border-sky-200 text-sky-800 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-                >
-                  <Users className="w-4 h-4 text-sky-600" />
-                  <span>Cổng Cư Dân (Resident Portal)</span>
-                </button>
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
