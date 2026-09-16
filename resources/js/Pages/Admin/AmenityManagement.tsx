@@ -42,11 +42,7 @@ export interface AmenityManagementProps {
 }
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
-<<<<<<< HEAD
   // Data states (khởi tạo ngay từ cache nếu có để dropdown hiển thị 0ms không bị giật)
-=======
-  // Data states
->>>>>>> origin/master
   const [amenities, setAmenities] = useState<Amenity[]>([]);
   const [categories, setCategories] = useState<Category[]>(() => {
     try {
