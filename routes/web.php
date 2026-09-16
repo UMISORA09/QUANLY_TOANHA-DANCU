@@ -4,6 +4,7 @@ use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\SearchController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -82,6 +83,12 @@ Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
 Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);
 Route::get('/meta/blocks', [AmenityController::class, 'getBlocks']);
 
+// Smart Search Engine APIs (Full-Text, Autocomplete & AI Knowledge Hybrid Search)
+Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities']);
+Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities']);
+Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions']);
+Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
+
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
 Route::prefix('api/v1/admin')->group(function () {
     // Tòa nhà / Blocks
@@ -101,6 +108,8 @@ Route::prefix('api/v1/admin')->group(function () {
     Route::patch('amenities/{id}/status', [AmenityController::class, 'toggleAmenityStatus']);
     Route::delete('amenities/{id}', [AmenityController::class, 'deleteAmenity']);
     Route::get('amenities/{id}/bookings', [AmenityController::class, 'getAmenityBookings']);
+    Route::patch('amenities/{amenityId}/bookings/{bookingId}/status', [AmenityController::class, 'updateBookingStatus']);
+    Route::post('amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking']);
 
     // Khung giờ hoạt động (Time Slots)
     Route::get('amenities/{amenityId}/time-slots', [AmenityController::class, 'getTimeSlots']);
@@ -118,6 +127,7 @@ Route::prefix('api/v1/admin')->group(function () {
 
 // Đặt chỗ tiện ích (Booking Enforcement)
 Route::post('/api/v1/amenities/{id}/bookings', [AmenityController::class, 'bookAmenity']);
+Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking']);
 
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);

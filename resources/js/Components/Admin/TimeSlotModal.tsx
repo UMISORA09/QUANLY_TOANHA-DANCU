@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Edit2, Trash2, Clock, Check, AlertCircle, Sparkles, Power } from 'lucide-react';
 import { api, TimeSlot, Amenity } from '../../Services/api';
+import { amenityCache } from '../../Services/amenityCache';
 
 interface TimeSlotModalProps {
   isOpen: boolean;
@@ -60,6 +61,25 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
       resetForm();
     }
   }, [isOpen, amenity]);
+
+  // Lắng nghe sự kiện đồng bộ khung giờ từ tab khác
+  useEffect(() => {
+    if (!isOpen || !amenity) return;
+
+    const unsubscribe = amenityCache.subscribe((event) => {
+      if (event.amenityId === amenity.id) {
+        if (event.type === 'AMENITY_DELETED') {
+          onClose();
+        } else if (event.type === 'AMENITY_SLOT_UPDATED') {
+          fetchSlots();
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, amenity, onClose]);
 
   const resetForm = () => {
     setEditingId(null);

@@ -12,9 +12,12 @@ import {
   QrCode,
   DollarSign,
   Building,
-  Filter
+  Filter,
+  Check,
+  Ban
 } from 'lucide-react';
 import { api, Amenity, AmenityBooking } from '../../Services/api';
+import { amenityCache } from '../../Services/amenityCache';
 
 interface AmenityBookingsModalProps {
   isOpen: boolean;
@@ -32,13 +35,14 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const fetchBookings = useCallback(async () => {
+  const fetchBookings = useCallback(async (force = true) => {
     if (!amenity) return;
     try {
       setLoading(true);
       setError(null);
-      const data = await api.getAmenityBookings(amenity.id);
+      const data = await api.getAmenityBookings(amenity.id, force);
       setBookings(data);
     } catch (err: any) {
       setError(err?.message || 'Không thể tải danh sách đặt chỗ từ cơ sở dữ liệu.');
@@ -49,7 +53,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen && amenity) {
-      fetchBookings();
+      fetchBookings(true);
     } else {
       setBookings([]);
       setSearch('');
@@ -57,6 +61,38 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
       setError(null);
     }
   }, [isOpen, amenity, fetchBookings]);
+
+  // Lắng nghe sự kiện đồng bộ đặt chỗ từ tab khác (Cross-Tab Synchronization)
+  useEffect(() => {
+    if (!isOpen || !amenity) return;
+
+    const unsubscribe = amenityCache.subscribe((event) => {
+      if (event.amenityId === amenity.id) {
+        if (event.type === 'AMENITY_DELETED') {
+          onClose();
+        } else if (event.type === 'AMENITY_BOOKING_CHANGED') {
+          fetchBookings(true);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, amenity, onClose, fetchBookings]);
+
+  const handleUpdateStatus = async (bookingId: string, status: string) => {
+    if (!amenity) return;
+    try {
+      setUpdatingId(bookingId);
+      await api.patchAmenityBookingStatus(amenity.id, bookingId, status);
+      await fetchBookings(true);
+    } catch (err: any) {
+      setError(err?.message || 'Không thể cập nhật trạng thái đặt chỗ.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
@@ -162,7 +198,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={fetchBookings}
+              onClick={() => fetchBookings()}
               disabled={loading}
               className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 transition-all cursor-pointer"
               title="Làm mới dữ liệu từ Database"
@@ -251,12 +287,13 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                 <th className="py-3 px-3">Chi phí / Cọc</th>
                 <th className="py-3 px-3 text-center">Trạng thái</th>
                 <th className="py-3 px-3">Ghi chú</th>
+                <th className="py-3 px-3 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-neutral-400">
+                  <td colSpan={9} className="py-12 text-center text-neutral-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <span className="w-6 h-6 border-2 border-neutral-300 border-t-neutral-900 rounded-full animate-spin" />
                       <span className="text-xs">Đang tải danh sách đặt chỗ từ Database...</span>
@@ -265,7 +302,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                 </tr>
               ) : filteredBookings.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-neutral-400">
+                  <td colSpan={9} className="py-12 text-center text-neutral-400">
                     <div className="flex flex-col items-center justify-center gap-1.5">
                       <Ticket className="w-8 h-8 text-neutral-300 stroke-1" />
                       <p className="font-semibold text-neutral-700">Chưa có lượt đặt chỗ nào</p>
@@ -346,6 +383,36 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                     {/* Ghi chú */}
                     <td className="py-3 px-3 text-neutral-500 max-w-xs truncate" title={b.resident_notes || ''}>
                       {b.resident_notes || '-'}
+                    </td>
+
+                    {/* Thao tác */}
+                    <td className="py-3 px-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {['PENDING'].includes(b.status?.toUpperCase()) && (
+                          <button
+                            type="button"
+                            disabled={updatingId === b.id}
+                            onClick={() => handleUpdateStatus(b.id, 'APPROVED')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[11px] transition-colors cursor-pointer disabled:opacity-50"
+                            title="Duyệt đặt chỗ này"
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>Duyệt</span>
+                          </button>
+                        )}
+                        {['PENDING', 'APPROVED', 'CONFIRMED'].includes(b.status?.toUpperCase()) && (
+                          <button
+                            type="button"
+                            disabled={updatingId === b.id}
+                            onClick={() => handleUpdateStatus(b.id, 'CANCELLED')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-[11px] transition-colors cursor-pointer disabled:opacity-50"
+                            title="Hủy đặt chỗ này"
+                          >
+                            <Ban className="w-3 h-3" />
+                            <span>Hủy</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

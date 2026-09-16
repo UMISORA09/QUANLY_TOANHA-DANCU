@@ -45,12 +45,14 @@ const App: React.FC = () => {
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
+      sessionStorage.removeItem('smartcassavas_active_admin_tab');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
     } catch {
       // ignore
     }
     setCurrentUser(session);
 
-    // Khi đăng nhập vai trò quản lý / admin, tự động chuyển vào trang quản lý
+    // Khi đăng nhập vai trò quản lý / admin, tự động chuyển vào trang quản lý ở mục Tổng quan
     if (role === 'manager' || role === 'admin') {
       setTimeout(() => {
         navigateTo('/admin');
@@ -65,6 +67,8 @@ const App: React.FC = () => {
   const handleLogout = () => {
     try {
       localStorage.removeItem('smartcassavas_session');
+      sessionStorage.removeItem('smartcassavas_active_admin_tab');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
     } catch {
       // ignore
     }

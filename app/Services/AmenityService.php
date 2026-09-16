@@ -2,13 +2,14 @@
 
 namespace App\Services;
 
+use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
- * Service xử lý nghiệp vụ Quản lý Tiện ích & Slot theo nguyên lý Ponytail:
+ * Service xử lý nghiệp vụ Quản lý Tiện ích & Slot theo Kiến trúc Tinh gọn (Lightweight Architecture):
  * Tách biệt nghiệp vụ (Business Rules), Chuẩn hóa dữ liệu (Sanitization),
  * Ràng buộc Sức chứa / Đặt chỗ (Capacity & Conflict Enforcement)
  * và Tối ưu truy vấn (Batch Aggregation / No N+1).
@@ -79,10 +80,28 @@ class AmenityService
     }
 
     /**
+     * Khởi tạo AmenityService với SearchManager
+     */
+    public function __construct(protected ?SearchManager $searchManager = null)
+    {
+        $this->searchManager = $searchManager ?: new SearchManager;
+    }
+
+    /**
+     * Gợi ý autocomplete siêu tốc cho thanh tìm kiếm
+     *
+     * @return array<int, array{id: string, label: string, code?: string, extra?: mixed}>
+     */
+    public function getSuggestions(string $query, int $limit = 5): array
+    {
+        return $this->searchManager->suggest('amenities', $query, $limit);
+    }
+
+    /**
      * Lấy danh sách tiện ích có phân trang và bộ lọc tìm kiếm đa chiều
      *
      * @param  array<string, mixed>  $filters
-     * @return array{items: array<int, array<string, mixed>>, total: int, page: int, limit: int, total_pages: int}
+     * @return array{items: array<int, array<string, mixed>>, total: int, page: int, limit: int, total_pages: int, search_time_ms?: float, is_fuzzy?: bool}
      */
     public function getPaginatedAmenities(array $filters): array
     {
@@ -94,62 +113,74 @@ class AmenityService
         $page = max((int) ($filters['page'] ?? 1), 1);
         $limit = max(min((int) ($filters['limit'] ?? 10), 100), 1);
 
-        $query = DB::table('amenities')
-            ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
-            ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
-            ->whereNull('amenities.deleted_at')
-            ->select(
-                'amenities.*',
-                'amenity_categories.category_name',
-                'amenity_categories.category_code',
-                'blocks.block_name',
-                'blocks.block_code'
-            );
+        $searchTimeMs = 0.0;
+        $isFuzzy = false;
+        $correctedQuery = null;
 
-        if (! empty($search)) {
-            $searchTerm = '%'.trim((string) $search).'%';
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('amenities.amenity_name', 'like', $searchTerm)
-                    ->orWhere('amenities.amenity_code', 'like', $searchTerm)
-                    ->orWhere('amenities.location_detail', 'like', $searchTerm)
-                    ->orWhere('amenity_categories.category_name', 'like', $searchTerm)
-                    ->orWhere('blocks.block_name', 'like', $searchTerm);
-            });
-        }
+        if (! empty($search) && trim((string) $search) !== '') {
+            // Sử dụng Smart Search Engine (MySQL Full-Text / Meilisearch / Elasticsearch)
+            $searchResult = $this->searchManager->search('amenities', (string) $search, [
+                'category_id' => $categoryId,
+                'block_id' => $blockId,
+                'is_active' => $isActive,
+            ], [
+                'page' => $page,
+                'per_page' => $limit,
+                'sort' => $sort,
+            ]);
 
-        if (! empty($categoryId)) {
-            $query->where('amenities.category_id', $categoryId);
-        }
+            $total = $searchResult->total;
+            $totalPages = $searchResult->getTotalPages();
+            $items = collect($searchResult->items);
+            $searchTimeMs = $searchResult->searchTimeMs;
+            $isFuzzy = $searchResult->isFuzzy;
+            $correctedQuery = $searchResult->metadata['corrected_query'] ?? null;
+        } else {
+            $query = DB::table('amenities')
+                ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
+                ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
+                ->whereNull('amenities.deleted_at')
+                ->select(
+                    'amenities.*',
+                    'amenity_categories.category_name',
+                    'amenity_categories.category_code',
+                    'blocks.block_name',
+                    'blocks.block_code'
+                );
 
-        if (! empty($blockId)) {
-            $query->where('amenities.block_id', $blockId);
-        }
-
-        if ($isActive !== null && $isActive !== '' && $isActive !== 'all') {
-            $boolVal = filter_var($isActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-            if ($boolVal !== null) {
-                $query->where('amenities.is_active', $boolVal ? 1 : 0);
-            } elseif ($isActive === 'active') {
-                $query->where('amenities.is_active', 1);
-            } elseif ($isActive === 'inactive') {
-                $query->where('amenities.is_active', 0);
+            if (! empty($categoryId)) {
+                $query->where('amenities.category_id', $categoryId);
             }
+
+            if (! empty($blockId)) {
+                $query->where('amenities.block_id', $blockId);
+            }
+
+            if ($isActive !== null && $isActive !== '' && $isActive !== 'all') {
+                $boolVal = filter_var($isActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($boolVal !== null) {
+                    $query->where('amenities.is_active', $boolVal ? 1 : 0);
+                } elseif ($isActive === 'active') {
+                    $query->where('amenities.is_active', 1);
+                } elseif ($isActive === 'inactive') {
+                    $query->where('amenities.is_active', 0);
+                }
+            }
+
+            // Sắp xếp
+            match ($sort) {
+                'name_asc' => $query->orderBy('amenities.amenity_name', 'asc'),
+                'name_desc' => $query->orderBy('amenities.amenity_name', 'desc'),
+                'price_asc' => $query->orderBy('amenities.hourly_rate', 'asc'),
+                'price_desc' => $query->orderBy('amenities.hourly_rate', 'desc'),
+                'created_at_asc' => $query->orderBy('amenities.created_at', 'asc'),
+                default => $query->orderBy('amenities.created_at', 'desc'),
+            };
+
+            $total = $query->count();
+            $totalPages = $total > 0 ? (int) ceil($total / $limit) : 1;
+            $items = $query->skip(($page - 1) * $limit)->take($limit)->get();
         }
-
-        // Sắp xếp
-        match ($sort) {
-            'name_asc' => $query->orderBy('amenities.amenity_name', 'asc'),
-            'name_desc' => $query->orderBy('amenities.amenity_name', 'desc'),
-            'price_asc' => $query->orderBy('amenities.hourly_rate', 'asc'),
-            'price_desc' => $query->orderBy('amenities.hourly_rate', 'desc'),
-            'created_at_asc' => $query->orderBy('amenities.created_at', 'asc'),
-            default => $query->orderBy('amenities.created_at', 'desc'),
-        };
-
-        $total = $query->count();
-        $totalPages = $total > 0 ? (int) ceil($total / $limit) : 1;
-
-        $items = $query->skip(($page - 1) * $limit)->take($limit)->get();
 
         // Batch aggregate slot counts & booking counts để tránh N+1 queries
         $amenityIds = $items->pluck('id')->toArray();
@@ -187,7 +218,9 @@ class AmenityService
             }
         }
 
-        $formatted = $items->map(function ($item) use ($slotCounts, $activeSlotCounts, $activeBookingCounts) {
+        $formatted = $items->map(function ($rawItem) use ($slotCounts, $activeSlotCounts, $activeBookingCounts) {
+            $item = is_array($rawItem) ? (object) $rawItem : $rawItem;
+
             return $this->formatAmenityDto(
                 $item,
                 (int) ($slotCounts[$item->id] ?? 0),
@@ -202,11 +235,14 @@ class AmenityService
             'page' => $page,
             'limit' => $limit,
             'total_pages' => $totalPages,
+            'search_time_ms' => round($searchTimeMs, 2),
+            'corrected_query' => $correctedQuery,
+            'is_fuzzy' => $isFuzzy,
         ];
     }
 
     /**
-     * Tạo mới tiện ích và đảm bảo dữ liệu chuẩn hóa (Ponytail Sanitization)
+     * Tạo mới tiện ích và đảm bảo dữ liệu chuẩn hóa (Data Sanitization)
      *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>

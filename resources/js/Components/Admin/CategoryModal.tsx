@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Edit2, Trash2, Tag, Check, AlertCircle, Sparkles } from 'lucide-react';
 import { api, Category } from '../../Services/api';
+import { amenityCache } from '../../Services/amenityCache';
 
 interface CategoryModalProps {
   isOpen: boolean;
@@ -37,6 +38,21 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
       fetchCategories();
       resetForm();
     }
+  }, [isOpen]);
+
+  // Lắng nghe sự kiện đồng bộ danh mục từ tab khác
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const unsubscribe = amenityCache.subscribe((event) => {
+      if (event.type === 'CATEGORY_CHANGED') {
+        fetchCategories();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [isOpen]);
 
   const resetForm = () => {

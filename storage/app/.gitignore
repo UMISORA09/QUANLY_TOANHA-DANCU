@@ -1,4 +1,7 @@
 *
 !private/
 !public/
+!dictionary/
+!dictionary/Viet74K.txt
+dictionary/*.php
 !.gitignore
