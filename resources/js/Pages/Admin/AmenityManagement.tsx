@@ -26,6 +26,7 @@ import {
   LogIn,
   LogOut,
   Shield,
+  Ticket,
   Image as ImageIcon
 } from 'lucide-react';
 import { api, Amenity, Category, BlockOption } from '../../Services/api';
@@ -33,13 +34,32 @@ import { AmenityFormModal } from '../../Components/Admin/AmenityFormModal';
 import { CategoryModal } from '../../Components/Admin/CategoryModal';
 import { TimeSlotModal } from '../../Components/Admin/TimeSlotModal';
 import { BlackoutModal } from '../../Components/Admin/BlackoutModal';
+import { AmenityBookingsModal } from '../../Components/Admin/AmenityBookingsModal';
 import { ConfirmDialog } from '../../Components/Admin/ConfirmDialog';
 
-export const AmenityManagement: React.FC = () => {
-  // Data states
+export interface AmenityManagementProps {
+  embedded?: boolean;
+}
+
+export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
+  // Data states (khởi tạo ngay từ cache nếu có để dropdown hiển thị 0ms không bị giật)
   const [amenities, setAmenities] = useState<Amenity[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [blocks, setBlocks] = useState<BlockOption[]>([]);
+  const [categories, setCategories] = useState<Category[]>(() => {
+    try {
+      const cached = localStorage.getItem('smart_cassavas_cats_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [blocks, setBlocks] = useState<BlockOption[]>(() => {
+    try {
+      const cached = localStorage.getItem('smart_cassavas_blks_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -62,6 +82,7 @@ export const AmenityManagement: React.FC = () => {
   const [slotModalAmenity, setSlotModalAmenity] = useState<Amenity | null>(null);
   const [blackoutModalAmenity, setBlackoutModalAmenity] = useState<Amenity | null>(null);
   const [detailAmenity, setDetailAmenity] = useState<Amenity | null>(null);
+  const [bookingModalAmenity, setBookingModalAmenity] = useState<Amenity | null>(null);
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -82,7 +103,7 @@ export const AmenityManagement: React.FC = () => {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Authentication states
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(() => api.getUser());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authEmail, setAuthEmail] = useState('admin@smartcassavas.vn');
   const [authPassword, setAuthPassword] = useState('');
@@ -94,8 +115,13 @@ export const AmenityManagement: React.FC = () => {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Check Current User Auth
-  const checkAuth = async () => {
+  // Check Current User Auth (không chặn UI gọi network nếu đã có user trong localStorage)
+  const checkAuth = async (force = false) => {
+    const cachedUser = api.getUser();
+    if (cachedUser && !force) {
+      setCurrentUser(cachedUser);
+      return;
+    }
     try {
       const user = await api.getMe();
       api.setUser(user);
@@ -118,7 +144,7 @@ export const AmenityManagement: React.FC = () => {
       }
       setIsAuthModalOpen(false);
       showToast('Đăng nhập Quản trị viên thành công!');
-      await loadMetadata();
+      await loadMetadata(true);
       await fetchAmenities();
     } catch (err: any) {
       setAuthError(err.message || 'Đăng nhập không thành công.');
@@ -134,12 +160,43 @@ export const AmenityManagement: React.FC = () => {
     showToast('Đã đăng xuất hệ thống.');
   };
 
-  // Load Categories & Blocks
-  const loadMetadata = async () => {
+  // Load Categories & Blocks with client-side cache (TTL 30 phút, giải phóng luồng network)
+  const loadMetadata = async (forceRefresh = false) => {
+    const CACHE_CATS_KEY = 'smart_cassavas_cats_cache';
+    const CACHE_BLKS_KEY = 'smart_cassavas_blks_cache';
+    const CACHE_TIME_KEY = 'smart_cassavas_meta_timestamp';
+    const CACHE_TTL_MS = 30 * 60 * 1000; // 30 phút
+
+    if (!forceRefresh) {
+      try {
+        const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
+        const catsJson = localStorage.getItem(CACHE_CATS_KEY);
+        const blksJson = localStorage.getItem(CACHE_BLKS_KEY);
+
+        if (cachedTime && catsJson && blksJson) {
+          const age = Date.now() - Number(cachedTime);
+          if (age < CACHE_TTL_MS) {
+            setCategories(JSON.parse(catsJson));
+            setBlocks(JSON.parse(blksJson));
+            return;
+          }
+        }
+      } catch {
+        // Fallback gọi network nếu parse lỗi
+      }
+    }
+
     try {
       const [cats, blks] = await Promise.all([api.getCategories(), api.getBlocks()]);
       setCategories(cats);
       setBlocks(blks);
+      try {
+        localStorage.setItem(CACHE_CATS_KEY, JSON.stringify(cats));
+        localStorage.setItem(CACHE_BLKS_KEY, JSON.stringify(blks));
+        localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
+      } catch {
+        // Bỏ qua lỗi quota localStorage
+      }
     } catch (err: any) {
       console.error('Failed to load metadata', err);
     }
@@ -271,7 +328,7 @@ export const AmenityManagement: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-900/10 text-neutral-900 pb-16 font-sans">
+    <div className={`${embedded ? 'w-full text-neutral-900' : 'min-h-screen bg-neutral-900/10 text-neutral-900 pb-16'} font-sans`}>
       {/* Toast Notification */}
       {toast && (
         <div
@@ -359,25 +416,48 @@ export const AmenityManagement: React.FC = () => {
       </div>
 
       {/* Page Header */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4">
+      <div className={`${embedded ? 'w-full pb-5' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4'}`}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <span className="text-[11px] font-bold tracking-[0.14em] text-neutral-400 uppercase">
-              ADMINISTRATION & APARTMENT ASSETS
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-950 tracking-tight mt-0.5">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
+              <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+              <span>PHÂN HỆ QUẢN LÝ TIỆN ÍCH</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight mt-1">
               Danh mục Tiện ích Tòa nhà
             </h1>
-            <p className="text-xs sm:text-sm text-neutral-500 mt-1 max-w-2xl leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
               Quản lý danh mục dịch vụ, cấu hình sức chứa tối đa mỗi lượt đặt, biểu phí thuê theo giờ, khung giờ hoạt động và ngày đóng cửa bảo trì.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-start md:self-end">
+          <div className="flex items-center gap-2.5 shrink-0 self-start md:self-end">
+            {embedded && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(true)}
+                  className="px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                >
+                  <Tag className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Quản lý danh mục</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenCreate}
+                  className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-neutral-900/15 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm tiện ích</span>
+                </button>
+              </>
+            )}
+
             <button
               type="button"
               onClick={fetchAmenities}
-              className="p-2 text-neutral-500 hover:text-neutral-900 bg-white border border-neutral-200 rounded-xl hover:bg-neutral-50 transition-colors shadow-2xs cursor-pointer"
+              className="p-2.5 text-slate-500 hover:text-neutral-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
               title="Tải lại dữ liệu"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-neutral-950' : ''}`} />
@@ -387,7 +467,7 @@ export const AmenityManagement: React.FC = () => {
       </div>
 
       {/* Main Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
+      <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} space-y-4`}>
         {/* Filters Bar Card */}
         <div className="bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
@@ -462,8 +542,7 @@ export const AmenityManagement: React.FC = () => {
         {/* Data Table Card */}
         <div className="bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           {/* Table Container */}
-          {/* Table Container */}
-          <div className="overflow-x-auto custom-scrollbar">
+          <div className="overflow-x-auto table-scrollbar">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-neutral-200/80 bg-neutral-50/80 text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
@@ -473,13 +552,13 @@ export const AmenityManagement: React.FC = () => {
                   <th className="py-3.5 px-3 whitespace-nowrap min-w-[120px]">Tòa nhà</th>
                   <th className="py-3.5 px-3 whitespace-nowrap min-w-[160px]">Vị trí</th>
                   <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[125px]">Sức chứa / slot</th>
-                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[125px]">Booking / slot</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[135px]">Lượt đặt chỗ / slot</th>
                   <th className="py-3.5 px-3 whitespace-nowrap min-w-[110px]">Giá / giờ</th>
                   <th className="py-3.5 px-3 whitespace-nowrap min-w-[110px]">Tiền cọc</th>
                   <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[105px]">Duyệt BQL</th>
                   <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[120px]">Trạng thái</th>
                   <th className="py-3.5 px-3 whitespace-nowrap min-w-[130px]">Cập nhật</th>
-                  <th className="py-3.5 px-4 text-right whitespace-nowrap min-w-[190px] sticky right-0 bg-neutral-50 border-l border-neutral-200/80 shadow-[-6px_0_12px_rgba(0,0,0,0.04)] z-10">Thao tác</th>
+                  <th className="py-3.5 px-4 text-right whitespace-nowrap min-w-[210px] sticky right-0 bg-neutral-50 border-l border-neutral-200/80 shadow-[-6px_0_12px_rgba(0,0,0,0.04)] z-10">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -564,11 +643,17 @@ export const AmenityManagement: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* 7. Số booking / slot */}
+                      {/* 7. Số booking thực tế / slot */}
                       <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 bg-sky-50 text-sky-800 border border-sky-200/60 font-mono font-semibold rounded-full text-xs">
-                          {item.max_bookings_per_slot} booking
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setBookingModalAmenity(item)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/80 font-mono font-semibold rounded-full text-xs transition-colors cursor-pointer"
+                          title="Bấm để xem thông tin đặt chỗ của cư dân"
+                        >
+                          <Ticket className="w-3 h-3 text-sky-600" />
+                          <span>{item.active_bookings_count ?? 0} đang đặt</span>
+                        </button>
                       </td>
 
                       {/* 8. Giá / giờ */}
@@ -617,6 +702,16 @@ export const AmenityManagement: React.FC = () => {
                       {/* 13. Actions */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap sticky right-0 bg-white group-hover:bg-neutral-50 border-l border-neutral-100 shadow-[-6px_0_12px_rgba(0,0,0,0.04)] z-10">
                         <div className="flex items-center justify-end gap-1">
+                          {/* Xem thông tin đặt chỗ */}
+                          <button
+                            type="button"
+                            onClick={() => setBookingModalAmenity(item)}
+                            className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            title="Xem thông tin đặt chỗ của cư dân"
+                          >
+                            <Ticket className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* Xem chi tiết */}
                           <button
                             type="button"
@@ -830,7 +925,20 @@ export const AmenityManagement: React.FC = () => {
               )}
             </div>
 
-            <div className="mt-5 flex justify-end">
+            <div className="mt-5 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = detailAmenity;
+                  setDetailAmenity(null);
+                  setBookingModalAmenity(target);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Ticket className="w-3.5 h-3.5 text-sky-600" />
+                <span>Xem {detailAmenity.active_bookings_count ?? 0} lượt đặt chỗ thực tế</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setDetailAmenity(null)}
@@ -844,6 +952,12 @@ export const AmenityManagement: React.FC = () => {
       )}
 
       {/* Modals */}
+      <AmenityBookingsModal
+        isOpen={!!bookingModalAmenity}
+        amenity={bookingModalAmenity}
+        onClose={() => setBookingModalAmenity(null)}
+      />
+
       <AmenityFormModal
         isOpen={isFormOpen}
         amenity={editingAmenity}
@@ -860,7 +974,7 @@ export const AmenityManagement: React.FC = () => {
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
         onChanged={() => {
-          loadMetadata();
+          loadMetadata(true);
           fetchAmenities();
         }}
       />

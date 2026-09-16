@@ -17,7 +17,7 @@ fi
 php artisan key:generate --force
 
 # Cài đặt NPM và build assets nếu chưa có
-if [ ! -d "node_modules" ]; then
+if [ ! -d "node_modules/vite" ]; then
     echo "[Docker] Đang cài đặt thư viện frontend..."
     npm install
 fi

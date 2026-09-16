@@ -1,8 +1,6 @@
 // Real HTTP REST API Client for Smart Apartment Management
 
-const API_BASE_URL = window.location.port === '5173' || window.location.port === '8000'
-  ? 'http://127.0.0.1:8001/api/v1'
-  : '/api/v1';
+const API_BASE_URL = '/api/v1';
 
 export interface Category {
   id: string;
@@ -42,6 +40,32 @@ export interface Amenity {
   time_slots_count: number;
   active_time_slots_count: number;
   max_bookings_per_slot: number;
+  active_bookings_count?: number;
+}
+
+export interface AmenityBooking {
+  id: string;
+  booking_code: string;
+  amenity_id: string;
+  apartment_id: string;
+  resident_user_id: string;
+  resident_name: string;
+  resident_phone?: string;
+  apartment_number?: string;
+  block_name?: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  attendee_count: number;
+  total_amount: number;
+  deposit_amount: number;
+  is_paid: boolean;
+  status: string;
+  checkin_qr_code: string;
+  checked_in_at?: string | null;
+  resident_notes?: string | null;
+  admin_notes?: string | null;
+  created_at: string;
 }
 
 export interface AmenityListResponse {
@@ -358,9 +382,18 @@ class ApiService {
     });
   }
 
+  // ================= BOOKINGS =================
+  async getAmenityBookings(amenityId: string): Promise<AmenityBooking[]> {
+    return this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`);
+  }
+
   // ================= META =================
   async getBlocks(): Promise<BlockOption[]> {
-    return this.request<BlockOption[]>('/meta/blocks');
+    try {
+      return await this.request<BlockOption[]>('/admin/blocks');
+    } catch {
+      return await this.request<BlockOption[]>('/meta/blocks');
+    }
   }
 }
 
