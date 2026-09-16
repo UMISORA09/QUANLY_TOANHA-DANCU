@@ -2,10 +2,15 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ManagementDashboardController;
+use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentPortalController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
+    return redirect('/home');
+});
+
+Route::get('/home', function () {
     return view('welcome');
 });
 
@@ -57,7 +62,26 @@ Route::get('/resident/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
+Route::get('/le-tan', function () {
+    return view('welcome');
+});
+
+Route::get('/le-tan/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
+Route::get('/receptionist', function () {
+    return view('welcome');
+});
+
+Route::get('/receptionist/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/api/management/overview', [ManagementDashboardController::class, 'overview']);
+
+// API Reception Portal
+Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview']);

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import Home from './Pages/Home';
 import ManagementHome from './Pages/ManagementHome';
 import ResidentHome from './Pages/ResidentHome';
+import ReceptionHome from './Pages/ReceptionHome';
 import NotFound from './Pages/NotFound';
 import AmenityManagement from './Pages/Admin/AmenityManagement';
 
@@ -24,6 +25,10 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
+    if (window.location.pathname === '/') {
+      window.history.replaceState({}, '', '/home');
+      setCurrentPath('/home');
+    }
     const handlePopState = () => {
       setCurrentPath(window.location.pathname);
     };
@@ -38,10 +43,33 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (role: string, email: string) => {
     const isResident = role === 'resident' || role.toLowerCase().includes('resident');
+    const isReceptionist =
+      role === 'receptionist' ||
+      role.toLowerCase().includes('receptionist') ||
+      role.toLowerCase().includes('letan') ||
+      role.toLowerCase().includes('lễ tân');
+
     const session: UserSession = {
-      role: isResident ? 'resident' : role,
-      email: email || (role === 'admin' ? 'admin@cassavas.vn' : isResident ? 'nguyenvanan@cassavas.vn' : 'quanly@cassavas.vn'),
-      name: role === 'admin' ? 'Admin Cassavas' : isResident ? 'Nguyễn Văn An' : role === 'manager' ? 'Ban Quản Lý' : 'Cư Dân Cassavas',
+      role: isReceptionist ? 'receptionist' : isResident ? 'resident' : role,
+      email:
+        email ||
+        (role === 'admin'
+          ? 'admin@cassavas.vn'
+          : isReceptionist
+          ? 'admin@cassavas.vn'
+          : isResident
+          ? 'nguyenvanan@cassavas.vn'
+          : 'quanly@cassavas.vn'),
+      name:
+        role === 'admin'
+          ? 'Admin Cassavas'
+          : isReceptionist
+          ? 'Admin Cassavas'
+          : isResident
+          ? 'Nguyễn Văn An'
+          : role === 'manager'
+          ? 'Ban Quản Lý'
+          : 'Cư Dân Cassavas',
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
@@ -59,6 +87,10 @@ const App: React.FC = () => {
       setTimeout(() => {
         navigateTo('/cu-dan');
       }, 400);
+    } else if (isReceptionist) {
+      setTimeout(() => {
+        navigateTo('/le-tan');
+      }, 400);
     }
   };
 
@@ -69,7 +101,7 @@ const App: React.FC = () => {
       // ignore
     }
     setCurrentUser(null);
-    navigateTo('/');
+    navigateTo('/home');
   };
 
   // Các đường dẫn trang quản lý
@@ -83,7 +115,7 @@ const App: React.FC = () => {
     return (
       <ManagementHome
         onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/')}
+        onNavigateHome={() => navigateTo('/home')}
         userRole={currentUser?.role || 'admin'}
         userName={currentUser?.name || 'Admin Cassavas'}
         userEmail={currentUser?.email || 'admin@cassavas.vn'}
@@ -102,17 +134,43 @@ const App: React.FC = () => {
     currentPath === '/resident' ||
     currentPath.startsWith('/resident') ||
     currentPath === '/resident-portal' ||
-    (isResidentSession && (currentPath === '/' || currentPath === '') && !isExplicitLanding);
+    (isResidentSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
 
   if (isResidentPath) {
     return (
       <ResidentHome
         onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/?landing=true')}
+        onNavigateHome={() => navigateTo('/home?landing=true')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={currentUser?.role || 'resident'}
         userName={currentUser?.name || 'Nguyễn Văn An'}
         userEmail={currentUser?.email || 'nguyenvanan@cassavas.vn'}
+      />
+    );
+  }
+
+  // Các đường dẫn Cổng Lễ Tân & Bảo Vệ
+  const isReceptionistSession =
+    currentUser?.role === 'receptionist' ||
+    currentUser?.role?.toLowerCase().includes('receptionist') ||
+    currentUser?.role?.toLowerCase().includes('letan');
+
+  const isReceptionistPath =
+    currentPath === '/le-tan' ||
+    currentPath.startsWith('/le-tan') ||
+    currentPath === '/receptionist' ||
+    currentPath.startsWith('/receptionist') ||
+    (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
+
+  if (isReceptionistPath) {
+    return (
+      <ReceptionHome
+        onLogout={handleLogout}
+        onNavigateHome={() => navigateTo('/home?landing=true')}
+        onNavigateAdmin={() => navigateTo('/admin')}
+        userRole={currentUser?.role || 'receptionist'}
+        userName={currentUser?.name || 'Admin Cassavas'}
+        userEmail={currentUser?.email || 'admin@cassavas.vn'}
       />
     );
   }
@@ -126,13 +184,18 @@ const App: React.FC = () => {
   const isAmenityAdminPath =
     currentPath === '/admin/amenities' ||
     currentPath === '/admin/tien-ich';
-  const isHomePage = currentPath === '/' || currentPath === '' || isAuthPath;
+  const isHomePage =
+    currentPath === '/' ||
+    currentPath === '' ||
+    currentPath === '/home' ||
+    currentPath.startsWith('/home') ||
+    isAuthPath;
 
   if (isAmenityAdminPath) {
     return (
       <ManagementHome
         onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/')}
+        onNavigateHome={() => navigateTo('/home')}
         userRole={currentUser?.role || 'admin'}
         userName={currentUser?.name || 'Admin Cassavas'}
         userEmail={currentUser?.email || 'admin@cassavas.vn'}
@@ -142,7 +205,7 @@ const App: React.FC = () => {
   }
 
   if (!isHomePage) {
-    return <NotFound onBackHome={() => navigateTo('/')} />;
+    return <NotFound onBackHome={() => navigateTo('/home')} />;
   }
 
   const initialAuthMode =
@@ -158,6 +221,7 @@ const App: React.FC = () => {
       onLoginSuccess={handleLoginSuccess}
       onNavigateAdmin={() => navigateTo('/admin')}
       onNavigateResident={() => navigateTo('/cu-dan')}
+      onNavigateReception={() => navigateTo('/le-tan')}
       currentUserRole={currentUser?.role}
     />
   );

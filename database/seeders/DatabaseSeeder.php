@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             ManagementDashboardSeeder::class,
             ResidentPortalSeeder::class,
+            ReceptionPortalSeeder::class,
         ]);
     }
 }

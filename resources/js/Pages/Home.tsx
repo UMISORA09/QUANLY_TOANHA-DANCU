@@ -84,6 +84,7 @@ interface HomeProps {
   onLoginSuccess?: (role: UserRole, userEmail: string) => void;
   onNavigateAdmin?: () => void;
   onNavigateResident?: () => void;
+  onNavigateReception?: () => void;
   currentUserRole?: string;
 }
 
@@ -92,6 +93,7 @@ export const Home: React.FC<HomeProps> = ({
   onLoginSuccess,
   onNavigateAdmin,
   onNavigateResident,
+  onNavigateReception,
   currentUserRole,
 }) => {
   // Navigation & Interactive states
@@ -150,7 +152,7 @@ export const Home: React.FC<HomeProps> = ({
   const closeAuth = () => {
     setAuthModal(null);
     if (window.location.pathname === '/login' || window.location.pathname === '/register') {
-      window.history.pushState({}, '', '/');
+      window.history.pushState({}, '', '/home');
     }
   };
 
@@ -306,7 +308,7 @@ export const Home: React.FC<HomeProps> = ({
       <header className="sticky top-0 z-40 bg-white/75 backdrop-blur-xl border-b border-white/50 shadow-xs glass-specular-edge transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Logo */}
-          <a href="#" className="flex items-center gap-3 group">
+          <a href="/home" className="flex items-center gap-3 group">
             <div className="w-10 h-10 bg-black text-white rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform duration-200">
               <Building2 className="w-5 h-5 text-white" />
             </div>
@@ -332,24 +334,6 @@ export const Home: React.FC<HomeProps> = ({
               className="text-sm font-semibold text-neutral-900 transition-colors relative py-1 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-neutral-900"
             >
               Trang chủ
-            </a>
-            <a
-              href="/cu-dan"
-              onClick={(e) => {
-                e.preventDefault();
-                if (onNavigateResident) {
-                  onNavigateResident();
-                } else {
-                  window.history.pushState({}, '', '/cu-dan');
-                  window.dispatchEvent(new PopStateEvent('popstate'));
-                }
-              }}
-              className="text-sm font-bold text-sky-700 hover:text-sky-900 transition-all flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 hover:bg-sky-100 border border-sky-200/80 shadow-xs"
-              title="Vào Trang Cư Dân Home"
-            >
-              <Users className="w-3.5 h-3.5 text-sky-600" />
-              <span>Trang cư dân</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             </a>
             <a
               href="#model3d"
@@ -425,30 +409,6 @@ export const Home: React.FC<HomeProps> = ({
                         </div>
                       </div>
 
-                      {/* Menu Item: Vào Cổng Cư Dân */}
-                      <a
-                        href="/cu-dan"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setIsUserDropdownOpen(false);
-                          if (onNavigateResident) {
-                            onNavigateResident();
-                          } else {
-                            window.history.pushState({}, '', '/cu-dan');
-                            window.dispatchEvent(new PopStateEvent('popstate'));
-                          }
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-sky-950 bg-sky-50/80 hover:bg-sky-100 border border-sky-200/70 rounded-xl transition-all shadow-2xs cursor-pointer group mb-1.5"
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                          <Users className="w-4 h-4" />
-                        </div>
-                        <div className="flex flex-col text-left">
-                          <span className="font-bold text-sky-950">Vào Cổng Cư Dân</span>
-                          <span className="text-[10px] text-sky-600 font-normal">Căn hộ, Tiện ích & Hóa đơn</span>
-                        </div>
-                      </a>
-
                       {/* Menu Item: Vào Trang Quản lý */}
                       <a
                         href="/admin"
@@ -470,6 +430,30 @@ export const Home: React.FC<HomeProps> = ({
                         <div className="flex flex-col text-left">
                           <span className="font-bold text-slate-900">Vào trang quản lý</span>
                           <span className="text-[10px] text-slate-500 font-normal">Dashboard & Vận hành</span>
+                        </div>
+                      </a>
+
+                      {/* Menu Item: Vào Cổng Lễ Tân */}
+                      <a
+                        href="/le-tan"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsUserDropdownOpen(false);
+                          if (onNavigateReception) {
+                            onNavigateReception();
+                          } else {
+                            window.history.pushState({}, '', '/le-tan');
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                          }
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 rounded-xl transition-all cursor-pointer group mt-1"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-neutral-900 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col text-left">
+                          <span className="font-bold text-neutral-900">Vào Cổng Lễ Tân</span>
+                          <span className="text-[10px] text-neutral-500 font-normal">Khách, Bưu phẩm & Xe</span>
                         </div>
                       </a>
 
@@ -621,6 +605,23 @@ export const Home: React.FC<HomeProps> = ({
                 >
                   <LayoutDashboard className="w-4 h-4 text-sky-600" />
                   <span>Vào trang quản lý</span>
+                </a>
+                <a
+                  href="/le-tan"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setIsMobileMenuOpen(false);
+                    if (onNavigateReception) {
+                      onNavigateReception();
+                    } else {
+                      window.history.pushState({}, '', '/le-tan');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }
+                  }}
+                  className="w-full text-center py-2.5 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-neutral-900 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Building2 className="w-4 h-4 text-neutral-800" />
+                  <span>Vào Cổng Lễ Tân</span>
                 </a>
                 <button
                   type="button"
