@@ -36,7 +36,7 @@ export interface ResidentHomeProps {
 interface MenuItem {
   id: string;
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string }> | React.ElementType;
   badge?: string;
 }
 
