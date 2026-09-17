@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, CalendarOff, Check, AlertCircle, Sparkles, Clock } from 'lucide-react';
 import { api, Blackout, Amenity } from '../../Services/api';
+import { amenityCache } from '../../Services/amenityCache';
 
 interface BlackoutModalProps {
   isOpen: boolean;
@@ -56,6 +57,25 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
       setErrorMessage(null);
     }
   }, [isOpen, amenity]);
+
+  // Lắng nghe sự kiện đồng bộ lịch bảo trì từ tab khác
+  useEffect(() => {
+    if (!isOpen || !amenity) return;
+
+    const unsubscribe = amenityCache.subscribe((event) => {
+      if (event.amenityId === amenity.id) {
+        if (event.type === 'AMENITY_DELETED') {
+          onClose();
+        } else if (event.type === 'AMENITY_BLACKOUT_CHANGED') {
+          fetchBlackouts();
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, amenity, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

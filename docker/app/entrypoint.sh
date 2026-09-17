@@ -19,7 +19,7 @@ if ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then
 fi
 
 # Cài đặt NPM và build assets nếu chưa có
-if [ ! -d "node_modules" ]; then
+if [ ! -d "node_modules/vite" ]; then
     echo "[Docker] Đang cài đặt thư viện frontend..."
     npm install
 fi

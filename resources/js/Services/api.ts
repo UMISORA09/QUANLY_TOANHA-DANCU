@@ -1,8 +1,15 @@
-// Real HTTP REST API Client for Smart Apartment Management
+// Real HTTP REST API Client for Smart Apartment Management with SWR & ETag Support
+
+import { amenityCache } from './amenityCache';
 
 const API_BASE_URL = window.location.port === '5173'
   ? 'http://127.0.0.1:8000/api/v1'
   : '/api/v1';
+
+// Client-side LRU Cache for Instant Typeahead Suggestions (0ms response time)
+const suggestionCache = new Map<string, { data: Array<{ id: string; label: string; code?: string; type?: string; category?: string }>; ts: number }>();
+const MAX_SUGGESTION_CACHE = 100;
+const SUGGESTION_TTL = 60 * 1000; // 60s
 
 export interface Category {
   id: string;
@@ -42,6 +49,32 @@ export interface Amenity {
   time_slots_count: number;
   active_time_slots_count: number;
   max_bookings_per_slot: number;
+  active_bookings_count?: number;
+}
+
+export interface AmenityBooking {
+  id: string;
+  booking_code: string;
+  amenity_id: string;
+  apartment_id: string;
+  resident_user_id: string;
+  resident_name: string;
+  resident_phone?: string;
+  apartment_number?: string;
+  block_name?: string;
+  booking_date: string;
+  start_time: string;
+  end_time: string;
+  attendee_count: number;
+  total_amount: number;
+  deposit_amount: number;
+  is_paid: boolean;
+  status: string;
+  checkin_qr_code: string;
+  checked_in_at?: string | null;
+  resident_notes?: string | null;
+  admin_notes?: string | null;
+  created_at: string;
 }
 
 export interface AmenityListResponse {
@@ -81,6 +114,14 @@ export interface BlockOption {
   block_name: string;
 }
 
+export interface SwrOptions<T> {
+  onData: (data: T, isFromCache: boolean) => void;
+  onSyncing?: (isSyncing: boolean) => void;
+  onError?: (error: any, hasCachedData: boolean) => void;
+  forceRefresh?: boolean;
+  signal?: AbortSignal;
+}
+
 class ApiService {
   private getToken(): string | null {
     return localStorage.getItem('smart_cassavas_token');
@@ -114,9 +155,17 @@ class ApiService {
   public logout() {
     this.removeToken();
     localStorage.removeItem('smart_cassavas_user');
+    amenityCache.clearAll();
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  /**
+   * Enhanced HTTP Request with ETag support & automatic header propagation
+   */
+  public async requestWithEtag<T>(
+    endpoint: string,
+    etag?: string | null,
+    options: RequestInit = {}
+  ): Promise<{ data: T | null; etag: string | null; notModified: boolean }> {
     const url = `${API_BASE_URL}${endpoint}`;
     const token = this.getToken();
 
@@ -130,23 +179,44 @@ class ApiService {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (response.status === 204) {
-      return {} as T;
+    if (etag) {
+      headers['If-None-Match'] = etag;
     }
 
-    const data = await response.json().catch(() => null);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
 
-    if (!response.ok) {
-      const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
-      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      if (response.status === 304) {
+        return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+      }
+
+      if (response.status === 204) {
+        return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
+      }
+
+      const newEtag = response.headers.get('ETag');
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      }
+
+      return { data: data as T, etag: newEtag, notModified: false };
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        return { data: null, etag: null, notModified: true };
+      }
+      throw err;
     }
+  }
 
-    return data as T;
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const res = await this.requestWithEtag<T>(endpoint, null, options);
+    return res.data as T;
   }
 
   // ================= AUTH =================
@@ -165,6 +235,7 @@ class ApiService {
     if (res.user) {
       this.setUser(res.user);
     }
+    amenityCache.clearAll();
     return res;
   }
 
@@ -173,8 +244,34 @@ class ApiService {
   }
 
   // ================= CATEGORIES =================
-  async getCategories(): Promise<Category[]> {
-    return this.request<Category[]>('/admin/amenity-categories');
+  async getCategories(forceRefresh: boolean = false): Promise<Category[]> {
+    const key = 'amenities:categories';
+    const cached = amenityCache.get<Category[]>(key);
+
+    if (!forceRefresh && cached.exists && cached.data && cached.isFresh) {
+      return cached.data;
+    }
+
+    return amenityCache.dedupe(key, async () => {
+      try {
+        const { data, etag, notModified } = await this.requestWithEtag<Category[]>(
+          '/admin/amenity-categories',
+          cached.etag
+        );
+        if (notModified && cached.data) {
+          amenityCache.touch(key);
+          return cached.data;
+        }
+        if (data) {
+          amenityCache.set(key, data, etag, 10 * 60 * 1000); // 10 mins fresh
+          return data;
+        }
+        return cached.data || [];
+      } catch (err) {
+        if (cached.data) return cached.data;
+        throw err;
+      }
+    });
   }
 
   async createCategory(payload: {
@@ -183,10 +280,13 @@ class ApiService {
     icon_name?: string | null;
     description?: string | null;
   }): Promise<Category> {
-    return this.request<Category>('/admin/amenity-categories', {
+    const result = await this.request<Category>('/admin/amenity-categories', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    amenityCache.invalidateCategories();
+    amenityCache.broadcastMutation('CATEGORY_CHANGED', result.id);
+    return result;
   }
 
   async updateCategory(
@@ -198,28 +298,63 @@ class ApiService {
       description?: string | null;
     }
   ): Promise<Category> {
-    return this.request<Category>(`/admin/amenity-categories/${id}`, {
+    const result = await this.request<Category>(`/admin/amenity-categories/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
+    amenityCache.invalidateCategories();
+    amenityCache.broadcastMutation('CATEGORY_CHANGED', id);
+    return result;
   }
 
   async deleteCategory(id: string): Promise<void> {
-    return this.request<void>(`/admin/amenity-categories/${id}`, {
+    const result = await this.request<void>(`/admin/amenity-categories/${id}`, {
       method: 'DELETE',
     });
+    amenityCache.invalidateCategories();
+    amenityCache.broadcastMutation('CATEGORY_CHANGED', id);
+    return result;
   }
 
-  // ================= AMENITIES =================
-  async getAmenities(params: {
-    search?: string;
-    category_id?: string;
-    block_id?: string;
-    is_active?: boolean;
-    page?: number;
-    limit?: number;
-    sort?: string;
-  } = {}): Promise<AmenityListResponse> {
+  // ================= AMENITIES & SWR =================
+
+  /**
+   * Stale-While-Revalidate fetcher for Amenities List
+   * 
+   * 1. Looks up cache: if found, invokes onData immediately (0ms).
+   * 2. If fresh and not forceRefresh: ends immediately (no background call).
+   * 3. If stale or no cache: dispatches background fetch with ETag.
+   * 4. If server returns 304: touches cache, notifies syncing complete.
+   * 5. If server returns 200: updates cache & invokes onData with fresh data.
+   * 6. If network fails: retains cached data and informs onError.
+   */
+  public async getAmenitiesSwr(
+    params: {
+      search?: string;
+      category_id?: string;
+      block_id?: string;
+      is_active?: boolean;
+      page?: number;
+      limit?: number;
+      sort?: string;
+    } = {},
+    options: SwrOptions<AmenityListResponse>
+  ): Promise<void> {
+    const user = this.getUser();
+    const userId = user?.id || 'admin';
+    const cacheKey = amenityCache.buildAmenityListKey(params, userId);
+    const lookup = amenityCache.get<AmenityListResponse>(cacheKey);
+
+    let hasRenderedCache = false;
+
+    // Fast initial render from cache
+    if (lookup.exists && lookup.data) {
+      options.onData(lookup.data, true);
+      hasRenderedCache = true;
+    }
+
+    if (options.onSyncing) options.onSyncing(true);
+
     const query = new URLSearchParams();
     if (params.search) query.set('search', params.search);
     if (params.category_id) query.set('category_id', params.category_id);
@@ -229,43 +364,267 @@ class ApiService {
     if (params.limit) query.set('limit', String(params.limit));
     if (params.sort) query.set('sort', params.sort);
 
-    return this.request<AmenityListResponse>(`/admin/amenities?${query.toString()}`);
+    const endpoint = `/admin/amenities?${query.toString()}`;
+
+    try {
+      await amenityCache.dedupe(cacheKey, async () => {
+        const { data, etag, notModified } = await this.requestWithEtag<AmenityListResponse>(
+          endpoint,
+          lookup.etag,
+          { signal: options.signal }
+        );
+
+        if (options.signal?.aborted) {
+          if (options.onSyncing) options.onSyncing(false);
+          return;
+        }
+
+        if (notModified) {
+          // Server confirmed data has not changed!
+          amenityCache.touch(cacheKey);
+          if (options.onSyncing) options.onSyncing(false);
+          return;
+        }
+
+        if (data) {
+          amenityCache.set(cacheKey, data, etag);
+          options.onData(data, false);
+        }
+        if (options.onSyncing) options.onSyncing(false);
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || options.signal?.aborted) {
+        if (options.onSyncing) options.onSyncing(false);
+        return;
+      }
+      if (options.onSyncing) options.onSyncing(false);
+      if (options.onError) {
+        options.onError(err, hasRenderedCache);
+      } else if (!hasRenderedCache) {
+        throw err;
+      }
+    }
   }
 
-  async getAmenity(id: string): Promise<Amenity> {
-    return this.request<Amenity>(`/admin/amenities/${id}`);
+  /**
+   * Autocomplete search suggestions (giới hạn 5 kết quả, cancelable, LRU memory cached)
+   */
+  async getSearchSuggestions(
+    query: string,
+    type: string = 'amenities',
+    signal?: AbortSignal
+  ): Promise<Array<{ id: string; label: string; code?: string; type?: string; category?: string }>> {
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.length < 2) return [];
+
+    const cacheKey = `${type}:${trimmed.toLowerCase()}`;
+    const cached = suggestionCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < SUGGESTION_TTL) {
+      return cached.data;
+    }
+
+    try {
+      const res = await this.request<{
+        suggestions: Array<{ id: string; label: string; code?: string; type?: string; category?: string }>;
+      }>(`/search/suggestions?q=${encodeURIComponent(trimmed)}&type=${encodeURIComponent(type)}&limit=5`, {
+        signal,
+      });
+      const suggestions = res.suggestions || [];
+      if (suggestionCache.size >= MAX_SUGGESTION_CACHE) {
+        const firstKey = suggestionCache.keys().next().value;
+        if (firstKey) suggestionCache.delete(firstKey);
+      }
+      suggestionCache.set(cacheKey, { data: suggestions, ts: Date.now() });
+      return suggestions;
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || signal?.aborted) return [];
+      return [];
+    }
+  }
+
+  /**
+   * Smart Search for Amenities (Fuzzy, Vietnamese Spell Correction & Relevance Ranking)
+   * GET /api/amenities/search?q=ku%20nghi%20duon
+   */
+  async searchSmartAmenities(
+    query: string,
+    filters: {
+      category_id?: string;
+      block_id?: string;
+      is_active?: boolean;
+      page?: number;
+      limit?: number;
+      sort?: string;
+    } = {},
+    options: { signal?: AbortSignal } = {}
+  ): Promise<{
+    data: Amenity[];
+    query: string;
+    normalized_query: string;
+    corrected_query: string;
+    total: number;
+    search_time_ms: number;
+  }> {
+    const q = new URLSearchParams();
+    q.set('q', query);
+    if (filters.category_id) q.set('category_id', filters.category_id);
+    if (filters.block_id) q.set('block_id', filters.block_id);
+    if (filters.is_active !== undefined) q.set('is_active', String(filters.is_active));
+    if (filters.page) q.set('page', String(filters.page));
+    if (filters.limit) q.set('limit', String(filters.limit));
+    if (filters.sort) q.set('sort', filters.sort);
+
+    return this.request<{
+      data: Amenity[];
+      query: string;
+      normalized_query: string;
+      corrected_query: string;
+      total: number;
+      search_time_ms: number;
+    }>(`/amenities/search?${q.toString()}`, {
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * Regular getAmenities (uses SWR cache behind the scenes if available)
+   */
+  async getAmenities(params: {
+    search?: string;
+    category_id?: string;
+    block_id?: string;
+    is_active?: boolean;
+    page?: number;
+    limit?: number;
+    sort?: string;
+  } = {}): Promise<AmenityListResponse> {
+    const user = this.getUser();
+    const userId = user?.id || 'admin';
+    const cacheKey = amenityCache.buildAmenityListKey(params, userId);
+    const lookup = amenityCache.get<AmenityListResponse>(cacheKey);
+
+    if (lookup.exists && lookup.data && lookup.isFresh) {
+      return lookup.data;
+    }
+
+    const query = new URLSearchParams();
+    if (params.search) query.set('search', params.search);
+    if (params.category_id) query.set('category_id', params.category_id);
+    if (params.block_id) query.set('block_id', params.block_id);
+    if (params.is_active !== undefined) query.set('is_active', String(params.is_active));
+    if (params.page) query.set('page', String(params.page));
+    if (params.limit) query.set('limit', String(params.limit));
+    if (params.sort) query.set('sort', params.sort);
+
+    const { data, etag, notModified } = await this.requestWithEtag<AmenityListResponse>(
+      `/admin/amenities?${query.toString()}`,
+      lookup.etag
+    );
+
+    if (notModified && lookup.data) {
+      amenityCache.touch(cacheKey);
+      return lookup.data;
+    }
+
+    if (data) {
+      amenityCache.set(cacheKey, data, etag);
+      return data;
+    }
+
+    return lookup.data || { items: [], total: 0, page: 1, limit: 10, total_pages: 1 };
+  }
+
+  /**
+   * Prefetch an amenity page into cache silently
+   */
+  public prefetchAmenities(params: {
+    search?: string;
+    category_id?: string;
+    block_id?: string;
+    is_active?: boolean;
+    page?: number;
+    limit?: number;
+    sort?: string;
+  } = {}): void {
+    const user = this.getUser();
+    const userId = user?.id || 'admin';
+    const cacheKey = amenityCache.buildAmenityListKey(params, userId);
+    const lookup = amenityCache.get<AmenityListResponse>(cacheKey);
+
+    if (lookup.exists && lookup.isFresh) {
+      return; // Already fresh in cache
+    }
+
+    // Trigger silent fetch in background
+    this.getAmenities(params).catch(() => {});
+  }
+
+  async getAmenity(id: string, forceRefresh: boolean = false): Promise<Amenity> {
+    const key = `amenity:detail:${id}`;
+    const lookup = amenityCache.get<Amenity>(key);
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.isFresh) {
+      return lookup.data;
+    }
+
+    const item = await this.request<Amenity>(`/admin/amenities/${id}`);
+    amenityCache.set(key, item, null, 2 * 60 * 1000);
+    return item;
   }
 
   async createAmenity(payload: Partial<Amenity>): Promise<Amenity> {
-    return this.request<Amenity>('/admin/amenities', {
+    const result = await this.request<Amenity>('/admin/amenities', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    suggestionCache.clear();
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_CREATED', result.id);
+    return result;
   }
 
   async updateAmenity(id: string, payload: Partial<Amenity>): Promise<Amenity> {
-    return this.request<Amenity>(`/admin/amenities/${id}`, {
+    const result = await this.request<Amenity>(`/admin/amenities/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
+    suggestionCache.clear();
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_UPDATED', id);
+    return result;
   }
 
   async patchAmenityStatus(id: string, is_active: boolean): Promise<Amenity> {
-    return this.request<Amenity>(`/admin/amenities/${id}/status`, {
+    const result = await this.request<Amenity>(`/admin/amenities/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ is_active }),
     });
+    suggestionCache.clear();
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_STATUS_CHANGED', id);
+    return result;
   }
 
   async deleteAmenity(id: string): Promise<void> {
-    return this.request<void>(`/admin/amenities/${id}`, {
+    const result = await this.request<void>(`/admin/amenities/${id}`, {
       method: 'DELETE',
     });
+    suggestionCache.clear();
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_DELETED', id);
+    return result;
   }
 
   // ================= TIME SLOTS =================
   async getTimeSlots(amenityId: string): Promise<TimeSlot[]> {
-    return this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`);
+    const key = `amenity:${amenityId}:slots`;
+    const lookup = amenityCache.get<TimeSlot[]>(key);
+    if (lookup.exists && lookup.data && lookup.isFresh) {
+      return lookup.data;
+    }
+
+    const slots = await this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`);
+    amenityCache.set(key, slots, null, 5 * 60 * 1000);
+    return slots;
   }
 
   async createTimeSlot(
@@ -279,10 +638,14 @@ class ApiService {
       is_active?: boolean;
     }
   ): Promise<TimeSlot> {
-    return this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots`, {
+    const result = await this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    amenityCache.invalidateSlots(amenityId);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_SLOT_UPDATED', amenityId, result.id);
+    return result;
   }
 
   async updateTimeSlot(
@@ -297,28 +660,48 @@ class ApiService {
       is_active?: boolean;
     }
   ): Promise<TimeSlot> {
-    return this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots/${slotId}`, {
+    const result = await this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots/${slotId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
+    amenityCache.invalidateSlots(amenityId);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_SLOT_UPDATED', amenityId, slotId);
+    return result;
   }
 
   async patchTimeSlotStatus(amenityId: string, slotId: string, is_active: boolean): Promise<TimeSlot> {
-    return this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots/${slotId}/status`, {
+    const result = await this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots/${slotId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ is_active }),
     });
+    amenityCache.invalidateSlots(amenityId);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_SLOT_UPDATED', amenityId, slotId);
+    return result;
   }
 
   async deleteTimeSlot(amenityId: string, slotId: string): Promise<void> {
-    return this.request<void>(`/admin/amenities/${amenityId}/time-slots/${slotId}`, {
+    const result = await this.request<void>(`/admin/amenities/${amenityId}/time-slots/${slotId}`, {
       method: 'DELETE',
     });
+    amenityCache.invalidateSlots(amenityId);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_SLOT_UPDATED', amenityId, slotId);
+    return result;
   }
 
   // ================= BLACKOUTS =================
   async getBlackouts(amenityId: string): Promise<Blackout[]> {
-    return this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`);
+    const key = `amenity:${amenityId}:blackouts`;
+    const lookup = amenityCache.get<Blackout[]>(key);
+    if (lookup.exists && lookup.data && lookup.isFresh) {
+      return lookup.data;
+    }
+
+    const blackouts = await this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`);
+    amenityCache.set(key, blackouts, null, 5 * 60 * 1000);
+    return blackouts;
   }
 
   async createBlackout(
@@ -330,10 +713,13 @@ class ApiService {
       reason: string;
     }
   ): Promise<Blackout> {
-    return this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts`, {
+    const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, result.id);
+    return result;
   }
 
   async updateBlackout(
@@ -346,21 +732,99 @@ class ApiService {
       reason: string;
     }
   ): Promise<Blackout> {
-    return this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
+    const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
+    amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
+    return result;
   }
 
   async deleteBlackout(amenityId: string, blackoutId: string): Promise<void> {
-    return this.request<void>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
+    const result = await this.request<void>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
       method: 'DELETE',
     });
+    amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
+    return result;
+  }
+
+  // ================= BOOKINGS =================
+  async getAmenityBookings(amenityId: string, forceRefresh: boolean = false): Promise<AmenityBooking[]> {
+    const key = `amenity:${amenityId}:bookings`;
+    const lookup = amenityCache.get<AmenityBooking[]>(key);
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.isFresh) {
+      return lookup.data;
+    }
+
+    const bookings = await this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`);
+    amenityCache.set(key, bookings, null, 2 * 60 * 1000);
+    return bookings;
+  }
+
+  async patchAmenityBookingStatus(
+    amenityId: string,
+    bookingId: string,
+    status: string,
+    adminNotes?: string
+  ): Promise<AmenityBooking> {
+    const result = await this.request<AmenityBooking>(`/admin/amenities/${amenityId}/bookings/${bookingId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, admin_notes: adminNotes }),
+    });
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId, bookingId);
+    return result;
+  }
+
+  async cancelAmenityBooking(amenityId: string, bookingId: string, reason?: string): Promise<void> {
+    const result = await this.request<void>(`/admin/amenities/${amenityId}/bookings/${bookingId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId, bookingId);
+    return result;
+  }
+
+  async bookAmenity(amenityId: string, payload: any): Promise<AmenityBooking> {
+    const result = await this.request<AmenityBooking>(`/api/v1/amenities/${amenityId}/bookings`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId, result.id);
+    return result;
   }
 
   // ================= META =================
-  async getBlocks(): Promise<BlockOption[]> {
-    return this.request<BlockOption[]>('/meta/blocks');
+  async getBlocks(forceRefresh: boolean = false): Promise<BlockOption[]> {
+    const key = 'amenities:blocks';
+    const cached = amenityCache.get<BlockOption[]>(key);
+
+    if (!forceRefresh && cached.exists && cached.data && cached.isFresh) {
+      return cached.data;
+    }
+
+    return amenityCache.dedupe(key, async () => {
+      try {
+        let blocks: BlockOption[];
+        try {
+          blocks = await this.request<BlockOption[]>('/admin/blocks');
+        } catch {
+          blocks = await this.request<BlockOption[]>('/meta/blocks');
+        }
+        amenityCache.set(key, blocks, null, 15 * 60 * 1000); // 15 mins fresh
+        return blocks;
+      } catch (err) {
+        if (cached.data) return cached.data;
+        throw err;
+      }
+    });
   }
 
   // ================= RESIDENT PORTAL =================
@@ -393,10 +857,12 @@ class ApiService {
     apartment_id?: string;
     user_id?: string;
   }): Promise<any> {
-    return this.request<any>('/resident/amenity-bookings', {
+    const result = await this.request<any>('/resident/amenity-bookings', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    amenityCache.invalidateAmenities();
+    return result;
   }
 
   async createResidentVisitor(payload: {

@@ -89,6 +89,8 @@ const App: React.FC = () => {
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
+      sessionStorage.removeItem('smartcassavas_active_admin_tab');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
     } catch {
       // ignore
     }
@@ -118,6 +120,8 @@ const App: React.FC = () => {
   const handleLogout = () => {
     try {
       localStorage.removeItem('smartcassavas_session');
+      sessionStorage.removeItem('smartcassavas_active_admin_tab');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
     } catch {
       // ignore
     }
@@ -128,7 +132,8 @@ const App: React.FC = () => {
   // 1. Phân hệ Quản Trị Viên (Admin Console - Toàn quyền & Chuyển cổng)
   const isAmenityAdminPath =
     currentPath === '/admin/amenities' ||
-    currentPath === '/admin/tien-ich';
+    currentPath === '/admin/tien-ich' ||
+    currentPath.startsWith('/admin/amenities');
 
   const isAdminPath =
     currentPath === '/admin' ||
@@ -152,6 +157,9 @@ const App: React.FC = () => {
       }
     }
 
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    const tabToUse = isAmenityAdminPath ? 'amenities' : (urlTab || undefined);
+
     return (
       <ManagementHome
         onLogout={handleLogout}
@@ -159,7 +167,7 @@ const App: React.FC = () => {
         userRole="admin"
         userName={currentUser?.role === 'admin' ? currentUser.name : 'Admin Cassavas'}
         userEmail={currentUser?.role === 'admin' ? currentUser.email : 'admin@cassavas.vn'}
-        initialTab={isAmenityAdminPath ? 'amenities' : undefined}
+        initialTab={tabToUse}
       />
     );
   }
@@ -301,5 +309,3 @@ if (rootElement) {
     </React.StrictMode>
   );
 }
-
-

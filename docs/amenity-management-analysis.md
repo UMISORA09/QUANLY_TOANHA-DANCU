@@ -16,7 +16,7 @@
 - **Styling**: `resources/css/app.css` với Tailwind CSS 4, hiệu ứng `glass-auth-card`, `glass-role-card`, animations aurora, gradients cao cấp.
 
 ## 3. Cấu trúc FastAPI Backend (FastAPI Structure)
-- Phân tầng tối giản theo nguyên lý Ponytail:
+- Phân tầng tối giản theo Kiến trúc Tinh gọn (Lightweight Architecture):
   ```text
   backend/
   ├── app/

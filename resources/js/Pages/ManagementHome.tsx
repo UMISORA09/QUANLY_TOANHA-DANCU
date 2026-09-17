@@ -46,6 +46,8 @@ import {
 import { Building3DModel } from '../Components/Building3DModel';
 import { AmenityManagement } from './Admin/AmenityManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
+import { api } from '../Services/api';
+import { amenityCache } from '../Services/amenityCache';
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -107,8 +109,50 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   userEmail = 'admin@cassavas.vn',
   initialTab,
 }) => {
+  // Helper to determine initial active tab:
+  // - Khi mới đăng nhập hoặc khởi động lại trang quản lý (/admin): luôn luôn là 'overview' (Tổng quan)
+  // - Khi người dùng bấm sang mục khác: chuyển và ở yên mục đó cho đến khi out khỏi
+  const resolveInitialTab = (): string => {
+    const path = window.location.pathname;
+
+    // 1. Kiểm tra URL path trực tiếp tới tiện ích
+    if (path === '/admin/amenities' || path === '/admin/tien-ich' || path.startsWith('/admin/amenities')) {
+      return 'amenities';
+    }
+
+    // 2. Kiểm tra URL query param: ?tab=xxx
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam) {
+      return tabParam;
+    }
+
+    // 3. Prop initialTab được truyền từ component cha (nếu có giá trị cụ thể khác overview)
+    if (initialTab && initialTab !== 'overview') {
+      return initialTab;
+    }
+
+    // 4. Khi vào route quản trị gốc (/admin, /dashboard, /quan-ly, /manager) mà không có tab query:
+    // MẶC ĐỊNH LUÔN LUÔN LÀ 'overview' (Tổng quan) khi mới đăng nhập hoặc khởi động lại trang quản lý.
+    if (path === '/admin' || path === '/dashboard' || path === '/quan-ly' || path === '/manager') {
+      return 'overview';
+    }
+
+    // 5. Trong cùng một phiên làm việc (session), kiểm tra sessionStorage nếu người dùng reload F5
+    try {
+      const savedTab = sessionStorage.getItem('smartcassavas_active_admin_tab');
+      if (savedTab) {
+        return savedTab;
+      }
+    } catch {
+      // ignore
+    }
+
+    return 'overview';
+  };
+
   // Navigation & Interactive states
-  const [activeMenuId, setActiveMenuId] = useState<string>(initialTab || 'overview');
+  const [activeMenuId, setActiveMenuId] = useState<string>(resolveInitialTab);
   const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
   const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
@@ -192,41 +236,86 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Tự động tải trước (Prefetch) danh mục Tiện ích ở background SAU KHI trang chính đã render mượt mà
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      api.prefetchAmenities({ page: 1, limit: 10, sort: 'created_at_desc' });
+      api.getCategories().catch(() => {});
+      api.getBlocks().catch(() => {});
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Đọc snapshot lưu trong sessionStorage để hiển thị tức thì (0ms) khi tải trang
+  const getCachedDashboard = () => {
+    try {
+      const raw = sessionStorage.getItem('smartcassavas_dashboard_cache');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const cachedDash = getCachedDashboard();
+
   // KPI Summary State from Database
-  const [kpis, setKpis] = useState({
-    totalResidents: '1,248',
-    residentsGrowth: '+8 người trong tháng này',
-    unpaidInvoices: 86,
-    unpaidInvoicesPercent: '14.3% tổng hóa đơn',
-    activeTickets: 24,
-    overdueTickets: '8 ticket quá hạn',
-    amenityBookings: 32,
-    amenityFreeSlots: '8 khung giờ còn trống',
+  const [kpis, setKpis] = useState(() => {
+    if (cachedDash?.kpis) {
+      return {
+        totalResidents: Number(cachedDash.kpis.totalResidents).toLocaleString('vi-VN'),
+        residentsGrowth: cachedDash.kpis.residentsGrowth || '+8 người trong tháng này',
+        unpaidInvoices: cachedDash.kpis.unpaidInvoices ?? 86,
+        unpaidInvoicesPercent: cachedDash.kpis.unpaidInvoicesPercent || '12.4% tổng hóa đơn',
+        activeTickets: cachedDash.kpis.activeTickets ?? 24,
+        overdueTickets: cachedDash.kpis.overdueTickets || '8 ticket quá hạn',
+        amenityBookings: cachedDash.kpis.amenityBookings ?? 32,
+        amenityFreeSlots: cachedDash.kpis.amenityFreeSlots || '8 khung giờ còn trống',
+      };
+    }
+    return {
+      totalResidents: '1,248',
+      residentsGrowth: '+8 người trong tháng này',
+      unpaidInvoices: 86,
+      unpaidInvoicesPercent: '14.3% tổng hóa đơn',
+      activeTickets: 24,
+      overdueTickets: '8 ticket quá hạn',
+      amenityBookings: 32,
+      amenityFreeSlots: '8 khung giờ còn trống',
+    };
   });
 
   // Revenue Bar Chart Data from Database (6 months: T3 to T8)
-  const [revenueData, setRevenueData] = useState<RevenueItem[]>([
-    { month: 'T3', period: '2026-03', revenue: 1150, collection: 1012, debt: 138, target: 1100, label: '1.15 tỷ', targetAchievedPercent: 104.5 },
-    { month: 'T4', period: '2026-04', revenue: 1220, collection: 1147, debt: 73, target: 1200, label: '1.22 tỷ', targetAchievedPercent: 101.7 },
-    { month: 'T5', period: '2026-05', revenue: 1280, collection: 1101, debt: 179, target: 1250, label: '1.28 tỷ', targetAchievedPercent: 102.4 },
-    { month: 'T6', period: '2026-06', revenue: 1340, collection: 1206, debt: 134, target: 1300, label: '1.34 tỷ', targetAchievedPercent: 103.1 },
-    { month: 'T7', period: '2026-07', revenue: 1390, collection: 1168, debt: 222, target: 1350, label: '1.39 tỷ', targetAchievedPercent: 103 },
-    { month: 'T8', period: '2026-08', revenue: 1480, collection: 1066, debt: 414, target: 1400, label: '1.48 tỷ', targetAchievedPercent: 105.7 },
-  ]);
+  const [revenueData, setRevenueData] = useState<RevenueItem[]>(() => {
+    if (cachedDash?.revenueData?.length) {
+      return cachedDash.revenueData;
+    }
+    return [
+      { month: 'T3', period: '2026-03', revenue: 1150, collection: 1012, debt: 138, target: 1100, label: '1.15 tỷ', targetAchievedPercent: 104.5 },
+      { month: 'T4', period: '2026-04', revenue: 1220, collection: 1147, debt: 73, target: 1200, label: '1.22 tỷ', targetAchievedPercent: 101.7 },
+      { month: 'T5', period: '2026-05', revenue: 1280, collection: 1101, debt: 179, target: 1250, label: '1.28 tỷ', targetAchievedPercent: 102.4 },
+      { month: 'T6', period: '2026-06', revenue: 1340, collection: 1206, debt: 134, target: 1300, label: '1.34 tỷ', targetAchievedPercent: 103.1 },
+      { month: 'T7', period: '2026-07', revenue: 1390, collection: 1168, debt: 222, target: 1350, label: '1.39 tỷ', targetAchievedPercent: 103 },
+      { month: 'T8', period: '2026-08', revenue: 1480, collection: 1066, debt: 414, target: 1400, label: '1.48 tỷ', targetAchievedPercent: 105.7 },
+    ];
+  });
 
   // Revenue Summary from Database
-  const [revenueSummary, setRevenueSummary] = useState<RevenueSummary>({
-    totalRevenueBillion: '7.86 Tỷ VNĐ',
-    collectionRate: '85.2%',
-    latestMonthLabel: 'Chỉ tiêu tháng 8',
-    latestTargetAchieved: '105.7% Đạt',
-    growthYoY: '+28.7%',
-    growthNote: 'Tổng thu thực tế trong 6 tháng gần nhất từ Database',
+  const [revenueSummary, setRevenueSummary] = useState<RevenueSummary>(() => {
+    if (cachedDash?.revenueSummary) {
+      return cachedDash.revenueSummary;
+    }
+    return {
+      totalRevenueBillion: '7.86 Tỷ VNĐ',
+      collectionRate: '85.2%',
+      latestMonthLabel: 'Chỉ tiêu tháng 8',
+      latestTargetAchieved: '105.7% Đạt',
+      growthYoY: '+28.7%',
+      growthNote: 'Tổng thu thực tế trong 6 tháng gần nhất từ Database',
+    };
   });
 
   // Notifications state
@@ -417,6 +506,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         if (data.notifications?.length) {
           setNotifications(data.notifications);
         }
+        try {
+          sessionStorage.setItem('smartcassavas_dashboard_cache', JSON.stringify(data));
+        } catch {
+          // ignore
+        }
         if (isManualRefresh) {
           showToast('Đồng bộ dữ liệu từ Database Docker thành công!');
         }
@@ -430,9 +524,57 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     fetchDashboardData();
   }, []);
 
+  // Lắng nghe sự kiện đồng bộ từ module Tiện ích để làm mới số liệu Dashboard
+  useEffect(() => {
+    const unsubscribe = amenityCache.subscribe((event) => {
+      if (
+        ['AMENITY_BOOKING_CHANGED', 'AMENITY_CREATED', 'AMENITY_DELETED'].includes(
+          event.type
+        )
+      ) {
+        fetchDashboardData();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (initialTab && initialTab !== activeMenuId) {
+      setActiveMenuId(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveMenuId(resolveInitialTab());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const handleMenuClick = (id: string) => {
     setActiveMenuId(id);
     setMobileSidebarOpen(false);
+
+    // Lưu vào sessionStorage để trong phiên làm việc (ở yên chỗ đó khi chuyển đổi/F5)
+    // Khi khởi động lại hoặc đăng xuất (out khỏi) sẽ tự động quay về Tổng quan
+    try {
+      sessionStorage.setItem('smartcassavas_active_admin_tab', id);
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+    } catch {
+      // ignore
+    }
+
+    // Cập nhật URL trên thanh địa chỉ (Deep Linking & History API)
+    if (id === 'amenities') {
+      window.history.pushState({ tab: id }, '', '/admin/amenities');
+    } else if (id === 'overview') {
+      window.history.pushState({ tab: id }, '', '/admin');
+    } else {
+      window.history.pushState({ tab: id }, '', `/admin?tab=${id}`);
+    }
     if (id === 'buildings') {
       setIs3DModelOpen(true);
     } else if (id !== 'overview') {

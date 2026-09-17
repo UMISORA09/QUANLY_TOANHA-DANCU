@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             ManagementDashboardSeeder::class,
             ResidentPortalSeeder::class,
             ReceptionPortalSeeder::class,
+            AmenitySeeder::class,
         ]);
     }
 }
