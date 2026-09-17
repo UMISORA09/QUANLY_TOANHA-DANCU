@@ -50,7 +50,7 @@ export interface ReceptionHomeProps {
 interface MenuItem {
   id: string;
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string }> | React.ElementType;
   badge?: string;
 }
 
@@ -64,9 +64,12 @@ interface ActivityItem {
 interface NotificationItem {
   id: string;
   title: string;
-  message: string;
-  timeAgo: string;
-  category: 'GUEST' | 'PARCEL' | 'SECURITY' | string;
+  message?: string;
+  desc?: string;
+  time?: string;
+  timeAgo?: string;
+  category?: 'GUEST' | 'PARCEL' | 'SECURITY' | string;
+  isRead?: boolean;
 }
 
 export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
@@ -461,9 +464,9 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
               >
                 <div className="flex items-center justify-between text-[11px] text-slate-400">
                   <span className="font-semibold text-neutral-800">{notif.title}</span>
-                  <span>{notif.time}</span>
+                  <span>{notif.time || notif.timeAgo || 'Vừa xong'}</span>
                 </div>
-                <p className="text-xs text-slate-600 mt-0.5">{notif.desc}</p>
+                <p className="text-xs text-slate-600 mt-0.5">{notif.desc || notif.message || ''}</p>
               </div>
             ))}
           </div>

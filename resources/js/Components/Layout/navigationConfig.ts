@@ -40,7 +40,7 @@ export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin';
 export interface NavigationItem {
   id: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string }> | React.ElementType;
   badge?: string | number | null;
   badgeType?: 'danger' | 'warning' | 'info' | 'neutral' | 'success';
   href?: string;
