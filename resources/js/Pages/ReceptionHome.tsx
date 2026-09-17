@@ -20,7 +20,6 @@ import {
   X,
   ArrowLeft,
   CheckCircle2,
-  PanelLeft,
   Maximize2,
   Minimize2,
   ZoomIn,
@@ -37,6 +36,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
+import { AppLayout } from '../Components/Layout/AppLayout';
 
 export interface ReceptionHomeProps {
   onLogout?: () => void;
@@ -360,523 +360,147 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
   };
 
   return (
-    <div
-      onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
-      className="h-screen w-full bg-[#F8FAFC] text-[#0F172A] font-['Plus_Jakarta_Sans',sans-serif] relative flex overflow-hidden"
-    >
-
-      {/* ========================================================
-          BACKGROUND AMBIANCE (ULTRA GLASS & SPOTLIGHT)
-          ======================================================== */}
-      {/* Dynamic Mouse Following Spotlight */}
-      <div
-        className="pointer-events-none fixed inset-0 z-0 transition-opacity duration-500 opacity-60 hidden lg:block"
-        style={{
-          background: `radial-gradient(750px circle at ${mousePos.x}px ${mousePos.y}px, rgba(56, 189, 248, 0.08), transparent 80%)`,
-        }}
-      />
-
-      {/* Atmospheric Floating Gradient Orbs */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className="absolute -top-32 -left-32 w-[550px] h-[550px] bg-gradient-to-br from-blue-200/40 via-sky-100/30 to-transparent rounded-full blur-3xl animate-float-orb opacity-75" />
-        <div className="absolute top-1/3 -right-36 w-[600px] h-[600px] bg-gradient-to-bl from-indigo-200/35 via-slate-100/40 to-transparent rounded-full blur-3xl animate-float-orb-reverse opacity-70" />
-        <div className="absolute bottom-10 left-1/4 w-[500px] h-[500px] bg-gradient-to-t from-emerald-100/35 via-sky-50/25 to-transparent rounded-full blur-3xl animate-cloud-float opacity-60" />
-
-        {/* Subtle dot matrix grid */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: 'radial-gradient(#000000 1px, transparent 1px)',
-            backgroundSize: '24px 24px',
-          }}
-        />
-      </div>
-
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-[100000] flex items-center gap-2.5 px-4 py-3 bg-neutral-900/95 backdrop-blur-2xl text-white text-xs font-medium rounded-2xl shadow-2xl border border-white/20 animate-in fade-in slide-in-from-bottom-3 duration-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Mobile Sidebar Backdrop */}
-      {mobileSidebarOpen && (
-        <div
-          onClick={() => setMobileSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs md:hidden transition-opacity"
-        />
-      )}
-
-      {/* ========================================================
-          LEFT SIDEBAR (ULTRA GLASSMORPHISM, COLLAPSIBLE & ZOOM)
-          ======================================================== */}
-      <aside
-        className={`fixed md:relative top-0 left-0 z-50 h-screen shrink-0 bg-white/80 backdrop-blur-2xl border-r border-white/60 shadow-2xl md:shadow-xs flex flex-col justify-between transition-all duration-300 ease-in-out glass-specular-edge overflow-x-hidden ${
-          isSidebarCollapsed ? 'w-20' : 'w-72'
-        } ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
-      >
-        {/* Top Brand Header */}
-        <div className={`p-4 border-b border-slate-200/60 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-          <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} min-w-0`}>
-            <div
-              onClick={isSidebarCollapsed ? toggleSidebarCollapse : undefined}
-              className={`relative group shrink-0 ${isSidebarCollapsed ? 'cursor-pointer' : ''}`}
-              title={isSidebarCollapsed ? 'Bấm để mở rộng menu sidebar' : undefined}
-            >
-              <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center text-white shadow-md shadow-neutral-900/20 group-hover:scale-105 transition-all duration-300 cursor-pointer">
-                <Building2 className="w-5 h-5 text-sky-400 group-hover:rotate-6 transition-transform" />
-              </div>
-              <div className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-sky-400 to-indigo-500 opacity-0 group-hover:opacity-30 blur-xs transition-opacity -z-10" />
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="min-w-0 transition-opacity duration-200">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-sm tracking-wider text-neutral-900 font-mono truncate">
-                    SMART CASSAVAS
-                  </span>
-                </div>
-                <span className="text-[10px] tracking-widest font-semibold uppercase text-sky-600 block truncate">
-                  LỄ TÂN & BẢO VỆ
-                </span>
-              </div>
-            )}
-          </div>
-          {!isSidebarCollapsed && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={toggleSidebarCollapse}
-                className="hidden md:flex p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                title="Thu gọn sidebar (w-20)"
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setMobileSidebarOpen(false)}
-                className="md:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Section Header */}
-        <div className={`px-4 pt-4 pb-2 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
-          {isSidebarCollapsed ? (
-            <div className="w-8 h-1 rounded-full bg-slate-200 flex items-center justify-center relative">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase font-mono truncate">
-                KHÔNG GIAN LỄ TÂN
-              </span>
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Scrollable Navigation Menu with Custom Scrollbar */}
-        <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden group/nav">
-          <nav
-            onScroll={() => setHoveredTooltip(null)}
-            className={`flex-1 overflow-y-auto overflow-x-hidden ${isSidebarCollapsed ? 'px-2' : 'pl-3 pr-2'} py-2 pb-8 space-y-1 custom-scrollbar`}
-          >
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeMenuId === item.id;
-              return (
-                <div key={item.id} className="relative group">
-                  <button
-                    onClick={() => {
-                      setHoveredTooltip(null);
-                      handleMenuClick(item.id);
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isSidebarCollapsed) {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setHoveredTooltip({
-                          label: item.label,
-                          badge: item.badge,
-                          top: rect.top + rect.height / 2,
-                        });
-                      }
-                    }}
-                    onMouseLeave={() => setHoveredTooltip(null)}
-                    className={`w-full flex items-center ${
-                      isSidebarCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2.5'
-                    } rounded-xl text-xs font-medium transition-all duration-200 relative cursor-pointer ${
-                      isActive
-                        ? 'bg-neutral-900 text-white shadow-md shadow-neutral-900/15'
-                        : 'text-slate-600 hover:text-neutral-900 hover:bg-white/90 hover:shadow-xs'
-                    }`}
-                  >
-                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} min-w-0`}>
-                      <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${
-                          isActive
-                            ? 'bg-neutral-800 text-sky-400'
-                            : 'bg-slate-100/80 text-slate-500 group-hover:text-sky-600 group-hover:bg-sky-50 group-hover:scale-110'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4 transition-transform group-hover:scale-110" />
-                      </div>
-                      {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
-                    </div>
-
-                    {!isSidebarCollapsed && item.badge && (
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-semibold transition-all shrink-0 ${
-                          isActive
-                            ? 'bg-neutral-800 text-sky-300'
-                            : item.badge.includes('18') || item.badge.includes('42')
-                            ? 'bg-sky-50 text-sky-700 border border-sky-200/60'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-
-                    {isActive && !isSidebarCollapsed && (
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-l-full bg-sky-400" />
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </nav>
-
-          {/* Bottom Gradient Fade & Peek Indicator */}
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-9 bg-gradient-to-t from-white/95 via-white/50 to-transparent flex items-end justify-center pb-1">
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 animate-bounce" />
-          </div>
-        </div>
-
-        {/* Bottom User Profile Section */}
-        <div className={`p-3 border-t border-slate-200/60 bg-white/60 backdrop-blur-md ${isSidebarCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
-          {isSidebarCollapsed ? (
-            <div
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setHoveredTooltip({
-                  label: `${userName} · ${userEmail}`,
-                  top: rect.top + rect.height / 2,
-                });
-              }}
-              onMouseLeave={() => setHoveredTooltip(null)}
-              className="relative group cursor-pointer"
-            >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-xs hover:scale-105 transition-transform">
-                AD
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
-            </div>
-          ) : (
-            <div className="flex items-center justify-between p-2 rounded-xl hover:bg-white/80 transition-colors border border-transparent hover:border-slate-200/60 group">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="relative shrink-0">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-xs">
-                    AD
-                  </div>
-                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-neutral-900 truncate flex items-center gap-1">
-                    {userName}
-                  </div>
-                  <div className="text-[11px] text-slate-400 truncate">{userEmail}</div>
-                </div>
-              </div>
-              <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform" />
-            </div>
-          )}
-
+    <AppLayout
+      role="receptionist"
+      userRole={userRole as any}
+      activeItemId={activeMenuId}
+      onItemClick={handleMenuClick}
+      customItems={menuItems}
+      userName={userName}
+      userEmail={userEmail}
+      onLogout={onLogout}
+      onNavigateHome={onNavigateHome}
+      statusText="Ca trực an ninh hoạt động"
+      onNotificationClick={() => setIsNotificationOpen(!isNotificationOpen)}
+      onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
+      unreadNotificationCount={notifications.filter((n) => !n.isRead).length}
+      extraTopbarActions={
+        <>
+          {/* Nút Làm mới Database */}
           <button
-            onClick={() => {
-              setHoveredTooltip(null);
-              if (onLogout) {
-                onLogout();
-              } else if (onNavigateHome) {
-                onNavigateHome();
-              } else {
-                window.location.href = '/home';
-              }
-            }}
-            onMouseEnter={(e) => {
-              if (isSidebarCollapsed) {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setHoveredTooltip({
-                  label: 'Đăng xuất tài khoản',
-                  top: rect.top + rect.height / 2,
-                });
-              }
-            }}
-            onMouseLeave={() => setHoveredTooltip(null)}
-            className={`${
-              isSidebarCollapsed
-                ? 'w-10 h-10 p-0 flex items-center justify-center'
-                : 'w-full mt-2 flex items-center justify-center gap-2 px-3 py-2'
-            } rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50/80 border border-rose-100 transition-all duration-200 group relative cursor-pointer`}
+            type="button"
+            onClick={() => fetchReceptionData(true)}
+            className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-500 hover:text-sky-600 border border-slate-200/70 shadow-xs hover:shadow-sm transition-all cursor-pointer group"
+            title="Đồng bộ dữ liệu Database"
           >
-            <LogOut className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-            {!isSidebarCollapsed && <span>Đăng xuất</span>}
+            <RefreshCw
+              className={`w-4 h-4 ${
+                isLoading
+                  ? 'animate-spin text-sky-600'
+                  : 'group-hover:rotate-180 transition-transform duration-500'
+              }`}
+            />
           </button>
-        </div>
-      </aside>
 
-      {/* ================= FLOATING TOOLTIP FOR COLLAPSED SIDEBAR (FIXED POSITION - NO OVERFLOW) ================= */}
-      {isSidebarCollapsed && hoveredTooltip && (
-        <div
-          style={{
-            top: `${hoveredTooltip.top}px`,
-            left: '84px',
-          }}
-          className="fixed -translate-y-1/2 z-[70] px-3.5 py-2 rounded-xl bg-neutral-950/95 text-white text-xs font-bold shadow-2xl backdrop-blur-xl border border-white/20 pointer-events-none flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-black/40"
-        >
-          <span className="tracking-wide">{hoveredTooltip.label}</span>
-          {hoveredTooltip.badge && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sky-500/25 text-sky-300 font-extrabold border border-sky-400/40">
-              {hoveredTooltip.badge}
-            </span>
-          )}
-          {/* Subtle pointer arrow */}
-          <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-neutral-950 rotate-45 border-l border-b border-white/20" />
+          {/* Bộ điều khiển Thu phóng giao diện (UI Zoom Control) - Ẩn trên mobile để chống tràn thanh tiêu đề */}
+          <div className="hidden md:flex items-center bg-slate-100/90 hover:bg-slate-100 border border-slate-200/80 rounded-xl p-0.5 shadow-xs transition-all">
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              disabled={zoomLevel <= 80}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
+              title="Thu nhỏ giao diện (Ctrl -)"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleResetZoom}
+              className="px-2 py-0.5 text-xs font-semibold text-slate-700 hover:text-sky-600 rounded-md hover:bg-white transition-all cursor-pointer select-none"
+              title="Tỉ lệ hiện tại - Bấm để đặt lại chuẩn 100% (Ctrl 0)"
+            >
+              {zoomLevel}%
+            </button>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              disabled={zoomLevel >= 120}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
+              title="Phóng to giao diện (Ctrl +)"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Quick 3D Building Toggle */}
+          <button
+            type="button"
+            onClick={() => setIs3DModelOpen(true)}
+            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-sky-700 border border-sky-100 shadow-xs hover:shadow-sm transition-all cursor-pointer"
+            title="Xem mô hình 3D tòa nhà"
+          >
+            <Layers className="w-3.5 h-3.5 text-sky-500 animate-pulse-subtle" />
+            <span>Mô hình 3D</span>
+          </button>
+        </>
+      }
+    >
+      {/* Notifications Popover */}
+      {isNotificationOpen && (
+        <div className="fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-left">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-xs text-neutral-900">Thông báo ca trực</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-semibold">
+                {notifications.filter((n) => !n.isRead).length} mới
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsNotificationOpen(false)}
+              className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-1"
+            >
+              Đóng
+            </button>
+          </div>
+          <div className="mt-2 space-y-2 max-h-[260px] overflow-y-auto custom-scrollbar pr-1">
+            {notifications.map((notif) => (
+              <div
+                key={notif.id}
+                className="p-2.5 rounded-xl bg-slate-50/90 hover:bg-slate-100/90 transition-colors border border-slate-100 text-left"
+              >
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="font-semibold text-neutral-800">{notif.title}</span>
+                  <span>{notif.time}</span>
+                </div>
+                <p className="text-xs text-slate-600 mt-0.5">{notif.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ========================================================
-          MAIN CONTENT AREA & TOPBAR
-          ======================================================== */}
-      <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden transition-all duration-300 ease-in-out">
-        {/* ================= TOPBAR (GLASS & ANIMATIONS - CỐ ĐỊNH NHƯ HOME QUẢN LÝ) ================= */}
-        <header className="shrink-0 z-30 bg-white/85 backdrop-blur-xl border-b border-white/60 shadow-xs glass-specular-edge transition-all duration-300">
-          <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 h-18 flex items-center justify-between gap-4 transition-all duration-300">
-            {/* Left: Single Toggle Button for Sidebar & Date/Greeting */}
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={handleToggleSidebar}
-                className="p-2 rounded-xl bg-white/80 hover:bg-white border border-slate-200/80 text-slate-600 hover:text-sky-600 shadow-xs hover:shadow-sm transition-all flex items-center justify-center cursor-pointer group"
-                title={isSidebarCollapsed ? 'Mở rộng thanh menu (Sidebar)' : 'Thu gọn thanh menu (Sidebar)'}
-              >
-                <PanelLeft
-                  className={`w-4 h-4 transition-transform duration-200 ${
-                    isSidebarCollapsed ? 'text-sky-600 rotate-180' : 'group-hover:scale-105'
-                  }`}
-                />
-              </button>
-
-              <div>
-                <div className="text-[11px] font-medium text-slate-400 flex items-center gap-2">
-                  <span>{currentTime || 'Thứ Hai, 08 tháng 09, 2026'}</span>
-                  <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-slate-300" />
-                  <span className="hidden sm:inline-flex items-center gap-1 text-emerald-600 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Ca trực an ninh hoạt động
-                  </span>
-                </div>
-                <div className="text-base font-bold text-neutral-900 flex items-center gap-1.5">
-                  <span>Xin chào, Admin</span>
-                  <span className="inline-block origin-[70%_70%] hover:animate-bounce cursor-default">👋</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Actions matching ManagementHome Topbar */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              {/* Nút Làm mới Database */}
-              <button
-                onClick={() => fetchReceptionData(true)}
-                className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-500 hover:text-sky-600 border border-slate-200/70 shadow-xs hover:shadow-sm transition-all cursor-pointer group"
-                title="Đồng bộ dữ liệu Database"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-600' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-              </button>
-
-              {/* Bộ điều khiển Thu phóng giao diện (UI Zoom Control) */}
-              <div className="flex items-center bg-slate-100/90 hover:bg-slate-100 border border-slate-200/80 rounded-xl p-0.5 shadow-xs transition-all">
-                <button
-                  type="button"
-                  onClick={handleZoomOut}
-                  disabled={zoomLevel <= 80}
-                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
-                  title="Thu nhỏ giao diện (Ctrl -)"
-                >
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetZoom}
-                  className="px-2 py-0.5 text-xs font-semibold text-slate-700 hover:text-sky-600 rounded-md hover:bg-white transition-all cursor-pointer select-none"
-                  title="Tỉ lệ hiện tại - Bấm để đặt lại chuẩn 100% (Ctrl 0)"
-                >
-                  {zoomLevel}%
-                </button>
-                <button
-                  type="button"
-                  onClick={handleZoomIn}
-                  disabled={zoomLevel >= 130}
-                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
-                  title="Phóng to giao diện (Ctrl +)"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Nút Toàn màn hình (Fullscreen / Kiosk) */}
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className={`p-2 rounded-xl border shadow-xs hover:shadow-sm transition-all relative group cursor-pointer ${
-                  isFullscreen
-                    ? 'bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100 ring-2 ring-sky-400/30'
-                    : 'bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 border-slate-200/70'
-                }`}
-                title={isFullscreen ? 'Thoát toàn màn hình (Esc)' : 'Toàn màn hình / Chế độ Kiosk (F11)'}
-              >
-                {isFullscreen ? (
-                  <Minimize2 className="w-4 h-4 text-sky-600 animate-in zoom-in-75 duration-150" />
-                ) : (
-                  <Maximize2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                )}
-              </button>
-
-              {/* Quick 3D Building Toggle */}
-              <button
-                onClick={() => setIs3DModelOpen(true)}
-                className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-sky-700 border border-sky-100 shadow-xs hover:shadow-sm transition-all cursor-pointer"
-                title="Xem mô hình 3D tòa nhà"
-              >
-                <Layers className="w-3.5 h-3.5 text-sky-500 animate-pulse-subtle" />
-                <span>Mô hình 3D</span>
-              </button>
-
-              {/* System Health Status */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50/80 border border-emerald-200/60 text-emerald-700 text-xs font-medium">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </span>
-                <span>99.98% Ổn định</span>
-              </div>
-
-              {/* Help Button */}
-              <div className="relative">
-                <button
-                  onClick={() => setIsHelpOpen(!isHelpOpen)}
-                  className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 border border-slate-200/70 shadow-xs transition-all relative cursor-pointer"
-                  title="Trợ giúp nghiệp vụ lễ tân"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                </button>
-
-                {isHelpOpen && (
-                  <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-left">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                      <span className="font-bold text-xs text-neutral-900">Trợ giúp Lễ tân</span>
-                      <button onClick={() => setIsHelpOpen(false)} className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer">
-                        Đóng
-                      </button>
-                    </div>
-                    <div className="mt-2 space-y-2 text-xs text-slate-600">
-                      <p>• <strong>Check-in khách:</strong> Tiếp nhận thông tin khách và phát thẻ thang máy tạm.</p>
-                      <p>• <strong>Bưu phẩm:</strong> Quét mã kiện hàng và xếp vào tủ đồ thông minh.</p>
-                      <p>• <strong>Đăng ký xe:</strong> Phê duyệt cà vẹt xe và cấp thẻ gửi xe tháng.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Notification Bell with Dropdown Panel */}
-              <div className="relative">
-                <button
-                  onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                  className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 border border-slate-200/70 shadow-xs transition-all relative group cursor-pointer"
-                  title="Thông báo ca trực"
-                >
-                  <Bell className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
-                </button>
-
-                {isNotificationOpen && (
-                  <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-neutral-900">Thông báo ca trực</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-semibold">
-                          {notifications.length} mới
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setIsNotificationOpen(false)}
-                        className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
-                      >
-                        Đóng
-                      </button>
-                    </div>
-
-                    <div className="relative mt-2">
-                      <div className="space-y-2 max-h-[240px] overflow-y-auto custom-scrollbar pr-1 pb-6">
-                        {notifications.map((notif) => {
-                          const isSec = notif.category === 'SECURITY';
-                          const isGuest = notif.category === 'GUEST';
-                          const badgeColor = isSec ? 'text-rose-600' : isGuest ? 'text-sky-600' : 'text-emerald-600';
-
-                          return (
-                            <div
-                              key={notif.id}
-                              className="p-2.5 rounded-xl bg-slate-50/90 hover:bg-slate-100/90 transition-colors border border-slate-100 text-left"
-                            >
-                              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                                <span className={`font-semibold ${badgeColor}`}>{notif.title}</span>
-                                <span>{notif.timeAgo}</span>
-                              </div>
-                              <p className="text-xs text-slate-700 mt-0.5">{notif.message}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Bottom Gradient Fade in Notification */}
-                      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white via-white/85 to-transparent rounded-b-2xl flex items-end justify-center pb-1">
-                        <div className="flex items-center gap-1 text-[10px] text-slate-500 font-medium bg-white/90 backdrop-blur-xs px-2.5 py-0.5 rounded-full shadow-xs border border-slate-200/60">
-                          <span>Còn nội dung ở dưới</span>
-                          <ChevronDown className="w-2.5 h-2.5 text-sky-500 animate-bounce" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-
-              {/* Back to Public Home Page */}
-              <button
-                onClick={() => {
-                  if (onNavigateHome) {
-                    onNavigateHome();
-                  } else {
-                    window.history.pushState({}, '', '/home');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }
-                }}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
-                title="Về trang chủ"
-              >
-                <HomeIcon className="w-3.5 h-3.5" />
-                <span>Trang chủ</span>
-              </button>
-            </div>
+      {/* Help Popover */}
+      {isHelpOpen && (
+        <div className="fixed top-20 right-4 sm:right-14 w-72 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-left">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <span className="font-bold text-xs text-neutral-900">Trợ giúp Lễ tân</span>
+            <button
+              type="button"
+              onClick={() => setIsHelpOpen(false)}
+              className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-1"
+            >
+              Đóng
+            </button>
           </div>
-        </header>
+          <div className="mt-2 space-y-2 text-xs text-slate-600">
+            <p>• <strong>Check-in khách:</strong> Tiếp nhận thông tin khách và phát thẻ thang máy tạm.</p>
+            <p>• <strong>Bưu phẩm:</strong> Quét mã kiện hàng và xếp vào tủ đồ thông minh.</p>
+            <p>• <strong>Đăng ký xe:</strong> Phê duyệt cà vẹt xe và cấp thẻ gửi xe tháng.</p>
+          </div>
+        </div>
+      )}
 
-        {/* ================= BODY CONTENT (CUỘN ĐỘC LẬP VỚI CUSTOM SCROLLBAR) ================= */}
-        <main className="flex-1 overflow-y-auto w-full custom-scrollbar transition-all duration-300 ease-in-out p-4 sm:p-6 lg:p-8 xl:p-10">
-          <div className="w-full max-w-7xl mx-auto space-y-6">
+      {/* Zoomable Container */}
+      <div
+        style={{
+          transform: `scale(${zoomLevel / 100})`,
+          transformOrigin: 'top left',
+          width: `${(100 / zoomLevel) * 100}%`,
+        }}
+        className="transition-transform duration-200 p-4 sm:p-6 lg:p-8 xl:p-10"
+      >
+        <div className="w-full max-w-7xl mx-auto space-y-6">
             {/* Section Breadcrumb Tag */}
             <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
               <Building2 className="w-3.5 h-3.5 text-sky-500" />
@@ -1089,8 +713,7 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
               </div>
             </div>
           </div>
-        </main>
-      </div>
+        </div>
 
       {/* ========================================================
           MODAL: MÔ HÌNH 3D TÒA NHÀ (INTERACTIVE 3D VIEWER)
@@ -1122,7 +745,7 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </AppLayout>
   );
 };
 

@@ -42,34 +42,50 @@ const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (role: string, email: string) => {
-    const isResident = role === 'resident' || role.toLowerCase().includes('resident');
+    const isAdmin =
+      role === 'admin' ||
+      role.toLowerCase() === 'admin' ||
+      role.toLowerCase() === 'super_admin';
+    const isManager =
+      role === 'manager' ||
+      role.toLowerCase() === 'manager' ||
+      role.toLowerCase() === 'building_manager';
     const isReceptionist =
       role === 'receptionist' ||
       role.toLowerCase().includes('receptionist') ||
       role.toLowerCase().includes('letan') ||
       role.toLowerCase().includes('lễ tân');
+    const isResident =
+      role === 'resident' ||
+      role.toLowerCase().includes('resident');
+
+    const normalizedRole = isAdmin
+      ? 'admin'
+      : isManager
+      ? 'manager'
+      : isReceptionist
+      ? 'receptionist'
+      : 'resident';
 
     const session: UserSession = {
-      role: isReceptionist ? 'receptionist' : isResident ? 'resident' : role,
+      role: normalizedRole,
       email:
         email ||
-        (role === 'admin'
+        (isAdmin
           ? 'admin@cassavas.vn'
+          : isManager
+          ? 'quanly@cassavas.vn'
           : isReceptionist
-          ? 'admin@cassavas.vn'
-          : isResident
-          ? 'nguyenvanan@cassavas.vn'
-          : 'quanly@cassavas.vn'),
+          ? 'letan@cassavas.vn'
+          : 'nguyenvanan@cassavas.vn'),
       name:
-        role === 'admin'
+        isAdmin
           ? 'Admin Cassavas'
-          : isReceptionist
-          ? 'Admin Cassavas'
-          : isResident
-          ? 'Nguyễn Văn An'
-          : role === 'manager'
+          : isManager
           ? 'Ban Quản Lý'
-          : 'Cư Dân Cassavas',
+          : isReceptionist
+          ? 'Lễ Tân Sảnh Chính'
+          : 'Nguyễn Văn An',
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
@@ -78,19 +94,24 @@ const App: React.FC = () => {
     }
     setCurrentUser(session);
 
-    // Khi đăng nhập vai trò quản lý / admin, tự động chuyển vào trang quản lý
-    if (role === 'manager' || role === 'admin') {
+    // Điều hướng theo đúng vai trò được xác thực
+    // Chỉ có admin mới vào /admin và có quyền chuyển cổng
+    if (isAdmin) {
       setTimeout(() => {
         navigateTo('/admin');
-      }, 400);
-    } else if (isResident) {
+      }, 350);
+    } else if (isManager) {
       setTimeout(() => {
-        navigateTo('/cu-dan');
-      }, 400);
+        navigateTo('/quan-ly');
+      }, 350);
     } else if (isReceptionist) {
       setTimeout(() => {
         navigateTo('/le-tan');
-      }, 400);
+      }, 350);
+    } else {
+      setTimeout(() => {
+        navigateTo('/cu-dan');
+      }, 350);
     }
   };
 
@@ -104,26 +125,80 @@ const App: React.FC = () => {
     navigateTo('/home');
   };
 
-  // Các đường dẫn trang quản lý
+  // 1. Phân hệ Quản Trị Viên (Admin Console - Toàn quyền & Chuyển cổng)
+  const isAmenityAdminPath =
+    currentPath === '/admin/amenities' ||
+    currentPath === '/admin/tien-ich';
+
   const isAdminPath =
     currentPath === '/admin' ||
-    currentPath === '/dashboard' ||
-    currentPath === '/quan-ly' ||
-    currentPath === '/manager';
+    currentPath.startsWith('/admin/') ||
+    isAmenityAdminPath;
 
   if (isAdminPath) {
+    // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin, chuyển về đúng cổng của họ
+    if (currentUser && currentUser.role !== 'admin') {
+      if (currentUser.role === 'manager') {
+        navigateTo('/quan-ly');
+        return null;
+      }
+      if (currentUser.role === 'receptionist') {
+        navigateTo('/le-tan');
+        return null;
+      }
+      if (currentUser.role === 'resident') {
+        navigateTo('/cu-dan');
+        return null;
+      }
+    }
+
     return (
       <ManagementHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home')}
-        userRole={currentUser?.role || 'admin'}
-        userName={currentUser?.name || 'Admin Cassavas'}
-        userEmail={currentUser?.email || 'admin@cassavas.vn'}
+        userRole="admin"
+        userName={currentUser?.role === 'admin' ? currentUser.name : 'Admin Cassavas'}
+        userEmail={currentUser?.role === 'admin' ? currentUser.email : 'admin@cassavas.vn'}
+        initialTab={isAmenityAdminPath ? 'amenities' : undefined}
       />
     );
   }
 
-  // Các đường dẫn Cổng Cư Dân
+  // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà)
+  const isManagerPath =
+    currentPath === '/quan-ly' ||
+    currentPath.startsWith('/quan-ly/') ||
+    currentPath === '/manager' ||
+    currentPath.startsWith('/manager/') ||
+    currentPath === '/dashboard';
+
+  if (isManagerPath) {
+    // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
+    if (currentUser && currentUser.role !== 'manager' && currentUser.role !== 'admin') {
+      if (currentUser.role === 'receptionist') {
+        navigateTo('/le-tan');
+        return null;
+      }
+      if (currentUser.role === 'resident') {
+        navigateTo('/cu-dan');
+        return null;
+      }
+    }
+
+    const isUserAdmin = currentUser?.role === 'admin';
+    const effectiveRole = isUserAdmin ? 'admin' : 'manager';
+    return (
+      <ManagementHome
+        onLogout={handleLogout}
+        onNavigateHome={() => navigateTo('/home')}
+        userRole={effectiveRole}
+        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
+        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
+      />
+    );
+  }
+
+  // 3. Phân hệ Cổng Cư Dân (Resident Portal)
   const isExplicitLanding = window.location.search.includes('landing=true');
   const isResidentSession =
     currentUser?.role === 'resident' || currentUser?.role?.toLowerCase().includes('resident');
@@ -137,19 +212,21 @@ const App: React.FC = () => {
     (isResidentSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
 
   if (isResidentPath) {
+    const isUserAdmin = currentUser?.role === 'admin';
+    const effectiveRole = isUserAdmin ? 'admin' : 'resident';
     return (
       <ResidentHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home?landing=true')}
         onNavigateAdmin={() => navigateTo('/admin')}
-        userRole={currentUser?.role || 'resident'}
-        userName={currentUser?.name || 'Nguyễn Văn An'}
-        userEmail={currentUser?.email || 'nguyenvanan@cassavas.vn'}
+        userRole={effectiveRole}
+        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Nguyễn Văn An')}
+        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'nguyenvanan@cassavas.vn')}
       />
     );
   }
 
-  // Các đường dẫn Cổng Lễ Tân & Bảo Vệ
+  // 4. Phân hệ Cổng Lễ Tân & Bảo Vệ (Reception Portal)
   const isReceptionistSession =
     currentUser?.role === 'receptionist' ||
     currentUser?.role?.toLowerCase().includes('receptionist') ||
@@ -163,14 +240,16 @@ const App: React.FC = () => {
     (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
 
   if (isReceptionistPath) {
+    const isUserAdmin = currentUser?.role === 'admin';
+    const effectiveRole = isUserAdmin ? 'admin' : 'receptionist';
     return (
       <ReceptionHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home?landing=true')}
         onNavigateAdmin={() => navigateTo('/admin')}
-        userRole={currentUser?.role || 'receptionist'}
-        userName={currentUser?.name || 'Admin Cassavas'}
-        userEmail={currentUser?.email || 'admin@cassavas.vn'}
+        userRole={effectiveRole}
+        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Lễ Tân Sảnh Chính')}
+        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'letan@cassavas.vn')}
       />
     );
   }
@@ -181,28 +260,12 @@ const App: React.FC = () => {
     currentPath === '/register' ||
     currentPath === '/dang-nhap' ||
     currentPath === '/dang-ky';
-  const isAmenityAdminPath =
-    currentPath === '/admin/amenities' ||
-    currentPath === '/admin/tien-ich';
   const isHomePage =
     currentPath === '/' ||
     currentPath === '' ||
     currentPath === '/home' ||
     currentPath.startsWith('/home') ||
     isAuthPath;
-
-  if (isAmenityAdminPath) {
-    return (
-      <ManagementHome
-        onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home')}
-        userRole={currentUser?.role || 'admin'}
-        userName={currentUser?.name || 'Admin Cassavas'}
-        userEmail={currentUser?.email || 'admin@cassavas.vn'}
-        initialTab="amenities"
-      />
-    );
-  }
 
   if (!isHomePage) {
     return <NotFound onBackHome={() => navigateTo('/home')} />;
@@ -220,6 +283,7 @@ const App: React.FC = () => {
       initialAuthModal={initialAuthMode}
       onLoginSuccess={handleLoginSuccess}
       onNavigateAdmin={() => navigateTo('/admin')}
+      onNavigateManager={() => navigateTo('/quan-ly')}
       onNavigateResident={() => navigateTo('/cu-dan')}
       onNavigateReception={() => navigateTo('/le-tan')}
       currentUserRole={currentUser?.role}

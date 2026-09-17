@@ -34,6 +34,10 @@ Route::get('/admin', function () {
     return view('welcome');
 });
 
+Route::get('/admin/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/dashboard', function () {
     return view('welcome');
 });
@@ -42,9 +46,17 @@ Route::get('/quan-ly', function () {
     return view('welcome');
 });
 
+Route::get('/quan-ly/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/manager', function () {
     return view('welcome');
 });
+
+Route::get('/manager/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
 
 Route::get('/cu-dan', function () {
     return view('welcome');
