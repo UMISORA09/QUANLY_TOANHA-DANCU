@@ -41,6 +41,7 @@ export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin';
 interface AuthModalProps {
   isOpen: boolean;
   initialMode?: AuthMode;
+  initialRole?: UserRole | null;
   onClose: () => void;
   onSuccess?: (role: UserRole, emailOrPhone: string, user?: any) => void;
 }
@@ -93,11 +94,12 @@ const ROLE_DEMOS: Record<
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   initialMode = 'login',
+  initialRole = null,
   onClose,
   onSuccess,
 }) => {
   const [mode, setMode] = useState<AuthMode>(initialMode);
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [selectedRole, setSelectedRole] = useState<UserRole | null>(initialRole);
 
   // Common & DB-matched fields (users & residents schema)
   const [loginIdentifier, setLoginIdentifier] = useState(''); // email or phone_number
@@ -130,11 +132,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [isForgotPwOpen, setIsForgotPwOpen] = useState(false);
   const [forgotIdentifier, setForgotIdentifier] = useState('');
 
-  // Sync mode with props
+  // Sync mode and initial role with props
   useEffect(() => {
     setMode(initialMode);
     setErrorMessage(null);
-  }, [initialMode]);
+    if (initialRole && ROLE_DEMOS[initialRole]) {
+      setSelectedRole(initialRole);
+      setLoginIdentifier(ROLE_DEMOS[initialRole].email);
+      setPassword('123567');
+    }
+  }, [initialMode, initialRole, isOpen]);
 
   // Handle escape key to close
   useEffect(() => {

@@ -83,6 +83,7 @@ interface HomeProps {
   initialAuthModal?: 'login' | 'register' | null;
   onLoginSuccess?: (role: UserRole, userEmail: string) => void;
   onNavigateAdmin?: () => void;
+  onNavigateManager?: () => void;
   onNavigateResident?: () => void;
   onNavigateReception?: () => void;
   currentUserRole?: string;
@@ -92,6 +93,7 @@ export const Home: React.FC<HomeProps> = ({
   initialAuthModal = null,
   onLoginSuccess,
   onNavigateAdmin,
+  onNavigateManager,
   onNavigateResident,
   onNavigateReception,
   currentUserRole,
@@ -101,6 +103,7 @@ export const Home: React.FC<HomeProps> = ({
   const [showNotification, setShowNotification] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [authModal, setAuthModal] = useState<'login' | 'register' | null>(initialAuthModal);
+  const [authModalRole, setAuthModalRole] = useState<UserRole | null>(null);
   const [loginFeedback, setLoginFeedback] = useState<string | null>(null);
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const [liveUptimeSeconds, setLiveUptimeSeconds] = useState(0);
@@ -144,8 +147,9 @@ export const Home: React.FC<HomeProps> = ({
     setTimeout(() => setLoginFeedback(null), 3000);
   };
 
-  const openAuth = (mode: 'login' | 'register') => {
+  const openAuth = (mode: 'login' | 'register', role?: UserRole) => {
     setAuthModal(mode);
+    setAuthModalRole(role || null);
     window.history.pushState({}, '', mode === 'login' ? '/login' : '/register');
   };
 
@@ -373,107 +377,259 @@ export const Home: React.FC<HomeProps> = ({
             {currentUser ? (
               <div className="flex items-center gap-2.5">
                 {/* User Info Badge with Dropdown */}
-                <div className="relative user-dropdown-container">
-                  <button
-                    type="button"
-                    onClick={() => setIsUserDropdownOpen((prev) => !prev)}
-                    className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-full bg-neutral-100/90 hover:bg-neutral-200/80 border border-neutral-200/80 shadow-2xs backdrop-blur-sm transition-all cursor-pointer group"
-                    title="Menu tài khoản"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-                      {currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'A'}
-                    </div>
-                    <div className="flex flex-col text-left">
-                      <span className="text-xs font-bold text-neutral-900 leading-tight">
-                        {currentUser.full_name || currentUser.name || currentUser.username || 'Admin Cassavas'}
-                      </span>
-                      <span className="text-[10px] text-neutral-500 font-medium">
-                        {currentUser.roles?.includes('SUPER_ADMIN') || currentUser.role === 'admin'
-                          ? 'admin'
-                          : currentUser.roles?.[0] || currentUser.role || 'Cư dân'}
-                      </span>
-                    </div>
-                    <ChevronDown className={`w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 ${isUserDropdownOpen ? 'rotate-180 text-neutral-900' : ''}`} />
-                  </button>
+                {/* User Info Badge with Dropdown */}
+                {(() => {
+                  const isUserAdmin = currentUser.roles?.includes('SUPER_ADMIN') || currentUser.role === 'admin';
+                  const isUserManager = currentUser.roles?.includes('BUILDING_MANAGER') || currentUser.role === 'manager';
+                  const isUserReceptionist = currentUser.roles?.includes('RECEPTIONIST') || currentUser.role === 'receptionist';
 
-                  {/* Dropdown Menu sổ xuống */}
-                  {isUserDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white/95 backdrop-blur-2xl border border-neutral-200/90 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                      {/* User Info Header */}
-                      <div className="px-3 py-2 border-b border-neutral-100 mb-1">
-                        <div className="text-xs font-bold text-neutral-900 truncate">
-                          {currentUser.full_name || currentUser.name || currentUser.username || 'Admin Cassavas'}
-                        </div>
-                        <div className="text-[10px] text-neutral-500 truncate font-mono">
-                          {currentUser.email || 'admin@cassavas.vn'}
-                        </div>
-                      </div>
+                  const roleLabel = isUserAdmin
+                    ? 'Admin (Quản trị)'
+                    : isUserManager
+                    ? 'Quản lý (Vận hành)'
+                    : isUserReceptionist
+                    ? 'Lễ tân & An ninh'
+                    : 'Cư dân';
 
-                      {/* Menu Item: Vào Trang Quản lý */}
-                      <a
-                        href="/admin"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setIsUserDropdownOpen(false);
-                          if (onNavigateAdmin) {
-                            onNavigateAdmin();
-                          } else {
-                            window.history.pushState({}, '', '/admin');
-                            window.dispatchEvent(new PopStateEvent('popstate'));
-                          }
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer group"
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-slate-800 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                          <LayoutDashboard className="w-4 h-4" />
-                        </div>
-                        <div className="flex flex-col text-left">
-                          <span className="font-bold text-slate-900">Vào trang quản lý</span>
-                          <span className="text-[10px] text-slate-500 font-normal">Dashboard & Vận hành</span>
-                        </div>
-                      </a>
+                  const roleBadgeClass = isUserAdmin
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : isUserManager
+                    ? 'bg-sky-100 text-sky-900 border-sky-300'
+                    : isUserReceptionist
+                    ? 'bg-indigo-100 text-indigo-900 border-indigo-300'
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-300';
 
-                      {/* Menu Item: Vào Cổng Lễ Tân */}
-                      <a
-                        href="/le-tan"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setIsUserDropdownOpen(false);
-                          if (onNavigateReception) {
-                            onNavigateReception();
-                          } else {
-                            window.history.pushState({}, '', '/le-tan');
-                            window.dispatchEvent(new PopStateEvent('popstate'));
-                          }
-                        }}
-                        className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 rounded-xl transition-all cursor-pointer group mt-1"
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-neutral-900 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                          <Building2 className="w-4 h-4" />
-                        </div>
-                        <div className="flex flex-col text-left">
-                          <span className="font-bold text-neutral-900">Vào Cổng Lễ Tân</span>
-                          <span className="text-[10px] text-neutral-500 font-normal">Khách, Bưu phẩm & Xe</span>
-                        </div>
-                      </a>
-
-                      <div className="my-1.5 border-t border-neutral-100" />
-
-                      {/* Menu Item: Đăng xuất */}
+                  return (
+                    <div className="relative user-dropdown-container">
                       <button
                         type="button"
-                        onClick={() => {
-                          setIsUserDropdownOpen(false);
-                          handleLogout();
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer text-left"
+                        onClick={() => setIsUserDropdownOpen((prev) => !prev)}
+                        className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-full bg-neutral-100/90 hover:bg-neutral-200/80 border border-neutral-200/80 shadow-2xs backdrop-blur-sm transition-all cursor-pointer group"
+                        title="Menu tài khoản"
                       >
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>Đăng xuất</span>
+                        <div className="w-7 h-7 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                          {currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'A'}
+                        </div>
+                        <div className="flex flex-col text-left">
+                          <span className="text-xs font-bold text-neutral-900 leading-tight">
+                            {currentUser.full_name || currentUser.name || currentUser.username || 'Người dùng'}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-medium">
+                            {roleLabel}
+                          </span>
+                        </div>
+                        <ChevronDown className={`w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 ${isUserDropdownOpen ? 'rotate-180 text-neutral-900' : ''}`} />
                       </button>
+
+                      {/* Dropdown Menu sổ xuống */}
+                      {isUserDropdownOpen && (
+                        <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white/95 backdrop-blur-2xl border border-neutral-200/90 shadow-2xl p-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                          {/* User Info Header */}
+                          <div className="px-3 py-2 border-b border-neutral-100 mb-1.5 flex items-center justify-between">
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-neutral-900 truncate">
+                                {currentUser.full_name || currentUser.name || currentUser.username}
+                              </div>
+                              <div className="text-[10px] text-neutral-500 truncate font-mono">
+                                {currentUser.email}
+                              </div>
+                            </div>
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase font-mono ${roleBadgeClass}`}>
+                              {isUserAdmin ? 'Admin' : isUserManager ? 'Quản lý' : isUserReceptionist ? 'Lễ tân' : 'Cư dân'}
+                            </span>
+                          </div>
+
+                          {/* PHÂN QUYỀN: CHỈ ADMIN MỚI CÓ QUYỀN CHUYỂN CỔNG ĐẦY ĐỦ */}
+                          {isUserAdmin && (
+                            <>
+                              <div className="px-3 py-1 text-[10px] font-bold text-amber-700 uppercase tracking-wider font-mono flex items-center justify-between">
+                                <span>ĐẶC QUYỀN ADMIN</span>
+                                <span className="text-amber-500">CHUYỂN CỔNG</span>
+                              </div>
+                              <a
+                                href="/admin"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserDropdownOpen(false);
+                                  if (onNavigateAdmin) onNavigateAdmin();
+                                  else {
+                                    window.history.pushState({}, '', '/admin');
+                                    window.dispatchEvent(new PopStateEvent('popstate'));
+                                  }
+                                }}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-amber-50/80 rounded-xl transition-all cursor-pointer group"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                  <ShieldCheck className="w-4 h-4" />
+                                </div>
+                                <div className="flex flex-col text-left">
+                                  <span className="font-bold text-slate-900">Trung tâm Quản trị Admin</span>
+                                  <span className="text-[10px] text-slate-500 font-mono">/admin</span>
+                                </div>
+                              </a>
+
+                              <a
+                                href="/quan-ly"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserDropdownOpen(false);
+                                  if (onNavigateManager) onNavigateManager();
+                                  else {
+                                    window.history.pushState({}, '', '/quan-ly');
+                                    window.dispatchEvent(new PopStateEvent('popstate'));
+                                  }
+                                }}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-sky-50/80 rounded-xl transition-all cursor-pointer group mt-0.5"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                  <LayoutDashboard className="w-4 h-4" />
+                                </div>
+                                <div className="flex flex-col text-left">
+                                  <span className="font-bold text-slate-900">Bàn làm việc Quản lý</span>
+                                  <span className="text-[10px] text-slate-500 font-mono">/quan-ly</span>
+                                </div>
+                              </a>
+
+                              <a
+                                href="/le-tan"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserDropdownOpen(false);
+                                  if (onNavigateReception) onNavigateReception();
+                                  else {
+                                    window.history.pushState({}, '', '/le-tan');
+                                    window.dispatchEvent(new PopStateEvent('popstate'));
+                                  }
+                                }}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-indigo-50/80 rounded-xl transition-all cursor-pointer group mt-0.5"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                  <Building2 className="w-4 h-4" />
+                                </div>
+                                <div className="flex flex-col text-left">
+                                  <span className="font-bold text-neutral-900">Cổng Lễ Tân & An Ninh</span>
+                                  <span className="text-[10px] text-neutral-500 font-mono">/le-tan</span>
+                                </div>
+                              </a>
+
+                              <a
+                                href="/cu-dan"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserDropdownOpen(false);
+                                  if (onNavigateResident) onNavigateResident();
+                                  else {
+                                    window.history.pushState({}, '', '/cu-dan');
+                                    window.dispatchEvent(new PopStateEvent('popstate'));
+                                  }
+                                }}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-emerald-50/80 rounded-xl transition-all cursor-pointer group mt-0.5"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                  <Users className="w-4 h-4" />
+                                </div>
+                                <div className="flex flex-col text-left">
+                                  <span className="font-bold text-neutral-900">Cổng Dịch Vụ Cư Dân</span>
+                                  <span className="text-[10px] text-neutral-500 font-mono">/cu-dan</span>
+                                </div>
+                              </a>
+                            </>
+                          )}
+
+                          {/* BAN QUẢN LÝ (MANAGER) - CHỈ VÀO CỔNG QUẢN LÝ */}
+                          {isUserManager && (
+                            <a
+                              href="/quan-ly"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setIsUserDropdownOpen(false);
+                                if (onNavigateManager) onNavigateManager();
+                                else {
+                                  window.history.pushState({}, '', '/quan-ly');
+                                  window.dispatchEvent(new PopStateEvent('popstate'));
+                                }
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer group"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                <LayoutDashboard className="w-4 h-4" />
+                              </div>
+                              <div className="flex flex-col text-left">
+                                <span className="font-bold text-slate-900">Bàn làm việc Quản lý</span>
+                                <span className="text-[10px] text-slate-500 font-normal">Vận hành & Hóa đơn tòa nhà</span>
+                              </div>
+                            </a>
+                          )}
+
+                          {/* LỄ TÂN & AN NINH - CHỈ VÀO CỔNG LỄ TÂN */}
+                          {isUserReceptionist && (
+                            <a
+                              href="/le-tan"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setIsUserDropdownOpen(false);
+                                if (onNavigateReception) onNavigateReception();
+                                else {
+                                  window.history.pushState({}, '', '/le-tan');
+                                  window.dispatchEvent(new PopStateEvent('popstate'));
+                                }
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 rounded-xl transition-all cursor-pointer group"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                <Building2 className="w-4 h-4" />
+                              </div>
+                              <div className="flex flex-col text-left">
+                                <span className="font-bold text-neutral-900">Cổng Lễ Tân</span>
+                                <span className="text-[10px] text-neutral-500 font-normal">Khách, Bưu phẩm & Ra vào</span>
+                              </div>
+                            </a>
+                          )}
+
+                          {/* CƯ DÂN - CHỈ VÀO CỔNG CƯ DÂN */}
+                          {!isUserAdmin && !isUserManager && !isUserReceptionist && (
+                            <a
+                              href="/cu-dan"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setIsUserDropdownOpen(false);
+                                if (onNavigateResident) onNavigateResident();
+                                else {
+                                  window.history.pushState({}, '', '/cu-dan');
+                                  window.dispatchEvent(new PopStateEvent('popstate'));
+                                }
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 rounded-xl transition-all cursor-pointer group"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                <Users className="w-4 h-4" />
+                              </div>
+                              <div className="flex flex-col text-left">
+                                <span className="font-bold text-neutral-900">Cổng Dịch Vụ Cư Dân</span>
+                                <span className="text-[10px] text-neutral-500 font-normal">Hóa đơn, Sự cố & Tiện ích</span>
+                              </div>
+                            </a>
+                          )}
+
+                          <div className="my-1.5 border-t border-neutral-100" />
+
+                          {/* Menu Item: Đăng xuất */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsUserDropdownOpen(false);
+                              handleLogout();
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer text-left"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>Đăng xuất</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 {/* Đăng xuất button */}
                 <button
@@ -581,40 +737,147 @@ export const Home: React.FC<HomeProps> = ({
                     </div>
                   </div>
                 </div>
-                <a
-                  href="/admin"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setIsMobileMenuOpen(false);
-                    if (onNavigateAdmin) {
-                      onNavigateAdmin();
-                    } else {
-                      window.history.pushState({}, '', '/admin');
-                      window.dispatchEvent(new PopStateEvent('popstate'));
-                    }
-                  }}
-                  className="w-full text-center py-2.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-950 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <LayoutDashboard className="w-4 h-4 text-sky-600" />
-                  <span>Vào trang quản lý</span>
-                </a>
-                <a
-                  href="/le-tan"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setIsMobileMenuOpen(false);
-                    if (onNavigateReception) {
-                      onNavigateReception();
-                    } else {
-                      window.history.pushState({}, '', '/le-tan');
-                      window.dispatchEvent(new PopStateEvent('popstate'));
-                    }
-                  }}
-                  className="w-full text-center py-2.5 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-neutral-900 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <Building2 className="w-4 h-4 text-neutral-800" />
-                  <span>Vào Cổng Lễ Tân</span>
-                </a>
+                {/* Phân quyền menu di động: Chỉ Admin có đặc quyền chuyển cổng */}
+                {(() => {
+                  const isUserAdmin = currentUser.roles?.includes('SUPER_ADMIN') || currentUser.role === 'admin';
+                  const isUserManager = currentUser.roles?.includes('BUILDING_MANAGER') || currentUser.role === 'manager';
+                  const isUserReceptionist = currentUser.roles?.includes('RECEPTIONIST') || currentUser.role === 'receptionist';
+
+                  if (isUserAdmin) {
+                    return (
+                      <div className="flex flex-col gap-2">
+                        <div className="px-1 text-[10px] font-bold text-amber-700 font-mono uppercase">
+                          Đặc quyền Admin: Chuyển cổng
+                        </div>
+                        <a
+                          href="/admin"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsMobileMenuOpen(false);
+                            if (onNavigateAdmin) onNavigateAdmin();
+                            else {
+                              window.history.pushState({}, '', '/admin');
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }
+                          }}
+                          className="w-full text-center py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-amber-600" />
+                          <span>Trung tâm Quản trị Admin</span>
+                        </a>
+                        <a
+                          href="/quan-ly"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsMobileMenuOpen(false);
+                            if (onNavigateManager) onNavigateManager();
+                            else {
+                              window.history.pushState({}, '', '/quan-ly');
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }
+                          }}
+                          className="w-full text-center py-2.5 bg-sky-50 hover:bg-sky-100 border border-sky-300 text-sky-950 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <LayoutDashboard className="w-4 h-4 text-sky-600" />
+                          <span>Bàn làm việc Quản lý</span>
+                        </a>
+                        <a
+                          href="/le-tan"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsMobileMenuOpen(false);
+                            if (onNavigateReception) onNavigateReception();
+                            else {
+                              window.history.pushState({}, '', '/le-tan');
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }
+                          }}
+                          className="w-full text-center py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-950 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Building2 className="w-4 h-4 text-indigo-600" />
+                          <span>Cổng Lễ Tân & An Ninh</span>
+                        </a>
+                        <a
+                          href="/cu-dan"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsMobileMenuOpen(false);
+                            if (onNavigateResident) onNavigateResident();
+                            else {
+                              window.history.pushState({}, '', '/cu-dan');
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }
+                          }}
+                          className="w-full text-center py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-950 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Users className="w-4 h-4 text-emerald-600" />
+                          <span>Cổng Dịch Vụ Cư Dân</span>
+                        </a>
+                      </div>
+                    );
+                  }
+
+                  if (isUserManager) {
+                    return (
+                      <a
+                        href="/quan-ly"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsMobileMenuOpen(false);
+                          if (onNavigateManager) onNavigateManager();
+                          else {
+                            window.history.pushState({}, '', '/quan-ly');
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                          }
+                        }}
+                        className="w-full text-center py-2.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-950 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <LayoutDashboard className="w-4 h-4 text-sky-600" />
+                        <span>Bàn làm việc Quản lý</span>
+                      </a>
+                    );
+                  }
+
+                  if (isUserReceptionist) {
+                    return (
+                      <a
+                        href="/le-tan"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsMobileMenuOpen(false);
+                          if (onNavigateReception) onNavigateReception();
+                          else {
+                            window.history.pushState({}, '', '/le-tan');
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                          }
+                        }}
+                        className="w-full text-center py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-950 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Building2 className="w-4 h-4 text-indigo-600" />
+                        <span>Cổng Lễ Tân & An Ninh</span>
+                      </a>
+                    );
+                  }
+
+                  return (
+                    <a
+                      href="/cu-dan"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsMobileMenuOpen(false);
+                        if (onNavigateResident) onNavigateResident();
+                        else {
+                          window.history.pushState({}, '', '/cu-dan');
+                          window.dispatchEvent(new PopStateEvent('popstate'));
+                        }
+                      }}
+                      className="w-full text-center py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-950 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Users className="w-4 h-4 text-emerald-600" />
+                      <span>Cổng Dịch Vụ Cư Dân</span>
+                    </a>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={() => {
@@ -755,54 +1018,54 @@ export const Home: React.FC<HomeProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
-                    onClick={() => openAuth('login')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                    onClick={() => openAuth('login', 'manager')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-sky-500 hover:bg-sky-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
                   >
-                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                    <div className="w-6 h-6 rounded bg-sky-100 flex items-center justify-center text-sky-800 text-xs font-bold shrink-0">
                       🏢
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-neutral-900 leading-tight">Quản lý</div>
-                      <div className="text-[10px] text-neutral-500 truncate">Vận hành</div>
+                      <div className="text-[10px] text-sky-700 truncate">Vận hành (/quan-ly)</div>
                     </div>
                   </button>
                   <button
                     type="button"
-                    onClick={() => openAuth('login')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                    onClick={() => openAuth('login', 'resident')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-emerald-500 hover:bg-emerald-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
                   >
-                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                    <div className="w-6 h-6 rounded bg-emerald-100 flex items-center justify-center text-emerald-800 text-xs font-bold shrink-0">
                       👥
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-neutral-900 leading-tight">Cư dân</div>
-                      <div className="text-[10px] text-neutral-500 truncate">Căn hộ</div>
+                      <div className="text-[10px] text-emerald-700 truncate">Căn hộ (/cu-dan)</div>
                     </div>
                   </button>
                   <button
                     type="button"
-                    onClick={() => openAuth('login')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                    onClick={() => openAuth('login', 'receptionist')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-indigo-500 hover:bg-indigo-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
                   >
-                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                    <div className="w-6 h-6 rounded bg-indigo-100 flex items-center justify-center text-indigo-800 text-xs font-bold shrink-0">
                       📋
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-neutral-900 leading-tight">Lễ tân</div>
-                      <div className="text-[10px] text-neutral-500 truncate">Khách hàng</div>
+                      <div className="text-[10px] text-indigo-700 truncate">Khách & Xe (/le-tan)</div>
                     </div>
                   </button>
                   <button
                     type="button"
-                    onClick={() => openAuth('login')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-neutral-900 transition-all flex items-center gap-2 group/btn cursor-pointer"
+                    onClick={() => openAuth('login', 'admin')}
+                    className="glass-role-card p-2 rounded-lg text-left hover:border-amber-500 hover:bg-amber-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
                   >
-                    <div className="w-6 h-6 rounded bg-neutral-100 flex items-center justify-center text-neutral-800 text-xs font-bold shrink-0">
+                    <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center text-amber-800 text-xs font-bold shrink-0">
                       🛡️
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-neutral-900 leading-tight">Admin</div>
-                      <div className="text-[10px] text-neutral-500 truncate">Hệ thống</div>
+                      <div className="text-[10px] text-amber-700 truncate">Chuyển cổng (/admin)</div>
                     </div>
                   </button>
                 </div>
@@ -1904,6 +2167,7 @@ export const Home: React.FC<HomeProps> = ({
       <AuthModal
         isOpen={authModal !== null}
         initialMode={authModal || 'login'}
+        initialRole={authModalRole}
         onClose={closeAuth}
         onSuccess={(role, userEmail, userObj) => {
           const user = userObj || api.getUser();

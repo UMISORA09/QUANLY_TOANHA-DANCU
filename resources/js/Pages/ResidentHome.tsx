@@ -18,11 +18,11 @@ import {
   ArrowUpRight,
   Clock,
   CheckCircle2,
-  PanelLeft,
   Maximize2,
   Minimize2,
 } from 'lucide-react';
 import { api } from '../Services/api';
+import { AppLayout } from '../Components/Layout/AppLayout';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -45,6 +45,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   onNavigateHome,
   userName = 'Nguyễn Văn A',
   userEmail = 'nguyenvana@cassavas.vn',
+  userRole,
 }) => {
   const [activeMenuId, setActiveMenuId] = useState<string>('overview');
   const [data, setData] = useState<any>(null);
@@ -140,290 +141,33 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   const userDisplayEmail = data?.user?.email || userEmail || 'nguyenvana@cassavas.vn';
   const apartmentNumber = 'A1-05';
 
-  // Lấy 2 chữ cái đầu cho Avatar
-  const getInitials = (name: string) => {
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  };
-
   return (
-    <div
-      onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
-      className="min-h-screen bg-[#F8FAFC]/90 text-neutral-900 font-sans flex flex-col antialiased relative selection:bg-neutral-900 selection:text-white"
+    <AppLayout
+      role="resident"
+      userRole={userRole as any}
+      activeItemId={activeMenuId}
+      onItemClick={setActiveMenuId}
+      customItems={menuItems}
+      userName={userDisplayName}
+      userEmail={userDisplayEmail}
+      onLogout={onLogout}
+      onNavigateHome={onNavigateHome}
+      statusText="Cổng dịch vụ cư dân trực tuyến"
+      extraTopbarActions={
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200/80 text-xs font-medium text-neutral-800 bg-white/85 backdrop-blur-md shadow-xs hover:border-sky-300 transition-colors">
+          <Building className="w-3.5 h-3.5 text-sky-600" />
+          <span>
+            Căn hộ <strong className="font-semibold text-neutral-950">{apartmentNumber}</strong>
+          </span>
+        </div>
+      }
     >
-      {/* Dynamic Mouse Following Ambient Glow (from Landing Page) */}
-      <div
-        className="pointer-events-none fixed inset-0 z-0 transition-opacity duration-500 opacity-60 hidden md:block"
-        style={{
-          background: `radial-gradient(650px circle at ${mousePos.x}px ${mousePos.y}px, rgba(56, 189, 248, 0.08), transparent 80%)`,
-        }}
-      />
-
-      {/* Atmospheric Aurora / Cloud Ambient Glows & Dot Matrix (from Landing Page) */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className="absolute -top-32 -left-32 w-[550px] h-[550px] bg-gradient-to-br from-sky-200/40 via-blue-100/25 to-transparent rounded-full blur-3xl animate-float-orb opacity-70" />
-        <div className="absolute top-1/3 -right-40 w-[600px] h-[600px] bg-gradient-to-bl from-indigo-200/35 via-sky-100/20 to-transparent rounded-full blur-3xl animate-float-orb-reverse opacity-60" />
-        <div className="absolute bottom-10 left-1/4 w-[450px] h-[450px] bg-gradient-to-t from-emerald-100/30 via-teal-50/20 to-transparent rounded-full blur-3xl animate-cloud-float opacity-50" />
-
-        {/* Subtle dot matrix grid */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: 'radial-gradient(#000000 1px, transparent 1px)',
-            backgroundSize: '24px 24px',
-          }}
-        />
-      </div>
-
-      {/* ================= TOP HEADER BAR (Glassmorphism & Specular Edge) ================= */}
-      <header className="h-16 border-b border-neutral-200/70 px-4 sm:px-6 flex items-center justify-between bg-white/75 backdrop-blur-xl sticky top-0 z-30 shadow-xs glass-specular-edge transition-all">
-        {/* Left: Brand Logo, Portal Name & Sidebar Toggle */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3 w-56 sm:w-60 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-neutral-950 text-white flex items-center justify-center shrink-0 shadow-xs hover:scale-105 transition-transform duration-200">
-              <Building2 className="w-4 h-4 text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-bold tracking-wider text-neutral-950 leading-tight flex items-center gap-1.5 truncate">
-                SMART CASSAVAS
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-              <div className="text-[10px] tracking-widest text-neutral-500 font-medium uppercase leading-tight truncate">
-                RESIDENT PORTAL
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar Collapse Toggle Button */}
-          <button
-            type="button"
-            onClick={toggleSidebarCollapse}
-            className="p-2 rounded-xl bg-white/80 hover:bg-white border border-neutral-200/80 text-neutral-600 hover:text-sky-600 shadow-xs hover:shadow-sm transition-all flex items-center justify-center cursor-pointer group shrink-0 active:scale-95"
-            title={isSidebarCollapsed ? 'Mở rộng menu (sidebar)' : 'Thu nhỏ menu (sidebar)'}
-          >
-            <PanelLeft className={`w-4 h-4 transition-transform duration-200 ${isSidebarCollapsed ? 'text-sky-600 rotate-180' : 'group-hover:scale-105'}`} />
-          </button>
-        </div>
-
-        {/* Center-Left: Date & Greeting */}
-        <div className="hidden md:flex flex-col text-left mr-auto pl-8">
-          <span className="text-[11px] text-neutral-400 font-medium">
-            Thứ Hai, 08 tháng 09, 2026
-          </span>
-          <span className="text-xs font-semibold text-neutral-800">
-            Xin chào, {userDisplayName}
-          </span>
-        </div>
-
-        {/* Right: Quick actions, Fullscreen & Apartment badge */}
-        <div className="flex items-center gap-2.5">
-          {/* Nút Hiển thị Toàn màn hình (Fullscreen) */}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="w-8 h-8 rounded-lg border border-neutral-200/80 bg-white/80 backdrop-blur-md flex items-center justify-center text-neutral-600 hover:text-neutral-950 hover:bg-white hover:border-neutral-300 hover:shadow-xs transition-all duration-200 group active:scale-95 cursor-pointer"
-            title={isFullscreen ? 'Thoát toàn màn hình (Esc)' : 'Toàn màn hình (F11)'}
-          >
-            {isFullscreen ? (
-              <Minimize2 className="w-4 h-4 text-sky-600" />
-            ) : (
-              <Maximize2 className="w-4 h-4 transition-transform group-hover:scale-110" />
-            )}
-          </button>
-
-          {/* Help button */}
-          <button
-            type="button"
-            className="w-8 h-8 rounded-lg border border-neutral-200/80 bg-white/80 backdrop-blur-md flex items-center justify-center text-neutral-600 hover:text-neutral-950 hover:bg-white hover:border-neutral-300 hover:shadow-xs transition-all duration-200 group active:scale-95"
-            title="Trợ giúp"
-          >
-            <HelpCircle className="w-4 h-4 transition-transform group-hover:scale-110" />
-          </button>
-
-          {/* Bell Notifications */}
-          <button
-            type="button"
-            className="w-8 h-8 rounded-lg border border-neutral-200/80 bg-white/80 backdrop-blur-md flex items-center justify-center text-neutral-600 hover:text-neutral-950 hover:bg-white hover:border-neutral-300 hover:shadow-xs transition-all duration-200 group relative active:scale-95"
-            title="Thông báo"
-          >
-            <Bell className="w-4 h-4 transition-transform group-hover:scale-110" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-rose-500 ring-2 ring-white" />
-          </button>
-
-          {/* Apartment Badge */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200/80 text-xs font-medium text-neutral-800 bg-white/85 backdrop-blur-md shadow-xs hover:border-sky-300 transition-colors">
-            <Building className="w-3.5 h-3.5 text-sky-600" />
-            <span>Căn hộ <strong className="font-semibold text-neutral-950">{apartmentNumber}</strong></span>
-          </div>
-        </div>
-      </header>
-
-      {/* ================= BODY: SIDEBAR + MAIN CONTENT ================= */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* LEFT SIDEBAR (Collapsible, glass backdrop, custom scrollbar & bottom peek indicator) */}
-        <aside
-          className={`border-r border-neutral-200/70 bg-white/70 backdrop-blur-xl flex flex-col justify-between shrink-0 relative z-20 transition-all duration-300 ease-in-out ${
-            isSidebarCollapsed ? 'w-20' : 'w-64'
-          }`}
-        >
-          {/* Scrollable Navigation Menu container */}
-          <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden group/nav">
-            <div className={`pt-4 pb-2 px-4 shrink-0 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
-              {/* Section label */}
-              {isSidebarCollapsed ? (
-                <div className="w-8 h-1 rounded-full bg-neutral-200 flex items-center justify-center relative my-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-                </div>
-              ) : (
-                <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                  KHÔNG GIAN CƯ DÂN
-                </div>
-              )}
-            </div>
-
-            {/* Menu List with custom-scrollbar */}
-            <nav
-              onScroll={() => setHoveredTooltip(null)}
-              className={`flex-1 overflow-y-auto overflow-x-hidden ${
-                isSidebarCollapsed ? 'px-2' : 'px-3'
-              } py-2 pb-10 space-y-1 custom-scrollbar`}
-            >
-              {menuItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeMenuId === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setHoveredTooltip(null);
-                      setActiveMenuId(item.id);
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isSidebarCollapsed) {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setHoveredTooltip({
-                          label: item.label,
-                          badge: item.badge,
-                          top: rect.top + rect.height / 2,
-                        });
-                      }
-                    }}
-                    onMouseLeave={() => setHoveredTooltip(null)}
-                    className={`w-full flex items-center ${
-                      isSidebarCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2.5'
-                    } rounded-xl text-xs font-medium transition-all duration-200 relative group active:scale-[0.98] ${
-                      isActive
-                        ? 'bg-neutral-950 text-white shadow-md shadow-neutral-900/15'
-                        : 'text-neutral-600 hover:text-neutral-950 hover:bg-white/90 hover:shadow-xs'
-                    }`}
-                  >
-                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} min-w-0`}>
-                      <div
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${
-                          isActive
-                            ? 'bg-neutral-800 text-sky-400'
-                            : 'bg-neutral-100/80 text-neutral-500 group-hover:text-sky-600 group-hover:bg-sky-50'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4 transition-transform group-hover:scale-110" />
-                      </div>
-                      {!isSidebarCollapsed && (
-                        <span className="truncate font-medium">{item.label}</span>
-                      )}
-                    </div>
-
-                    {!isSidebarCollapsed && item.badge && (
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold transition-all shrink-0 ${
-                          isActive
-                            ? 'bg-neutral-800 text-sky-300'
-                            : 'bg-neutral-100 text-neutral-600 border border-neutral-200/60'
-                        }`}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-
-                    {isActive && !isSidebarCollapsed && (
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-l-full bg-sky-400" />
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-
-            {/* Bottom Gradient Fade & Peek Indicator (from ManagementHome) */}
-            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white/95 via-white/50 to-transparent flex items-end justify-center pb-1">
-              <ChevronDown className="w-3.5 h-3.5 text-neutral-400 animate-bounce" />
-            </div>
-          </div>
-
-          {/* Bottom Sidebar: User & Logout */}
-          <div className={`p-3 border-t border-neutral-200/70 bg-white/60 backdrop-blur-md space-y-2 shrink-0 ${isSidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
-            {/* User Profile Info */}
-            <div
-              onMouseEnter={(e) => {
-                if (isSidebarCollapsed) {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setHoveredTooltip({
-                    label: `${userDisplayName} · ${userDisplayEmail}`,
-                    top: rect.top + rect.height / 2,
-                  });
-                }
-              }}
-              onMouseLeave={() => setHoveredTooltip(null)}
-              className={`flex items-center ${
-                isSidebarCollapsed ? 'justify-center w-full p-1.5' : 'justify-between p-2'
-              } rounded-xl hover:bg-white/90 hover:shadow-xs border border-transparent hover:border-neutral-200/60 transition-all cursor-pointer group`}
-              title={isSidebarCollapsed ? `${userDisplayName} (${userDisplayEmail})` : undefined}
-            >
-              <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2.5'} min-w-0`}>
-                <div className="w-8 h-8 rounded-lg bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                  {getInitials(userDisplayName)}
-                </div>
-                {!isSidebarCollapsed && (
-                  <div className="min-w-0 text-left">
-                    <div className="text-xs font-bold text-neutral-900 truncate">
-                      {userDisplayName}
-                    </div>
-                    <div className="text-[11px] text-neutral-400 truncate">
-                      {userDisplayEmail}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {!isSidebarCollapsed && (
-                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 shrink-0 group-hover:text-neutral-700 transition-colors" />
-              )}
-            </div>
-
-            {/* Logout button */}
-            <button
-              type="button"
-              onClick={onLogout}
-              className={`flex items-center justify-center gap-2 ${
-                isSidebarCollapsed ? 'w-8 h-8 p-0' : 'w-full px-3 py-2'
-              } border border-neutral-200/70 bg-white/70 hover:bg-white rounded-lg text-xs font-medium text-neutral-700 hover:text-rose-600 hover:border-rose-200 shadow-2xs hover:shadow-xs transition-all duration-200 active:scale-[0.98]`}
-              title="Đăng xuất"
-            >
-              <LogOut className="w-3.5 h-3.5 text-neutral-500" />
-              {!isSidebarCollapsed && <span>Đăng xuất</span>}
-            </button>
-          </div>
-        </aside>
-
-        {/* MAIN CONTENT AREA (Glassmorphic cards, custom scrollbar & micro-animations) */}
-        <main className="flex-1 overflow-y-auto p-6 sm:p-8 lg:p-10 custom-scrollbar relative">
-          {activeMenuId === 'overview' ? (
-            <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
-              {/* Page Title & Breadcrumb */}
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div className="space-y-1">
+      <div className="p-6 sm:p-8 lg:p-10">
+        {activeMenuId === 'overview' ? (
+          <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
+            {/* Page Title & Breadcrumb */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="space-y-1">
                   {/* Breadcrumb */}
                   <div className="flex items-center gap-1.5 text-xs text-neutral-400 uppercase tracking-wider font-medium">
                     <Home className="w-3.5 h-3.5 text-neutral-400" />
@@ -635,28 +379,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
               </div>
             </div>
           )}
-        </main>
       </div>
-
-      {/* ================= FLOATING TOOLTIP FOR COLLAPSED SIDEBAR ================= */}
-      {isSidebarCollapsed && hoveredTooltip && (
-        <div
-          style={{
-            top: `${hoveredTooltip.top}px`,
-            left: '84px',
-          }}
-          className="fixed -translate-y-1/2 z-[70] px-3.5 py-2 rounded-xl bg-neutral-950/95 text-white text-xs font-bold shadow-2xl backdrop-blur-xl border border-white/20 pointer-events-none flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-black/40"
-        >
-          <span className="tracking-wide">{hoveredTooltip.label}</span>
-          {hoveredTooltip.badge && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sky-500/25 text-sky-300 font-extrabold border border-sky-400/40">
-              {hoveredTooltip.badge}
-            </span>
-          )}
-          {/* Pointer arrow */}
-          <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-neutral-950 rotate-45 border-l border-b border-white/20" />
-        </div>
-      )}
 
       {/* ================= TOAST NOTIFICATION ================= */}
       {toastMessage && (
@@ -665,7 +388,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           <span>{toastMessage}</span>
         </div>
       )}
-    </div>
+    </AppLayout>
   );
 };
 
