@@ -22,16 +22,31 @@ class VietnameseSpellCorrector
         'ku' => 'khu',
         'duon' => 'duong',
         'gim' => 'gym',
+        'thehinh' => 'the hinh',
         'tenit' => 'tennis',
         'tenis' => 'tennis',
         'tennid' => 'tennis',
+        'tenys' => 'tennis',
         'bbq' => 'bbq',
         'nuon' => 'nuong',
+        'nuog' => 'nuong',
         'boi' => 'boi',
+        'be' => 'be',
         'ho' => 'ho',
         'knd' => 'khu nghi duong',
         'toa' => 'toa',
         'thap' => 'thap',
+        'boxin' => 'boxing',
+        'bok' => 'boxing',
+        'kidzon' => 'kidzone',
+        'kidzone' => 'kidzone',
+        'playstation' => 'playstation',
+        'vr' => 'vr',
+        'game' => 'game',
+        'skywalk' => 'skywalk',
+        'spa' => 'spa',
+        'yoga' => 'yoga',
+        'golf' => 'golf',
     ];
 
     /**
@@ -46,27 +61,31 @@ class VietnameseSpellCorrector
 
         $unaccented = VietnameseNormalizer::stripVietnameseAccents(mb_strtolower($token, 'UTF-8'));
 
-        // 1. Kiểm tra quy tắc ngữ âm / viết tắt đã định nghĩa
+        // 1. Kiểm tra quy tắc ngữ âm / viết tắt đã định nghĩa O(1)
         if (isset(self::$phoneticMap[$unaccented])) {
             return self::$phoneticMap[$unaccented];
         }
 
-        // 2. Nếu từ đã tồn tại chuẩn xác trong từ điển ~74K -> Giữ nguyên
+        // 2. Nếu từ cực ngắn (<= 3 ký tự) hoặc là mã/số (vd: VR, BBQ, A1, B2) -> Giữ nguyên tuyệt đối
+        if (mb_strlen($unaccented) <= 3 || preg_match('/[0-9\-_]/', $token)) {
+            return $unaccented;
+        }
+
+        // 3. Nếu từ đã tồn tại chuẩn xác trong từ điển hoặc từ vựng tiện ích -> Giữ nguyên
         if (VietnameseDictionaryService::hasWord($unaccented)) {
             return $unaccented;
         }
 
-        // 3. Nếu là số hoặc mã (vd: KND-01, A1, 12345) -> Giữ nguyên
-        if (preg_match('/^[a-z0-9\-_]+$/i', $token) && preg_match('/\d/', $token)) {
-            return $unaccented;
+        // 4. Tra cứu từ tương đồng CHỈ cho từ dài (>= 5 ký tự) với độ tương đồng rất cao (>= 85%)
+        // Tránh triệt để việc sửa bừa các từ ngắn gây sai lệch kết quả tìm kiếm
+        if (mb_strlen($unaccented) >= 5) {
+            $closest = VietnameseDictionaryService::findClosestWord($unaccented, 0.85, 1);
+            if ($closest) {
+                return $closest;
+            }
         }
 
-        // 4. Tra cứu từ tương đồng trong từ điển ~74K (ngưỡng tối thiểu 75%, Levenshtein <= 2)
-        $closest = VietnameseDictionaryService::findClosestWord($unaccented, 0.75, 2);
-
-        // 5. Nếu tìm thấy từ hợp lệ có độ tương quan cao -> Sử dụng từ đó
-        // Ngược lại (ví dụ 'xyzabc', 'qwerty') -> Giữ nguyên từ gốc, tuyệt đối không sửa bừa bãi!
-        return $closest ?: $unaccented;
+        return $unaccented;
     }
 
     /**
