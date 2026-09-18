@@ -6,6 +6,8 @@ import ResidentHome from './Pages/ResidentHome';
 import ReceptionHome from './Pages/ReceptionHome';
 import NotFound from './Pages/NotFound';
 import AmenityManagement from './Pages/Admin/AmenityManagement';
+import PublicStatusPage from './Pages/PublicStatusPage';
+import IncidentHistoryPage from './Pages/IncidentHistoryPage';
 
 interface UserSession {
   role: string;
@@ -129,16 +131,44 @@ const App: React.FC = () => {
     navigateTo('/home');
   };
 
+  // 0. Phân hệ Public Status Page (Công khai cho toàn bộ người dùng theo dõi hệ thống)
+  if (currentPath === '/status' || currentPath === '/status/') {
+    return (
+      <PublicStatusPage
+        onBackHome={() => navigateTo('/home')}
+        onNavigateIncidents={() => navigateTo('/status/incidents')}
+      />
+    );
+  }
+
+  if (currentPath === '/status/incidents' || currentPath.startsWith('/status/incidents')) {
+    return (
+      <IncidentHistoryPage
+        onBackStatus={() => navigateTo('/status')}
+        onBackHome={() => navigateTo('/home')}
+      />
+    );
+  }
+
   // 1. Phân hệ Quản Trị Viên (Admin Console - Toàn quyền & Chuyển cổng)
   const isAmenityAdminPath =
     currentPath === '/admin/amenities' ||
     currentPath === '/admin/tien-ich' ||
     currentPath.startsWith('/admin/amenities');
 
+  const isCicdAdminPath =
+    currentPath === '/admin/cicd' ||
+    currentPath.startsWith('/admin/cicd') ||
+    currentPath === '/devops' ||
+    currentPath.startsWith('/devops') ||
+    currentPath === '/admin/devops' ||
+    currentPath.startsWith('/admin/devops');
+
   const isAdminPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
-    isAmenityAdminPath;
+    isAmenityAdminPath ||
+    isCicdAdminPath;
 
   if (isAdminPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin, chuyển về đúng cổng của họ
@@ -158,7 +188,7 @@ const App: React.FC = () => {
     }
 
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabToUse = isAmenityAdminPath ? 'amenities' : (urlTab || undefined);
+    const tabToUse = isCicdAdminPath ? 'cicd' : isAmenityAdminPath ? 'amenities' : (urlTab || undefined);
 
     return (
       <ManagementHome

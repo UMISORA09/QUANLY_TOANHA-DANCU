@@ -1,0 +1,91 @@
+name: CD - Production Deployment
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag or Image SHA to deploy to Production'
+        required: true
+        default: 'v1.0.0'
+
+concurrency:
+  group: cd-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-production:
+    name: Deploy to Production Environment
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Resolve Production Release Tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "release_tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "release_tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate Production Credentials
+        id: check-secrets
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          if [ -z "$PROD_HOST" ] || [ -z "$PROD_USER" ] || [ -z "$PROD_SSH_KEY" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::warning ::CD deployment is configured but requires production server credentials."
+            echo "Please configure PROD_HOST, PROD_USER, PROD_SSH_KEY, PROD_APP_PATH in GitHub Repository Environments -> production."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to Production Server via SSH
+        if: steps.check-secrets.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          REGISTRY: ghcr.io
+          IMAGE_NAME: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.tag.outputs.release_tag }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_PORT || 22 }}
+          envs: REGISTRY,IMAGE_NAME,RELEASE_TAG,GITHUB_ACTOR,GITHUB_TOKEN
+          script: |
+            set -e
+            APP_PATH="${{ secrets.PROD_APP_PATH || '/var/www/smart-cassavas' }}"
+            cd "$APP_PATH"
+            chmod +x scripts/*.sh || true
+            ./scripts/deploy.sh "${REGISTRY}/${IMAGE_NAME}:${RELEASE_TAG}"
+
+      - name: Deployment Report (Awaiting Credentials)
+        if: steps.check-secrets.outputs.configured != 'true'
+        run: |
+          echo "========================================================================"
+          echo "PRODUCTION DEPLOYMENT STATUS: AWAITING SERVER CREDENTIALS"
+          echo "========================================================================"
+          echo "The Production CD pipeline is fully configured with environment protection."
+          echo "Target Release Image: ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.release_tag }}"
+          echo "To enable automated deployment, add the following secrets to 'production' environment:"
+          echo " - PROD_HOST"
+          echo " - PROD_PORT (optional, default 22)"
+          echo " - PROD_USER"
+          echo " - PROD_SSH_KEY"
+          echo " - PROD_APP_PATH"
+          echo "========================================================================"

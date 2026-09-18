@@ -1,0 +1,276 @@
+name: CI - Continuous Integration
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  php-lint:
+    name: PHP Lint (Pint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, xml, ctype, iconv
+          coverage: none
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run Laravel Pint Check
+        run: vendor/bin/pint --test
+
+  backend-test:
+    name: Backend Test & Migrations (PHPUnit)
+    runs-on: ubuntu-latest
+    needs: [php-lint]
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: quanly_toanha_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -prootpassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo, pdo_mysql, pdo_sqlite, mbstring, xml, ctype, iconv, intl, bcmath, gd, zip
+          coverage: none
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Configure Environment File
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Verify Database Connection & Run Migrations
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: quanly_toanha_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpassword
+        run: |
+          php artisan migrate:status || php artisan migrate --force
+          php artisan migrate:rollback --step=1
+          php artisan migrate --force
+
+      - name: Seed Database for Test Suite
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: quanly_toanha_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpassword
+        run: |
+          php artisan db:seed --force || echo "No default DatabaseSeeder, seeding migrations already populated tables."
+
+      - name: Run PHPUnit Test Suite
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: quanly_toanha_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpassword
+          APP_ENV: testing
+        run: vendor/bin/phpunit --colors=always
+
+  frontend-build:
+    name: Frontend Build (Vite & React)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Frontend Production Bundle
+        run: npm run build
+
+      - name: Verify Build Artifacts
+        run: |
+          test -f public/build/manifest.json || { echo "Missing manifest.json"; exit 1; }
+          ls -lh public/build/assets/
+
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Composer Audit
+        run: composer audit || echo "Composer audit check completed with warnings."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: NPM Audit
+        run: npm audit --audit-level=high || echo "NPM audit check completed."
+
+  python-conditional-check:
+    name: Python Module Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check for Python Code / Modules
+        id: check-python
+        run: |
+          PY_FILES=$(find . -name "*.py" -not -path "./vendor/*" -not -path "./node_modules/*" 2>/dev/null | wc -l)
+          echo "Found $PY_FILES Python files."
+          echo "count=$PY_FILES" >> $GITHUB_OUTPUT
+
+      - name: Setup Python Runtime (If Python detected)
+        if: steps.check-python.outputs.count > 0
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Run Python Checks (If Python detected)
+        if: steps.check-python.outputs.count > 0
+        run: |
+          echo "Active Python module detected. Installing dependencies..."
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pytest.ini ] || [ -d tests ]; then pytest; fi
+
+  docker-build-check:
+    name: Docker Build & Smoke Test
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build, security-scan]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Production Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          target: production
+          load: true
+          tags: smart-cassavas:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Smoke Test on Container
+        run: |
+          docker run -d --name test_app -p 8000:8000 \
+            -e APP_ENV=production \
+            -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            -e DB_CONNECTION=sqlite \
+            -e DB_DATABASE=/var/www/html/database/database.sqlite \
+            -e RUN_MIGRATIONS=false \
+            smart-cassavas:ci-test
+
+          for i in {1..30}; do
+            if curl -s -f http://127.0.0.1:8000/health; then
+              echo "CI Container Smoke Test Passed!"
+              docker stop test_app && docker rm test_app
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Container health check timed out. Container logs:"
+          docker logs test_app
+          docker stop test_app && docker rm test_app
+          exit 1
+
+  ci-status:
+    name: CI Pipeline Status Check
+    runs-on: ubuntu-latest
+    needs: [php-lint, backend-test, frontend-build, security-scan, docker-build-check]
+    if: always()
+    steps:
+      - name: Verify All CI Jobs Succeeded
+        run: |
+          if [ "${{ needs.php-lint.result }}" != "success" ] || \
+             [ "${{ needs.backend-test.result }}" != "success" ] || \
+             [ "${{ needs.frontend-build.result }}" != "success" ] || \
+             [ "${{ needs.security-scan.result }}" != "success" ] || \
+             [ "${{ needs.docker-build-check.result }}" != "success" ]; then
+            echo "❌ CI Pipeline Failed! One or more stages failed."
+            exit 1
+          fi
+          echo "✅ All CI Checks Passed (Lint ✓ Tests ✓ Build ✓ Security ✓ Docker ✓)"

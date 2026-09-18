@@ -33,6 +33,7 @@ import {
   Camera,
   Flame,
   CheckCircle2,
+  Terminal,
 } from 'lucide-react';
 
 export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin';
@@ -143,6 +144,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'maintenance', label: 'Kỹ thuật & Trang thiết bị', icon: Wrench },
       { id: 'tickets', label: 'Xử lý Yêu cầu & Sự cố', icon: AlertCircle, badge: '12', badgeType: 'danger' },
       { id: 'reports', label: 'Báo cáo & Kiểm toán Log', icon: BarChart3 },
+      { id: 'cicd', label: 'CI/CD & DevOps', icon: Terminal, badge: 'Pipeline', badgeType: 'success', isNew: true },
       { id: 'system_settings', label: 'Cấu hình Tòa nhà & IoT', icon: Sliders },
     ],
   },
