@@ -1,13 +1,13 @@
 # HỆ THỐNG QUẢN LÝ TÒA NHÀ & CƯ DÂN - SMART CASSAVAS
 
 > Đề án hệ thống quản lý tòa nhà chung cư thông minh, kết nối cư dân, ban quản lý, lễ tân và admin.  
-> Ngăn xếp công nghệ: **Laravel 12 + React 19 (TypeScript) + Vite + Tailwind CSS + Microsoft SQL Server (Docker)**.
+> Ngăn xếp công nghệ: **Laravel 12 + React 19 (TypeScript) + Vite + Tailwind CSS + MySQL 8.0 (Docker)**.
 
 ---
 
-## 🚀 HƯỚNG DẪN CHẠY ĐỒ ÁN VỚI DOCKER (1-CLICK DÀNH CHO NHÓM & GIẢNG VIÊN)
+## 🚀 KHỞI ĐỘNG HỆ THỐNG VỚI DOCKER (DUY NHẤT & CHUẨN HÓA)
 
-Hệ thống đã được đóng gói toàn diện bằng **Docker Compose**. Khi chuyển sang máy tính khác hoặc clone từ GitHub về, bạn **không cần** cài đặt PHP, Composer hay Microsoft SQL Server thủ công. File cơ sở dữ liệu `CSDL_CHUNGCU&DANCU.sql` (với hơn 100 bảng và dữ liệu mẫu) sẽ được **tự động nạp vào database** ngay khi khởi động.
+Hệ thống được đóng gói và vận hành **duy nhất thông qua Docker Compose**. Không cần cài đặt PHP, Composer, Node.js hay MySQL thủ công trên máy tính cá nhân.
 
 ### Bước 1: Clone dự án từ GitHub
 ```bash
@@ -15,7 +15,7 @@ git clone https://github.com/UMISORA09/QUANLY_TOANHA-DANCU.git
 cd QUANLY_TOANHA-DANCU
 ```
 
-### Bước 2: Tạo tệp môi trường
+### Bước 2: Chuẩn bị tệp môi trường
 ```bash
 # Trên Windows PowerShell:
 Copy-Item .env.example .env
@@ -24,86 +24,71 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-### Bước 3: Khởi động hệ thống bằng Docker
+### Bước 3: Khởi chạy toàn bộ hệ thống bằng Docker Compose
 ```bash
 docker compose up -d
 ```
 
-Quá trình tự động diễn ra:
-1. Container `smart_cassavas_db` khởi chạy Microsoft SQL Server 2022.
-2. Container `smart_cassavas_db_init` tự động thực thi tệp `CSDL_CHUNGCU&DANCU.sql` để tạo database `[CSDL_CHUNGCU&DANCU]` và toàn bộ các bảng, views, dữ liệu ban đầu.
-3. Container `smart_cassavas_app` cài đặt dependencies, biên dịch assets và khởi chạy ứng dụng web.
-
-### Bước 4: Mở ứng dụng
-- **Giao diện Web**: [http://localhost:8000](http://localhost:8000)
-- **Cổng kết nối CSDL**: `localhost:1433`
+Quá trình tự động thực hiện:
+1. **`smart_cassavas_db`**: Khởi chạy MySQL 8.0, tự động import dữ liệu ban đầu từ `dump_quanly_toanha.sql`.
+2. **`smart_cassavas_app`**: Container PHP 8.4 + Node 22 tự động cài đặt Composer/NPM dependencies, build frontend Vite và chạy ứng dụng Laravel.
+3. **`smart_cassavas_phpmyadmin`**: Khởi chạy giao diện phpMyAdmin để quản lý cơ sở dữ liệu.
 
 ---
 
-## 🗄️ THÔNG TIN KẾT NỐI CƠ SỞ DỮ LIỆU (SSMS / DBeaver / Azure Data Studio)
+## 🌐 ĐỊA CHỈ TRUY CẬP VÀ KẾT NỐI
 
-Các thành viên có thể kết nối trực tiếp vào SQL Server trên máy để xem ERD, truy vấn hoặc kiểm tra bảng:
-
-| Thông số | Giá trị kết nối |
-| :--- | :--- |
-| **DBMS** | Microsoft SQL Server 2022 |
-| **Server / Host** | `localhost,1433` hoặc `127.0.0.1,1433` |
-| **Database** | `CSDL_CHUNGCU&DANCU` |
-| **Authentication** | SQL Server Authentication |
-| **Username (`User ID`)** | `sa` |
-| **Password** | `SmartCassavas@2026` |
-| **Encrypt / Trust Certificate** | Trust Server Certificate: `True` (Encrypt: `Optional/No`) |
+| Dịch vụ | Địa chỉ | Thông tin đăng nhập |
+| :--- | :--- | :--- |
+| **Giao diện Web** | [http://localhost:8000](http://localhost:8000) | Trực tiếp trên trình duyệt |
+| **phpMyAdmin** | [http://localhost:8888](http://localhost:8888) | Server: `db`, User: `root`, Password: `123567`, Database: `quanly_toanha` |
+| **MySQL Database Port** | `localhost:3306` | User: `root`, Password: `123567`, Database: `quanly_toanha` |
 
 ---
 
-## 🛠️ CÁC LỆNH HỮU ÍCH KHI SỬ DỤNG DOCKER
+## 🛠️ CÁC LỆNH ĐIỀU HÀNH VỚI DOCKER
+
+Mọi thao tác phát triển, kiểm thử và bảo trì đều được thực hiện qua Docker:
 
 - **Xem trạng thái các container**:
   ```bash
   docker compose ps
   ```
-- **Xem logs của ứng dụng hoặc database**:
+
+- **Xem logs ứng dụng realtime**:
   ```bash
   docker compose logs -f app
-  docker compose logs -f db-init
   ```
+
+- **Xem logs cơ sở dữ liệu**:
+  ```bash
+  docker compose logs -f db
+  ```
+
+- **Chạy lệnh Artisan bên trong container**:
+  ```bash
+  docker compose exec app php artisan route:list
+  docker compose exec app php artisan migrate
+  docker compose exec app php artisan test
+  ```
+
+- **Chạy kiểm tra code Pint bên trong container**:
+  ```bash
+  docker compose exec app vendor/bin/pint
+  ```
+
 - **Khởi động lại toàn bộ hệ thống**:
   ```bash
   docker compose restart
   ```
+
 - **Dừng hệ thống**:
   ```bash
   docker compose down
   ```
-- **Dừng hệ thống và xóa sạch dữ liệu để nạp lại từ đầu**:
+
+- **Reset sạch sẽ dữ liệu và nạp lại từ đầu**:
   ```bash
   docker compose down -v
   docker compose up -d
   ```
-
----
-
-## 💻 CHẠY CỤC BỘ & QUẢN TRỊ DATABASE (PHPMYADMIN / MIGRATIONS)
-
-### 1. Quản lý cơ sở dữ liệu qua Migrations
-Hệ thống hỗ trợ cơ chế nạp toàn bộ 109 bảng và 6 views tự động tương thích đa nền tảng (MySQL, SQLite, SQL Server):
-```bash
-php artisan migrate:fresh
-```
-
-### 2. Quản trị trực quan qua phpMyAdmin
-- **URL phpMyAdmin**: [http://localhost:8888](http://localhost:8888)
-- **Cấu hình kết nối**:
-  - Server / Host: `host.docker.internal` (hoặc `localhost`)
-  - Username: `root`
-  - Password: `123567`
-  - Database: `quanly_toanha`
-
-### 3. Chạy môi trường phát triển cục bộ
-Nếu bạn phát triển trực tiếp trên máy:
-1. Cài đặt thư viện: `composer install` và `npm install`
-2. Cấu hình `.env` (MySQL Docker hoặc SQLite)
-3. Chạy migration: `php artisan migrate:fresh`
-4. Khởi chạy:
-   - Terminal 1: `php artisan serve`
-   - Terminal 2: `npm run dev`
