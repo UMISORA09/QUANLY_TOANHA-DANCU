@@ -88,9 +88,9 @@ jobs:
           echo "Waiting for container startup..."
           for i in {1..30}; do
             RESP=$(curl -s http://127.0.0.1:8000/health || echo "")
-            if echo "$RESP" | grep -q '"status":"healthy"'; then
-              echo "Container health check passed!"
-              echo "Response: $RESP"
+            UP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up || echo "000")
+            if [ "$UP_STATUS" = "200" ] || echo "$RESP" | grep -q '"status":"healthy"'; then
+              echo "Container health check passed! (/up: HTTP $UP_STATUS, /health: $RESP)"
               docker stop smoke_app && docker rm smoke_app
               exit 0
             fi

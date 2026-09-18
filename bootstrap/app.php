@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(RequestIdMiddleware::class);
         $middleware->validateCsrfTokens(except: [
             'api/*',
+            'health',
+            'metrics',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

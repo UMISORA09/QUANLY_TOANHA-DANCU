@@ -12,6 +12,8 @@ use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\SearchController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
@@ -206,12 +208,14 @@ Route::get('/status/incidents', function () {
     return view('welcome');
 });
 
-// Health Check & Telemetry Endpoints (Stateless, no session required)
+// Health Check & Telemetry Endpoints (Stateless, no session or CSRF required)
 Route::withoutMiddleware([
     StartSession::class,
     ShareErrorsFromSession::class,
     EncryptCookies::class,
     AddQueuedCookiesToResponse::class,
+    PreventRequestForgery::class,
+    ValidateCsrfToken::class,
 ])->group(function () {
     Route::get('/health', [HealthCheckController::class, 'health']);
     Route::get('/api/health', [HealthCheckController::class, 'health']);
