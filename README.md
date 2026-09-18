@@ -9,23 +9,18 @@
 
 Hệ thống được đóng gói và vận hành **duy nhất thông qua Docker Compose**. Không cần cài đặt PHP, Composer, Node.js hay MySQL thủ công trên máy tính cá nhân.
 
-### Bước 1: Clone dự án từ GitHub
-```bash
-git clone https://github.com/UMISORA09/QUANLY_TOANHA-DANCU.git
-cd QUANLY_TOANHA-DANCU
-```
+### 🌟 Cách 1: Khởi động 1-Click bằng Menu tự động (Khuyên dùng trên Windows)
+Chỉ cần **nhấp đúp chuột vào file `start_docker.bat`** tại thư mục gốc của dự án:
+- ✅ Tự động kiểm tra Docker Desktop (nếu chưa bật sẽ tự động bật và chờ sẵn sàng).
+- ✅ Tự động kiểm tra và cấu hình chuẩn tệp `.env` kết nối MySQL Docker.
+- ✅ Hiển thị Menu điều hành trực quan (Khởi động, Build lại, Reset CSDL, Xem logs, Mở web tự động...).
 
-### Bước 2: Chuẩn bị tệp môi trường
+### 💻 Cách 2: Khởi động bằng dòng lệnh (CLI / Terminal)
 ```bash
-# Trên Windows PowerShell:
-Copy-Item .env.example .env
+# 1. Chuẩn bị tệp môi trường
+Copy-Item .env.example .env   # (hoặc: cp .env.example .env)
 
-# Trên Linux / macOS / Git Bash:
-cp .env.example .env
-```
-
-### Bước 3: Khởi chạy toàn bộ hệ thống bằng Docker Compose
-```bash
+# 2. Khởi chạy toàn bộ hệ thống bằng Docker Compose
 docker compose up -d
 ```
 
