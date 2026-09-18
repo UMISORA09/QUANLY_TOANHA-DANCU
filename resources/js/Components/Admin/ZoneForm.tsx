@@ -27,12 +27,14 @@ export interface Zone {
   updated_at?: string;
 }
 
+export type ZoneData = Zone;
+
 export interface ZoneFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (message: string) => void;
   initialData: Zone | null;
-  onReloadRequested?: (id: number) => Promise<Zone | null>;
+  onReloadRequested?: (id?: number) => Promise<Zone | null | void> | void;
 }
 
 export const ZoneForm: React.FC<ZoneFormProps> = ({

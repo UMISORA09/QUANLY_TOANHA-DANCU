@@ -6,6 +6,7 @@ import {
   Tag,
   Zap,
   Receipt,
+  BarChart3,
   Wrench,
   Sparkles,
   Bell,

@@ -149,6 +149,21 @@ export const ZoneManager: React.FC = () => {
     fetchZones(true);
   };
 
+  // Xử lý tải lại dữ liệu khối đơn lẻ khi có xung đột (Optimistic Locking 409)
+  const handleReloadRequested = async (id?: number) => {
+    await fetchZones(true);
+    if (!id) return null;
+    try {
+      const res = await fetch(`/api/v1/manager/zones/${id}`, {
+        headers: { Accept: 'application/json' },
+      });
+      const data = await res.json();
+      return data.success && data.data ? data.data : null;
+    } catch {
+      return null;
+    }
+  };
+
   // ================= XỬ LÝ XÓA KHỐI TÒA NHÀ =================
   const handleConfirmDelete = async () => {
     if (!deletingZone) return;
@@ -546,7 +561,7 @@ export const ZoneManager: React.FC = () => {
             setEditingZone(null);
           }}
           onSuccess={handleFormSuccess}
-          onReloadRequested={() => fetchZones(true)}
+          onReloadRequested={handleReloadRequested}
         />
       )}
 
