@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
 import { AmenityManagement } from './Admin/AmenityManagement';
+import { ZoneManager } from '../Components/Admin/ZoneManager';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -115,9 +116,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   const resolveInitialTab = (): string => {
     const path = window.location.pathname;
 
-    // 1. Kiểm tra URL path trực tiếp tới tiện ích
+    // 1. Kiểm tra URL path trực tiếp tới tiện ích hoặc khối tòa nhà
     if (path === '/admin/amenities' || path === '/admin/tien-ich' || path.startsWith('/admin/amenities')) {
       return 'amenities';
+    }
+    if (path === '/admin/zones' || path === '/admin/khoi-nha' || path.startsWith('/admin/zones')) {
+      return 'zones';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -339,6 +343,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     () => {
       const baseItems = [
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
+        { id: 'zones', label: 'Khối Tòa nhà (Block/Zone)', icon: Layers, badge: null },
         { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
         { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
@@ -570,6 +575,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     // Cập nhật URL trên thanh địa chỉ (Deep Linking & History API)
     if (id === 'amenities') {
       window.history.pushState({ tab: id }, '', '/admin/amenities');
+    } else if (id === 'zones') {
+      window.history.pushState({ tab: id }, '', '/admin/zones');
     } else if (id === 'overview') {
       window.history.pushState({ tab: id }, '', '/admin');
     } else {
@@ -727,6 +734,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           {activeMenuId === 'amenities' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <AmenityManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'zones' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <ZoneManager />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

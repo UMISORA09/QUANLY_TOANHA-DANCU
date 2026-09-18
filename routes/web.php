@@ -6,6 +6,7 @@ use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\ZoneController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -123,7 +124,14 @@ Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
 Route::prefix('api/v1/admin')->group(function () {
-    // Tòa nhà / Blocks
+    // Quản lý Khối Tòa nhà (Block/Zone Management)
+    Route::get('zones', [ZoneController::class, 'index']);
+    Route::post('zones', [ZoneController::class, 'store']);
+    Route::get('zones/{id}', [ZoneController::class, 'show']);
+    Route::put('zones/{id}', [ZoneController::class, 'update']);
+    Route::delete('zones/{id}', [ZoneController::class, 'destroy']);
+
+    // Tòa nhà / Blocks cũ
     Route::get('blocks', [AmenityController::class, 'getBlocks']);
 
     // Danh mục tiện ích

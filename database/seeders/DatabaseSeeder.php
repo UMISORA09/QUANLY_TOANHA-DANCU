@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             ResidentPortalSeeder::class,
             ReceptionPortalSeeder::class,
             AmenitySeeder::class,
+            ZoneSeeder::class,
         ]);
     }
 }
