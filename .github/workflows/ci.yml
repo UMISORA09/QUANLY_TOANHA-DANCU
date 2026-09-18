@@ -249,15 +249,18 @@ jobs:
             smart-cassavas:ci-test
 
           for i in {1..30}; do
-            if curl -s -f http://127.0.0.1:8000/health; then
+            RESP=$(curl -s http://127.0.0.1:8000/health || echo "")
+            if echo "$RESP" | grep -q '"status":"healthy"'; then
               echo "CI Container Smoke Test Passed!"
+              echo "Response: $RESP"
               docker stop test_app && docker rm test_app
               exit 0
             fi
             sleep 2
           done
 
-          echo "Container health check timed out. Container logs:"
+          echo "Container health check timed out. Last response: $RESP"
+          echo "Container logs:"
           docker logs test_app
           docker stop test_app && docker rm test_app
           exit 1
