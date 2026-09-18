@@ -10,7 +10,11 @@ use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\SearchController;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 Route::get('/', function () {
     return redirect('/home');
@@ -202,13 +206,18 @@ Route::get('/status/incidents', function () {
     return view('welcome');
 });
 
-// Health Check Endpoints
-Route::get('/health', [HealthCheckController::class, 'health']);
-Route::get('/api/health', [HealthCheckController::class, 'health']);
-Route::get('/api/db-health', [HealthCheckController::class, 'dbHealth']);
-
-// Prometheus Metrics Scraper Endpoint
-Route::get('/metrics', [MetricsController::class, 'metrics']);
+// Health Check & Telemetry Endpoints (Stateless, no session required)
+Route::withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
+    EncryptCookies::class,
+    AddQueuedCookiesToResponse::class,
+])->group(function () {
+    Route::get('/health', [HealthCheckController::class, 'health']);
+    Route::get('/api/health', [HealthCheckController::class, 'health']);
+    Route::get('/api/db-health', [HealthCheckController::class, 'dbHealth']);
+    Route::get('/metrics', [MetricsController::class, 'metrics']);
+});
 
 // DevOps Management & Metrics APIs
 Route::prefix('api/devops')->group(function () {

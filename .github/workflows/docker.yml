@@ -80,6 +80,8 @@ jobs:
             -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
             -e DB_CONNECTION=sqlite \
             -e DB_DATABASE=/var/www/html/database/database.sqlite \
+            -e SESSION_DRIVER=file \
+            -e CACHE_STORE=file \
             -e RUN_MIGRATIONS=false \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:smoke-test
 

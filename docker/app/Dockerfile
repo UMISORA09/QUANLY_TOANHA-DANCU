@@ -95,9 +95,11 @@ COPY --from=frontend-builder /app/public/build ./public/build
 # Tạo autoloader và tối ưu hóa
 RUN composer dump-autoload --optimize --no-dev
 
-# Thiết lập phân quyền thư mục lưu trữ cho web server
-RUN chown -R www-data:www-data storage bootstrap/cache && \
-    chmod -R 775 storage bootstrap/cache
+# Thiết lập phân quyền thư mục lưu trữ & database cho web server
+RUN mkdir -p database storage/framework/sessions storage/framework/views storage/framework/cache storage/logs bootstrap/cache && \
+    touch database/database.sqlite && \
+    chown -R www-data:www-data database storage bootstrap/cache && \
+    chmod -R 775 database storage bootstrap/cache
 
 # Cấu hình script khởi động production
 COPY docker/app/entrypoint.prod.sh /usr/local/bin/entrypoint.prod.sh

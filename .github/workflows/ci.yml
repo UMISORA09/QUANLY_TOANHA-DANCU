@@ -245,6 +245,8 @@ jobs:
             -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
             -e DB_CONNECTION=sqlite \
             -e DB_DATABASE=/var/www/html/database/database.sqlite \
+            -e SESSION_DRIVER=file \
+            -e CACHE_STORE=file \
             -e RUN_MIGRATIONS=false \
             smart-cassavas:ci-test
 
@@ -262,6 +264,8 @@ jobs:
           echo "Container health check timed out. Last response: $RESP"
           echo "Container logs:"
           docker logs test_app
+          echo "Container Laravel Error Log:"
+          docker exec test_app cat /var/www/html/storage/logs/laravel.log || true
           docker stop test_app && docker rm test_app
           exit 1
 
