@@ -1,3 +1,7 @@
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
@@ -14,31 +18,31 @@ if (-not (Test-Path "$ScriptDir\.env")) {
     }
 }
 if (Test-Path "$ScriptDir\.env") {
-    $envContent = Get-Content "$ScriptDir\.env" -Raw
+    $envContent = Get-Content "$ScriptDir\.env" -Raw -Encoding UTF8
     $envContent = $envContent -replace '(?m)^DB_HOST=.*', 'DB_HOST=db'
     $envContent = $envContent -replace '(?m)^DB_PORT=.*', 'DB_PORT=3306'
     $envContent = $envContent -replace '(?m)^DB_CONNECTION=.*', 'DB_CONNECTION=mysql'
     $envContent = $envContent -replace '(?m)^DB_DATABASE=.*', 'DB_DATABASE=quanly_toanha'
     $envContent = $envContent -replace '(?m)^DB_PASSWORD=.*', 'DB_PASSWORD=123567'
-    Set-Content -Path "$ScriptDir\.env" -Value $envContent
+    [System.IO.File]::WriteAllText("$ScriptDir\.env", $envContent, [System.Text.Encoding]::UTF8)
 }
 
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Smart Cassavas - Bảng Điều Khiển Docker"
-        Height="680" Width="920"
+        Height="690" Width="940"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResize"
         Background="#0f172a"
         Foreground="#f8fafc"
-        FontFamily="Segoe UI">
+        FontFamily="Segoe UI, Arial, sans-serif">
     <Window.Resources>
         <Style TargetType="TabItem">
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="#94a3b8"/>
-            <Setter Property="Padding" Value="18,10"/>
+            <Setter Property="Padding" Value="20,10"/>
             <Setter Property="Background" Value="#1e293b"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Template">
@@ -49,11 +53,11 @@ if (Test-Path "$ScriptDir\.env") {
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#3b82f6"/>
+                                <Setter TargetName="Border" Property="Background" Value="#2563eb"/>
                                 <Setter Property="Foreground" Value="#ffffff"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#2563eb"/>
+                                <Setter TargetName="Border" Property="Background" Value="#1d4ed8"/>
                                 <Setter Property="Foreground" Value="#ffffff"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -118,7 +122,7 @@ if (Test-Path "$ScriptDir\.env") {
         <!-- Main Tabs -->
         <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0">
             <!-- TAB 1: TỔNG QUAN & ĐIỀU HÀNH -->
-            <TabItem Header="🚀 Điều Hành Nhanh">
+            <TabItem Header="⚡ Điều Hành Nhanh">
                 <Grid Background="#1e293b" Margin="0,8,0,0">
                     <Border CornerRadius="8" Background="#1e293b" Padding="18" BorderBrush="#334155" BorderThickness="1">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -153,12 +157,12 @@ if (Test-Path "$ScriptDir\.env") {
 
                                 <!-- Action Buttons Grid -->
                                 <UniformGrid Columns="2" Rows="3" Margin="0,0,0,10">
-                                    <Button Name="BtnStartSystem" Content="🟢 KHỞI ĐỘNG HỆ THỐNG (up -d)" Background="#16a34a" Margin="6" Height="48" FontSize="14"/>
-                                    <Button Name="BtnOpenWeb" Content="🌐 MỞ TRANG WEB (localhost:8000)" Background="#2563eb" Margin="6" Height="48" FontSize="14"/>
-                                    <Button Name="BtnOpenPma" Content="🗄️ MỞ PHPMYADMIN (localhost:8888)" Background="#0284c7" Margin="6" Height="48" FontSize="14"/>
-                                    <Button Name="BtnRebuild" Content="🔨 BUILD LẠI CONTAINER (Rebuild)" Background="#d97706" Margin="6" Height="48" FontSize="14"/>
-                                    <Button Name="BtnRestartApp" Content="🔄 KHỞI ĐỘNG LẠI APP (Restart)" Background="#6366f1" Margin="6" Height="48" FontSize="14"/>
-                                    <Button Name="BtnStopSystem" Content="🛑 DỪNG HỆ THỐNG (down)" Background="#dc2626" Margin="6" Height="48" FontSize="14"/>
+                                    <Button Name="BtnStartSystem" Content="▶ KHỞI ĐỘNG HỆ THỐNG (up -d)" Background="#16a34a" Margin="6" Height="50" FontSize="14"/>
+                                    <Button Name="BtnOpenWeb" Content="🌐 MỞ TRANG WEB (localhost:8000)" Background="#2563eb" Margin="6" Height="50" FontSize="14"/>
+                                    <Button Name="BtnOpenPma" Content="💾 MỞ PHPMYADMIN (localhost:8888)" Background="#0284c7" Margin="6" Height="50" FontSize="14"/>
+                                    <Button Name="BtnRebuild" Content="🔨 BUILD LẠI CONTAINER (Rebuild)" Background="#d97706" Margin="6" Height="50" FontSize="14"/>
+                                    <Button Name="BtnRestartApp" Content="🔄 KHỞI ĐỘNG LẠI APP (Restart)" Background="#6366f1" Margin="6" Height="50" FontSize="14"/>
+                                    <Button Name="BtnStopSystem" Content="⏹ DỪNG HỆ THỐNG (down)" Background="#dc2626" Margin="6" Height="50" FontSize="14"/>
                                 </UniformGrid>
                             </StackPanel>
                         </ScrollViewer>
@@ -167,7 +171,7 @@ if (Test-Path "$ScriptDir\.env") {
             </TabItem>
 
             <!-- TAB 2: QUẢN TRỊ CƠ SỞ DỮ LIỆU -->
-            <TabItem Header="🗄️ Cơ Sở Dữ Liệu">
+            <TabItem Header="💾 Cơ Sở Dữ Liệu">
                 <Grid Background="#1e293b" Margin="0,8,0,0">
                     <Border CornerRadius="8" Background="#1e293b" Padding="18" BorderBrush="#334155" BorderThickness="1">
                         <StackPanel>
@@ -198,9 +202,9 @@ if (Test-Path "$ScriptDir\.env") {
 
                             <!-- DB Actions -->
                             <StackPanel>
-                                <Button Name="BtnMigrateStatus" Content="🔍 Xem trạng thái Migration (migrate:status)" Background="#334155" Margin="0,0,0,8" HorizontalAlignment="Stretch"/>
-                                <Button Name="BtnRunMigrate" Content="🚀 Chạy cập nhật Migrations (php artisan migrate)" Background="#059669" Margin="0,0,0,8" HorizontalAlignment="Stretch"/>
-                                <Button Name="BtnResetDb" Content="⚠️ Reset &amp; Nạp lại Database gốc từ dump_quanly_toanha.sql" Background="#b91c1c" Margin="0,0,0,8" HorizontalAlignment="Stretch"/>
+                                <Button Name="BtnMigrateStatus" Content="🔍 Xem trạng thái Migration (migrate:status)" Background="#334155" Margin="0,0,0,8" Height="42" HorizontalAlignment="Stretch"/>
+                                <Button Name="BtnRunMigrate" Content="🚀 Chạy cập nhật Migrations (php artisan migrate)" Background="#059669" Margin="0,0,0,8" Height="42" HorizontalAlignment="Stretch"/>
+                                <Button Name="BtnResetDb" Content="⚠️ Reset &amp; Nạp lại Database gốc từ dump_quanly_toanha.sql" Background="#b91c1c" Margin="0,0,0,8" Height="42" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -316,9 +320,8 @@ function Update-ContainerStatus {
     $TxtFooterInfo.Text = "Đang kiểm tra trạng thái Docker..."
     try {
         $psOutput = docker compose ps --format json 2>$null | Out-String
-        $allRunning = $false
 
-        if ($psOutput) {
+        if ($psOutput -and $psOutput.Trim() -ne "") {
             $TxtStatusApp.Text = "● Đang hoạt động"
             $TxtStatusApp.Foreground = [System.Windows.Media.Brushes]::LimeGreen
             $TxtStatusDb.Text = "● Sẵn sàng (Healthy)"
