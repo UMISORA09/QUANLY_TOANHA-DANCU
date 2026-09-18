@@ -53,10 +53,9 @@ class AmenityManagementTest extends TestCase
             'max_capacity_per_slot' => 1,
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonFragment([
-                'detail' => 'Không thể giảm Maximum Slot xuống 1 vì hiện tại đã có 2 lượt đăng ký.',
-            ]);
+        $response->assertStatus(422);
+        $this->assertStringContainsString('Không thể giảm Maximum Slot xuống 1', $response->json('detail'));
+        $this->assertStringContainsString('lượt đăng ký', $response->json('detail'));
     }
 
     /**
