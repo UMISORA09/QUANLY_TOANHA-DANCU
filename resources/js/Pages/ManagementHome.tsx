@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
 import { AmenityManagement } from './Admin/AmenityManagement';
+import { RbacManagement } from './Admin/RbacManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -115,9 +116,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   const resolveInitialTab = (): string => {
     const path = window.location.pathname;
 
-    // 1. Kiểm tra URL path trực tiếp tới tiện ích
+    // 1. Kiểm tra URL path trực tiếp tới tiện ích hoặc phân quyền
     if (path === '/admin/amenities' || path === '/admin/tien-ich' || path.startsWith('/admin/amenities')) {
       return 'amenities';
+    }
+    if (path === '/admin/roles' || path === '/admin/rbac' || path === '/admin/phan-quyen' || path.startsWith('/admin/roles')) {
+      return 'roles';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -727,6 +731,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           {activeMenuId === 'amenities' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <AmenityManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'roles' || activeMenuId === 'rbac' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <RbacManagement embedded={true} />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

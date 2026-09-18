@@ -894,6 +894,157 @@ class ApiService {
       method: 'POST',
     });
   }
+
+  // ================= RBAC MANAGEMENT =================
+  async getUsers(params: { search?: string; role?: string; status?: string; page?: number; limit?: number } = {}) {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.role) q.append('role', params.role);
+    if (params.status) q.append('status', params.status);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit) q.append('limit', String(params.limit));
+
+    return this.request<{
+      success: boolean;
+      data: UserRbac[];
+      meta: { current_page: number; last_page: number; per_page: number; total: number };
+    }>(`/users?${q.toString()}`);
+  }
+
+  async getUser(id: string) {
+    return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
+  }
+
+  async createUser(data: { username: string; phone_number: string; email: string; full_name: string; password: string; status?: string; roles?: string[] }) {
+    return this.request<{ success: boolean; message: string; data: UserRbac }>('/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateUser(id: string, data: Partial<UserRbac> & { password?: string; roles?: string[] }) {
+    return this.request<{ success: boolean; message: string; data: UserRbac }>(`/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteUser(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/users/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getUserRoles(id: string) {
+    return this.request<{ success: boolean; data: RoleRbac[] }>(`/users/${id}/roles`);
+  }
+
+  async assignUserRoles(id: string, roles: string[], primaryRole?: string) {
+    return this.request<{ success: boolean; message: string; data: RoleRbac[] }>(`/users/${id}/roles`, {
+      method: 'PUT',
+      body: JSON.stringify({ roles, primary_role: primaryRole }),
+    });
+  }
+
+  async getRoles() {
+    return this.request<{ success: boolean; data: RoleRbac[] }>('/roles');
+  }
+
+  async getRole(id: string) {
+    return this.request<{ success: boolean; data: RoleRbac }>(`/roles/${id}`);
+  }
+
+  async createRole(data: { role_code: string; role_name: string; description?: string; permissions?: string[] }) {
+    return this.request<{ success: boolean; message: string; data: RoleRbac }>('/roles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateRole(id: string, data: { role_code?: string; role_name?: string; description?: string; permissions?: string[] }) {
+    return this.request<{ success: boolean; message: string; data: RoleRbac }>(`/roles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteRole(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/roles/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getRolePermissions(id: string) {
+    return this.request<{ success: boolean; data: { role_id: string; role_code: string; role_name: string; permissions: PermissionRbac[] } }>(`/roles/${id}/permissions`);
+  }
+
+  async syncRolePermissions(id: string, permissions: string[]) {
+    return this.request<{ success: boolean; message: string; data: PermissionRbac[] }>(`/roles/${id}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    });
+  }
+
+  async getPermissions(params: { grouped?: boolean; search?: string; module?: string } = {}) {
+    const q = new URLSearchParams();
+    if (params.grouped !== undefined) q.append('grouped', params.grouped ? '1' : '0');
+    if (params.search) q.append('search', params.search);
+    if (params.module) q.append('module', params.module);
+
+    return this.request<{ success: boolean; data: Record<string, PermissionRbac[]> | PermissionRbac[]; total: number }>(`/permissions?${q.toString()}`);
+  }
+
+  async createPermission(data: { module: string; permission_code: string; permission_name: string; description?: string }) {
+    return this.request<{ success: boolean; message: string; data: PermissionRbac }>('/permissions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePermission(id: string, data: { module?: string; permission_code?: string; permission_name?: string; description?: string }) {
+    return this.request<{ success: boolean; message: string; data: PermissionRbac }>(`/permissions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePermission(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/permissions/${id}`, {
+      method: 'DELETE',
+    });
+  }
+}
+
+export interface UserRbac {
+  id: string;
+  username: string;
+  email: string;
+  phone_number: string;
+  full_name: string;
+  status: 'ACTIVE' | 'LOCKED' | 'SUSPENDED';
+  roles: RoleRbac[];
+  permissions?: string[];
+  created_at?: string;
+}
+
+export interface RoleRbac {
+  id: string;
+  role_code: string;
+  role_name: string;
+  description?: string | null;
+  is_system_role: boolean;
+  users_count?: number;
+  permissions_count?: number;
+  permissions?: PermissionRbac[];
+}
+
+export interface PermissionRbac {
+  id: string;
+  module: string;
+  permission_code: string;
+  permission_name: string;
+  description?: string | null;
+  created_at?: string;
 }
 
 export const api = new ApiService();

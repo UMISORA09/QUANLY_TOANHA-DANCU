@@ -135,10 +135,18 @@ const App: React.FC = () => {
     currentPath === '/admin/tien-ich' ||
     currentPath.startsWith('/admin/amenities');
 
+  const isRoleAdminPath =
+    currentPath === '/admin/roles' ||
+    currentPath === '/admin/rbac' ||
+    currentPath === '/admin/phan-quyen' ||
+    currentPath.startsWith('/admin/roles') ||
+    currentPath.startsWith('/admin/rbac');
+
   const isAdminPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
-    isAmenityAdminPath;
+    isAmenityAdminPath ||
+    isRoleAdminPath;
 
   if (isAdminPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin, chuyển về đúng cổng của họ
@@ -158,7 +166,7 @@ const App: React.FC = () => {
     }
 
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabToUse = isAmenityAdminPath ? 'amenities' : (urlTab || undefined);
+    const tabToUse = isAmenityAdminPath ? 'amenities' : isRoleAdminPath ? 'roles' : (urlTab || undefined);
 
     return (
       <ManagementHome
