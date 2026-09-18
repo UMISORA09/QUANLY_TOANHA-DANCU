@@ -137,8 +137,13 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
       // Nếu có callback reload từ component cha hoặc fetch trực tiếp
       if (!latest && onReloadRequested) {
-        latest = await onReloadRequested(initialData.id);
-      } else if (!latest) {
+        const reloaded = await onReloadRequested(initialData.id);
+        if (reloaded) {
+          latest = reloaded;
+        }
+      }
+
+      if (!latest) {
         const res = await fetch(`/api/v1/manager/zones/${initialData.id}`);
         const data = await res.json();
         if (data.success && data.data) {
