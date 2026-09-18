@@ -159,6 +159,160 @@ class SearchEngineTest extends TestCase
         }
     }
 
+    public function test_searching_ho_boi_only_returns_swimming_facilities(): void
+    {
+        $categoryId = $this->getOrCreateTestCategoryId();
+        $bbqId = (string) Str::uuid();
+        DB::table('amenities')->insert([
+            'id' => $bbqId,
+            'category_id' => $categoryId,
+            'amenity_name' => 'Vườn Nướng BBQ Ven Hồ Số 1',
+            'amenity_code' => 'BBQ_VEN_HO_'.rand(100, 999),
+            'location_detail' => 'Khu dã ngoại công viên bờ hồ',
+            'max_capacity_per_slot' => 15,
+            'hourly_rate' => 0,
+            'is_active' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $driver = new SmartSearchDriver;
+        $result = $driver->search('amenities', 'ho boi');
+        $names = array_column($result->items, 'amenity_name');
+
+        $this->assertNotEmpty($names, "Tìm kiếm 'ho boi' phải có kết quả.");
+        $this->assertNotContains('Sân Tennis', $names, 'Tìm kiếm ho boi không được chứa Sân Tennis.');
+        $this->assertNotContains('Phòng Gym', $names, 'Tìm kiếm ho boi không được chứa Phòng Gym.');
+        $this->assertNotContains('Khu BBQ', $names, 'Tìm kiếm ho boi không được chứa Khu BBQ.');
+        $this->assertNotContains('Vườn Nướng BBQ Ven Hồ Số 1', $names, 'Tìm kiếm ho boi không được chứa Vườn Nướng BBQ Ven Hồ.');
+
+        foreach ($names as $name) {
+            $unaccented = mb_strtolower(SmartSearchDriver::stripVietnameseAccents($name));
+            $isSwimmingRelated = str_contains($unaccented, 'ho boi') ||
+                str_contains($unaccented, 'be boi') ||
+                str_contains($unaccented, 'pool') ||
+                str_contains($unaccented, 'boi');
+            $this->assertTrue($isSwimmingRelated, "Tiện ích '{$name}' không liên quan đến hồ bơi.");
+        }
+
+        // Kiểm tra qua API /api/v1/admin/amenities?search=ho+boi
+        $apiResponse = $this->getJson('/api/v1/admin/amenities?search='.urlencode('ho boi'));
+        $apiResponse->assertStatus(200);
+        $apiNames = collect($apiResponse->json('items'))->pluck('amenity_name')->all();
+        $this->assertNotContains('Sân Tennis', $apiNames);
+        $this->assertNotContains('Phòng Gym', $apiNames);
+        $this->assertNotContains('Khu BBQ', $apiNames);
+        $this->assertNotContains('Vườn Nướng BBQ Ven Hồ Số 1', $apiNames);
+
+        DB::table('amenities')->where('id', $bbqId)->delete();
+    }
+
+    public function test_searching_khu_only_returns_amenities_with_khu_in_name(): void
+    {
+        $driver = new SmartSearchDriver;
+        $result = $driver->search('amenities', 'Khu');
+        $names = array_column($result->items, 'amenity_name');
+
+        $this->assertNotEmpty($names, "Tìm kiếm 'Khu' phải trả về kết quả.");
+        $this->assertNotContains('Đường Chạy Bộ Trên Không Sky Walk', $names);
+        $this->assertNotContains('Hội Trường Sinh Hoạt Cư Dân Tháp B', $names);
+        $this->assertNotContains('Chòi Vọng Cảnh & Thưởng Trà Nhật Bản', $names);
+
+        foreach ($names as $name) {
+            $unaccented = mb_strtolower(SmartSearchDriver::stripVietnameseAccents($name));
+            $this->assertTrue(str_contains($unaccented, 'khu'), "Tiện ích '{$name}' phải có chữ 'Khu' trong tên.");
+        }
+
+        // Kiểm tra qua API /api/v1/admin/amenities?search=Khu
+        $apiResponse = $this->getJson('/api/v1/admin/amenities?search=Khu');
+        $apiResponse->assertStatus(200);
+        $apiNames = collect($apiResponse->json('items'))->pluck('amenity_name')->all();
+        $this->assertNotContains('Đường Chạy Bộ Trên Không Sky Walk', $apiNames);
+        $this->assertNotContains('Hội Trường Sinh Hoạt Cư Dân Tháp B', $apiNames);
+        $this->assertNotContains('Chòi Vọng Cảnh & Thưởng Trà Nhật Bản', $apiNames);
+    }
+
+    public function test_searching_single_word_ho_does_not_match_internal_substrings(): void
+    {
+        $driver = new SmartSearchDriver;
+        $result = $driver->search('amenities', 'Ho');
+        $names = array_column($result->items, 'amenity_name');
+
+        // Bắt buộc không được chứa các từ có 'ho' nằm lọt thỏm bên trong:
+        // 'phong' (Phòng), 'choi' (Chơi/Chòi), 'khong' (Không), 'hop' (Họp), 'hoi' (Hội)
+        $this->assertNotContains('Phòng Gym', $names, "Tìm 'Ho' không được chứa Phòng Gym (dính 'phong').");
+        $this->assertNotContains('Khu Vui Choi Xoa Thu Nghiem', $names, "Tìm 'Ho' không được chứa Khu Vui Chơi (dính 'choi').");
+        $this->assertNotContains('Đường Chạy Bộ Trên Không Sky Walk', $names, "Tìm 'Ho' không được chứa Trên Không (dính 'khong').");
+        $this->assertNotContains('Chòi Vọng Cảnh & Thưởng Trà Nhật Bản', $names, "Tìm 'Ho' không được chứa Chòi (dính 'choi').");
+        $this->assertNotContains('Hội Trường Sinh Hoạt Cư Dân Tháp B', $names, "Tìm 'Ho' không được chứa Hội Trường (dính 'hoi').");
+        $this->assertNotContains('Phòng Họp Thảo Luận Nhóm Số 2', $names, "Tìm 'Ho' không được chứa Phòng Họp (dính 'hop').");
+
+        foreach ($names as $name) {
+            $unaccented = mb_strtolower(SmartSearchDriver::stripVietnameseAccents($name));
+            $words = explode(' ', $unaccented);
+            $this->assertContains('ho', $words, "Tiện ích '{$name}' phải chứa đúng từ 'hồ'.");
+        }
+    }
+
+    public function test_search_strictly_restricts_to_name_and_code(): void
+    {
+        $driver = new SmartSearchDriver;
+        $categoryId = $this->getOrCreateTestCategoryId();
+        $tempId = (string) Str::uuid();
+
+        DB::table('amenities')->insert([
+            'id' => $tempId,
+            'category_id' => $categoryId,
+            'amenity_name' => 'Khu Nghỉ Dưỡng Biệt Lập Alpha',
+            'amenity_code' => 'ALPHA_EXCL_777',
+            'location_detail' => 'Khu vực bí mật tầng hầm B3',
+            'rules_and_regulations' => 'Tuyệt đối cấm mang chất nổ nguy hiểm',
+            'max_capacity_per_slot' => 10,
+            'hourly_rate' => 0,
+            'is_active' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        try {
+            // 1. Tìm theo tên -> PHẢI TÌM THẤY
+            $resName = $driver->search('amenities', 'Biệt Lập Alpha');
+            $this->assertTrue(collect($resName->items)->contains('id', $tempId), 'Phải tìm thấy theo tên tiện ích.');
+
+            // 2. Tìm theo mã -> PHẢI TÌM THẤY
+            $resCode = $driver->search('amenities', 'ALPHA_EXCL_777');
+            $this->assertTrue(collect($resCode->items)->contains('id', $tempId), 'Phải tìm thấy theo mã tiện ích.');
+
+            // 3. Tìm từ chỉ có trong Location -> KHÔNG ĐƯỢC TÌM THẤY
+            $resLoc = $driver->search('amenities', 'tầng hầm B3');
+            $this->assertFalse(collect($resLoc->items)->contains('id', $tempId), 'Không được tìm thấy từ khóa chỉ có trong Vị trí.');
+
+            // 4. Tìm từ chỉ có trong Category -> KHÔNG ĐƯỢC TÌM THẤY (chỉ tìm theo tên và mã)
+            $randNum = rand(10000, 99999);
+            $uniqueCatId = (string) Str::uuid();
+            DB::table('amenity_categories')->insert([
+                'id' => $uniqueCatId,
+                'category_name' => 'Chuyên Ngành Hàng Không Vũ Trụ '.$randNum,
+                'category_code' => 'AEROSPACE_'.$randNum,
+                'created_at' => now(),
+            ]);
+            DB::table('amenities')->where('id', $tempId)->update(['category_id' => $uniqueCatId]);
+
+            $resCat = $driver->search('amenities', 'Hàng Không Vũ Trụ '.$randNum);
+            $this->assertFalse(collect($resCat->items)->contains('id', $tempId), 'Không được tìm thấy từ khóa chỉ có trong Danh mục.');
+
+            // 5. Tìm từ chỉ có trong Rules -> KHÔNG ĐƯỢC TÌM THẤY
+            $resRules = $driver->search('amenities', 'chất nổ nguy hiểm');
+            $this->assertFalse(collect($resRules->items)->contains('id', $tempId), 'Không được tìm thấy từ khóa chỉ có trong Quy định.');
+        } finally {
+            DB::table('amenities')->where('id', $tempId)->delete();
+            if (isset($uniqueCatId)) {
+                DB::table('amenity_categories')->where('id', $uniqueCatId)->delete();
+            }
+            DB::table('amenity_categories')->where('category_code', 'LIKE', 'AEROSPACE%')->delete();
+        }
+    }
+
     /**
      * Test API endpoint GET /api/amenities/search theo chuẩn Section 14
      */

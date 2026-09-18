@@ -12,6 +12,9 @@ import {
   Power,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Loader2,
   Eye,
   CheckCircle2,
   XCircle,
@@ -45,66 +48,33 @@ export interface AmenityManagementProps {
 }
 
 /**
- * Chuyển chuỗi có dấu thành không dấu phục vụ so khớp vị trí highlight
+ * Hiển thị văn bản (bỏ kiểu highlight)
  */
-const stripAccents = (str: string): string => {
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd');
+const renderHighlightedText = (text: string | null | undefined, _query?: string): React.ReactNode => {
+  return text ?? '';
 };
 
-/**
- * Highlight từ khóa tìm kiếm (hỗ trợ cả tiếng Việt không dấu & đa từ)
- */
-const renderHighlightedText = (text: string | null | undefined, query: string): React.ReactNode => {
-  if (!text) return text ?? '';
-  const trimmed = query.trim();
-  if (!trimmed) return text;
-
-  const tokens = trimmed.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return text;
-
-  // Xây dựng regex escape cho các tokens
-  const escapedTokens = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const regex = new RegExp(`(${escapedTokens})`, 'gi');
-
-  // Thử match trực tiếp với ký tự có dấu/không dấu
-  const parts = text.split(regex);
-  if (parts.length > 1) {
-    return (
-      <>
-        {parts.map((part, i) =>
-          regex.test(part) ? (
-            <mark key={i} className="bg-amber-100 text-amber-950 font-bold px-0.5 rounded">
-              {part}
-            </mark>
-          ) : (
-            <React.Fragment key={i}>{part}</React.Fragment>
-          )
-        )}
-      </>
-    );
+const getPageNumbers = (current: number, total: number): (number | string)[] => {
+  if (total <= 5) {
+    return Array.from({ length: Math.max(total, 1) }, (_, i) => i + 1);
   }
+  const pages: (number | string)[] = [];
+  pages.push(1);
 
-  // Fallback: So khớp unaccented token nếu người dùng gõ không dấu
-  const normalizedText = stripAccents(text).toLowerCase();
-  for (const token of tokens) {
-    const normToken = stripAccents(token).toLowerCase();
-    const idx = normalizedText.indexOf(normToken);
-    if (idx !== -1) {
-      const matchLen = normToken.length;
-      const before = text.slice(0, idx);
-      const matched = text.slice(idx, idx + matchLen);
-      const after = text.slice(idx + matchLen);
-      return (
-        <>
-          {before}
-          <mark className="bg-amber-100 text-amber-950 font-bold px-0.5 rounded">{matched}</mark>
-          {after}
-        </>
-      );
-    }
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+
+  if (start > 2) {
+    pages.push('...');
   }
-
-  return text;
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  if (end < total - 1) {
+    pages.push('...');
+  }
+  pages.push(total);
+  return pages;
 };
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
@@ -137,26 +107,21 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
   // Filter & pagination states
   const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebounce(searchInput, 200);
+  const debouncedSearch = useDebounce(searchInput, 150);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState('created_at_desc');
   const [page, setPage] = useState(1);
-  const limit = 10;
-
-  // Autocomplete states & refs
-  const [suggestions, setSuggestions] = useState<Array<{ id: string; label: string; code?: string; type?: string; category?: string }>>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [isSuggesting, setIsSuggesting] = useState(false);
-  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
-  const searchContainerRef = useRef<HTMLDivElement | null>(null);
+  const [limit, setLimit] = useState(10);
+  const [isChangingPage, setIsChangingPage] = useState(false);
 
   // Request cancellation & sequence counter (Race-condition & stale response protection)
   const searchAbortControllerRef = useRef<AbortController | null>(null);
   const searchSequenceRef = useRef<number>(0);
-  const suggestAbortControllerRef = useRef<AbortController | null>(null);
-  const prevDebouncedSearchRef = useRef<string>(debouncedSearch);
+  const prevFilterSignatureRef = useRef<string>(
+    `${debouncedSearch}|${selectedCategory}|${selectedBlock}|${selectedStatus}|${sortOrder}|10`
+  );
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -290,6 +255,8 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
     // CRITICAL UX: Chỉ hiển thị skeleton toàn bảng ở lần mount đầu tiên khi chưa có dữ liệu nào
     if (!hasInitiallyLoadedRef.current && !lookup.exists) {
       setLoading(true);
+    } else if (!lookup.exists) {
+      setIsChangingPage(true);
     }
 
     if (isSearchQuery) {
@@ -311,6 +278,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           setCorrectedQuery(data.corrected_query || null);
           setLoading(false);
           setIsSearching(false);
+          setIsChangingPage(false);
           setHasInitiallyLoaded(true);
           hasInitiallyLoadedRef.current = true;
 
@@ -329,6 +297,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           if (!hasCachedData) {
             setLoading(false);
           }
+          setIsChangingPage(false);
           setIsSearching(false);
           setHasInitiallyLoaded(true);
           hasInitiallyLoadedRef.current = true;
@@ -349,11 +318,17 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         },
       });
 
-      // Tự động tải trước (Prefetch) trang tiếp theo vào cache ngầm
+      // Tự động tải trước (Prefetch) cả 2 chiều: trang tiếp theo và trang trước vào cache ngầm
       if (currentPage < totalPages) {
         api.prefetchAmenities({
           ...params,
           page: currentPage + 1,
+        });
+      }
+      if (currentPage > 1) {
+        api.prefetchAmenities({
+          ...params,
+          page: currentPage - 1,
         });
       }
     } catch (err: any) {
@@ -361,15 +336,15 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         setLoading(false);
         setIsSearching(false);
         setIsSyncing(false);
+        setIsChangingPage(false);
       }
     }
-  }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, page, currentUser]);
+  }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, limit, page, currentUser]);
 
   // Handle Clear Search smoothly
   const handleClearSearch = useCallback(() => {
     setSearchInput('');
     setCorrectedQuery(null);
-    setShowSuggestions(false);
     if (searchAbortControllerRef.current) {
       searchAbortControllerRef.current.abort();
     }
@@ -380,71 +355,38 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
     }
   }, [page, fetchAmenities]);
 
-  // Autocomplete suggestions fetcher with 200ms debounce
-  useEffect(() => {
-    const trimmed = searchInput.trim();
-    if (trimmed.length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
+  // Instant Hover Prefetching (0ms perceived latency khi người dùng di chuột tới nút trang)
+  const handlePrefetchPage = useCallback((targetPage: number) => {
+    if (targetPage >= 1 && targetPage <= totalPages && targetPage !== page) {
+      api.prefetchAmenities({
+        search: debouncedSearch.trim() || undefined,
+        category_id: selectedCategory || undefined,
+        block_id: selectedBlock || undefined,
+        is_active: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
+        sort: sortOrder,
+        page: targetPage,
+        limit,
+      });
     }
-
-    if (suggestAbortControllerRef.current) {
-      suggestAbortControllerRef.current.abort();
-    }
-    const abortCtrl = new AbortController();
-    suggestAbortControllerRef.current = abortCtrl;
-
-    const timer = setTimeout(async () => {
-      setIsSuggesting(true);
-      try {
-        const list = await api.getSearchSuggestions(trimmed, 'amenities', abortCtrl.signal);
-        if (!abortCtrl.signal.aborted) {
-          setSuggestions(list);
-          setShowSuggestions(list.length > 0);
-        }
-      } catch {
-        // ignore abort
-      } finally {
-        if (!abortCtrl.signal.aborted) {
-          setIsSuggesting(false);
-        }
-      }
-    }, 200);
-
-    return () => {
-      clearTimeout(timer);
-      abortCtrl.abort();
-    };
-  }, [searchInput]);
-
-  // Click outside to close autocomplete dropdown
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, limit, page, totalPages]);
 
   useEffect(() => {
     checkAuth();
     loadMetadata();
   }, []);
 
-  // Atomic fetch trigger (Eliminates double request waterfall)
+  // Atomic fetch trigger (Eliminates double request waterfall & resets page on filter change)
   useEffect(() => {
-    if (prevDebouncedSearchRef.current !== debouncedSearch) {
-      prevDebouncedSearchRef.current = debouncedSearch;
+    const currentSignature = `${debouncedSearch}|${selectedCategory}|${selectedBlock}|${selectedStatus}|${sortOrder}|${limit}`;
+    if (prevFilterSignatureRef.current !== currentSignature) {
+      prevFilterSignatureRef.current = currentSignature;
       if (page !== 1) {
         setPage(1);
         return; // setPage(1) sẽ kích hoạt render tiếp theo với page = 1
       }
     }
     fetchAmenities(false, page);
-  }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, page]);
+  }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, limit, page]);
 
   // Lắng nghe sự kiện đồng bộ đa tab toàn diện (Comprehensive Cross-Tab Synchronization)
   useEffect(() => {
@@ -728,42 +670,20 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         {/* Filters Bar Card */}
         <div className="bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-            {/* Search Input with Autocomplete, Clear button & Searching spinner */}
-            <div ref={searchContainerRef} className="lg:col-span-2 relative">
+            {/* Search Input, Clear button & Searching spinner */}
+            <div className="lg:col-span-2 relative">
               <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Tìm theo tên tiện ích hoặc mã tiện ích (VD: GYM, BƠI)..."
                 value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  setActiveSuggestionIdx(-1);
-                }}
-                onFocus={() => {
-                  if (suggestions.length > 0) setShowSuggestions(true);
-                }}
-                onKeyDown={(e) => {
-                  if (!showSuggestions || suggestions.length === 0) return;
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    setActiveSuggestionIdx((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
-                  } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    setActiveSuggestionIdx((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
-                  } else if (e.key === 'Enter' && activeSuggestionIdx >= 0) {
-                    e.preventDefault();
-                    setSearchInput(suggestions[activeSuggestionIdx].label);
-                    setShowSuggestions(false);
-                  } else if (e.key === 'Escape') {
-                    setShowSuggestions(false);
-                  }
-                }}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all"
               />
 
               {/* Right Indicators: Spinner & Clear Button */}
               <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                {(isSearching || isSuggesting) && (
+                {isSearching && (
                   <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
                 )}
                 {searchInput && (
@@ -777,38 +697,6 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                   </button>
                 )}
               </div>
-
-              {/* Autocomplete Suggestions Dropdown */}
-              {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white/95 backdrop-blur-xl border border-neutral-200/90 rounded-xl shadow-lg z-30 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="px-3 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
-                    Gợi ý tiện ích ({suggestions.length})
-                  </div>
-                  {suggestions.map((s, idx) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => {
-                        setSearchInput(s.label);
-                        setShowSuggestions(false);
-                      }}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs cursor-pointer transition-colors ${
-                        idx === activeSuggestionIdx ? 'bg-sky-50 text-sky-900' : 'hover:bg-neutral-50 text-neutral-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Sparkles className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                        <span className="font-semibold truncate">{renderHighlightedText(s.label, searchInput)}</span>
-                        {s.code && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-600 border border-neutral-200">
-                            {renderHighlightedText(s.code, searchInput)}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Category Filter */}
@@ -908,7 +796,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                   <th className="py-3.5 px-4 text-right whitespace-nowrap min-w-[210px] sticky right-0 bg-neutral-50 border-l border-neutral-200/80 shadow-[-6px_0_12px_rgba(0,0,0,0.04)] z-10">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className={`divide-y divide-neutral-100 transition-opacity duration-200 ${isSearching ? 'opacity-70' : 'opacity-100'}`}>
+              <tbody className={`divide-y divide-neutral-100 transition-opacity duration-200 ${isSearching || isChangingPage ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
                 {loading ? (
                   Array.from({ length: 5 }).map((_, idx) => (
                     <tr key={`skeleton-${idx}`} className="animate-pulse">
@@ -1176,35 +1064,119 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           </div>
 
           {/* Pagination Footer */}
-          <div className="p-4 border-t border-neutral-200/80 bg-neutral-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-600">
-            <div>
-              Hiển thị <span className="font-semibold text-neutral-900">{amenities.length}</span> trên tổng số{' '}
-              <span className="font-semibold text-neutral-900">{total}</span> tiện ích
+          <div className="p-4 border-t border-neutral-200/80 bg-neutral-50/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-600">
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                Hiển thị{' '}
+                <span className="font-semibold text-neutral-900">
+                  {total === 0 ? 0 : (page - 1) * limit + 1} - {Math.min(page * limit, total)}
+                </span>{' '}
+                trên tổng số <span className="font-semibold text-neutral-900">{total}</span> tiện ích
+              </div>
+
+              {/* Items per page selector */}
+              <div className="flex items-center gap-1.5 border-l border-neutral-200 pl-3">
+                <span className="text-neutral-500">Mỗi trang:</span>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="px-2 py-1 rounded-lg border border-neutral-200 bg-white text-xs font-semibold text-neutral-800 focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer shadow-2xs"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+
+              {isChangingPage && (
+                <div className="flex items-center gap-1.5 text-neutral-500 animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-700" />
+                  <span>Đang tải trang...</span>
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              {/* Trang đầu */}
               <button
                 type="button"
-                disabled={page <= 1 || loading}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer"
+                disabled={page <= 1 || loading || isChangingPage}
+                onClick={() => setPage(1)}
+                onMouseEnter={() => handlePrefetchPage(1)}
+                className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
+                title="Trang đầu"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                <span>Trước</span>
+                <ChevronsLeft className="w-3.5 h-3.5" />
               </button>
 
-              <span className="px-3 py-1.5 font-medium text-neutral-700">
-                Trang {page} / {totalPages}
-              </span>
-
+              {/* Trang trước */}
               <button
                 type="button"
-                disabled={page >= totalPages || loading}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer"
+                disabled={page <= 1 || loading || isChangingPage}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onMouseEnter={() => handlePrefetchPage(Math.max(1, page - 1))}
+                className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
               >
-                <span>Sau</span>
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Trước</span>
+              </button>
+
+              {/* Các nút số trang */}
+              <div className="flex items-center gap-1">
+                {getPageNumbers(page, totalPages).map((pNum, idx) => {
+                  if (pNum === '...') {
+                    return (
+                      <span key={`ellipsis-${idx}`} className="px-1.5 py-1 text-neutral-400 select-none">
+                        ...
+                      </span>
+                    );
+                  }
+                  const isCurrent = pNum === page;
+                  const numVal = Number(pNum);
+                  return (
+                    <button
+                      key={`page-${pNum}`}
+                      type="button"
+                      disabled={loading || isChangingPage}
+                      onClick={() => setPage(numVal)}
+                      onMouseEnter={() => handlePrefetchPage(numVal)}
+                      className={`min-w-[28px] h-[28px] px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        isCurrent
+                          ? 'bg-neutral-900 text-white shadow-xs'
+                          : 'bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200 shadow-2xs'
+                      }`}
+                    >
+                      {pNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Trang sau */}
+              <button
+                type="button"
+                disabled={page >= totalPages || loading || isChangingPage}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onMouseEnter={() => handlePrefetchPage(Math.min(totalPages, page + 1))}
+                className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
+              >
+                <span className="hidden md:inline">Sau</span>
                 <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Trang cuối */}
+              <button
+                type="button"
+                disabled={page >= totalPages || loading || isChangingPage}
+                onClick={() => setPage(totalPages)}
+                onMouseEnter={() => handlePrefetchPage(totalPages)}
+                className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
+                title="Trang cuối"
+              >
+                <ChevronsRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

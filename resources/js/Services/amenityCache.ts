@@ -48,7 +48,7 @@ const DEFAULT_FRESH_MS = 60 * 1000; // 1 phút (Fresh)
 const DEFAULT_STALE_MS = 15 * 60 * 1000; // 15 phút (Stale)
 const MAX_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 giờ (Hết hạn hoàn toàn)
 
-const STORAGE_PREFIX = 'smart_amenity_cache:';
+const STORAGE_PREFIX = 'smart_amenity_cache_v4:';
 const BROADCAST_CHANNEL_NAME = 'smart_amenity_channel';
 const STORAGE_SYNC_KEY = 'smart_amenity_sync_event';
 
@@ -67,6 +67,20 @@ class AmenityCacheManager {
 
   constructor() {
     if (typeof window !== 'undefined') {
+      // 0. Purge legacy cache versions from localStorage
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('smart_amenity_cache') && !key.startsWith(STORAGE_PREFIX)) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      } catch {
+        // Ignore localStorage access errors
+      }
+
       // 1. Initialize BroadcastChannel API if supported
       if ('BroadcastChannel' in window) {
         try {

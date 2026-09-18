@@ -18,4 +18,19 @@ export default defineConfig({
             ignored: ['**/storage/framework/views/**'],
         },
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks(id) {
+                    if (id.includes('node_modules/lucide-react')) {
+                        return 'icons';
+                    }
+                    if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+                        return 'vendor-react';
+                    }
+                },
+            },
+        },
+        chunkSizeWarningLimit: 1000,
+    },
 });

@@ -45,12 +45,41 @@ class SmartSearchDriver implements SearchDriverInterface
         'tenit' => ['tennis'],
         'tenis' => ['tennis'],
         'tennid' => ['tennis'],
+        'tenys' => ['tennis'],
         'bbq' => ['bbq', 'nuong', 'barbecue'],
-        'toa' => ['toa', 'thap', 'block'],
-        'thap' => ['thap', 'toa', 'block'],
-        'boi' => ['boi', 'ho boi', 'be boi'],
-        'gym' => ['gym', 'the hinh'],
+        'nuon' => ['nuong'],
+        'boi' => ['boi', 'be boi', 'ho boi'],
+        'be' => ['be', 'be boi', 'ho boi'],
+        'gym' => ['gym', 'the hinh', 'fitness'],
         'knd' => ['khu nghi duong'],
+        'kid' => ['kid', 'tre em', 'kidzone'],
+        'kids' => ['kids', 'tre em', 'kidzone'],
+        'boxin' => ['boxing'],
+        'bok' => ['boxing'],
+    ];
+
+    /**
+     * Bảng cụm từ đồng nghĩa / tương đương (Phrase-level synonyms)
+     *
+     * @var array<string, array<int, string>>
+     */
+    protected static array $phraseSynonyms = [
+        'ho boi' => ['be boi', 'pool', 'swimming pool', 'khu boi', 'boi loi'],
+        'be boi' => ['ho boi', 'pool', 'swimming pool', 'khu boi', 'boi loi'],
+        'boi' => ['ho boi', 'be boi', 'pool', 'swimming pool'],
+        'tennis' => ['san tennis', 'quan vot'],
+        'san tennis' => ['tennis', 'quan vot'],
+        'gym' => ['the hinh', 'phong the hinh', 'fitness'],
+        'phong gym' => ['gym', 'the hinh', 'phong the hinh', 'fitness'],
+        'bbq' => ['vuon nuong', 'nuong bbq', 'tiec nuong', 'barbecue'],
+        'khu bbq' => ['vuon nuong', 'nuong bbq', 'bbq', 'tiec nuong'],
+        'cau long' => ['badminton', 'san cau long'],
+        'bong ban' => ['table tennis', 'ping pong'],
+        'bong ro' => ['basketball'],
+        'bong da' => ['football', 'soccer'],
+        'kidzone' => ['tre em', 'khu vui choi tre em', 'kids'],
+        'tre em' => ['kidzone', 'kids', 'vui choi tre em'],
+        'vui choi' => ['kidzone', 'tro choi'],
     ];
 
     /**
@@ -100,38 +129,34 @@ class SmartSearchDriver implements SearchDriverInterface
             return 0.95;
         }
 
-        // Tiền tố (Prefix)
-        if (str_starts_with($targetWord, $queryToken)) {
+        $lenQ = mb_strlen($queryToken);
+        $lenT = mb_strlen($targetWord);
+
+        // Đối với từ cực ngắn (<= 2 ký tự, ví dụ "ho", "ca", "a", "k"):
+        // Chỉ chấp nhận khớp chính xác hoặc có trong bảng từ đồng nghĩa (synonyms)
+        // Tuyệt đối không cho phép Levenshtein / substring để tránh "ho" khớp "cho", "co", "do", "hoat", "thong"...
+        if ($lenQ <= 2) {
+            return 0.0;
+        }
+
+        // Tiền tố (Prefix) - chỉ áp dụng cho từ có độ dài >= 3
+        if ($lenQ >= 3 && str_starts_with($targetWord, $queryToken)) {
             return 0.90;
         }
 
-        // Chứa từ (Contains)
-        if (str_contains($targetWord, $queryToken)) {
+        // Chứa từ (Contains) - chỉ áp dụng cho từ dài (>= 4 ký tự)
+        if ($lenQ >= 4 && str_contains($targetWord, $queryToken)) {
             return 0.85;
         }
 
-        // Levenshtein cho từ ngắn (<= 4 ký tự: tối đa 1 ký tự sai)
-        $lenQ = mb_strlen($queryToken);
-        $lenT = mb_strlen($targetWord);
-        if ($lenQ <= 4 && $lenT <= 5) {
+        // Levenshtein CHỈ áp dụng cho từ mượn / từ tiếng Anh dài (>= 6 ký tự, ví dụ: tennis, fitness, playstation)
+        // TUYỆT ĐỐI KHÔNG áp dụng cho từ đơn tiếng Việt ngắn (3-5 ký tự)
+        // để ngăn chặn hoàn toàn việc nhận nhầm từ khác nghĩa ("bóng" <-> "đông", "tháp" <-> "thép", "nước" <-> "nướng")
+        if ($lenQ >= 6 && $lenT >= 6) {
             $lev = levenshtein($queryToken, $targetWord);
             if ($lev <= 1) {
                 return 0.80;
             }
-        }
-
-        // Levenshtein cho từ dài (>= 4 ký tự: tối đa 2 ký tự sai)
-        if ($lenQ >= 4 && $lenT >= 4) {
-            $lev = levenshtein($queryToken, $targetWord);
-            if ($lev <= 2) {
-                return 0.75;
-            }
-        }
-
-        // Độ tương đồng similar_text
-        similar_text($queryToken, $targetWord, $percent);
-        if ($percent >= 75) {
-            return round($percent / 100 * 0.80, 2);
         }
 
         return 0.0;
@@ -139,15 +164,7 @@ class SmartSearchDriver implements SearchDriverInterface
 
     /**
      * Tính điểm tương quan (Relevance Score) của bản ghi tiện ích đối với từ khóa
-     * Tìm kiếm trên 8 trường:
-     * 1. amenity_name
-     * 2. amenity_code
-     * 3. location_detail
-     * 4. description
-     * 5. rules_and_regulations
-     * 6. category_name
-     * 7. category_code
-     * 8. block_name
+     * Phân tầng ưu tiên: Tên tiện ích (Tier 1) > Danh mục (Tier 2) > Vị trí / Mô tả (Tier 3)
      *
      * @param  object  $item  Bản ghi tiện ích
      * @param  array{
@@ -173,62 +190,125 @@ class SmartSearchDriver implements SearchDriverInterface
             return 0.0;
         }
 
-        $code = mb_strtolower((string) ($item->amenity_code ?? ''));
+        $rawCode = mb_strtolower((string) ($item->amenity_code ?? ''));
+        $cleanCode = trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[^\p{L}\p{N}\s]/u', ' ', $rawCode)));
         $name = mb_strtolower((string) ($item->amenity_name ?? ''));
         $unaccentedName = VietnameseNormalizer::stripVietnameseAccents($name);
         $nameWords = array_values(array_filter(explode(' ', $unaccentedName), fn ($w) => $w !== ''));
         $tokensToEvaluate = ! empty($correctedTokens) ? $correctedTokens : $tokens;
 
         // 1. Khớp chính xác 100% Mã hoặc Tên tiện ích (Raw hoặc Corrected)
-        if ($code === $normalized || $code === $unaccented || $code === $corrected) {
+        if (
+            $rawCode === mb_strtolower($normQuery['raw']) ||
+            $rawCode === $normalized ||
+            $cleanCode === $unaccented ||
+            $cleanCode === $corrected
+        ) {
             return 1.00;
         }
         if ($name === $normalized) {
             return 1.00;
         }
         if ($unaccentedName === $unaccented || $unaccentedName === $corrected) {
-            return 0.96;
+            return 0.98;
+        }
+
+        // 1b. Khớp cụm từ đồng nghĩa chính xác (ví dụ "ho boi" <-> "be boi", "boi" <-> "ho boi")
+        $synonymPhrases = array_values(array_unique(array_merge(
+            self::$phraseSynonyms[$unaccented] ?? [],
+            self::$phraseSynonyms[$corrected] ?? []
+        )));
+        foreach ($synonymPhrases as $synPhrase) {
+            if ($unaccentedName === $synPhrase) {
+                return 0.97;
+            }
         }
 
         // 2. Khớp tiền tố (Prefix) trên Mã hoặc Tên tiện ích
-        if (str_starts_with($code, $unaccented) || str_starts_with($code, $corrected)) {
-            return 0.94;
+        // VÍ DỤ: "Khu" BẮT ĐẦU "Khu BBQ", "Khu Tiệc Nướng BBQ...", "Khu Nghỉ Dưỡng..."
+        if (
+            str_starts_with($rawCode, $unaccented) ||
+            str_starts_with($rawCode, $corrected) ||
+            str_starts_with($cleanCode, $unaccented) ||
+            str_starts_with($cleanCode, $corrected)
+        ) {
+            return 0.96;
         }
+        $isNamePrefixMatch = false;
         if (
             str_starts_with($name, $normalized) ||
             str_starts_with($unaccentedName, $unaccented) ||
             str_starts_with($unaccentedName, $corrected)
         ) {
-            $coverageRatio = count($tokensToEvaluate) / max(count($nameWords), 1);
-
-            return round(0.91 + min($coverageRatio * 0.03, 0.03), 2);
+            // Đối với từ ngắn (<= 3 ký tự như "ho"): từ đầu tiên của tên phải là từ đó trọn vẹn
+            // để tránh "ho" khớp tiền tố của "hoi" (hội trường)
+            if (mb_strlen($unaccented) <= 3) {
+                if (isset($nameWords[0]) && ($nameWords[0] === $unaccented || $nameWords[0] === $corrected)) {
+                    $isNamePrefixMatch = true;
+                }
+            } else {
+                $isNamePrefixMatch = true;
+            }
         }
 
-        // 3. Khớp cụm từ trong tên tiện ích (Contains full phrase)
-        if (str_contains($unaccentedName, $unaccented) || str_contains($unaccentedName, $corrected)) {
+        if ($isNamePrefixMatch) {
             $coverageRatio = count($tokensToEvaluate) / max(count($nameWords), 1);
 
-            return round(0.87 + min($coverageRatio * 0.03, 0.03), 2);
+            return round(0.94 + min($coverageRatio * 0.04, 0.04), 2);
+        }
+        foreach ($synonymPhrases as $synPhrase) {
+            if (str_starts_with($unaccentedName, $synPhrase)) {
+                return 0.93;
+            }
         }
 
-        // Chuẩn bị các trường văn bản mở rộng (8 trường)
-        $location = VietnameseNormalizer::stripVietnameseAccents(mb_strtolower((string) ($item->location_detail ?? '')));
-        $description = VietnameseNormalizer::stripVietnameseAccents(mb_strtolower((string) ($item->description ?? '')));
-        $rules = VietnameseNormalizer::stripVietnameseAccents(mb_strtolower((string) ($item->rules_and_regulations ?? '')));
-        $catName = VietnameseNormalizer::stripVietnameseAccents(mb_strtolower((string) ($item->category_name ?? '')));
-        $catCode = mb_strtolower((string) ($item->category_code ?? ''));
-        $blockName = VietnameseNormalizer::stripVietnameseAccents(mb_strtolower((string) ($item->block_name ?? '')));
+        // 3. Khớp cụm từ trong tên hoặc mã tiện ích (Contains full phrase at word boundaries)
+        $rawCodePadded = '_'.str_replace('-', '_', $rawCode).'_';
+        $codeMatches = (mb_strlen($unaccented) <= 3)
+            ? (str_contains($rawCodePadded, "_{$unaccented}_") || str_starts_with($rawCode, $unaccented))
+            : (str_contains($rawCode, $unaccented) || str_contains($cleanCode, $unaccented));
 
-        $combinedText = "{$unaccentedName} {$code} {$blockName} {$location} {$catName} {$catCode} {$description} {$rules}";
-        $combinedWords = array_values(array_filter(explode(' ', $combinedText), fn ($w) => $w !== ''));
+        if ($codeMatches) {
+            return 0.92;
+        }
 
+        $paddedName = " {$unaccentedName} ";
+        $nameMatches = false;
+
+        if (mb_strlen($unaccented) <= 3) {
+            // Với từ ngắn (<= 3 ký tự, ví dụ: "ho", "gym", "boi"):
+            // BẮT BUỘC phải khớp chính xác từ nguyên vẹn trong tên: " ho " trong " ho boi ", " ven ho "
+            // Tuyệt đối không cho phép "ho" khớp tiền tố các từ khác nghĩa như "hop" (họp), "hoi" (hội), "hoang" (hoàng), "hoan" (hoàn), "hoat" (hoạt)!
+            if (str_contains($paddedName, " {$unaccented} ") || ($corrected !== $unaccented && str_contains($paddedName, " {$corrected} "))) {
+                $nameMatches = true;
+            }
+        } else {
+            // Với cụm từ hoặc từ dài (>= 4 ký tự):
+            if (str_contains($paddedName, " {$unaccented}") || ($corrected !== $unaccented && str_contains($paddedName, " {$corrected}"))) {
+                $nameMatches = true;
+            } elseif (count($tokensToEvaluate) >= 2 && str_contains($unaccentedName, $unaccented)) {
+                $nameMatches = true;
+            }
+        }
+
+        if ($nameMatches) {
+            $coverageRatio = count($tokensToEvaluate) / max(count($nameWords), 1);
+
+            return round(0.88 + min($coverageRatio * 0.04, 0.04), 2);
+        }
+
+        foreach ($synonymPhrases as $synPhrase) {
+            $paddedSyn = " {$synPhrase} ";
+            if (str_contains($paddedName, $paddedSyn) || str_contains($paddedName, " {$synPhrase}")) {
+                return 0.87;
+            }
+        }
+
+        // 4. So khớp từng từ (Tokens) TRỰC TIẾP trên Tên tiện ích
         $tokenScoresOnName = [];
-        $tokenScoresGlobal = [];
-
         foreach ($tokensToEvaluate as $idx => $token) {
             $origToken = $tokens[$idx] ?? $token;
 
-            // So khớp trên Tên tiện ích
             $bestNameScore = 0.0;
             foreach ($nameWords as $w) {
                 $score1 = $this->matchTokenFuzzy($token, $w);
@@ -239,52 +319,44 @@ class SmartSearchDriver implements SearchDriverInterface
                     $bestNameScore = $maxTokScore;
                 }
             }
-            $tokenScoresOnName[] = $bestNameScore;
 
-            // So khớp trên toàn bộ 8 trường
-            $bestGlobalScore = $bestNameScore;
-            if ($bestGlobalScore < 0.85) {
-                foreach ($combinedWords as $w) {
-                    $score1 = $this->matchTokenFuzzy($token, $w);
-                    $score2 = ($origToken !== $token) ? $this->matchTokenFuzzy($origToken, $w) : 0.0;
-                    $maxScore = max($score1, $score2);
-
-                    if ($maxScore > $bestGlobalScore) {
-                        $bestGlobalScore = $maxScore;
+            // Kiểm tra từ đồng nghĩa token (ví dụ 'gim' -> 'gym', 'tenit' -> 'tennis', 'boi' -> 'ho boi')
+            if ($bestNameScore < 0.85 && isset(self::$synonyms[$token])) {
+                foreach (self::$synonyms[$token] as $synTok) {
+                    foreach ($nameWords as $w) {
+                        $s = $this->matchTokenFuzzy($synTok, $w);
+                        if ($s > $bestNameScore) {
+                            $bestNameScore = min($s, 0.88);
+                        }
                     }
                 }
             }
-            $tokenScoresGlobal[] = $bestGlobalScore;
+
+            $tokenScoresOnName[] = $bestNameScore;
         }
 
-        if (empty($tokenScoresOnName) || empty($tokenScoresGlobal)) {
-            return 0.0;
-        }
-
-        $nameMinScore = min($tokenScoresOnName);
-        $nameAvgScore = array_sum($tokenScoresOnName) / count($tokenScoresOnName);
+        $nameMinScore = ! empty($tokenScoresOnName) ? min($tokenScoresOnName) : 0.0;
+        $nameAvgScore = ! empty($tokenScoresOnName) ? (array_sum($tokenScoresOnName) / count($tokenScoresOnName)) : 0.0;
         $coverageRatio = count($tokensToEvaluate) / max(count($nameWords), 1);
         $brevityBonus = round(min($coverageRatio * 0.03, 0.03), 3);
 
-        // Trường hợp tất cả token đều khớp trên Tên tiện ích (kể cả mờ/fuzzy như "ku nghi duon" -> "khu nghi duong")
+        // Nếu TẤT CẢ các từ tìm kiếm đều khớp trên Tên tiện ích (ví dụ "ku nghi duon" -> "khu nghi duong")
         if ($nameMinScore >= 0.70) {
-            return round(0.72 + ($nameAvgScore * 0.10) + $brevityBonus, 2);
+            return round(0.78 + ($nameAvgScore * 0.08) + $brevityBonus, 2);
         }
 
-        // Trường hợp một số từ khớp trên Tên và từ khác khớp trên Block / Location (ví dụ "gym toa a")
-        $globalMinScore = min($tokenScoresGlobal);
-        $globalAvgScore = array_sum($tokenScoresGlobal) / count($tokenScoresGlobal);
-
-        if ($globalMinScore >= 0.70) {
-            return round(0.70 + ($globalAvgScore * 0.12) + $brevityBonus, 2);
-        }
-
-        // Trường hợp khớp 1 phần (chỉ một số từ khớp, ví dụ "khu nghi" trong "Khu Nghỉ Dưỡng")
-        $matchedCount = count(array_filter($tokenScoresGlobal, fn ($s) => $s >= 0.70));
-        if ($matchedCount > 0) {
-            $ratio = $matchedCount / count($tokensToEvaluate);
-            if ($ratio >= 0.5) {
-                return round(0.50 + ($ratio * 0.20), 2);
+        // 5. Khớp 1 phần trên Tên tiện ích
+        // Với cụm 2 từ (như "ho boi", "san tennis", "phong gym"):
+        // Bắt buộc phải khớp cả 2 từ (đã xử lý ở mục 4), TUYỆT ĐỐI KHÔNG cho phép khớp 1 từ riêng lẻ
+        // để ngăn ngừa triệt để việc tìm "ho boi" lại ra các tiện ích chỉ chứa từ "Hồ" như "Vườn Nướng BBQ Ven Hồ".
+        // CHỈ cho phép khớp 1 phần khi truy vấn có từ 3 từ trở lên và khớp ít nhất 2 từ.
+        if (count($tokensToEvaluate) >= 3) {
+            $matchedCountOnName = count(array_filter($tokenScoresOnName, fn ($s) => $s >= 0.70));
+            if ($matchedCountOnName >= 2) {
+                $ratio = $matchedCountOnName / count($tokensToEvaluate);
+                if ($ratio >= 0.65) {
+                    return round(0.50 + ($ratio * 0.15), 2);
+                }
             }
         }
 
@@ -364,7 +436,7 @@ class SmartSearchDriver implements SearchDriverInterface
             $scored = [];
             foreach ($candidates as $item) {
                 $score = $this->computeRelevanceScore($item, $normQuery);
-                if ($score >= 0.35) {
+                if ($score >= 0.45) {
                     $itemArray = (array) $item;
                     $itemArray['relevance_score'] = $score;
                     $scored[] = $itemArray;
@@ -373,15 +445,35 @@ class SmartSearchDriver implements SearchDriverInterface
 
             // Sắp xếp
             if ($sort === 'relevance') {
-                usort($scored, function ($a, $b) {
-                    if ($b['relevance_score'] != $a['relevance_score']) {
+                $unaccentedQuery = $normQuery['unaccented'];
+                usort($scored, function ($a, $b) use ($unaccentedQuery) {
+                    // 1. So sánh điểm tương quan (Relevance Score)
+                    if (abs($b['relevance_score'] - $a['relevance_score']) >= 0.005) {
                         return $b['relevance_score'] <=> $a['relevance_score'];
                     }
 
+                    $nameA = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['amenity_name'] ?? '')));
+                    $nameB = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['amenity_name'] ?? '')));
+
+                    // 2. Ưu tiên tiện ích mà tên BẮT ĐẦU bằng từ khóa tìm kiếm
+                    $startsA = str_starts_with($nameA, $unaccentedQuery);
+                    $startsB = str_starts_with($nameB, $unaccentedQuery);
+                    if ($startsA !== $startsB) {
+                        return $startsA ? -1 : 1;
+                    }
+
+                    // 3. Ưu tiên vị trí xuất hiện sớm hơn trong tên
+                    $posA = strpos($nameA, $unaccentedQuery);
+                    $posB = strpos($nameB, $unaccentedQuery);
+                    if ($posA !== false && $posB !== false && $posA !== $posB) {
+                        return $posA <=> $posB;
+                    }
+
+                    // 4. Ưu tiên tên ngắn gọn hơn
                     $lenA = mb_strlen($a['amenity_name'] ?? '');
                     $lenB = mb_strlen($b['amenity_name'] ?? '');
                     if ($lenA !== $lenB) {
-                        return $lenA <=> $lenB; // Ưu tiên tên ngắn, cô đọng hơn
+                        return $lenA <=> $lenB;
                     }
 
                     return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
@@ -461,7 +553,7 @@ class SmartSearchDriver implements SearchDriverInterface
             $scored = [];
             foreach ($candidates as $item) {
                 $score = $this->computeRelevanceScore($item, $norm);
-                if ($score >= 0.35) {
+                if ($score >= 0.45) {
                     $scored[] = [
                         'id' => $item->id,
                         'label' => $item->amenity_name,
@@ -474,7 +566,23 @@ class SmartSearchDriver implements SearchDriverInterface
                 }
             }
 
-            usort($scored, fn ($a, $b) => $b['score'] <=> $a['score']);
+            $unaccentedPrefix = $norm['unaccented'];
+            usort($scored, function ($a, $b) use ($unaccentedPrefix) {
+                if (abs($b['score'] - $a['score']) >= 0.005) {
+                    return $b['score'] <=> $a['score'];
+                }
+
+                $nameA = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['label'] ?? '')));
+                $nameB = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['label'] ?? '')));
+
+                $startsA = str_starts_with($nameA, $unaccentedPrefix);
+                $startsB = str_starts_with($nameB, $unaccentedPrefix);
+                if ($startsA !== $startsB) {
+                    return $startsA ? -1 : 1;
+                }
+
+                return mb_strlen($a['label'] ?? '') <=> mb_strlen($b['label'] ?? '');
+            });
 
             return array_slice($scored, 0, $limit);
         }

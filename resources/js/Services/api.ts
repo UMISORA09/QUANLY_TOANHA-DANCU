@@ -83,6 +83,9 @@ export interface AmenityListResponse {
   page: number;
   limit: number;
   total_pages: number;
+  search_time_ms?: number;
+  corrected_query?: string | null;
+  is_fuzzy?: boolean;
 }
 
 export interface TimeSlot {
@@ -351,6 +354,12 @@ class ApiService {
     if (lookup.exists && lookup.data) {
       options.onData(lookup.data, true);
       hasRenderedCache = true;
+    }
+
+    // Zero-latency optimization: Nếu cache vẫn còn Fresh và không ép buộc làm mới, kết thúc ngay lập tức (0ms)
+    if (!options.forceRefresh && lookup.exists && lookup.data && lookup.isFresh) {
+      if (options.onSyncing) options.onSyncing(false);
+      return;
     }
 
     if (options.onSyncing) options.onSyncing(true);
