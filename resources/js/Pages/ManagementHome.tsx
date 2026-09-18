@@ -120,7 +120,13 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     if (path === '/admin/amenities' || path === '/admin/tien-ich' || path.startsWith('/admin/amenities')) {
       return 'amenities';
     }
-    if (path === '/admin/zones' || path === '/admin/khoi-nha' || path.startsWith('/admin/zones')) {
+    if (
+      path === '/quan-ly/zones' ||
+      path === '/quan-ly/khoi-nha' ||
+      path.startsWith('/quan-ly/zones') ||
+      path === '/manager/zones' ||
+      path === '/admin/zones'
+    ) {
       return 'zones';
     }
 
@@ -341,14 +347,26 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   // Sidebar Menu Items dynamically bound to Database KPIs and userRole
   const menuItems = useMemo(
     () => {
-      const baseItems = [
-        { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
-        { id: 'zones', label: 'Khối Tòa nhà (Block/Zone)', icon: Layers, badge: null },
-        { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
-        { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
-        { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
+      // 1. Phân hệ Admin: Quản trị tài khoản, phân quyền, cấu hình hệ thống & log
+      if (userRole === 'admin') {
+        return [
+          { id: 'overview', label: 'Tổng quan Hệ thống (Admin)', icon: LayoutDashboard, badge: null, active: true },
+          { id: 'roles', label: 'Phân quyền tài khoản (Admin)', icon: ShieldCheck, badge: 'Toàn quyền' },
+          { id: 'reports', label: 'Báo cáo & Kiểm toán Log', icon: BarChart3, badge: null },
+          { id: 'system_settings', label: 'Cấu hình Tòa nhà & IoT', icon: SlidersHorizontal, badge: null },
+          { id: 'billing', label: 'Tài chính & Doanh thu Cấp cao', icon: Receipt, badge: String(kpis.unpaidInvoices) },
+          { id: 'amenities', label: 'Cấu hình Danh mục Tiện ích', icon: Sparkles, badge: String(kpis.amenityBookings) },
+        ];
+      }
+
+      // 2. Phân hệ Ban Quản Lý (Manager): Trực tiếp quản lý Khối tòa nhà, cư dân, vận hành kỹ thuật
+      return [
+        { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
+        { id: 'zones', label: 'Khối Tòa nhà (Block/Zone)', icon: Layers, badge: null, isNew: true },
+        { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: kpis.totalResidents },
+        { id: 'pricing', label: 'Đơn giá dịch vụ', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
-        { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
+        { id: 'invoices', label: 'Hóa đơn & Thu phí', icon: Receipt, badge: String(kpis.unpaidInvoices) },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
         { id: 'amenities', label: 'Quản lý & Danh mục tiện ích', icon: Sparkles, badge: String(kpis.amenityBookings) },
         { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${notifications.filter(n => !n.isRead).length || 2} mới` },
@@ -358,17 +376,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'shifts', label: 'Chấm công & Bàn giao ca', icon: Clock, badge: null },
         { id: 'feedback', label: 'Góp ý & Phân tích cảm xúc', icon: HeartHandshake, badge: '96%' },
       ];
-
-      if (userRole === 'admin') {
-        baseItems.splice(1, 0, {
-          id: 'roles',
-          label: 'Phân quyền tài khoản (Admin)',
-          icon: ShieldCheck,
-          badge: 'Đặc quyền',
-        });
-      }
-
-      return baseItems;
     },
     [kpis, notifications, userRole]
   );
@@ -573,14 +580,15 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     }
 
     // Cập nhật URL trên thanh địa chỉ (Deep Linking & History API)
+    const basePath = userRole === 'admin' ? '/admin' : '/quan-ly';
     if (id === 'amenities') {
-      window.history.pushState({ tab: id }, '', '/admin/amenities');
+      window.history.pushState({ tab: id }, '', `${basePath}/amenities`);
     } else if (id === 'zones') {
-      window.history.pushState({ tab: id }, '', '/admin/zones');
+      window.history.pushState({ tab: id }, '', `${basePath}/zones`);
     } else if (id === 'overview') {
-      window.history.pushState({ tab: id }, '', '/admin');
+      window.history.pushState({ tab: id }, '', basePath);
     } else {
-      window.history.pushState({ tab: id }, '', `/admin?tab=${id}`);
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=${id}`);
     }
     if (id === 'buildings') {
       setIs3DModelOpen(true);

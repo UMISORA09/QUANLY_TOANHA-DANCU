@@ -97,7 +97,7 @@ export const ZoneManager: React.FC = () => {
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
       if (statusFilter !== 'all') params.append('status', statusFilter);
 
-      const url = `/api/v1/admin/zones${params.toString() ? `?${params.toString()}` : ''}`;
+      const url = `/api/v1/manager/zones${params.toString() ? `?${params.toString()}` : ''}`;
       const res = await fetch(url, {
         headers: {
           Accept: 'application/json',
@@ -155,7 +155,7 @@ export const ZoneManager: React.FC = () => {
     setIsDeleting(true);
 
     try {
-      const res = await fetch(`/api/v1/admin/zones/${deletingZone.id}`, {
+      const res = await fetch(`/api/v1/manager/zones/${deletingZone.id}`, {
         method: 'DELETE',
         headers: {
           Accept: 'application/json',
@@ -231,13 +231,13 @@ export const ZoneManager: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-600 font-mono">
             <Building2 className="w-4 h-4" />
-            <span>QUẢN LÝ DỮ LIỆU TÒA NHÀ · MASTER DATA</span>
+            <span>BAN QUẢN LÝ TÒA NHÀ (MANAGER) · KHÔNG GIAN VẬN HÀNH</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white tracking-tight mt-1">
-            Khối Tòa Nhà & Phân Khu (Block/Zone)
+            Quản Lý Khối Tòa Nhà & Phân Khu (Block/Zone)
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Quản lý danh mục khối nhà (Block A, Block B,...), quy mô số tầng, tầng hầm và số lượng căn hộ vận hành.
+            Phân hệ nghiệp vụ Ban Quản Lý: Kiểm soát danh mục khối nhà (Block A, Block B,...), số tầng và căn hộ vận hành.
           </p>
         </div>
 

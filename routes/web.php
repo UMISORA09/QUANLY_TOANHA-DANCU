@@ -122,9 +122,19 @@ Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenitie
 Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
 
-// Phân hệ Quản lý tiện ích & Cấu hình Slot
-Route::prefix('api/v1/admin')->group(function () {
+// Phân hệ Ban Quản Lý Tòa Nhà (Building Management Portal)
+Route::prefix('api/v1/manager')->group(function () {
     // Quản lý Khối Tòa nhà (Block/Zone Management)
+    Route::get('zones', [ZoneController::class, 'index']);
+    Route::post('zones', [ZoneController::class, 'store']);
+    Route::get('zones/{id}', [ZoneController::class, 'show']);
+    Route::put('zones/{id}', [ZoneController::class, 'update']);
+    Route::delete('zones/{id}', [ZoneController::class, 'destroy']);
+});
+
+// Phân hệ Quản trị & Tiện ích
+Route::prefix('api/v1/admin')->group(function () {
+    // Quản lý Khối Tòa nhà (Block/Zone Management - hỗ trợ alias admin)
     Route::get('zones', [ZoneController::class, 'index']);
     Route::post('zones', [ZoneController::class, 'store']);
     Route::get('zones/{id}', [ZoneController::class, 'show']);

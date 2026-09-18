@@ -135,16 +135,20 @@ const App: React.FC = () => {
     currentPath === '/admin/tien-ich' ||
     currentPath.startsWith('/admin/amenities');
 
-  const isZoneAdminPath =
+  // Khối tòa nhà (Block/Zone) là nghiệp vụ của Ban Quản Lý (Manager), nếu vào /admin/zones sẽ tự động chuyển sang /quan-ly/zones
+  if (
     currentPath === '/admin/zones' ||
     currentPath === '/admin/khoi-nha' ||
-    currentPath.startsWith('/admin/zones');
+    currentPath.startsWith('/admin/zones')
+  ) {
+    navigateTo('/quan-ly/zones');
+    return null;
+  }
 
   const isAdminPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
-    isAmenityAdminPath ||
-    isZoneAdminPath;
+    isAmenityAdminPath;
 
   if (isAdminPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin, chuyển về đúng cổng của họ
@@ -164,7 +168,7 @@ const App: React.FC = () => {
     }
 
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabToUse = isAmenityAdminPath ? 'amenities' : isZoneAdminPath ? 'zones' : (urlTab || undefined);
+    const tabToUse = isAmenityAdminPath ? 'amenities' : (urlTab || undefined);
 
     return (
       <ManagementHome
@@ -178,13 +182,21 @@ const App: React.FC = () => {
     );
   }
 
-  // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà)
+  // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà: Khối nhà, Căn hộ, Kỹ thuật)
+  const isZoneManagerPath =
+    currentPath === '/quan-ly/zones' ||
+    currentPath === '/quan-ly/khoi-nha' ||
+    currentPath.startsWith('/quan-ly/zones') ||
+    currentPath === '/manager/zones' ||
+    currentPath.startsWith('/manager/zones');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
     currentPath === '/manager' ||
     currentPath.startsWith('/manager/') ||
-    currentPath === '/dashboard';
+    currentPath === '/dashboard' ||
+    isZoneManagerPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -201,6 +213,9 @@ const App: React.FC = () => {
 
     const isUserAdmin = currentUser?.role === 'admin';
     const effectiveRole = isUserAdmin ? 'admin' : 'manager';
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    const tabToUse = isZoneManagerPath ? 'zones' : (urlTab || undefined);
+
     return (
       <ManagementHome
         onLogout={handleLogout}
@@ -208,6 +223,7 @@ const App: React.FC = () => {
         userRole={effectiveRole}
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
+        initialTab={tabToUse}
       />
     );
   }

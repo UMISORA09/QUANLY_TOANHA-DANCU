@@ -137,7 +137,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
       if (!latest && onReloadRequested) {
         latest = await onReloadRequested(initialData.id);
       } else if (!latest) {
-        const res = await fetch(`/api/v1/admin/zones/${initialData.id}`);
+        const res = await fetch(`/api/v1/manager/zones/${initialData.id}`);
         const data = await res.json();
         if (data.success && data.data) {
           latest = data.data;
@@ -177,8 +177,8 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
     setConflictMessage(null);
 
     const url = isEditMode
-      ? `/api/v1/admin/zones/${initialData?.id}`
-      : '/api/v1/admin/zones';
+      ? `/api/v1/manager/zones/${initialData?.id}`
+      : '/api/v1/manager/zones';
     const method = isEditMode ? 'PUT' : 'POST';
 
     try {

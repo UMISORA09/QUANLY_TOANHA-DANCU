@@ -138,7 +138,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Tổng quan Hệ thống', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền & Tài khoản', icon: Shield, badge: 'Toàn quyền', badgeType: 'warning' },
-      { id: 'zones', label: 'Khối Tòa nhà (Block/Zone)', icon: Layers, isNew: true },
       { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
       { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'billing', label: 'Tài chính & Doanh thu', icon: CreditCard },
