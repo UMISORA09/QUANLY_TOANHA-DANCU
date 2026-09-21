@@ -19,7 +19,7 @@ export interface PascalInspectorData {
   id: string;
   code: string;
   name: string;
-  category: 'tower' | 'level' | 'podium' | 'amenity' | 'basement' | 'zone';
+  category: 'tower' | 'level' | 'podium' | 'amenity' | 'basement' | 'zone' | 'landscape';
   elevation?: string;
   areaM2?: number;
   functions?: string[];

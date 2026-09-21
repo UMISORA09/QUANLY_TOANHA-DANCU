@@ -967,19 +967,19 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
     if (action === '/focus') {
       if (arg1 === 'hotel' || arg1 === 'tower') {
-        handleQuickView('hotel');
+        setCameraPreset('hotel');
         return { success: true, message: 'Focus camera: Tháp Khách Sạn 28T' };
       }
       if (arg1 === 'office') {
-        handleQuickView('office');
+        setCameraPreset('office');
         return { success: true, message: 'Focus camera: Tháp Văn Phòng 12T' };
       }
       if (arg1 === 'podium' || arg1 === 'mall') {
-        handleQuickView('podium');
+        setCameraPreset('podium');
         return { success: true, message: 'Focus camera: Khối Đế Thương Mại' };
       }
       if (arg1 === 'basement') {
-        handleQuickView('basement');
+        setCameraPreset('basement');
         return { success: true, message: 'Focus camera: Tầng Hầm B1-B2' };
       }
       return { success: false, message: 'Cú pháp: /focus [hotel | office | podium | basement]' };
