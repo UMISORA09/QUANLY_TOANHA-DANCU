@@ -170,20 +170,20 @@ export const FLOOR_LEVELS: FloorData[] = [
 ];
 
 export const SITE_PINS: SitePin[] = [
-  { id: 1, title: 'Lối vào chính', subtitle: 'Trục đại lộ phía Đông dẫn vào sảnh danh dự', pos: [26, 0.6, 4], category: 'traffic' },
-  { id: 2, title: 'Lối vào hầm', subtitle: 'Ram dốc uốn lượn xuống bãi xe ngầm B1-B2', pos: [20, 0.4, 11], category: 'traffic' },
-  { id: 3, title: 'Lối ra chính', subtitle: 'Làn phân luồng một chiều ra nút giao thông', pos: [26, 0.6, -4], category: 'traffic' },
-  { id: 4, title: 'Lối thoát hầm', subtitle: 'Ram dốc thoát hiểm & xe ra phía Tây', pos: [-28, 0.4, 0], category: 'traffic' },
+  { id: 1, title: 'Lối vào chính', subtitle: 'Trục đại lộ phía Đông dẫn vào sảnh danh dự', pos: [33, 0.6, 6], category: 'traffic' },
+  { id: 2, title: 'Lối vào hầm', subtitle: 'Ram dốc uốn lượn xuống bãi xe ngầm B1-B2', pos: [22, 0.4, 16], category: 'traffic' },
+  { id: 3, title: 'Lối ra chính', subtitle: 'Làn phân luồng một chiều ra nút giao thông', pos: [33, 0.6, -8], category: 'traffic' },
+  { id: 4, title: 'Lối thoát hầm', subtitle: 'Ram dốc thoát hiểm & xe ra phía Tây', pos: [-24, 0.4, 0], category: 'traffic' },
   { id: 5, title: 'Sảnh đón khách sạn 5★', subtitle: 'Chi tiết sảnh chính: Cột lam đứng & mái drop-off cong (Sheet 9)', pos: [14, 1.5, 7], category: 'lobby' },
-  { id: 6, title: 'Quảng trường trung tâm', subtitle: 'Quảng trường ánh sáng, đài phun nước & công viên', pos: [8, 0.3, 20], category: 'landscape' },
-  { id: 7, title: 'Khu nhà hàng ẩm thực', subtitle: 'Nhà hàng sang trọng ven hồ & ẩm thực quốc tế', pos: [0, 1.8, -15], category: 'fnb' },
-  { id: 8, title: 'Không gian mặt nước', subtitle: 'Hồ nước cảnh quan uốn lượn ôm trọn khối đế', pos: [-6, 0.3, 15], category: 'landscape' },
+  { id: 6, title: 'Quảng trường trung tâm', subtitle: 'Quảng trường ánh sáng, đài phun nước & công viên', pos: [16, 0.3, 22], category: 'landscape' },
+  { id: 7, title: 'Khu nhà hàng ẩm thực', subtitle: 'Nhà hàng sang trọng ven hồ & ẩm thực quốc tế', pos: [-6, 1.8, 14], category: 'fnb' },
+  { id: 8, title: 'Không gian mặt nước', subtitle: 'Hồ nước cảnh quan sinh thái uốn lượn ôm trọn khối đế', pos: [-2, 0.3, 22], category: 'landscape' },
   { id: 9, title: 'Bể bơi vô cực & ốc đảo', subtitle: 'Hồ bơi cong hữu cơ tầng 5 & ốc đảo dừa nhiệt đới', pos: [6, 5.2, 5], category: 'amenity' },
   { id: 10, title: 'Tháp Khách Sạn 28T (Tower 10)', subtitle: 'Tháp tam giác bo góc, mái vát chéo, ban công vươn & VIP Suite (Sheet 10)', pos: [6, 18, -2], category: 'tower' },
   { id: 11, title: 'Tháp Văn Phòng 12T (Tower 11)', subtitle: 'Khối văn phòng hạng A kết nối cầu kính & vòm Cassavas', pos: [-14, 8, -2], category: 'tower' },
   { id: 12, title: 'Mái vòm Cassavas & LED Wall', subtitle: 'Vòm cong điêu khắc biểu tượng Cassavas & Màn hình LED kỹ thuật số', pos: [-18, 3.5, 10], category: 'podium' },
   { id: 13, title: 'Cầu kính Skybridge', subtitle: 'Cầu kính trên không tầng 8-10 nối liền 2 khối tháp', pos: [-4, 9, -2], category: 'tower' },
-  { id: 14, title: 'Cầu đi bộ cảnh quan gỗ', subtitle: 'Cầu gỗ Teak uốn lượn bắc qua hồ nước sinh thái', pos: [6, 2.2, 18], category: 'landscape' },
+  { id: 14, title: 'Cầu đi bộ cảnh quan gỗ', subtitle: 'Cầu gỗ Teak uốn lượn bắc qua hồ nước sinh thái', pos: [-2, 2.2, 22], category: 'landscape' },
 ];
 
 export const ARCHITECTURAL_BLOCKS: BuildingBlockData[] = [
@@ -915,11 +915,12 @@ function createPodiumShape(): THREE.Shape {
 
 function createLakeShape(): THREE.Shape {
   const shape = new THREE.Shape();
-  shape.moveTo(-18, 14);
-  shape.bezierCurveTo(-16, 24, -6, 28, 4, 26);
-  shape.bezierCurveTo(14, 24, 20, 18, 18, 10);
-  shape.bezierCurveTo(16, 5, 10, 8, 3, 12);
-  shape.bezierCurveTo(-4, 16, -12, 14, -18, 14);
+  // Hồ nước cảnh quan sinh thái uốn lượn tự nhiên ôm quảng trường
+  shape.moveTo(-16, -6);
+  shape.bezierCurveTo(-18, 0, -16, 6, -10, 8);
+  shape.bezierCurveTo(-2, 10, 4, 8, 10, 4);
+  shape.bezierCurveTo(16, 0, 15, -6, 8, -8);
+  shape.bezierCurveTo(0, -10, -8, -10, -16, -6);
   shape.closePath();
   return shape;
 }
@@ -1032,7 +1033,7 @@ const INITIAL_OUTLINER_ITEMS: A3DOutlinerItem[] = [
     iconName: 'TreePine',
     visible: true,
     description: 'Quảng trường đá hoa cương, đài phun nước & cầu gỗ vượt hồ',
-    cameraTarget: { theta: 0.95, phi: 0.50, radius: 48, lookAt: [8, 0.5, 20] },
+    cameraTarget: { theta: 0.95, phi: 0.50, radius: 44, lookAt: [16, 0.5, 22] },
   },
   {
     id: 'lake',
@@ -1041,7 +1042,7 @@ const INITIAL_OUTLINER_ITEMS: A3DOutlinerItem[] = [
     iconName: 'TreePine',
     visible: true,
     description: 'Hồ nước uốn lượn điều hòa vi khí hậu dự án',
-    cameraTarget: { theta: 0.85, phi: 0.45, radius: 52, lookAt: [0, 0.2, 0] },
+    cameraTarget: { theta: 0.85, phi: 0.45, radius: 46, lookAt: [-2, 0.5, 22] },
   },
   {
     id: 'roads',
@@ -1050,7 +1051,7 @@ const INITIAL_OUTLINER_ITEMS: A3DOutlinerItem[] = [
     iconName: 'TreePine',
     visible: true,
     description: 'Trục đường chính và đường nội bộ phân luồng một chiều',
-    cameraTarget: { theta: 0.90, phi: 0.58, radius: 75, lookAt: [20, 0.5, 20] },
+    cameraTarget: { theta: 0.90, phi: 0.58, radius: 68, lookAt: [35, 0.5, 35] },
   },
   {
     id: 'beach',
@@ -1748,15 +1749,15 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       });
 
       const blockCoords = [
-        [-35, -55], [-15, -55], [5, -55], [25, -55], [45, -55],
-        [-55, -35], [-55, -15], [-55, 5], [-55, 25], [-55, 45],
-        [-45, 55], [-25, 55], [-5, 55], [15, 55]
+        [-45, -68], [-25, -68], [-5, -68], [15, -68], [35, -68],
+        [-68, -45], [-68, -25], [-68, -5], [-68, 15], [-68, 35],
+        [-50, 72], [-30, 72], [-10, 72], [10, 72], [30, 72]
       ];
 
       blockCoords.forEach(([bx, bz]) => {
         const bw = 12 + Math.random() * 6;
         const bd = 12 + Math.random() * 6;
-        const bh = 5 + Math.random() * 12;
+        const bh = 6 + Math.random() * 12;
         const bMesh = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), cityMat);
         bMesh.position.set(bx, bh / 2, bz);
         bMesh.castShadow = true;
@@ -1795,16 +1796,43 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(roadsGroup);
     interactiveMeshesRef.current.set('roads', roadsGroup);
 
-    // Lòng đường đại lộ Đông & Nam
-    const roadEast = new THREE.Mesh(new THREE.PlaneGeometry(16, 140), roadEastMat);
+    // Lòng đường đại lộ Đông & Nam & Ngã tư kết nối phân luồng giao thông
+    const roadEast = new THREE.Mesh(new THREE.PlaneGeometry(14, 110), roadEastMat);
     roadEast.rotation.x = -Math.PI / 2;
-    roadEast.position.set(40, 0.03, 0);
+    roadEast.position.set(42, 0.03, -20);
     roadsGroup.add(roadEast);
 
-    const roadSouth = new THREE.Mesh(new THREE.PlaneGeometry(140, 16), roadSouthMat);
+    const roadSouth = new THREE.Mesh(new THREE.PlaneGeometry(110, 14), roadSouthMat);
     roadSouth.rotation.x = -Math.PI / 2;
-    roadSouth.position.set(0, 0.03, 40);
+    roadSouth.position.set(-20, 0.03, 42);
     roadsGroup.add(roadSouth);
+
+    // Mặt đường ngã tư Đông - Nam (Seamless Intersection Plane, không bị Z-fighting)
+    const roadIntersectionMat = new THREE.MeshStandardMaterial({
+      color: 0x1f242d,
+      roughness: 0.85,
+      metalness: 0.05,
+    });
+    const roadIntersection = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), roadIntersectionMat);
+    roadIntersection.rotation.x = -Math.PI / 2;
+    roadIntersection.position.set(42, 0.03, 42);
+    roadsGroup.add(roadIntersection);
+
+    // Vạch kẻ đường đi bộ qua đường (Zebra Crossings)
+    const crosswalkMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.8,
+      metalness: 0.02,
+    });
+    const crosswalkEast = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), crosswalkMat);
+    crosswalkEast.rotation.x = -Math.PI / 2;
+    crosswalkEast.position.set(42, 0.032, 33.5);
+    roadsGroup.add(crosswalkEast);
+
+    const crosswalkSouth = new THREE.Mesh(new THREE.PlaneGeometry(3, 12), crosswalkMat);
+    crosswalkSouth.rotation.x = -Math.PI / 2;
+    crosswalkSouth.position.set(33.5, 0.032, 42);
+    roadsGroup.add(crosswalkSouth);
 
     // VỈA HÈ LÁT ĐÁ GRANITE NÂNG CAO 0.18M (Urban Sidewalk Curbs)
     const sidewalkMat = new THREE.MeshStandardMaterial({
@@ -1813,32 +1841,42 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       metalness: 0.02,
     });
 
-    const walkEastOuter = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.18, 140), sidewalkMat);
-    walkEastOuter.position.set(50.25, 0.09, 0);
+    // Vỉa hè ngoài phía Đông (X: 49..53, Z: -75..53)
+    const walkEastOuter = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 128), sidewalkMat);
+    walkEastOuter.position.set(51, 0.09, -11);
     walkEastOuter.receiveShadow = true;
     roadsGroup.add(walkEastOuter);
 
-    const walkEastInner = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 140), sidewalkMat);
-    walkEastInner.position.set(30, 0.09, 0);
-    walkEastInner.receiveShadow = true;
-    roadsGroup.add(walkEastInner);
-
-    const walkSouthOuter = new THREE.Mesh(new THREE.BoxGeometry(140, 0.18, 4.5), sidewalkMat);
-    walkSouthOuter.position.set(0, 0.09, 50.25);
+    // Vỉa hè ngoài phía Nam (Z: 49..53, X: -75..49)
+    const walkSouthOuter = new THREE.Mesh(new THREE.BoxGeometry(124, 0.18, 4.0), sidewalkMat);
+    walkSouthOuter.position.set(-13, 0.09, 51);
     walkSouthOuter.receiveShadow = true;
     roadsGroup.add(walkSouthOuter);
 
-    const walkSouthInner = new THREE.Mesh(new THREE.BoxGeometry(140, 0.18, 4.0), sidewalkMat);
-    walkSouthInner.position.set(0, 0.09, 30);
+    // Vỉa hè trong phía Đông (X: 31..35, Z: -75..31)
+    const walkEastInner = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 106), sidewalkMat);
+    walkEastInner.position.set(33, 0.09, -22);
+    walkEastInner.receiveShadow = true;
+    roadsGroup.add(walkEastInner);
+
+    // Vỉa hè trong phía Nam (Z: 31..35, X: -75..31)
+    const walkSouthInner = new THREE.Mesh(new THREE.BoxGeometry(106, 0.18, 4.0), sidewalkMat);
+    walkSouthInner.position.set(-22, 0.09, 33);
     walkSouthInner.receiveShadow = true;
     roadsGroup.add(walkSouthInner);
 
-    // HÀNG CÂY BÓNG MÁT ĐÔ THỊ DỌC ĐẠI LỘ (Boulevard Street Trees)
+    // Góc nối vỉa hè trong tại ngã tư
+    const walkInnerCorner = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 4.0), sidewalkMat);
+    walkInnerCorner.position.set(33, 0.09, 33);
+    walkInnerCorner.receiveShadow = true;
+    roadsGroup.add(walkInnerCorner);
+
+    // HÀNG CÂY BÓNG MÁT ĐÔ THỊ DỌC ĐẠI LỘ (Boulevard Street Trees - trồng trên vỉa hè ngoài, thẳng hàng chuẩn quy hoạch)
     const streetTreeCoords: [number, number, number][] = [
-      [50.25, -55, 1.0], [50.25, -35, 1.1], [50.25, -15, 0.95],
-      [50.25, 15, 1.05], [50.25, 35, 1.1], [50.25, 55, 0.95],
-      [-55, 50.25, 1.05], [-35, 50.25, 0.95], [-15, 50.25, 1.1],
-      [15, 50.25, 1.0], [35, 50.25, 1.05]
+      // Dọc vỉa hè Đông (X = 51)
+      [51, -65, 1.05], [51, -45, 1.1], [51, -25, 0.95], [51, -5, 1.05], [51, 15, 1.0],
+      // Dọc vỉa hè Nam (Z = 51)
+      [-65, 51, 1.05], [-45, 51, 0.95], [-25, 51, 1.1], [-5, 51, 1.0], [15, 51, 1.05]
     ];
     streetTreeCoords.forEach(([tx, tz, tScale], idx) => {
       const tree = createRealisticCanopyTree(tScale, idx);
@@ -1846,7 +1884,7 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       roadsGroup.add(tree);
     });
 
-    // Hồ nước cảnh quan (Dielectric PBR nước mặt có normal gợn sóng)
+    // Hồ nước cảnh quan sinh thái (Dielectric PBR nước mặt có normal gợn sóng)
     const lakeShape = createLakeShape();
     const lakeGeo = new THREE.ShapeGeometry(lakeShape);
     const lakeMat = new THREE.MeshStandardMaterial({
@@ -1861,14 +1899,20 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     });
     const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
     lakeMesh.rotation.x = -Math.PI / 2;
-    lakeMesh.position.set(0, 0.08, 0);
+    lakeMesh.position.set(-2, 0.08, 22);
     upperGroup.add(lakeMesh);
     interactiveMeshesRef.current.set('lake', lakeMesh);
 
-    // CÂY BÓNG MÁT CẢNH QUAN QUANH HỒ NƯỚC (Lakefront Garden Trees)
+    // CÂY BÓNG MÁT CẢNH QUAN QUANH HỒ NƯỚC & KHUÔN VIÊN (Lakefront Garden Trees)
     const lakeTreeCoords: [number, number, number][] = [
-      [22, -12, 1.15], [26, 12, 1.2], [4, 26, 1.1],
-      [-16, 22, 1.05], [-24, -14, 1.1], [-12, 16, 0.95]
+      [22, 16, 1.15],
+      [22, 28, 1.2],
+      [-18, 12, 1.1],
+      [-19, 24, 1.05],
+      [-6, 31, 1.1],
+      [6, 31, 0.95],
+      [-22, -16, 1.1],
+      [18, -16, 1.15]
     ];
     lakeTreeCoords.forEach(([lx, lz, lScale], idx) => {
       const lTree = createRealisticCanopyTree(lScale, idx + 7);
@@ -1884,10 +1928,11 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       flatShading: true,
     });
     const hedgeCoords: [number, number, number, number, number][] = [
-      [14, 18, 5, 0.8, 1.2],
-      [-8, 22, 6, 0.8, 1.2],
-      [20, 4, 1.2, 0.8, 6],
-      [-20, 8, 1.2, 0.8, 8]
+      [24, 8, 1.2, 0.75, 8],
+      [24, 22, 1.2, 0.75, 8],
+      [14, 32, 10, 0.75, 1.2],
+      [-6, 32, 12, 0.75, 1.2],
+      [-21, 18, 1.2, 0.75, 8]
     ];
     hedgeCoords.forEach(([hx, hz, hw, hh, hd]) => {
       const hedgeMesh = new THREE.Mesh(new THREE.BoxGeometry(hw, hh, hd), hedgeMat);
@@ -1897,28 +1942,29 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       upperGroup.add(hedgeMesh);
     });
 
-    // Quảng trường lát đá granite & Cầu gỗ tếch kiến trúc (Sheet 1)
+    // Quảng trường lát đá granite & Cầu gỗ sinh thái bắc qua hồ (Sheet 1)
     const plazaMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(15, 15, 0.18, 48),
+      new THREE.CylinderGeometry(11, 11, 0.18, 48),
       new THREE.MeshStandardMaterial({
         color: timeMode === 'night' ? 0x1e293b : 0xe2e8f0,
         roughness: 0.78,
         metalness: 0.03,
       })
     );
-    plazaMesh.position.set(8, 0.09, 20);
+    plazaMesh.position.set(16, 0.09, 22);
     upperGroup.add(plazaMesh);
     interactiveMeshesRef.current.set('plaza', plazaMesh);
 
+    // Cầu gỗ Teak kiến trúc uốn lượn vượt hồ từ quảng trường sang công viên Tây
     const bridgeCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(20, 0.5, 10),
-      new THREE.Vector3(15, 1.8, 16),
-      new THREE.Vector3(6, 2.0, 20),
-      new THREE.Vector3(-4, 1.5, 24),
-      new THREE.Vector3(-16, 0.5, 28),
+      new THREE.Vector3(12, 0.45, 16),
+      new THREE.Vector3(6, 1.8, 20),
+      new THREE.Vector3(-2, 2.1, 22),
+      new THREE.Vector3(-8, 1.8, 23),
+      new THREE.Vector3(-15, 0.45, 20),
     ]);
     const bridgeMesh = new THREE.Mesh(
-      new THREE.TubeGeometry(bridgeCurve, 40, 0.8, 12, false),
+      new THREE.TubeGeometry(bridgeCurve, 40, 0.75, 12, false),
       new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.65, metalness: 0.04 })
     );
     upperGroup.add(bridgeMesh);
