@@ -577,6 +577,292 @@ function createCassavasScreenTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+// 5. Thảm cỏ tự nhiên vi hạt sợi cỏ (Procedural PBR Lawn Texture)
+function createRealisticLawnTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+
+  // Nền đất mùn hữu cơ ẩm sẫm màu
+  ctx.fillStyle = '#1c2819';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Lớp vi sợi cỏ tự nhiên nhiều tầng màu
+  for (let i = 0; i < 28000; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const len = 2.5 + Math.random() * 5.0;
+    const angle = (Math.random() - 0.5) * 0.9;
+    const gVal = Math.floor(48 + Math.random() * 45);
+    const rVal = Math.floor(22 + Math.random() * 26);
+    const bVal = Math.floor(18 + Math.random() * 20);
+    ctx.strokeStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.sin(angle) * len, y - Math.cos(angle) * len);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(16, 16);
+  return texture;
+}
+
+// 6. Normal Map gợn sóng mặt nước (Procedural Water Normal Texture)
+function createWaterNormalTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  // Nền pháp tuyến phẳng (128, 128, 255)
+  ctx.fillStyle = '#8080ff';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Tính toán sóng lăn tăn hình học vi mô
+  for (let y = 0; y < 256; y += 4) {
+    for (let x = 0; x < 256; x += 4) {
+      const w1 = Math.sin(x * 0.12) * Math.cos(y * 0.14);
+      const w2 = Math.cos(x * 0.18 + 0.5) * Math.sin(y * 0.1 + 0.8);
+      const r = Math.min(255, Math.max(0, Math.floor(128 + (w1 + w2) * 35)));
+      const g = Math.min(255, Math.max(0, Math.floor(128 + (w1 - w2) * 35)));
+      ctx.fillStyle = `rgb(${r}, ${g}, 255)`;
+      ctx.fillRect(x, y, 4, 4);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(8, 8);
+  return texture;
+}
+
+// 7. Mặt đường Asphalt có vạch sơn kẻ đường (Road Asphalt & Markings)
+function createRoadMarkingTexture(isVertical: boolean): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = isVertical ? 128 : 512;
+  canvas.height = isVertical ? 512 : 128;
+  const ctx = canvas.getContext('2d')!;
+
+  // Lớp mặt đường bê tông nhựa Asphalt xám chì nhám
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Hạt đá dăm asphalt li ti
+  for (let i = 0; i < 4000; i++) {
+    const rx = Math.random() * canvas.width;
+    const ry = Math.random() * canvas.height;
+    const val = Math.floor(26 + Math.random() * 22);
+    ctx.fillStyle = `rgb(${val}, ${val + 2}, ${val + 5})`;
+    ctx.fillRect(rx, ry, 2, 2);
+  }
+
+  // Vạch sơn tim đường đứt đoạn màu vàng phản quang
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([22, 18]);
+  if (isVertical) {
+    ctx.beginPath();
+    ctx.moveTo(64, 0);
+    ctx.lineTo(64, 512);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(0, 64);
+    ctx.lineTo(512, 64);
+    ctx.stroke();
+  }
+
+  // Vạch kẻ mép đường màu trắng ngà
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  if (isVertical) {
+    ctx.beginPath();
+    ctx.moveTo(10, 0); ctx.lineTo(10, 512);
+    ctx.moveTo(118, 0); ctx.lineTo(118, 512);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(0, 10); ctx.lineTo(512, 10);
+    ctx.moveTo(0, 118); ctx.lineTo(512, 118);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(isVertical ? 1 : 4, isVertical ? 4 : 1);
+  return texture;
+}
+
+// 8. Cây dừa / Cọ nhiệt đới ven biển thực tế (Realistic Coastal Palm Tree)
+function createRealisticPalmTree(
+  scale: number = 1.0,
+  bendAzimuth: number = 0
+): THREE.Group {
+  const palmGroup = new THREE.Group();
+
+  // Thân dừa uốn cong tự nhiên theo gió biển
+  const trunkHeight = 8.2 * scale;
+  const curvePts = [
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(Math.sin(bendAzimuth) * 0.35 * scale, trunkHeight * 0.25, Math.cos(bendAzimuth) * 0.35 * scale),
+    new THREE.Vector3(Math.sin(bendAzimuth) * 1.05 * scale, trunkHeight * 0.55, Math.cos(bendAzimuth) * 1.05 * scale),
+    new THREE.Vector3(Math.sin(bendAzimuth) * 1.95 * scale, trunkHeight * 0.82, Math.cos(bendAzimuth) * 1.95 * scale),
+    new THREE.Vector3(Math.sin(bendAzimuth) * 2.5 * scale, trunkHeight, Math.cos(bendAzimuth) * 2.5 * scale),
+  ];
+  const trunkCurve = new THREE.CatmullRomCurve3(curvePts);
+  const trunkGeo = new THREE.TubeGeometry(trunkCurve, 20, 0.32 * scale, 8, false);
+
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0x483a2e,
+    roughness: 0.94,
+    metalness: 0.0,
+    flatShading: true,
+  });
+  const trunkMesh = new THREE.Mesh(trunkGeo, trunkMat);
+  trunkMesh.castShadow = true;
+  trunkMesh.receiveShadow = true;
+  palmGroup.add(trunkMesh);
+
+  // Đốt sẹo xơ dừa trên ngọn
+  const topPos = curvePts[4];
+  const crownJoint = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.24 * scale, 0.32 * scale, 0.5 * scale, 8),
+    new THREE.MeshStandardMaterial({ color: 0x362b22, roughness: 0.95, metalness: 0.0 })
+  );
+  crownJoint.position.copy(topPos);
+  palmGroup.add(crownJoint);
+
+  // Tán lá dừa (10 - 12 tàu lá rủ xòe cong 3D tự nhiên)
+  const frondCount = 11;
+  const frondMat = new THREE.MeshStandardMaterial({
+    color: 0x22471c,
+    roughness: 0.75,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+    flatShading: true,
+  });
+
+  for (let i = 0; i < frondCount; i++) {
+    const angle = (i / frondCount) * Math.PI * 2 + (i % 2) * 0.15;
+    const frondLen = (4.2 + (i % 3) * 0.35) * scale;
+    const droop = (2.4 + (i % 2) * 0.4) * scale;
+
+    const midX = topPos.x + Math.cos(angle) * (frondLen * 0.55);
+    const midY = topPos.y + 0.85 * scale;
+    const midZ = topPos.z + Math.sin(angle) * (frondLen * 0.55);
+
+    const endX = topPos.x + Math.cos(angle) * frondLen;
+    const endY = topPos.y - droop;
+    const endZ = topPos.z + Math.sin(angle) * frondLen;
+
+    const frondCurve = new THREE.CatmullRomCurve3([
+      topPos,
+      new THREE.Vector3(midX, midY, midZ),
+      new THREE.Vector3(endX, endY, endZ),
+    ]);
+
+    const frondRibbon = new THREE.TubeGeometry(frondCurve, 12, 0.22 * scale, 4, false);
+    frondRibbon.scale(1.8, 0.18, 1);
+    const frondMesh = new THREE.Mesh(frondRibbon, frondMat);
+    frondMesh.castShadow = true;
+    palmGroup.add(frondMesh);
+  }
+
+  // Buồng dừa nhỏ ở nách lá
+  for (let c = 0; c < 3; c++) {
+    const nut = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2 * scale, 6, 6),
+      new THREE.MeshStandardMaterial({ color: 0x3d5022, roughness: 0.85, metalness: 0.0 })
+    );
+    nut.position.set(
+      topPos.x + (Math.random() - 0.5) * 0.35 * scale,
+      topPos.y - 0.2 * scale,
+      topPos.z + (Math.random() - 0.5) * 0.35 * scale
+    );
+    palmGroup.add(nut);
+  }
+
+  return palmGroup;
+}
+
+// 9. Cây bóng mát đô thị cảnh quan thực tế (Realistic Urban Canopy Shade Tree)
+function createRealisticCanopyTree(
+  scale: number = 1.0,
+  seed: number = 0
+): THREE.Group {
+  const treeGroup = new THREE.Group();
+
+  const trunkH = (3.2 + (seed % 3) * 0.3) * scale;
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0x34271c,
+    roughness: 0.94,
+    metalness: 0.0,
+    flatShading: true,
+  });
+
+  // Gốc và thân chính
+  const trunkGeo = new THREE.CylinderGeometry(0.28 * scale, 0.48 * scale, trunkH, 8);
+  const trunkMesh = new THREE.Mesh(trunkGeo, trunkMat);
+  trunkMesh.position.y = trunkH / 2;
+  trunkMesh.castShadow = true;
+  trunkMesh.receiveShadow = true;
+  treeGroup.add(trunkMesh);
+
+  // Nhánh cành vươn lên
+  const branchAngles = [0.3, 2.4, 4.4];
+  branchAngles.forEach((ang) => {
+    const bGeo = new THREE.CylinderGeometry(0.14 * scale, 0.22 * scale, 2.2 * scale, 6);
+    const bMesh = new THREE.Mesh(bGeo, trunkMat);
+    bMesh.position.set(
+      Math.cos(ang) * 0.4 * scale,
+      trunkH - 0.3 * scale,
+      Math.sin(ang) * 0.4 * scale
+    );
+    bMesh.rotation.z = Math.cos(ang) * 0.5;
+    bMesh.rotation.x = Math.sin(ang) * 0.5;
+    bMesh.castShadow = true;
+    treeGroup.add(bMesh);
+  });
+
+  // Tán lá đa tầng PBR (Foliage Clumps với flatShading mô phỏng hàng ngàn phiến lá đón sáng)
+  const leafColors = [0x1a361a, 0x254b20, 0x345e26, 0x44702e];
+  const clumpConfigs = [
+    { x: 0, y: trunkH + 1.8 * scale, z: 0, r: 2.2 * scale, col: leafColors[1] },
+    { x: 1.2 * scale, y: trunkH + 1.2 * scale, z: 0.6 * scale, r: 1.7 * scale, col: leafColors[0] },
+    { x: -1.1 * scale, y: trunkH + 1.4 * scale, z: 0.8 * scale, r: 1.8 * scale, col: leafColors[2] },
+    { x: 0.4 * scale, y: trunkH + 1.5 * scale, z: -1.3 * scale, r: 1.6 * scale, col: leafColors[1] },
+    { x: -0.8 * scale, y: trunkH + 2.4 * scale, z: -0.5 * scale, r: 1.5 * scale, col: leafColors[3] },
+    { x: 0.7 * scale, y: trunkH + 2.5 * scale, z: 0.4 * scale, r: 1.6 * scale, col: leafColors[2] },
+    { x: 0, y: trunkH + 3.0 * scale, z: 0, r: 1.4 * scale, col: leafColors[3] },
+  ];
+
+  clumpConfigs.forEach((cfg) => {
+    const foliageMat = new THREE.MeshStandardMaterial({
+      color: cfg.col,
+      roughness: 0.88,
+      metalness: 0.0,
+      flatShading: true,
+    });
+    const clumpGeo = new THREE.DodecahedronGeometry(cfg.r, 1);
+    const clumpMesh = new THREE.Mesh(clumpGeo, foliageMat);
+    clumpMesh.position.set(cfg.x, cfg.y, cfg.z);
+    clumpMesh.scale.set(1 + (seed % 2) * 0.1, 0.85, 1 + ((seed + 1) % 2) * 0.1);
+    clumpMesh.castShadow = true;
+    clumpMesh.receiveShadow = true;
+    treeGroup.add(clumpMesh);
+  });
+
+  return treeGroup;
+}
+
 function createRoundedTriangleShape(radius: number, cornerRadius: number = 1.8): THREE.Shape {
   const shape = new THREE.Shape();
   const angles = [
@@ -1402,11 +1688,14 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       beachGroup.add(sandMesh);
 
       const oceanGeo = new THREE.PlaneGeometry(160, 180);
-      // PBR dielectric water: IOR ~ 1.33, roughness ~ 0.04, metalness ~ 0.02, strong IBL reflection
+      const waterNormal = createWaterNormalTexture();
+      // PBR dielectric water: IOR ~ 1.33, roughness ~ 0.04, normalMap gợn sóng biển, IBL reflection
       const oceanMat = new THREE.MeshStandardMaterial({
         color: timeMode === 'night' ? 0x05131f : timeMode === 'sunset' ? 0x0f2b46 : 0x0b3d59,
         roughness: 0.04,
         metalness: 0.02,
+        normalMap: waterNormal,
+        normalScale: new THREE.Vector2(0.4, 0.4),
         transparent: true,
         opacity: 0.92,
         envMapIntensity: 2.2,
@@ -1417,6 +1706,33 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       beachGroup.add(oceanMesh);
       oceanMeshRef.current = oceanMesh;
       interactiveMeshesRef.current.set('beach', beachGroup);
+
+      // Dải bọt sóng trắng dạt bờ cát (Shoreline Surf Foam)
+      const surfMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(8, 180),
+        new THREE.MeshStandardMaterial({
+          color: 0xf8fafc,
+          roughness: 0.92,
+          transparent: true,
+          opacity: 0.72,
+        })
+      );
+      surfMesh.rotation.x = -Math.PI / 2;
+      surfMesh.position.set(140, 0.025, 0);
+      beachGroup.add(surfMesh);
+
+      // HÀNG DỪA VEN BIỂN ĐÀ NẴNG (Realistic Coastal Palms)
+      const palmCoords: [number, number, number, number][] = [
+        [88, -65, 0.95, -0.4], [94, -50, 1.1, -0.2], [86, -35, 1.05, -0.5],
+        [92, -20, 0.9, -0.3], [96, -5, 1.15, -0.4], [88, 10, 1.0, -0.6],
+        [93, 25, 1.05, -0.3], [87, 40, 0.95, -0.5], [95, 55, 1.1, -0.2],
+        [89, 70, 1.0, -0.4]
+      ];
+      palmCoords.forEach(([px, pz, pScale, pRot]) => {
+        const palm = createRealisticPalmTree(pScale, pRot);
+        palm.position.set(px, 0.02, pz);
+        beachGroup.add(palm);
+      });
     }
 
     // Bối cảnh đô thị
@@ -1451,9 +1767,11 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
     // Mặt đất & Trục đường giao thông
     const groundGeo = new THREE.PlaneGeometry(180, 180);
-    // Cảnh quan sân vườn thảm cỏ kiến trúc
+    // Cảnh quan sân vườn thảm cỏ kiến trúc PBR có sợi cỏ li ti
+    const lawnTexture = createRealisticLawnTexture();
     const groundMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x0d1815 : 0x223826,
+      map: lawnTexture,
+      color: timeMode === 'night' ? 0x0a140e : 0x223a1f,
       roughness: 0.95,
       metalness: 0.0,
     });
@@ -1462,9 +1780,14 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     ground.receiveShadow = true;
     upperGroup.add(ground);
 
-    const roadMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x090d16 : 0x1e293b,
-      roughness: 0.82,
+    const roadEastMat = new THREE.MeshStandardMaterial({
+      map: createRoadMarkingTexture(true),
+      roughness: 0.85,
+      metalness: 0.05,
+    });
+    const roadSouthMat = new THREE.MeshStandardMaterial({
+      map: createRoadMarkingTexture(false),
+      roughness: 0.85,
       metalness: 0.05,
     });
 
@@ -1472,23 +1795,66 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(roadsGroup);
     interactiveMeshesRef.current.set('roads', roadsGroup);
 
-    const roadEast = new THREE.Mesh(new THREE.PlaneGeometry(16, 140), roadMat);
+    // Lòng đường đại lộ Đông & Nam
+    const roadEast = new THREE.Mesh(new THREE.PlaneGeometry(16, 140), roadEastMat);
     roadEast.rotation.x = -Math.PI / 2;
     roadEast.position.set(40, 0.03, 0);
     roadsGroup.add(roadEast);
 
-    const roadSouth = new THREE.Mesh(new THREE.PlaneGeometry(140, 16), roadMat);
+    const roadSouth = new THREE.Mesh(new THREE.PlaneGeometry(140, 16), roadSouthMat);
     roadSouth.rotation.x = -Math.PI / 2;
     roadSouth.position.set(0, 0.03, 40);
     roadsGroup.add(roadSouth);
 
-    // Hồ nước cảnh quan (Dielectric PBR nước mặt)
+    // VỈA HÈ LÁT ĐÁ GRANITE NÂNG CAO 0.18M (Urban Sidewalk Curbs)
+    const sidewalkMat = new THREE.MeshStandardMaterial({
+      color: timeMode === 'night' ? 0x1e293b : 0xd1d5db,
+      roughness: 0.82,
+      metalness: 0.02,
+    });
+
+    const walkEastOuter = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.18, 140), sidewalkMat);
+    walkEastOuter.position.set(50.25, 0.09, 0);
+    walkEastOuter.receiveShadow = true;
+    roadsGroup.add(walkEastOuter);
+
+    const walkEastInner = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 140), sidewalkMat);
+    walkEastInner.position.set(30, 0.09, 0);
+    walkEastInner.receiveShadow = true;
+    roadsGroup.add(walkEastInner);
+
+    const walkSouthOuter = new THREE.Mesh(new THREE.BoxGeometry(140, 0.18, 4.5), sidewalkMat);
+    walkSouthOuter.position.set(0, 0.09, 50.25);
+    walkSouthOuter.receiveShadow = true;
+    roadsGroup.add(walkSouthOuter);
+
+    const walkSouthInner = new THREE.Mesh(new THREE.BoxGeometry(140, 0.18, 4.0), sidewalkMat);
+    walkSouthInner.position.set(0, 0.09, 30);
+    walkSouthInner.receiveShadow = true;
+    roadsGroup.add(walkSouthInner);
+
+    // HÀNG CÂY BÓNG MÁT ĐÔ THỊ DỌC ĐẠI LỘ (Boulevard Street Trees)
+    const streetTreeCoords: [number, number, number][] = [
+      [50.25, -55, 1.0], [50.25, -35, 1.1], [50.25, -15, 0.95],
+      [50.25, 15, 1.05], [50.25, 35, 1.1], [50.25, 55, 0.95],
+      [-55, 50.25, 1.05], [-35, 50.25, 0.95], [-15, 50.25, 1.1],
+      [15, 50.25, 1.0], [35, 50.25, 1.05]
+    ];
+    streetTreeCoords.forEach(([tx, tz, tScale], idx) => {
+      const tree = createRealisticCanopyTree(tScale, idx);
+      tree.position.set(tx, 0.18, tz);
+      roadsGroup.add(tree);
+    });
+
+    // Hồ nước cảnh quan (Dielectric PBR nước mặt có normal gợn sóng)
     const lakeShape = createLakeShape();
     const lakeGeo = new THREE.ShapeGeometry(lakeShape);
     const lakeMat = new THREE.MeshStandardMaterial({
       color: timeMode === 'night' ? 0x051d2d : 0x0c4a6e,
       roughness: 0.03,
       metalness: 0.02,
+      normalMap: createWaterNormalTexture(),
+      normalScale: new THREE.Vector2(0.35, 0.35),
       transparent: true,
       opacity: 0.9,
       envMapIntensity: 2.2,
@@ -1498,6 +1864,38 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     lakeMesh.position.set(0, 0.08, 0);
     upperGroup.add(lakeMesh);
     interactiveMeshesRef.current.set('lake', lakeMesh);
+
+    // CÂY BÓNG MÁT CẢNH QUAN QUANH HỒ NƯỚC (Lakefront Garden Trees)
+    const lakeTreeCoords: [number, number, number][] = [
+      [22, -12, 1.15], [26, 12, 1.2], [4, 26, 1.1],
+      [-16, 22, 1.05], [-24, -14, 1.1], [-12, 16, 0.95]
+    ];
+    lakeTreeCoords.forEach(([lx, lz, lScale], idx) => {
+      const lTree = createRealisticCanopyTree(lScale, idx + 7);
+      lTree.position.set(lx, 0.02, lz);
+      upperGroup.add(lTree);
+    });
+
+    // KHÓM CÂY BỤI CẢNH QUAN VIỀN HỒ & ĐƯỜNG DẠO BỘ (Lush Shrub Hedges)
+    const hedgeMat = new THREE.MeshStandardMaterial({
+      color: 0x1f421a,
+      roughness: 0.9,
+      metalness: 0.0,
+      flatShading: true,
+    });
+    const hedgeCoords: [number, number, number, number, number][] = [
+      [14, 18, 5, 0.8, 1.2],
+      [-8, 22, 6, 0.8, 1.2],
+      [20, 4, 1.2, 0.8, 6],
+      [-20, 8, 1.2, 0.8, 8]
+    ];
+    hedgeCoords.forEach(([hx, hz, hw, hh, hd]) => {
+      const hedgeMesh = new THREE.Mesh(new THREE.BoxGeometry(hw, hh, hd), hedgeMat);
+      hedgeMesh.position.set(hx, hh / 2 + 0.02, hz);
+      hedgeMesh.castShadow = true;
+      hedgeMesh.receiveShadow = true;
+      upperGroup.add(hedgeMesh);
+    });
 
     // Quảng trường lát đá granite & Cầu gỗ tếch kiến trúc (Sheet 1)
     const plazaMesh = new THREE.Mesh(
@@ -1761,6 +2159,15 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     );
     poolIsland.position.set(8.5, podiumHeight + 0.25, 4.5);
     upperGroup.add(poolIsland);
+
+    // CÂY CỌ NGHỈ DƯỠNG TRÊN ĐẢO BỂ BƠI TẦNG 5 (Rooftop Pool Resort Palms)
+    const poolPalm1 = createRealisticPalmTree(0.48, 0.2);
+    poolPalm1.position.set(8.2, podiumHeight + 0.45, 4.3);
+    upperGroup.add(poolPalm1);
+
+    const poolPalm2 = createRealisticPalmTree(0.42, -0.6);
+    poolPalm2.position.set(8.8, podiumHeight + 0.45, 4.8);
+    upperGroup.add(poolPalm2);
 
     // HẦM B1-B2 (Bê tông kết cấu chống thấm)
     const basementSlab = new THREE.Mesh(
