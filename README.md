@@ -1,5 +1,10 @@
 # HỆ THỐNG QUẢN LÝ TÒA NHÀ & CƯ DÂN - SMART CASSAVAS
 
+[![CI - Continuous Integration](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/ci.yml/badge.svg)](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/ci.yml)
+[![CD - Staging Deployment](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/staging.yml/badge.svg)](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/staging.yml)
+[![CD - Production Deployment](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/production.yml/badge.svg)](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/production.yml)
+[![Security & Vulnerability Scan](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/security.yml/badge.svg)](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/workflows/security.yml)
+
 > Đề án hệ thống quản lý tòa nhà chung cư thông minh, kết nối cư dân, ban quản lý, lễ tân và admin.  
 > Ngăn xếp công nghệ: **Laravel 12 + React 19 (TypeScript) + Vite + Tailwind CSS + MySQL 8.0 (Docker)**.
 
@@ -87,3 +92,102 @@ Mọi thao tác phát triển, kiểm thử và bảo trì đều được thự
   docker compose down -v
   docker compose up -d
   ```
+
+---
+
+## 🔄 HỆ THỐNG CI/CD (CONTINUOUS INTEGRATION & DEPLOYMENT)
+
+Dự án áp dụng quy trình CI/CD tự động hóa toàn diện qua **GitHub Actions**, **Docker Buildx**, **GitHub Container Registry (GHCR)** và **SSH Deployment**.
+
+### 1. ⚙️ Continuous Integration (CI)
+Mỗi Pull Request hoặc Push vào các nhánh `main`, `master`, `develop` sẽ tự động thực hiện:
+- **Lint Code**: Kiểm tra tiêu chuẩn mã nguồn PHP bằng Laravel Pint (`vendor/bin/pint --test`).
+- **Backend Test**: Khởi chạy MySQL 8.0 service container, kiểm tra kết nối, thực thi migrations & rollback test, chạy bộ kiểm thử PHPUnit (Unit & Feature tests).
+- **Frontend Build**: Cài đặt dependencies với `npm ci`, biên dịch bundles với Vite (`npm run build`), kiểm tra tính hợp lệ của manifest và asset bundles.
+- **Security Check**: Quét lỗ hổng thư viện qua `composer audit` và `npm audit`.
+- **Python Check**: Tự động phát hiện và kiểm thử nếu có module Python bổ sung trong tương lai.
+
+### 2. 🐳 Docker & GHCR Registry
+Workflow `.github/workflows/docker.yml` thực thi:
+- Build Docker Image tối ưu dạng Multi-stage (tách biệt `development` và `production`).
+- **Smoke Test**: Khởi động thử nghiệm container trên môi trường runner và kiểm tra endpoint `/health` trả về HTTP 200 trước khi đẩy image.
+- **GitHub Container Registry (GHCR)**: Đẩy image lên `ghcr.io/umisora09/quanly_toanha-dancu` kèm đầy đủ OCI labels và tags:
+  - `sha-<commit_sha>` (Định danh bất biến cho từng bản build)
+  - `latest` (Dành cho bản build trên nhánh mặc định)
+  - `<branch_name>`
+  - `vX.Y.Z` (Khi phát hành bản release)
+
+Xem các packages đã build tại: [GitHub Packages - QUANLY_TOANHA-DANCU](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/pkgs/container/quanly_toanha-dancu).
+
+### 3. 🚀 Triển khai Staging (cd-staging.yml)
+- Tự động kích hoạt khi có commit mới vào `main` sau khi CI và Docker build hoàn tất thành công.
+- Kéo chính xác Docker Image theo Commit SHA từ GHCR về máy chủ Staging.
+- Chạy migrations và kiểm tra endpoint `/health`.
+
+### 4. 💎 Phát hành Production (cd-production.yml)
+Quy trình phát hành Production được bảo vệ nghiêm ngặt:
+1. Tạo và đẩy Git Tag phiên bản:
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+2. Workflow yêu cầu xét duyệt qua **GitHub Environment Approval Gate** (`production`).
+3. Đăng nhập GHCR trên server Production, kéo chính xác Image Release Tag, lưu backup tham chiếu phiên bản trước, chạy migration an toàn và khởi động lại container.
+4. Tự động kiểm tra sức khỏe hệ thống sau khi deploy.
+
+### 5. 🔐 Danh sách Secrets cần thiết (Environment Secrets)
+Cần cấu hình trong **Settings > Environments** (`staging` và `production`) trên GitHub:
+
+| Tên Secret | Ý nghĩa |
+| :--- | :--- |
+| `STAGING_HOST` | Địa chỉ IP hoặc Domain máy chủ Staging |
+| `STAGING_PORT` | Cổng SSH máy chủ Staging (mặc định 22) |
+| `STAGING_USER` | Tên người dùng SSH (ví dụ: `ubuntu`, `deploy`) |
+| `STAGING_SSH_KEY` | Private Key SSH để đăng nhập máy chủ Staging |
+| `STAGING_APP_PATH` | Đường dẫn thư mục dự án trên Staging (ví dụ: `/var/www/smart-cassavas`) |
+| `PROD_HOST` | Địa chỉ IP hoặc Domain máy chủ Production |
+| `PROD_PORT` | Cổng SSH máy chủ Production (mặc định 22) |
+| `PROD_USER` | Tên người dùng SSH máy chủ Production |
+| `PROD_SSH_KEY` | Private Key SSH máy chủ Production |
+| `PROD_APP_PATH` | Đường dẫn thư mục dự án trên Production |
+
+> *Lưu ý: Không lưu trữ giá trị secret thực tế vào mã nguồn.*
+
+### 6. ⏪ Cơ chế Phục hồi Khẩn cấp (Rollback Strategy)
+Khi có sự cố xảy ra trong quá trình deploy, hệ thống hỗ trợ khôi phục tức thì:
+- **Tự động**: Script `deploy.sh` tự động kích hoạt `rollback.sh` nếu health check hoặc smoke test thất bại sau khi khởi động image mới.
+- **Thủ công**: Đăng nhập vào server và chạy:
+  ```bash
+  ./scripts/rollback.sh
+  ```
+  Hoặc chỉ định cụ thể phiên bản image ổn định trước đó:
+  ```bash
+  ./scripts/deploy.sh "ghcr.io/umisora09/quanly_toanha-dancu:sha-xxxxxxx"
+  ```
+
+---
+
+## 📚 TÀI LIỆU KỸ THUẬT DEVOPS (DOCS)
+
+Hệ thống cung cấp đầy đủ tài liệu kiến trúc và vận hành chuẩn mực trong thư mục `docs/`:
+- 🏛️ [Kiến Trúc Tổng Thể DevOps](docs/devops-architecture.md): Sơ đồ luồng CI/CD, Containerization, Monitoring & Rollback.
+- 🛡️ [Quy Tắc Bảo Vệ Nhánh GitHub](docs/github-branch-protection.md): Branch protection rules cho `main` và `develop`.
+- ⚙️ [Hướng Dẫn Vận Hành CI/CD](docs/ci-cd.md): Chi tiết 4 pipeline CI, Staging, Production và Security.
+- 🚀 [Hướng Dẫn Triển Khai Máy Chủ](docs/deployment.md): Zero-Downtime deployment và cấu hình GitHub Secrets.
+- ⏪ [Sổ Tay Phục Hồi & Rollback](docs/rollback.md): Quy trình rollback an toàn và bảo toàn CSDL.
+- 📊 [Giám Sát Hệ Thống](docs/monitoring.md): Tích hợp Sentry, Prometheus (`/metrics`) và Grafana.
+- 🚨 [Cảnh Báo & Bất Thường](docs/alerting.md): Ngưỡng kích hoạt và tích hợp Discord/Slack Webhook.
+- 🩺 [Sổ Tay Xử Lý Sự Cố](docs/troubleshooting.md): Debug container và truy vết lỗi với `X-Request-ID`.
+
+---
+
+## 🚦 ĐƯỜNG DẪN GIÁM SÁT & VẬN HÀNH
+
+- **DevOps Dashboard (Admin)**: `/admin/cicd` hoặc `/devops`
+- **Trang Trạng Thái Công Khai (Public Status)**: `/status`
+- **Lịch Sử Bảo Trì & Sự Cố (Public Incidents)**: `/status/incidents`
+- **Health Check Endpoint**: `/health` hoặc `/api/health`
+- **CSDL Health Check**: `/api/db-health`
+- **Prometheus Metrics Scraper**: `/metrics`
+
+

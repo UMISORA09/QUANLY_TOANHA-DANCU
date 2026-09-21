@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/app/Dockerfile
+      target: development
     container_name: smart_cassavas_app
     restart: unless-stopped
     ports:

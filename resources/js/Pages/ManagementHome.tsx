@@ -41,10 +41,12 @@ import {
   MoreVertical,
   Activity,
   Send,
-  Compass
+  Compass,
+  Terminal
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
 import { AmenityManagement } from './Admin/AmenityManagement';
+import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -115,7 +117,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   const resolveInitialTab = (): string => {
     const path = window.location.pathname;
 
-    // 1. Kiểm tra URL path trực tiếp tới tiện ích
+    // 1. Kiểm tra URL path trực tiếp tới CI/CD hoặc tiện ích
+    if (path === '/admin/cicd' || path.startsWith('/admin/cicd')) {
+      return 'cicd';
+    }
     if (path === '/admin/amenities' || path === '/admin/tien-ich' || path.startsWith('/admin/amenities')) {
       return 'amenities';
     }
@@ -361,6 +366,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           icon: ShieldCheck,
           badge: 'Đặc quyền',
         });
+        baseItems.push({
+          id: 'cicd',
+          label: 'CI/CD & DevOps',
+          icon: Terminal,
+          badge: 'Pipeline',
+        });
       }
 
       return baseItems;
@@ -568,7 +579,9 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     }
 
     // Cập nhật URL trên thanh địa chỉ (Deep Linking & History API)
-    if (id === 'amenities') {
+    if (id === 'cicd') {
+      window.history.pushState({ tab: id }, '', '/admin/cicd');
+    } else if (id === 'amenities') {
       window.history.pushState({ tab: id }, '', '/admin/amenities');
     } else if (id === 'overview') {
       window.history.pushState({ tab: id }, '', '/admin');
@@ -724,7 +737,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           </div>
         </div>
       )}
-          {activeMenuId === 'amenities' ? (
+          {activeMenuId === 'cicd' ? (
+            <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
+              <CicdDashboard userRole={userRole} />
+            </div>
+          ) : activeMenuId === 'amenities' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <AmenityManagement embedded={true} />
             </div>

@@ -2,11 +2,21 @@
 
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CicdDashboardController;
+use App\Http\Controllers\DevOpsApiController;
+use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\ManagementDashboardController;
+use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\SearchController;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 Route::get('/', function () {
     return redirect('/home');
@@ -160,6 +170,72 @@ Route::prefix('api/v1/admin')->group(function () {
 // Đặt chỗ tiện ích (Booking Enforcement)
 Route::post('/api/v1/amenities/{id}/bookings', [AmenityController::class, 'bookAmenity']);
 Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking']);
+
+// Phân hệ Quản trị CI/CD & DevOps Dashboard APIs
+Route::prefix('api/admin/cicd')->group(function () {
+    Route::get('bundle', [CicdDashboardController::class, 'bundle']);
+    Route::get('overview', [CicdDashboardController::class, 'overview']);
+    Route::get('pipelines', [CicdDashboardController::class, 'pipelines']);
+    Route::get('branches', [CicdDashboardController::class, 'branches']);
+    Route::get('pipelines/{id}', [CicdDashboardController::class, 'pipelineDetail']);
+    Route::get('pipelines/{id}/jobs', [CicdDashboardController::class, 'jobs']);
+    Route::get('pipelines/{id}/logs', [CicdDashboardController::class, 'logs']);
+    Route::get('deployments', [CicdDashboardController::class, 'deployments']);
+    Route::get('environments', [CicdDashboardController::class, 'environments']);
+    Route::get('health', [CicdDashboardController::class, 'health']);
+    Route::get('activities', [CicdDashboardController::class, 'activities']);
+    Route::post('pipelines/run', [CicdDashboardController::class, 'runPipeline']);
+    Route::post('pipelines/{id}/retry', [CicdDashboardController::class, 'retryPipeline']);
+    Route::post('pipelines/{id}/cancel', [CicdDashboardController::class, 'cancelPipeline']);
+    Route::post('deploy', [CicdDashboardController::class, 'deploy']);
+    Route::post('rollback', [CicdDashboardController::class, 'rollback']);
+});
+
+// DevOps & Public Status SPA Pages
+Route::get('/devops', function () {
+    return view('welcome');
+});
+
+Route::get('/admin/devops', function () {
+    return view('welcome');
+});
+
+Route::get('/status', function () {
+    return view('welcome');
+});
+
+Route::get('/status/incidents', function () {
+    return view('welcome');
+});
+
+// Health Check & Telemetry Endpoints (Stateless, no session or CSRF required)
+Route::withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
+    EncryptCookies::class,
+    AddQueuedCookiesToResponse::class,
+    PreventRequestForgery::class,
+    ValidateCsrfToken::class,
+])->group(function () {
+    Route::get('/health', [HealthCheckController::class, 'health']);
+    Route::get('/api/health', [HealthCheckController::class, 'health']);
+    Route::get('/api/db-health', [HealthCheckController::class, 'dbHealth']);
+    Route::get('/metrics', [MetricsController::class, 'metrics']);
+});
+
+// DevOps Management & Metrics APIs
+Route::prefix('api/devops')->group(function () {
+    Route::get('status', [DevOpsApiController::class, 'status']);
+    Route::get('metrics', [DevOpsApiController::class, 'metrics']);
+    Route::get('deployments', [DevOpsApiController::class, 'deployments']);
+    Route::get('incidents', [DevOpsApiController::class, 'incidents']);
+});
+
+// Public Status APIs
+Route::prefix('api/public')->group(function () {
+    Route::get('status', [DevOpsApiController::class, 'publicStatus']);
+    Route::get('incidents', [DevOpsApiController::class, 'publicIncidents']);
+});
 
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);
