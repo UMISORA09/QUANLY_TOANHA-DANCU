@@ -52,6 +52,16 @@ import { A3DEnvironmentPanel } from './A3DStudio/A3DEnvironmentPanel';
 import { A3DAiRenderStudio } from './A3DStudio/A3DAiRenderStudio';
 import { A3DStudioDock } from './A3DStudio/A3DStudioDock';
 
+import {
+  PascalLevelMode,
+  PascalMeasurement,
+  PascalInspectorData,
+} from './PascalStudio/types';
+import { PascalLevelControl } from './PascalStudio/PascalLevelControl';
+import { PascalBimInspector } from './PascalStudio/PascalBimInspector';
+import { PascalAgentConsole } from './PascalStudio/PascalAgentConsole';
+import { PascalMeasureOverlay } from './PascalStudio/PascalMeasureOverlay';
+
 export interface BuildingBlockData {
   id: string;
   code: string;
@@ -709,7 +719,7 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
   // A3D Studio States
   const [shadingMode, setShadingMode] = useState<A3DShadingMode>('realistic');
   const [aspectRatio, setAspectRatio] = useState<A3DAspectRatio>('free');
-  const [activeA3DDrawer, setActiveA3DDrawer] = useState<'none' | 'outliner' | 'environment' | 'ai_studio'>('none');
+  const [activeA3DDrawer, setActiveA3DDrawer] = useState<'none' | 'outliner' | 'environment' | 'ai_studio' | 'level_control'>('none');
   const [envSettings, setEnvSettings] = useState<A3DEnvironmentSettings>({
     sunElevation: 58,
     sunAzimuth: 45,
@@ -721,6 +731,17 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
   });
   const [outlinerItems, setOutlinerItems] = useState<A3DOutlinerItem[]>(INITIAL_OUTLINER_ITEMS);
   const [containerDims, setContainerDims] = useState<{ width: number; height: number }>({ width: 800, height: 600 });
+
+  // Pascal Studio States
+  const [pascalLevelMode, setPascalLevelMode] = useState<PascalLevelMode>('stacked');
+  const [pascalExplodeFactor, setPascalExplodeFactor] = useState<number>(1.6);
+  const [pascalSoloLevel, setPascalSoloLevel] = useState<string | null>(null);
+  const [inspectorData, setInspectorData] = useState<PascalInspectorData | null>(null);
+  const [isMeasuring, setIsMeasuring] = useState<boolean>(false);
+  const [measureStep, setMeasureStep] = useState<number>(0);
+  const [currentMeasurement, setCurrentMeasurement] = useState<PascalMeasurement | null>(null);
+  const measureStartPointRef = useRef<[number, number, number] | null>(null);
+  const [isAgentConsoleOpen, setIsAgentConsoleOpen] = useState<boolean>(false);
 
   // References for Three.js
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -887,6 +908,99 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
         animateCameraTo({ theta: 0.1, phi: 0.82, radius: 28 }, new THREE.Vector3(0, 0, 0), 650);
         break;
     }
+  };
+
+  // Pascal Agent Console Command Handler
+  const handleExecutePascalCommand = (rawCmd: string): { success: boolean; message: string } => {
+    const parts = rawCmd.trim().split(/\s+/);
+    const action = parts[0]?.toLowerCase() || '';
+    const arg1 = parts[1];
+
+    if (action === '/explode') {
+      const factor = arg1 ? parseFloat(arg1) : 1.6;
+      if (isNaN(factor) || factor < 0.5 || factor > 3.0) {
+        return { success: false, message: 'Tham số không hợp lệ. Sử dụng: /explode [0.5 - 3.0]' };
+      }
+      setPascalLevelMode('exploded');
+      setPascalExplodeFactor(factor);
+      return { success: true, message: `Pascal Exploded View kích hoạt (độ giãn Y: ${factor}x)` };
+    }
+
+    if (action === '/stacked') {
+      setPascalLevelMode('stacked');
+      setPascalSoloLevel(null);
+      return { success: true, message: 'Đã đưa các tầng về dạng nguyên khối (Stacked Mode)' };
+    }
+
+    if (action === '/solo') {
+      const levelQuery = parts.slice(1).join(' ').trim();
+      if (!levelQuery) {
+        return { success: false, message: 'Cú pháp: /solo [B1-B2 | Tầng 1 | Tầng 2 | Tầng 3 | Tầng 4-5 | Tầng 6-28]' };
+      }
+      const match = FLOOR_LEVELS.find(
+        (fl) => fl.level.toLowerCase().includes(levelQuery.toLowerCase()) || fl.name.toLowerCase().includes(levelQuery.toLowerCase())
+      );
+      if (match) {
+        setPascalLevelMode('solo');
+        setPascalSoloLevel(match.level);
+        handleSelectFloor(match);
+        return { success: true, message: `Cách ly tầng: ${match.level} (${match.name})` };
+      }
+      return { success: false, message: `Không tìm thấy tầng phù hợp với "${levelQuery}"` };
+    }
+
+    if (action === '/measure') {
+      setIsMeasuring((prev) => !prev);
+      setMeasureStep(0);
+      setCurrentMeasurement(null);
+      measureStartPointRef.current = null;
+      return { success: true, message: `Đã ${!isMeasuring ? 'bật' : 'tắt'} thước đo kiến trúc 3D` };
+    }
+
+    if (action === '/shading') {
+      if (['realistic', 'clay', 'wireframe', 'depth'].includes(arg1)) {
+        setShadingMode(arg1 as A3DShadingMode);
+        return { success: true, message: `Đã chuyển Shading Mode sang "${arg1.toUpperCase()}"` };
+      }
+      return { success: false, message: 'Cú pháp: /shading [realistic | clay | wireframe | depth]' };
+    }
+
+    if (action === '/focus') {
+      if (arg1 === 'hotel' || arg1 === 'tower') {
+        handleQuickView('hotel');
+        return { success: true, message: 'Focus camera: Tháp Khách Sạn 28T' };
+      }
+      if (arg1 === 'office') {
+        handleQuickView('office');
+        return { success: true, message: 'Focus camera: Tháp Văn Phòng 12T' };
+      }
+      if (arg1 === 'podium' || arg1 === 'mall') {
+        handleQuickView('podium');
+        return { success: true, message: 'Focus camera: Khối Đế Thương Mại' };
+      }
+      if (arg1 === 'basement') {
+        handleQuickView('basement');
+        return { success: true, message: 'Focus camera: Tầng Hầm B1-B2' };
+      }
+      return { success: false, message: 'Cú pháp: /focus [hotel | office | podium | basement]' };
+    }
+
+    if (action === '/sun') {
+      const el = parseFloat(arg1);
+      if (!isNaN(el) && el >= 5 && el <= 85) {
+        setEnvSettings((s) => ({ ...s, sunElevation: el }));
+        return { success: true, message: `Góc mặt trời cập nhật: ${el}°` };
+      }
+      return { success: false, message: 'Cú pháp: /sun [5 - 85]' };
+    }
+
+    if (action === '/grid') {
+      const on = arg1 === 'on' || arg1 === 'true';
+      setEnvSettings((s) => ({ ...s, showWorldGrid: on }));
+      return { success: true, message: `Lưới tọa độ thế giới: ${on ? 'BẬT' : 'TẮT'}` };
+    }
+
+    return { success: false, message: `Lệnh không hợp lệ: "${rawCmd}". Gõ lệnh /explode, /solo, /stacked, /measure, /focus, /shading...` };
   };
 
   // Toggle ẩn hiện đối tượng từ Scene Outliner
@@ -1668,6 +1782,35 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
       raycaster.setFromCamera(mouse, camera);
 
+      // Pascal 3D Measure Tool Raycasting
+      if (isMeasuring) {
+        const allMeshes: THREE.Object3D[] = [];
+        scene.traverse((obj) => {
+          if (obj instanceof THREE.Mesh && obj.visible) allMeshes.push(obj);
+        });
+        const measureHits = raycaster.intersectObjects(allMeshes);
+        if (measureHits.length > 0) {
+          const pt = measureHits[0].point;
+          if (measureStep === 0 || !measureStartPointRef.current) {
+            measureStartPointRef.current = [pt.x, pt.y, pt.z];
+            setMeasureStep(1);
+          } else {
+            const start = measureStartPointRef.current;
+            const end: [number, number, number] = [pt.x, pt.y, pt.z];
+            const dist = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]) * 2.5;
+            setCurrentMeasurement({
+              id: `measure-${Date.now()}`,
+              start,
+              end,
+              distanceMeters: dist,
+            });
+            setMeasureStep(2);
+            measureStartPointRef.current = null;
+          }
+          return;
+        }
+      }
+
       if (activeTab === 'overview' && showPins) {
         const pinMeshes: THREE.Object3D[] = [];
         pinObjectsRef.current.forEach((g) => {
@@ -1685,6 +1828,19 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
             const hitPin = cur.userData.pin as SitePin;
             setSelectedPin(hitPin);
             targetLookAtRef.current.set(hitPin.pos[0], Math.max(2, hitPin.pos[1]), hitPin.pos[2]);
+
+            // Populate Pascal BIM Inspector for Pin
+            setInspectorData({
+              id: `pin-${hitPin.id}`,
+              code: `PIN-${hitPin.id}`,
+              name: hitPin.title,
+              category: hitPin.category === 'tower' ? 'tower' : hitPin.category === 'amenity' ? 'amenity' : 'zone',
+              properties: [
+                { label: 'Phân loại', value: hitPin.category.toUpperCase() },
+                { label: 'Vị trí X, Y, Z', value: `${hitPin.pos[0]}, ${hitPin.pos[1]}, ${hitPin.pos[2]}` },
+              ],
+              description: hitPin.subtitle,
+            });
             return;
           }
         }
@@ -1699,6 +1855,26 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
           if (block) {
             setSelectedBlock(block);
             onSelectBlock?.(block);
+
+            // Populate Pascal BIM Inspector for Block
+            setInspectorData({
+              id: block.id,
+              code: block.code,
+              name: block.name,
+              category: block.category,
+              elevation: block.floors ? `+0.000m -> +${(block.floors * 3.4).toFixed(1)}m` : undefined,
+              areaM2: block.floors ? block.floors * 1250 : undefined,
+              properties: [
+                { label: 'Số tầng cao', value: `${block.floors} Tầng` },
+                { label: 'Số căn hộ', value: block.apartments },
+                { label: 'Cư dân & Khách', value: `${block.residents} người` },
+                { label: 'Tỷ lệ lấp đầy', value: `${block.occupancyRate}%`, status: 'success' },
+                { label: 'Công suất điện', value: block.powerKw, unit: 'kW' },
+                { label: 'Nhiệt độ kỹ thuật', value: block.temp, unit: '°C' },
+                { label: 'Trạng thái vận hành', value: block.status },
+              ],
+              description: block.description,
+            });
           }
         }
       }
@@ -1799,6 +1975,49 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
         pinObjectsRef.current.forEach((g, idx) => {
           g.position.y = SITE_PINS[idx - 1]?.pos[1] + Math.sin(elapsedTime * 3 + idx) * 0.2;
         });
+      }
+
+      // Pascal Architectural Level System (Exploded / Solo / Stacked)
+      const hotelMesh = interactiveMeshesRef.current.get('hotel');
+      const crownMesh = interactiveMeshesRef.current.get('crown');
+      const poolMesh = interactiveMeshesRef.current.get('pool');
+      const podiumMesh = interactiveMeshesRef.current.get('podium');
+      const officeMesh = interactiveMeshesRef.current.get('office');
+
+      if (pascalLevelMode === 'exploded') {
+        const explodeOffset = (pascalExplodeFactor - 1.0) * 8.5;
+        if (hotelMesh) hotelMesh.position.y = explodeOffset * 1.0;
+        if (crownMesh) crownMesh.position.y = 26.5 + explodeOffset * 1.25;
+        if (officeMesh) officeMesh.position.y = explodeOffset * 0.65;
+        if (poolMesh) poolMesh.position.y = 4.8 + explodeOffset * 0.35;
+        if (podiumMesh) podiumMesh.position.y = 0;
+      } else if (pascalLevelMode === 'solo') {
+        if (hotelMesh) hotelMesh.position.y = 0;
+        if (crownMesh) crownMesh.position.y = 26.5;
+        if (officeMesh) officeMesh.position.y = 0;
+        if (poolMesh) poolMesh.position.y = 4.8;
+        if (podiumMesh) podiumMesh.position.y = 0;
+
+        if (pascalSoloLevel === 'Tầng 4-5') {
+          if (poolMesh) poolMesh.visible = true;
+          if (hotelMesh) hotelMesh.visible = false;
+          if (officeMesh) officeMesh.visible = false;
+        } else if (pascalSoloLevel === 'Tầng 6-28') {
+          if (hotelMesh) hotelMesh.visible = true;
+          if (officeMesh) officeMesh.visible = false;
+          if (poolMesh) poolMesh.visible = false;
+        } else if (pascalSoloLevel === 'B1-B2') {
+          if (hotelMesh) hotelMesh.visible = false;
+          if (officeMesh) officeMesh.visible = false;
+          if (poolMesh) poolMesh.visible = false;
+        }
+      } else {
+        // Stacked Mode
+        if (hotelMesh) { hotelMesh.position.y = 0; hotelMesh.visible = true; }
+        if (crownMesh) { crownMesh.position.y = 26.5; crownMesh.visible = true; }
+        if (officeMesh) { officeMesh.position.y = 0; officeMesh.visible = true; }
+        if (poolMesh) { poolMesh.position.y = 4.8; poolMesh.visible = true; }
+        if (podiumMesh) { podiumMesh.position.y = 0; podiumMesh.visible = true; }
       }
 
       renderer.render(scene, camera);
@@ -2101,7 +2320,72 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
               </div>
             )}
 
-            {/* A3D Floating Studio Dock */}
+            {/* Pascal Level System Control Drawer */}
+            {activeA3DDrawer === 'level_control' && (
+              <div className="absolute top-28 left-4 z-40">
+                <PascalLevelControl
+                  levelMode={pascalLevelMode}
+                  setLevelMode={setPascalLevelMode}
+                  explodeFactor={pascalExplodeFactor}
+                  setExplodeFactor={setPascalExplodeFactor}
+                  selectedLevel={pascalSoloLevel}
+                  setSelectedLevel={(lvl) => {
+                    setPascalSoloLevel(lvl);
+                    const match = FLOOR_LEVELS.find((fl) => fl.level === lvl);
+                    if (match) handleSelectFloor(match);
+                  }}
+                  floors={FLOOR_LEVELS}
+                />
+              </div>
+            )}
+
+            {/* Pascal Interactive 3D Measurement Overlay */}
+            <PascalMeasureOverlay
+              isMeasuring={isMeasuring}
+              measurement={currentMeasurement}
+              measureStep={measureStep}
+              onResetMeasurement={() => {
+                setMeasureStep(0);
+                setCurrentMeasurement(null);
+                measureStartPointRef.current = null;
+              }}
+              onToggleMeasure={() => {
+                setIsMeasuring((prev) => !prev);
+                setMeasureStep(0);
+                setCurrentMeasurement(null);
+                measureStartPointRef.current = null;
+              }}
+            />
+
+            {/* Pascal Architectural Property & BIM Inspector */}
+            {inspectorData && (
+              <div className="absolute top-28 right-4 z-40">
+                <PascalBimInspector
+                  data={inspectorData}
+                  onClose={() => setInspectorData(null)}
+                  onFocus={() => {
+                    const block = ARCHITECTURAL_BLOCKS.find((b) => b.id === inspectorData.id);
+                    if (block) {
+                      setSelectedBlock(block);
+                      onSelectBlock?.(block);
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Pascal Agent & MCP Command Console */}
+            {isAgentConsoleOpen && (
+              <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-xl">
+                <PascalAgentConsole
+                  isOpen={isAgentConsoleOpen}
+                  onClose={() => setIsAgentConsoleOpen(false)}
+                  onExecuteCommand={handleExecutePascalCommand}
+                />
+              </div>
+            )}
+
+            {/* A3D & Pascal Floating Studio Dock */}
             <A3DStudioDock
               activeDrawer={activeA3DDrawer}
               onToggleDrawer={(d) => setActiveA3DDrawer(activeA3DDrawer === d ? 'none' : d)}
@@ -2114,6 +2398,15 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
               isAutoRotate={isAutoRotate}
               onToggleAutoRotate={() => setIsAutoRotate(!isAutoRotate)}
               outlinerItemCount={outlinerItems.length}
+              isMeasuring={isMeasuring}
+              onToggleMeasure={() => {
+                setIsMeasuring((prev) => !prev);
+                setMeasureStep(0);
+                setCurrentMeasurement(null);
+                measureStartPointRef.current = null;
+              }}
+              isAgentConsoleOpen={isAgentConsoleOpen}
+              onToggleAgentConsole={() => setIsAgentConsoleOpen((prev) => !prev)}
             />
           </>
         ) : (

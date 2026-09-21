@@ -8,13 +8,15 @@ import {
   RotateCw,
   Wand2,
   Layers,
-  Sparkles
+  Sparkles,
+  Ruler,
+  Terminal
 } from 'lucide-react';
 import { A3DShadingMode, A3DAspectRatio } from './types';
 
 interface A3DStudioDockProps {
-  activeDrawer: 'none' | 'outliner' | 'environment' | 'ai_studio';
-  onToggleDrawer: (drawer: 'outliner' | 'environment' | 'ai_studio') => void;
+  activeDrawer: 'none' | 'outliner' | 'environment' | 'ai_studio' | 'level_control';
+  onToggleDrawer: (drawer: 'outliner' | 'environment' | 'ai_studio' | 'level_control') => void;
   shadingMode: A3DShadingMode;
   onChangeShadingMode: (mode: A3DShadingMode) => void;
   aspectRatio: A3DAspectRatio;
@@ -24,6 +26,10 @@ interface A3DStudioDockProps {
   isAutoRotate: boolean;
   onToggleAutoRotate: () => void;
   outlinerItemCount: number;
+  isMeasuring?: boolean;
+  onToggleMeasure?: () => void;
+  isAgentConsoleOpen?: boolean;
+  onToggleAgentConsole?: () => void;
 }
 
 export const A3DStudioDock: React.FC<A3DStudioDockProps> = ({
@@ -38,6 +44,10 @@ export const A3DStudioDock: React.FC<A3DStudioDockProps> = ({
   isAutoRotate,
   onToggleAutoRotate,
   outlinerItemCount,
+  isMeasuring = false,
+  onToggleMeasure,
+  isAgentConsoleOpen = false,
+  onToggleAgentConsole,
 }) => {
   return (
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-900/90 backdrop-blur-2xl border border-white/10 shadow-2xl max-w-[95vw] overflow-x-auto select-none pointer-events-auto">
@@ -59,7 +69,22 @@ export const A3DStudioDock: React.FC<A3DStudioDockProps> = ({
         </span>
       </button>
 
-      {/* 2. Nút Environment */}
+      {/* 2. Pascal Level System (Stacked / Exploded / Solo) */}
+      <button
+        type="button"
+        onClick={() => onToggleDrawer('level_control')}
+        title="Pascal Level System: Bóc tách bung tầng (Exploded) hoặc cách ly tầng (Solo)"
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          activeDrawer === 'level_control'
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
+            : 'text-slate-300 hover:text-white hover:bg-white/10'
+        }`}
+      >
+        <Layers className="w-3.5 h-3.5 text-indigo-400" />
+        <span className="hidden sm:inline">Tầng</span>
+      </button>
+
+      {/* 3. Nút Environment */}
       <button
         type="button"
         onClick={() => onToggleDrawer('environment')}
@@ -73,6 +98,40 @@ export const A3DStudioDock: React.FC<A3DStudioDockProps> = ({
         <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
         <span className="hidden sm:inline">Môi Trường</span>
       </button>
+
+      <div className="w-px h-5 bg-white/10 mx-0.5" />
+
+      {/* Pascal 3D Measure Tool */}
+      {onToggleMeasure && (
+        <button
+          type="button"
+          onClick={onToggleMeasure}
+          title={isMeasuring ? 'Đang bật thước đo (Nhấp để tắt)' : 'Bật thước đo khoảng cách 3D (Pascal Dimension)'}
+          className={`p-2 rounded-xl transition-all cursor-pointer ${
+            isMeasuring
+              ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50 shadow-md shadow-amber-500/20'
+              : 'text-slate-400 hover:text-white hover:bg-white/10'
+          }`}
+        >
+          <Ruler className="w-3.5 h-3.5" />
+        </button>
+      )}
+
+      {/* Pascal Agent Console (CLI / MCP Tool) */}
+      {onToggleAgentConsole && (
+        <button
+          type="button"
+          onClick={onToggleAgentConsole}
+          title={isAgentConsoleOpen ? 'Đóng Pascal Agent Console' : 'Mở Pascal Agent Console (MCP CLI)'}
+          className={`p-2 rounded-xl transition-all cursor-pointer ${
+            isAgentConsoleOpen
+              ? 'bg-sky-500/30 text-sky-300 border border-sky-500/50 shadow-md shadow-sky-500/20'
+              : 'text-slate-400 hover:text-white hover:bg-white/10'
+          }`}
+        >
+          <Terminal className="w-3.5 h-3.5" />
+        </button>
+      )}
 
       <div className="w-px h-5 bg-white/10 mx-0.5" />
 
