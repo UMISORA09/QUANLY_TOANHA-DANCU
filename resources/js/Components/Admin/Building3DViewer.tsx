@@ -307,44 +307,93 @@ export interface Building3DViewerProps {
 }
 
 // 1. Tạo vân kính phản chiếu Curtain Wall
+// 1. Texture vách kính Curtain Wall chuẩn kiến trúc PBR (Low-E Double Glazed Unit)
 function createCurtainWallTexture(timeMode: 'day' | 'sunset' | 'night'): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = 512;
+  canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = timeMode === 'night' ? '#04101e' : timeMode === 'sunset' ? '#1c152a' : '#0a3663';
-  ctx.fillRect(0, 0, 256, 256);
+  // Nền kính Low-E sẫm màu kiến trúc (Dark Neutral Tint, không bị rực xanh nhựa)
+  const baseGlassColor =
+    timeMode === 'night' ? '#070e17' : timeMode === 'sunset' ? '#141724' : '#111c26';
+  ctx.fillStyle = baseGlassColor;
+  ctx.fillRect(0, 0, 512, 512);
 
-  ctx.strokeStyle = timeMode === 'night' ? '#1e3a8a' : '#38bdf8';
-  ctx.lineWidth = 2;
-  const step = 32;
-  for (let x = 0; x <= 256; x += step) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, 256);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= 256; y += step) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(256, y);
-    ctx.stroke();
-  }
+  const cols = 8;
+  const rows = 16;
+  const colW = 512 / cols;
+  const rowH = 512 / rows;
 
-  for (let x = 4; x < 256; x += step) {
-    for (let y = 4; y < 256; y += step) {
-      if (timeMode === 'night') {
-        if (Math.random() > 0.4) {
-          ctx.fillStyle = Math.random() > 0.3 ? '#fef08a' : '#38bdf8';
-          ctx.fillRect(x + 2, y + 2, step - 8, step - 8);
-        }
+  // Vẽ các panel kính kiến trúc với dải phản quang và đố nhôm định hình
+  for (let r = 0; r < rows; r++) {
+    const isFloorSpandrel = r % 4 === 0; // Tấm ốp dầm sàn bê tông (Floor Slab Spandrel)
+    const y = r * rowH;
+
+    for (let c = 0; c < cols; c++) {
+      const x = c * colW;
+
+      if (isFloorSpandrel) {
+        // Dải Spandrel kim loại sơn tĩnh điện xám đen che sàn tầng
+        const spandrelGrad = ctx.createLinearGradient(x, y, x, y + rowH);
+        spandrelGrad.addColorStop(0, '#1e293b');
+        spandrelGrad.addColorStop(0.5, '#0f172a');
+        spandrelGrad.addColorStop(1, '#1e293b');
+        ctx.fillStyle = spandrelGrad;
+        ctx.fillRect(x + 1, y + 1, colW - 2, rowH - 2);
+
+        // Chỉ nhôm bóng nhẹ
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 1, y + 1, colW - 2, rowH - 2);
       } else {
-        const grad = ctx.createLinearGradient(x, y, x + step, y + step);
-        grad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
-        grad.addColorStop(1, 'rgba(2, 132, 199, 0.15)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(x + 2, y + 2, step - 8, step - 8);
+        // Vách kính tầm nhìn (Vision Glass)
+        if (timeMode === 'night') {
+          // Ban đêm: Phòng có đèn sáng ấm, phòng tắt đèn
+          const hasLight = (r * 7 + c * 13) % 5 === 0 || (r * 3 + c * 11) % 4 === 0;
+          if (hasLight) {
+            const warmGlow = ctx.createLinearGradient(x, y, x, y + rowH);
+            warmGlow.addColorStop(0, '#fef08a');
+            warmGlow.addColorStop(0.6, '#fde047');
+            warmGlow.addColorStop(1, '#ea580c');
+            ctx.fillStyle = warmGlow;
+            ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
+
+            // Giả lập rèm sáo cuốn / vách ngăn nội thất
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
+            ctx.fillRect(x + 2, y + 2, colW - 4, (rowH - 4) * 0.35);
+          } else {
+            ctx.fillStyle = '#09131d';
+            ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
+          }
+        } else {
+          // Ban ngày & Hoàng hôn: Kính Low-E phản xạ bầu trời tự nhiên
+          const glassGrad = ctx.createLinearGradient(x, y, x + colW, y + rowH);
+          if (timeMode === 'sunset') {
+            glassGrad.addColorStop(0, 'rgba(249, 115, 22, 0.25)');
+            glassGrad.addColorStop(0.5, 'rgba(30, 27, 75, 0.6)');
+            glassGrad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
+          } else {
+            glassGrad.addColorStop(0, 'rgba(224, 242, 254, 0.22)');
+            glassGrad.addColorStop(0.4, 'rgba(30, 41, 59, 0.65)');
+            glassGrad.addColorStop(1, 'rgba(15, 23, 42, 0.90)');
+          }
+          ctx.fillStyle = glassGrad;
+          ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
+        }
+
+        // Viền đố nhôm kỹ thuật (Dark Anodized Aluminum Mullion)
+        ctx.strokeStyle = '#0b1118';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, colW, rowH);
+
+        // Đường gân kim loại highlight mảnh
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + 1, y + 1);
+        ctx.lineTo(x + colW - 1, y + 1);
+        ctx.stroke();
       }
     }
   }
@@ -352,8 +401,71 @@ function createCurtainWallTexture(timeMode: 'day' | 'sunset' | 'night'): THREE.C
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(4, 16);
+  texture.repeat.set(4, 8);
   return texture;
+}
+
+// 1.1 Tạo môi trường phản xạ khí quyển Procedural PMREM IBL
+function createProceduralSkyEnvironment(
+  renderer: THREE.WebGLRenderer,
+  timeMode: 'day' | 'sunset' | 'night'
+): THREE.Texture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, 0, 512);
+  if (timeMode === 'night') {
+    grad.addColorStop(0.0, '#020617'); // Đỉnh trời đêm sẫm
+    grad.addColorStop(0.45, '#0f172a');
+    grad.addColorStop(0.5, '#1e293b');  // Chân trời ánh đèn thành phố
+    grad.addColorStop(0.55, '#090d16');
+    grad.addColorStop(1.0, '#020408');
+  } else if (timeMode === 'sunset') {
+    grad.addColorStop(0.0, '#1e1b4b'); // Đỉnh trời tím thẫm
+    grad.addColorStop(0.35, '#701a75');
+    grad.addColorStop(0.48, '#ea580c'); // Vầng sáng hoàng hôn
+    grad.addColorStop(0.5, '#fef08a');  // Đường chân trời vàng rực
+    grad.addColorStop(0.54, '#451a03'); // Phản xạ mặt đất
+    grad.addColorStop(1.0, '#180d05');
+  } else {
+    // Bầu trời ban ngày chân thực (Atmospheric Rayleigh Scattering)
+    grad.addColorStop(0.0, '#1d4ed8'); // Đỉnh trời xanh hoàng gia
+    grad.addColorStop(0.32, '#60a5fa'); // Tầng mây xanh cerulean
+    grad.addColorStop(0.48, '#e0f2fe'); // Chân trời trắng mờ ấm
+    grad.addColorStop(0.5, '#ffffff');  // Vạch chân trời sáng
+    grad.addColorStop(0.53, '#94a3b8'); // Sương mù mặt đất
+    grad.addColorStop(0.65, '#475569'); // Phản xạ đô thị
+    grad.addColorStop(1.0, '#1e293b');
+  }
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1024, 512);
+
+  // Đĩa mặt trời mềm
+  if (timeMode !== 'night') {
+    const sunX = timeMode === 'sunset' ? 620 : 512;
+    const sunY = timeMode === 'sunset' ? 240 : 120;
+    const sunGrad = ctx.createRadialGradient(sunX, sunY, 5, sunX, sunY, 180);
+    sunGrad.addColorStop(0, timeMode === 'sunset' ? 'rgba(255, 240, 200, 1.0)' : 'rgba(255, 255, 255, 1.0)');
+    sunGrad.addColorStop(0.15, timeMode === 'sunset' ? 'rgba(251, 146, 60, 0.7)' : 'rgba(224, 242, 254, 0.5)');
+    sunGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.fillRect(0, 0, 1024, 512);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.needsUpdate = true;
+
+  const pmremGen = new THREE.PMREMGenerator(renderer);
+  pmremGen.compileEquirectangularShader();
+  const renderTarget = pmremGen.fromEquirectangular(texture);
+  texture.dispose();
+  pmremGen.dispose();
+
+  return renderTarget.texture;
 }
 
 // 2. Texture đá Marble Ý có vân xám và chỉ kim loại vàng PVD (Sheet 9)
@@ -1164,18 +1276,31 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = timeMode === 'night' ? 1.4 : timeMode === 'sunset' ? 1.25 : 1.15;
+    renderer.toneMappingExposure = timeMode === 'night' ? 1.25 : timeMode === 'sunset' ? 1.18 : 1.08;
+
+    // PMREM Procedural Environment Map (Kích hoạt IBL Specular Reflection cho kính và kim loại)
+    const envMapTexture = createProceduralSkyEnvironment(renderer, timeMode);
+    scene.environment = envMapTexture;
+
+    // Ánh sáng vòm trời khí quyển (Atmospheric Rayleigh Scattering)
+    const hemiLight = new THREE.HemisphereLight(
+      timeMode === 'night' ? 0x1e293b : timeMode === 'sunset' ? 0xfde047 : 0xe0f2fe,
+      timeMode === 'night' ? 0x090d16 : timeMode === 'sunset' ? 0x451a03 : 0x334155,
+      envSettings.ambientIntensity * 0.7
+    );
+    scene.add(hemiLight);
 
     const ambientLight = new THREE.AmbientLight(
-      timeMode === 'night' ? 0x1e293b : timeMode === 'sunset' ? 0x581c87 : 0xffffff,
-      envSettings.ambientIntensity
+      timeMode === 'night' ? 0x0f172a : timeMode === 'sunset' ? 0x4a044e : 0xffffff,
+      envSettings.ambientIntensity * 0.4
     );
     scene.add(ambientLight);
     ambientLightRef.current = ambientLight;
 
     const sunColor =
-      timeMode === 'night' ? 0x38bdf8 : timeMode === 'sunset' ? 0xf97316 : 0xfffaed;
+      timeMode === 'night' ? 0x93c5fd : timeMode === 'sunset' ? 0xf59e0b : 0xfffbf0;
     const sunLight = new THREE.DirectionalLight(
       sunColor,
       envSettings.sunIntensity
@@ -1196,14 +1321,15 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     sunLight.shadow.camera.right = d;
     sunLight.shadow.camera.top = d;
     sunLight.shadow.camera.bottom = -d;
-    sunLight.shadow.bias = -0.0002;
+    sunLight.shadow.bias = -0.00015;
+    sunLight.shadow.normalBias = 0.02;
     scene.add(sunLight);
     sunLightRef.current = sunLight;
     interactiveMeshesRef.current.set('sunLight', sunLight);
 
     const rimLight = new THREE.DirectionalLight(
-      timeMode === 'night' ? 0x0284c7 : timeMode === 'sunset' ? 0xc084fc : 0x38bdf8,
-      timeMode === 'night' ? 2.0 : 1.0
+      timeMode === 'night' ? 0x1e3a8a : timeMode === 'sunset' ? 0x9333ea : 0xbae6fd,
+      timeMode === 'night' ? 1.2 : 0.6
     );
     rimLight.position.set(-40, 35, -30);
     scene.add(rimLight);
@@ -1265,8 +1391,9 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
       const sandGeo = new THREE.PlaneGeometry(120, 180);
       const sandMat = new THREE.MeshStandardMaterial({
-        color: timeMode === 'night' ? 0x1f2937 : timeMode === 'sunset' ? 0xfde68a : 0xfef08a,
-        roughness: 0.9,
+        color: timeMode === 'night' ? 0x1e293b : timeMode === 'sunset' ? 0xd4a373 : 0xe2d9c8,
+        roughness: 0.95,
+        metalness: 0.0,
       });
       const sandMesh = new THREE.Mesh(sandGeo, sandMat);
       sandMesh.rotation.x = -Math.PI / 2;
@@ -1275,12 +1402,14 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       beachGroup.add(sandMesh);
 
       const oceanGeo = new THREE.PlaneGeometry(160, 180);
+      // PBR dielectric water: IOR ~ 1.33, roughness ~ 0.04, metalness ~ 0.02, strong IBL reflection
       const oceanMat = new THREE.MeshStandardMaterial({
-        color: timeMode === 'night' ? 0x082f49 : timeMode === 'sunset' ? 0x0369a1 : 0x0284c7,
-        roughness: 0.05,
-        metalness: 0.9,
+        color: timeMode === 'night' ? 0x05131f : timeMode === 'sunset' ? 0x0f2b46 : 0x0b3d59,
+        roughness: 0.04,
+        metalness: 0.02,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.92,
+        envMapIntensity: 2.2,
       });
       const oceanMesh = new THREE.Mesh(oceanGeo, oceanMat);
       oceanMesh.rotation.x = -Math.PI / 2;
@@ -1297,8 +1426,9 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       interactiveMeshesRef.current.set('city', cityGroup);
 
       const cityMat = new THREE.MeshStandardMaterial({
-        color: timeMode === 'night' ? 0x0f172a : 0x94a3b8,
-        roughness: 0.8,
+        color: timeMode === 'night' ? 0x0f172a : 0x64748b,
+        roughness: 0.85,
+        metalness: 0.05,
       });
 
       const blockCoords = [
@@ -1321,9 +1451,11 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
     // Mặt đất & Trục đường giao thông
     const groundGeo = new THREE.PlaneGeometry(180, 180);
+    // Cảnh quan sân vườn thảm cỏ kiến trúc
     const groundMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x080e1a : 0xe2e8f0,
-      roughness: 0.8,
+      color: timeMode === 'night' ? 0x0d1815 : 0x223826,
+      roughness: 0.95,
+      metalness: 0.0,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
@@ -1331,8 +1463,9 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(ground);
 
     const roadMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x0f172a : 0x1e293b,
-      roughness: 0.65,
+      color: timeMode === 'night' ? 0x090d16 : 0x1e293b,
+      roughness: 0.82,
+      metalness: 0.05,
     });
 
     const roadsGroup = new THREE.Group();
@@ -1349,15 +1482,16 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     roadSouth.position.set(0, 0.03, 40);
     roadsGroup.add(roadSouth);
 
-    // Hồ nước cảnh quan
+    // Hồ nước cảnh quan (Dielectric PBR nước mặt)
     const lakeShape = createLakeShape();
     const lakeGeo = new THREE.ShapeGeometry(lakeShape);
     const lakeMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x0284c7 : 0x0ea5e9,
-      roughness: 0.08,
-      metalness: 0.85,
+      color: timeMode === 'night' ? 0x051d2d : 0x0c4a6e,
+      roughness: 0.03,
+      metalness: 0.02,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.9,
+      envMapIntensity: 2.2,
     });
     const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
     lakeMesh.rotation.x = -Math.PI / 2;
@@ -1365,10 +1499,14 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(lakeMesh);
     interactiveMeshesRef.current.set('lake', lakeMesh);
 
-    // Quảng trường lát đá & Cầu gỗ (Sheet 1)
+    // Quảng trường lát đá granite & Cầu gỗ tếch kiến trúc (Sheet 1)
     const plazaMesh = new THREE.Mesh(
       new THREE.CylinderGeometry(15, 15, 0.18, 48),
-      new THREE.MeshStandardMaterial({ color: timeMode === 'night' ? 0x1e293b : 0xf8fafc, roughness: 0.5 })
+      new THREE.MeshStandardMaterial({
+        color: timeMode === 'night' ? 0x1e293b : 0xe2e8f0,
+        roughness: 0.78,
+        metalness: 0.03,
+      })
     );
     plazaMesh.position.set(8, 0.09, 20);
     upperGroup.add(plazaMesh);
@@ -1383,11 +1521,11 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     ]);
     const bridgeMesh = new THREE.Mesh(
       new THREE.TubeGeometry(bridgeCurve, 40, 0.8, 12, false),
-      new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.35 })
+      new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.65, metalness: 0.04 })
     );
     upperGroup.add(bridgeMesh);
 
-    // KHỐI ĐẾ PODIUM & VÒM CONG CASSAVAS
+    // KHỐI ĐẾ PODIUM & VÒM CONG CASSAVAS (GFRC / Đá tự nhiên travertino cao cấp)
     const podiumShape = createPodiumShape();
     const podiumHeight = 4.4;
     const podiumGeo = new THREE.ExtrudeGeometry(podiumShape, {
@@ -1400,11 +1538,12 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     podiumGeo.rotateX(-Math.PI / 2);
 
     const podiumMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x0f172a : 0xf8fafc,
-      roughness: 0.3,
-      metalness: 0.4,
+      color: timeMode === 'night' ? 0x0f172a : 0xf1f5f9,
+      roughness: 0.75,
+      metalness: 0.02,
+      envMapIntensity: 0.7,
       transparent: isXRayMode || isBasementView,
-      opacity: isXRayMode ? 0.25 : isBasementView ? 0.12 : 0.95,
+      opacity: isXRayMode ? 0.25 : isBasementView ? 0.12 : 0.98,
     });
     const podiumMesh = new THREE.Mesh(podiumGeo, podiumMat);
     podiumMesh.position.set(-2, 0, 2);
@@ -1413,7 +1552,7 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(podiumMesh);
     interactiveMeshesRef.current.set('podium', podiumMesh);
 
-    // VÒM CONG CASSAVAS & MÀN HÌNH LED (Sheet 10)
+    // VÒM CONG CASSAVAS & MÀN HÌNH LED (Sheet 10 - Thép sơn tĩnh điện Fluoropolymer)
     const canopyCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-24, 0.5, 14),
       new THREE.Vector3(-20, 4.8, 12),
@@ -1422,7 +1561,7 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     ]);
     const canopyMesh = new THREE.Mesh(
       new THREE.TubeGeometry(canopyCurve, 32, 2.2, 16, false),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.6, roughness: 0.15 })
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.8, roughness: 0.25, envMapIntensity: 1.5 })
     );
     upperGroup.add(canopyMesh);
     interactiveMeshesRef.current.set('canopy', canopyMesh);
@@ -1438,11 +1577,19 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(ledScreen);
     interactiveMeshesRef.current.set('ledScreen', ledScreen);
 
-    // SẢNH CHÍNH & HỆ LAM ĐỨNG (Sheet 9)
+    // SẢNH CHÍNH & HỆ LAM ĐỨNG (Sheet 9 - Kính Low-E và lam nhôm Anodized)
     const lobbyEntranceGeo = new THREE.CylinderGeometry(5.5, 6.0, 3.8, 24, 1, true, -Math.PI / 3, (2 * Math.PI) / 3);
     const lobbyEntrance = new THREE.Mesh(
       lobbyEntranceGeo,
-      new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.7, roughness: 0.2, side: THREE.DoubleSide })
+      new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        metalness: 0.2,
+        roughness: 0.1,
+        transparent: true,
+        opacity: 0.75,
+        side: THREE.DoubleSide,
+        envMapIntensity: 1.8,
+      })
     );
     lobbyEntrance.position.set(14, 1.9, 7);
     upperGroup.add(lobbyEntrance);
@@ -1451,14 +1598,14 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     for (let la = -Math.PI / 3; la <= Math.PI / 3; la += 0.15) {
       const finMesh = new THREE.Mesh(
         new THREE.BoxGeometry(0.12, 3.6, 0.4),
-        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.2 })
+        new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.85, roughness: 0.3, envMapIntensity: 1.4 })
       );
       finMesh.position.set(14 + Math.sin(la) * 5.8, 1.9, 7 + Math.cos(la) * 5.8);
       finMesh.rotation.y = la;
       upperGroup.add(finMesh);
     }
 
-    // THÁP KHÁCH SẠN 28 TẦNG (TOWER 10) - MÁI VÁT & BAN CÔNG (Sheet 10)
+    // THÁP KHÁCH SẠN 28 TẦNG (TOWER 10) - KÍNH LOW-E & MẶT ĐỰNG CURTAIN WALL PBR (Sheet 10)
     const hotelShape = createRoundedTriangleShape(7.5, 2.0);
     const hotelFloors = 28;
     const hotelHeight = 26.5;
@@ -1473,12 +1620,13 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     hotelGeo.rotateX(-Math.PI / 2);
 
     const hotelMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x0a1c33 : 0x0284c7,
+      color: timeMode === 'night' ? 0x091422 : 0x1e293b,
       map: curtainTexture,
-      roughness: 0.15,
-      metalness: 0.75,
+      roughness: 0.08,
+      metalness: 0.18,
+      envMapIntensity: 1.6,
       transparent: isXRayMode || isBasementView,
-      opacity: isXRayMode ? 0.35 : isBasementView ? 0.12 : 0.95,
+      opacity: isXRayMode ? 0.35 : isBasementView ? 0.12 : 0.98,
     });
     const hotelMesh = new THREE.Mesh(hotelGeo, hotelMat);
     hotelMesh.position.set(6, 0, -2);
@@ -1487,31 +1635,43 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(hotelMesh);
     interactiveMeshesRef.current.set('hotel', hotelMesh);
 
-    // BAN CÔNG CÔNG-SON DỌC MẶT TIỀN (Sheet 10)
+    // BAN CÔNG CÔNG-SON DỌC MẶT TIỀN (Sheet 10 - Bê tông sợi GFRC & Lan can kính cường lực)
     for (let bf = 4; bf < hotelFloors - 1; bf++) {
       const bY = bf * 0.94;
       const balconySlab = new THREE.Mesh(
         new THREE.BoxGeometry(2.4, 0.1, 1.6),
-        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.5 })
+        new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.75, metalness: 0.02 })
       );
       balconySlab.position.set(6 - 6.8, bY, -2 + 1.2);
       upperGroup.add(balconySlab);
 
       const glassRailing = new THREE.Mesh(
         new THREE.BoxGeometry(2.4, 0.45, 0.05),
-        new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.7, roughness: 0.1 })
+        new THREE.MeshStandardMaterial({
+          color: 0x94a3b8,
+          transparent: true,
+          opacity: 0.55,
+          roughness: 0.05,
+          metalness: 0.15,
+          envMapIntensity: 2.0,
+        })
       );
       glassRailing.position.set(6 - 6.8, bY + 0.25, -2 + 1.95);
       upperGroup.add(glassRailing);
     }
 
-    // ĐỈNH MÁI VÁT CHÉO (Sheet 10 Slanted Crown)
+    // ĐỈNH MÁI VÁT CHÉO (Sheet 10 Slanted Crown - Tấm ốp Alucobond / Titanium Zinc)
     const crownShape = createRoundedTriangleShape(6.0, 1.5);
     const crownGeo = new THREE.ExtrudeGeometry(crownShape, { depth: 3.2, bevelEnabled: true });
     crownGeo.rotateX(-Math.PI / 2);
     const crown = new THREE.Mesh(
       crownGeo,
-      new THREE.MeshStandardMaterial({ color: timeMode === 'night' ? 0x0284c7 : 0x1e293b, metalness: 0.9, roughness: 0.2 })
+      new THREE.MeshStandardMaterial({
+        color: timeMode === 'night' ? 0x0a1424 : 0x1e293b,
+        metalness: 0.85,
+        roughness: 0.25,
+        envMapIntensity: 1.8,
+      })
     );
     crown.position.set(6, hotelHeight, -2);
     crown.rotation.z = -0.15;
@@ -1520,22 +1680,33 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
     // Khe kính thông tầng
     const slotGeo = new THREE.BoxGeometry(1.6, hotelHeight - 2, 0.4);
-    const slotMesh = new THREE.Mesh(slotGeo, new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 }));
+    const slotMesh = new THREE.Mesh(
+      slotGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        roughness: 0.05,
+        metalness: 0.15,
+        transparent: true,
+        opacity: 0.75,
+        envMapIntensity: 1.8,
+      })
+    );
     slotMesh.position.set(6, hotelHeight / 2, 5.6);
     upperGroup.add(slotMesh);
 
-    // THÁP VĂN PHÒNG 12 TẦNG (TOWER 11)
+    // THÁP VĂN PHÒNG 12 TẦNG (TOWER 11 - Kính phản quang Silver-Blue PBR)
     const officeShape = createRoundedTriangleShape(6.2, 1.6);
     const officeHeight = 11.5;
     const officeGeo = new THREE.ExtrudeGeometry(officeShape, { depth: officeHeight, bevelEnabled: true });
     officeGeo.rotateX(-Math.PI / 2);
     const officeMat = new THREE.MeshStandardMaterial({
-      color: timeMode === 'night' ? 0x062844 : 0x38bdf8,
+      color: timeMode === 'night' ? 0x081320 : 0x273549,
       map: curtainTexture,
-      roughness: 0.2,
-      metalness: 0.65,
+      roughness: 0.07,
+      metalness: 0.22,
+      envMapIntensity: 1.6,
       transparent: isXRayMode || isBasementView,
-      opacity: isXRayMode ? 0.35 : isBasementView ? 0.12 : 0.95,
+      opacity: isXRayMode ? 0.35 : isBasementView ? 0.12 : 0.98,
     });
     const officeMesh = new THREE.Mesh(officeGeo, officeMat);
     officeMesh.position.set(-14, 0, -2);
@@ -1544,7 +1715,7 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     upperGroup.add(officeMesh);
     interactiveMeshesRef.current.set('office', officeMesh);
 
-    // Cầu kính Skybridge
+    // Cầu kính Skybridge (Kết cấu thép & kính an toàn 2 lớp)
     const skybridgeCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-10.5, 8.6, -2),
       new THREE.Vector3(-4.0, 8.8, -1),
@@ -1552,18 +1723,32 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     ]);
     const skybridge = new THREE.Mesh(
       new THREE.TubeGeometry(skybridgeCurve, 24, 1.2, 12, false),
-      new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, metalness: 0.85 })
+      new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.08,
+        metalness: 0.3,
+        transparent: true,
+        opacity: 0.75,
+        envMapIntensity: 2.0,
+      })
     );
     upperGroup.add(skybridge);
     interactiveMeshesRef.current.set('skybridge', skybridge);
 
-    // BỂ BƠI VÔ CỰC TẦNG 5 (Sheet 4)
+    // BỂ BƠI VÔ CỰC TẦNG 5 (Sheet 4 - Nước phản xạ quang học thực tế)
     const poolShape = createPoolShape();
     const poolGeo = new THREE.ExtrudeGeometry(poolShape, { depth: 0.45, bevelEnabled: true });
     poolGeo.rotateX(-Math.PI / 2);
     const poolMesh = new THREE.Mesh(
       poolGeo,
-      new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.05, metalness: 0.9, transparent: true, opacity: 0.92 })
+      new THREE.MeshStandardMaterial({
+        color: 0x0284c7,
+        roughness: 0.03,
+        metalness: 0.02,
+        transparent: true,
+        opacity: 0.88,
+        envMapIntensity: 2.2,
+      })
     );
     poolMesh.position.set(2, podiumHeight + 0.06, 4);
     poolMesh.userData = { block: ARCHITECTURAL_BLOCKS[3] };
@@ -1572,15 +1757,15 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
     const poolIsland = new THREE.Mesh(
       new THREE.CylinderGeometry(1.6, 1.8, 0.4, 16),
-      new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.9 })
+      new THREE.MeshStandardMaterial({ color: 0x1e3a1e, roughness: 0.95, metalness: 0.0 })
     );
     poolIsland.position.set(8.5, podiumHeight + 0.25, 4.5);
     upperGroup.add(poolIsland);
 
-    // HẦM B1-B2
+    // HẦM B1-B2 (Bê tông kết cấu chống thấm)
     const basementSlab = new THREE.Mesh(
       new THREE.BoxGeometry(58, 1.2, 52),
-      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 })
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9, metalness: 0.02 })
     );
     basementSlab.position.set(-2, -3.6, 4);
     basementGroup.add(basementSlab);
@@ -1688,24 +1873,37 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
 
     // Ban công kính hướng biển Đà Nẵng (Sheet 9)
     const glassDoor = new THREE.Mesh(new THREE.PlaneGeometry(10, 4.0), new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
+      color: 0x94a3b8,
       transparent: true,
-      opacity: 0.25,
+      opacity: 0.35,
       roughness: 0.05,
-      metalness: 0.9,
+      metalness: 0.15,
+      envMapIntensity: 1.8,
     }));
     glassDoor.position.set(0, 2.0, 4.8);
     vipInteriorGroup.add(glassDoor);
 
-    const balconyFloor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.2, 2.5), new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 }));
+    const balconyFloor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.2, 2.5), new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.75, metalness: 0.0 }));
     balconyFloor.position.set(0, -0.05, 6.0);
     vipInteriorGroup.add(balconyFloor);
 
-    const balconyGlass = new THREE.Mesh(new THREE.BoxGeometry(10, 1.1, 0.05), new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.6 }));
+    const balconyGlass = new THREE.Mesh(new THREE.BoxGeometry(10, 1.1, 0.05), new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      transparent: true,
+      opacity: 0.55,
+      roughness: 0.05,
+      metalness: 0.1,
+      envMapIntensity: 2.0,
+    }));
     balconyGlass.position.set(0, 0.6, 7.2);
     vipInteriorGroup.add(balconyGlass);
 
-    const suiteOcean = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.8 }));
+    const suiteOcean = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), new THREE.MeshStandardMaterial({
+      color: 0x0b3d59,
+      roughness: 0.04,
+      metalness: 0.02,
+      envMapIntensity: 2.0,
+    }));
     suiteOcean.rotation.x = -Math.PI / 2;
     suiteOcean.position.set(0, -3.0, 24);
     vipInteriorGroup.add(suiteOcean);
@@ -1721,14 +1919,14 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
     const plateShape = createRoundedTriangleShape(12, 3.0);
     const plateGeo = new THREE.ExtrudeGeometry(plateShape, { depth: 0.4, bevelEnabled: true });
     plateGeo.rotateX(-Math.PI / 2);
-    const plateMesh = new THREE.Mesh(plateGeo, new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 }));
+    const plateMesh = new THREE.Mesh(plateGeo, new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.75, metalness: 0.05 }));
     typicalPlateGroup.add(plateMesh);
 
     // Lõi dịch vụ tam giác & 3 thang máy cam
     const coreShape = createRoundedTriangleShape(4.0, 0.8);
     const coreGeo = new THREE.ExtrudeGeometry(coreShape, { depth: 2.2, bevelEnabled: false });
     coreGeo.rotateX(-Math.PI / 2);
-    const coreMesh = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.4, metalness: 0.2 }));
+    const coreMesh = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({ color: 0xe05638, roughness: 0.6, metalness: 0.1 }));
     coreMesh.position.set(0, 0.4, 0);
     typicalPlateGroup.add(coreMesh);
 
@@ -1739,7 +1937,7 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       const vz = Math.sin(ang) * 9.5;
       const vipZone = new THREE.Mesh(
         new THREE.CylinderGeometry(2.4, 2.4, 1.2, 24),
-        new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75 })
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.45 })
       );
       vipZone.position.set(vx, 0.8, vz);
       typicalPlateGroup.add(vipZone);
