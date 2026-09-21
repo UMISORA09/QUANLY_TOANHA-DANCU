@@ -1106,7 +1106,7 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
   const [isBasementView, setIsBasementView] = useState<boolean>(false);
   const [showUrbanContext, setShowUrbanContext] = useState<boolean>(true);
   const [showBeach, setShowBeach] = useState<boolean>(true);
-  const [showPins, setShowPins] = useState<boolean>(true);
+  const [showPins, setShowPins] = useState<boolean>(false);
   const [isAutoRotate, setIsAutoRotate] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'interactive' | 'server_snapshot'>('interactive');
@@ -2350,31 +2350,8 @@ export const Building3DViewer: React.FC<Building3DViewerProps> = ({
       typicalPlateGroup.add(vipZone);
     });
 
-    // Ghim chú thích
+    // Ghim chú thích (Đã loại bỏ các cột tròn vàng ghim đồ chơi nhựa để đảm bảo phối cảnh PBR chân thực)
     pinObjectsRef.current.clear();
-    SITE_PINS.forEach((pin) => {
-      const pinGroup = new THREE.Group();
-      pinGroup.position.set(...pin.pos);
-
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.2), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
-      stem.position.y = 1.1;
-      pinGroup.add(stem);
-
-      const headMat = new THREE.MeshStandardMaterial({
-        color: pin.category === 'tower' ? 0x0284c7 : pin.category === 'amenity' ? 0x06b6d4 : 0xf59e0b,
-        emissive: timeMode === 'night' ? 0x0284c7 : 0x000000,
-        emissiveIntensity: 0.6,
-        roughness: 0.2,
-      });
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.85, 24, 24), headMat);
-      head.position.y = 2.6;
-      pinGroup.add(head);
-
-      pinGroup.userData = { pin };
-      pinGroup.visible = showPins;
-      exteriorGroup.add(pinGroup);
-      pinObjectsRef.current.set(pin.id, pinGroup);
-    });
 
     // Raycasting & Click
     const raycaster = new THREE.Raycaster();
