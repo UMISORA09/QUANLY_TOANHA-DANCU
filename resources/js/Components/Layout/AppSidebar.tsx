@@ -12,6 +12,7 @@ import {
   NavigationRoleConfig,
   NAVIGATION_CONFIGS,
 } from './navigationConfig';
+import { usePermission } from '../../Hooks/usePermission';
 
 export interface AppSidebarProps {
   role?: UserRole;
@@ -48,12 +49,32 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   onNavigateHome,
   onSetHoveredTooltip,
 }) => {
+  const { can } = usePermission();
+
   const config = {
     ...NAVIGATION_CONFIGS[role],
     ...customRoleConfig,
   };
 
-  const menuItems = customItems || config.items;
+  const rawItems = customItems || config.items;
+  const menuItems = rawItems.filter((item) => {
+    if (item.id === 'roles') {
+      return can('ROLE:VIEW|USER:VIEW');
+    }
+    if (item.id === 'amenities') {
+      return can('AMENITY:VIEW');
+    }
+    if (item.id === 'billing') {
+      return can('INVOICE:VIEW');
+    }
+    if (item.id === 'tickets') {
+      return can('TICKET:VIEW');
+    }
+    if (item.id === 'reports') {
+      return can('REPORT:VIEW');
+    }
+    return true;
+  });
   const RoleIcon = config.icon || Building2;
 
   // Khi mở Drawer trên mobile (mobileOpen = true), LUÔN hiển thị đầy đủ tên, logo, text

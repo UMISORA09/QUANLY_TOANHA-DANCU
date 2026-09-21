@@ -7,9 +7,12 @@ use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MetricsController;
+use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\UserController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -120,6 +123,99 @@ Route::post('/api/v1/auth/login', [AuthController::class, 'login']);
 Route::post('/api/auth/login', [AuthController::class, 'login']);
 Route::get('/api/v1/auth/me', [AuthController::class, 'me']);
 Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
+
+// ==========================================
+// HỆ THỐNG PHÂN QUYỀN VAI TRÒ RBAC (RESTful APIs)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    // 1. Quản lý Người dùng (Users)
+    Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
+    Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
+    Route::get('users/{id}', [UserController::class, 'show'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}', [UserController::class, 'update'])->middleware('permission:USER:UPDATE');
+    Route::patch('users/{id}', [UserController::class, 'update'])->middleware('permission:USER:UPDATE');
+    Route::delete('users/{id}', [UserController::class, 'destroy'])->middleware('permission:USER:DELETE');
+    Route::get('users/{id}/roles', [UserController::class, 'getUserRoles'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+    Route::patch('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+
+    // 2. Quản lý Vai trò (Roles)
+    Route::get('roles', [RoleController::class, 'index'])->middleware('permission:ROLE:VIEW');
+    Route::post('roles', [RoleController::class, 'store'])->middleware('permission:ROLE:CREATE');
+    Route::get('roles/{id}', [RoleController::class, 'show'])->middleware('permission:ROLE:VIEW');
+    Route::put('roles/{id}', [RoleController::class, 'update'])->middleware('permission:ROLE:UPDATE');
+    Route::patch('roles/{id}', [RoleController::class, 'update'])->middleware('permission:ROLE:UPDATE');
+    Route::delete('roles/{id}', [RoleController::class, 'destroy'])->middleware('permission:ROLE:DELETE');
+    Route::get('roles/{id}/permissions', [RoleController::class, 'getRolePermissions'])->middleware('permission:ROLE:VIEW');
+    Route::put('roles/{id}/permissions', [RoleController::class, 'syncRolePermissions'])->middleware('permission:ROLE:ASSIGN_PERMISSION|ROLE:UPDATE');
+    Route::patch('roles/{id}/permissions', [RoleController::class, 'syncRolePermissions'])->middleware('permission:ROLE:ASSIGN_PERMISSION|ROLE:UPDATE');
+
+    // 3. Quản lý Danh mục Quyền hạn (Permissions)
+    Route::get('permissions', [PermissionController::class, 'index'])->middleware('permission:PERMISSION:VIEW');
+    Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:PERMISSION:CREATE');
+    Route::get('permissions/{id}', [PermissionController::class, 'show'])->middleware('permission:PERMISSION:VIEW');
+    Route::put('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
+    Route::patch('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
+    Route::delete('permissions/{id}', [PermissionController::class, 'destroy'])->middleware('permission:PERMISSION:DELETE');
+});
+
+// Aliases under api/v1/admin for RBAC
+Route::prefix('api/v1/admin')->middleware(['auth.bearer'])->group(function () {
+    Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
+    Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
+    Route::get('users/{id}', [UserController::class, 'show'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}', [UserController::class, 'update'])->middleware('permission:USER:UPDATE');
+    Route::delete('users/{id}', [UserController::class, 'destroy'])->middleware('permission:USER:DELETE');
+    Route::get('users/{id}/roles', [UserController::class, 'getUserRoles'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+
+    Route::get('roles', [RoleController::class, 'index'])->middleware('permission:ROLE:VIEW');
+    Route::post('roles', [RoleController::class, 'store'])->middleware('permission:ROLE:CREATE');
+    Route::get('roles/{id}', [RoleController::class, 'show'])->middleware('permission:ROLE:VIEW');
+    Route::put('roles/{id}', [RoleController::class, 'update'])->middleware('permission:ROLE:UPDATE');
+    Route::delete('roles/{id}', [RoleController::class, 'destroy'])->middleware('permission:ROLE:DELETE');
+    Route::get('roles/{id}/permissions', [RoleController::class, 'getRolePermissions'])->middleware('permission:ROLE:VIEW');
+    Route::put('roles/{id}/permissions', [RoleController::class, 'syncRolePermissions'])->middleware('permission:ROLE:ASSIGN_PERMISSION|ROLE:UPDATE');
+
+    Route::get('permissions', [PermissionController::class, 'index'])->middleware('permission:PERMISSION:VIEW');
+    Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:PERMISSION:CREATE');
+    Route::get('permissions/{id}', [PermissionController::class, 'show'])->middleware('permission:PERMISSION:VIEW');
+    Route::put('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
+    Route::delete('permissions/{id}', [PermissionController::class, 'destroy'])->middleware('permission:PERMISSION:DELETE');
+});
+
+// Explicit RBAC endpoints under api/v1/rbac
+Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
+    // 1. Quản lý Người dùng (Users)
+    Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
+    Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
+    Route::get('users/{id}', [UserController::class, 'show'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}', [UserController::class, 'update'])->middleware('permission:USER:UPDATE');
+    Route::patch('users/{id}', [UserController::class, 'update'])->middleware('permission:USER:UPDATE');
+    Route::delete('users/{id}', [UserController::class, 'destroy'])->middleware('permission:USER:DELETE');
+    Route::get('users/{id}/roles', [UserController::class, 'getUserRoles'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+    Route::patch('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+
+    // 2. Quản lý Vai trò (Roles)
+    Route::get('roles', [RoleController::class, 'index'])->middleware('permission:ROLE:VIEW');
+    Route::post('roles', [RoleController::class, 'store'])->middleware('permission:ROLE:CREATE');
+    Route::get('roles/{id}', [RoleController::class, 'show'])->middleware('permission:ROLE:VIEW');
+    Route::put('roles/{id}', [RoleController::class, 'update'])->middleware('permission:ROLE:UPDATE');
+    Route::patch('roles/{id}', [RoleController::class, 'update'])->middleware('permission:ROLE:UPDATE');
+    Route::delete('roles/{id}', [RoleController::class, 'destroy'])->middleware('permission:ROLE:DELETE');
+    Route::get('roles/{id}/permissions', [RoleController::class, 'getRolePermissions'])->middleware('permission:ROLE:VIEW');
+    Route::put('roles/{id}/permissions', [RoleController::class, 'syncRolePermissions'])->middleware('permission:ROLE:ASSIGN_PERMISSION|ROLE:UPDATE');
+    Route::patch('roles/{id}/permissions', [RoleController::class, 'syncRolePermissions'])->middleware('permission:ROLE:ASSIGN_PERMISSION|ROLE:UPDATE');
+
+    // 3. Quản lý Danh mục Quyền hạn (Permissions)
+    Route::get('permissions', [PermissionController::class, 'index'])->middleware('permission:PERMISSION:VIEW');
+    Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:PERMISSION:CREATE');
+    Route::get('permissions/{id}', [PermissionController::class, 'show'])->middleware('permission:PERMISSION:VIEW');
+    Route::put('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
+    Route::patch('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
+    Route::delete('permissions/{id}', [PermissionController::class, 'destroy'])->middleware('permission:PERMISSION:DELETE');
+});
 
 // Meta endpoints
 Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);

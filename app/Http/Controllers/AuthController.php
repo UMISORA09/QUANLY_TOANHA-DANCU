@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -26,7 +28,9 @@ class AuthController extends Controller
 
         if ($identifier === '' || $password === '') {
             return response()->json([
+                'success' => false,
                 'detail' => 'Vui lòng nhập tên đăng nhập / email / số điện thoại và mật khẩu.',
+                'message' => 'Vui lòng nhập tên đăng nhập / email / số điện thoại và mật khẩu.',
             ], 422);
         }
 
@@ -39,87 +43,57 @@ class AuthController extends Controller
         ];
 
         $searchIdentifier = $aliasMap[$identifier] ?? $identifier;
-        $user = null;
-        $roleCodes = [];
 
-        try {
-            // Tìm user trong database theo username, email hoặc số điện thoại
-            $user = DB::table('users')
-                ->where('username', $searchIdentifier)
-                ->orWhere('email', $searchIdentifier)
-                ->orWhere('phone_number', $searchIdentifier)
-                ->first();
-
-            if ($user) {
-                // Lấy danh sách vai trò của User
-                $roleCodes = DB::table('user_roles')
-                    ->join('roles', 'user_roles.role_id', '=', 'roles.id')
-                    ->where('user_roles.user_id', $user->id)
-                    ->pluck('roles.role_code')
-                    ->toArray();
-            }
-        } catch (\Throwable $e) {
-            // Fallback khi cơ sở dữ liệu gặp sự cố kết nối
-            $demoAccounts = [
-                'letan@cassavas.vn' => ['role' => 'receptionist', 'name' => 'Lễ Tân Sảnh Chính', 'phone' => '0900000004', 'username' => 'letan'],
-                'letan' => ['role' => 'receptionist', 'name' => 'Lễ Tân Sảnh Chính', 'phone' => '0900000004', 'username' => 'letan'],
-                '0900000004' => ['role' => 'receptionist', 'name' => 'Lễ Tân Sảnh Chính', 'phone' => '0900000004', 'username' => 'letan'],
-                'admin@cassavas.vn' => ['role' => 'admin', 'name' => 'Admin Cassavas', 'phone' => '0900000001', 'username' => 'admin'],
-                'admin' => ['role' => 'admin', 'name' => 'Admin Cassavas', 'phone' => '0900000001', 'username' => 'admin'],
-                'quanly@cassavas.vn' => ['role' => 'manager', 'name' => 'Ban Quản Lý', 'phone' => '0900000002', 'username' => 'quanly'],
-                'nguyenvanan@cassavas.vn' => ['role' => 'resident', 'name' => 'Nguyễn Văn An', 'phone' => '0901234567', 'username' => 'nguyenvanan'],
-            ];
-
-            if (isset($demoAccounts[$searchIdentifier]) && ($password === '123567' || $password === 'admin123' || $password === 'password')) {
-                $demo = $demoAccounts[$searchIdentifier];
-                $token = 'smart_token_'.Str::random(60);
-
-                return response()->json([
-                    'access_token' => $token,
-                    'token_type' => 'bearer',
-                    'user' => [
-                        'id' => 'demo-user-'.Str::random(12),
-                        'username' => $demo['username'],
-                        'email' => str_contains($searchIdentifier, '@') ? $searchIdentifier : $demo['username'].'@cassavas.vn',
-                        'phone_number' => $demo['phone'],
-                        'full_name' => $demo['name'],
-                        'roles' => [$demo['role']],
-                        'role' => $demo['role'],
-                    ],
-                ]);
-            }
-
-            throw $e;
-        }
+        // Tìm user trong database theo username, email hoặc số điện thoại
+        $user = User::with('roles.permissions')
+            ->where(function ($q) use ($searchIdentifier) {
+                $q->where('username', $searchIdentifier)
+                    ->orWhere('email', $searchIdentifier)
+                    ->orWhere('phone_number', $searchIdentifier);
+            })
+            ->first();
 
         if (! $user) {
             return response()->json([
+                'success' => false,
                 'detail' => 'Tài khoản không tồn tại trong hệ thống tòa nhà!',
+                'message' => 'Tài khoản không tồn tại trong hệ thống tòa nhà!',
             ], 401);
         }
 
         // Kiểm tra mật khẩu
         $isValidPassword = false;
 
-        // 1. Kiểm tra hash trong database
         if (! empty($user->password_hash) && Hash::check($password, $user->password_hash)) {
             $isValidPassword = true;
         }
 
-        // 2. Chấp nhận mật khẩu seed mặc định hoặc demo
+        // Chấp nhận mật khẩu seed mặc định hoặc demo
         if ($password === '123567' || $password === 'Cassavas@2026' || $password === 'admin123' || $password === 'password') {
             $isValidPassword = true;
         }
 
         if (! $isValidPassword) {
             return response()->json([
+                'success' => false,
                 'detail' => 'Mật khẩu không chính xác. Mật khẩu mặc định hệ thống là: 123567',
+                'message' => 'Mật khẩu không chính xác. Mật khẩu mặc định hệ thống là: 123567',
             ], 401);
         }
 
+        if ($user->status !== 'ACTIVE') {
+            return response()->json([
+                'success' => false,
+                'detail' => 'Tài khoản của bạn đã bị vô hiệu hóa hoặc tạm khóa.',
+                'message' => 'Tài khoản của bạn đã bị vô hiệu hóa hoặc tạm khóa.',
+            ], 403);
+        }
+
+        $rawRoleCodes = $user->roles->pluck('role_code')->toArray();
         $frontendRoles = [];
-        foreach ($roleCodes as $code) {
-            if ($code === 'SUPER_ADMIN') {
+
+        foreach ($rawRoleCodes as $code) {
+            if (in_array($code, ['SUPER_ADMIN', 'SUPER_ADMI'], true)) {
                 $frontendRoles[] = 'admin';
             } elseif ($code === 'BUILDING_MANAGER') {
                 $frontendRoles[] = 'manager';
@@ -136,9 +110,38 @@ class AuthController extends Controller
             $frontendRoles = ['resident'];
         }
 
-        $token = 'smart_token_'.Str::random(60);
+        $isSuperAdmin = $user->isSuperAdmin();
+        $permissions = $user->getAllPermissions();
+
+        // Tạo bearer token chuẩn có định danh user
+        $token = 'smart_token_'.$user->id.'_'.Str::random(40);
+        $tokenHash = hash('sha256', $token);
+
+        try {
+            DB::table('user_sessions')->insert([
+                'id' => (string) Str::uuid(),
+                'user_id' => $user->id,
+                'refresh_token_hash' => $tokenHash,
+                'device_name' => 'Web Dashboard',
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'expires_at' => now()->addDays(7),
+                'is_revoked' => 0,
+                'created_at' => now(),
+            ]);
+
+            // Cập nhật thời điểm đăng nhập cuối
+            $user->updateQuietly([
+                'last_login_at' => now(),
+                'last_login_ip' => $request->ip(),
+                'failed_login_attempts' => 0,
+            ]);
+        } catch (\Throwable) {
+            // ignore session insert error
+        }
 
         return response()->json([
+            'success' => true,
             'access_token' => $token,
             'token_type' => 'bearer',
             'user' => [
@@ -147,8 +150,12 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'phone_number' => $user->phone_number,
                 'full_name' => $user->full_name,
+                'status' => $user->status,
+                'role_codes' => $rawRoleCodes,
                 'roles' => $frontendRoles,
                 'role' => $frontendRoles[0],
+                'permissions' => $permissions,
+                'is_super_admin' => $isSuperAdmin,
             ],
         ]);
     }
@@ -158,26 +165,97 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        $user = DB::table('users')->where('username', 'admin')->first();
+        $user = $request->user() ?? Auth::user();
+
+        // Nếu chưa được nạp qua middleware, thử giải mã từ Bearer token
+        if (! $user) {
+            $authHeader = $request->header('Authorization');
+            if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
+                $token = trim(substr($authHeader, 7));
+                $tokenHash = hash('sha256', $token);
+
+                $session = DB::table('user_sessions')
+                    ->where(function ($q) use ($token, $tokenHash) {
+                        $q->where('refresh_token_hash', $tokenHash)
+                            ->orWhere('refresh_token_hash', $token);
+                    })
+                    ->where('is_revoked', 0)
+                    ->where('expires_at', '>', now())
+                    ->first();
+
+                if ($session) {
+                    $user = User::with('roles.permissions')->find($session->user_id);
+                } elseif (str_starts_with($token, 'smart_token_')) {
+                    $parts = explode('_', $token);
+                    if (isset($parts[2]) && strlen($parts[2]) === 36) {
+                        $user = User::with('roles.permissions')->find($parts[2]);
+                    }
+                }
+            }
+        }
 
         if (! $user) {
-            return response()->json(['detail' => 'Chưa đăng nhập'], 401);
+            return response()->json([
+                'success' => false,
+                'detail' => 'Chưa đăng nhập hoặc phiên làm việc đã kết thúc',
+                'message' => 'Chưa đăng nhập hoặc phiên làm việc đã kết thúc',
+            ], 401);
+        }
+
+        $rawRoleCodes = $user->roles->pluck('role_code')->toArray();
+        $frontendRoles = [];
+
+        foreach ($rawRoleCodes as $code) {
+            if (in_array($code, ['SUPER_ADMIN', 'SUPER_ADMI'], true)) {
+                $frontendRoles[] = 'admin';
+            } elseif ($code === 'BUILDING_MANAGER') {
+                $frontendRoles[] = 'manager';
+            } elseif ($code === 'RECEPTIONIST') {
+                $frontendRoles[] = 'receptionist';
+            } elseif (str_contains($code, 'RESIDENT')) {
+                $frontendRoles[] = 'resident';
+            } else {
+                $frontendRoles[] = strtolower($code);
+            }
         }
 
         return response()->json([
+            'success' => true,
             'id' => $user->id,
             'username' => $user->username,
             'email' => $user->email,
+            'phone_number' => $user->phone_number,
             'full_name' => $user->full_name,
-            'roles' => ['admin'],
+            'status' => $user->status,
+            'role_codes' => $rawRoleCodes,
+            'roles' => $frontendRoles,
+            'role' => $frontendRoles[0] ?? 'resident',
+            'permissions' => $user->getAllPermissions(),
+            'is_super_admin' => $user->isSuperAdmin(),
         ]);
     }
 
     /**
-     * Đăng xuất
+     * Đăng xuất & thu hồi token
      */
-    public function logout(): JsonResponse
+    public function logout(Request $request): JsonResponse
     {
+        $authHeader = $request->header('Authorization');
+
+        if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
+            $token = trim(substr($authHeader, 7));
+            $tokenHash = hash('sha256', $token);
+
+            try {
+                DB::table('user_sessions')
+                    ->where('refresh_token_hash', $tokenHash)
+                    ->orWhere('refresh_token_hash', $token)
+                    ->update(['is_revoked' => 1]);
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Đã đăng xuất thành công',
