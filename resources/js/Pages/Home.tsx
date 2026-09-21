@@ -1797,10 +1797,10 @@ export const Home: React.FC<HomeProps> = ({
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-neutral-950 animate-text-light">
-                Trực quan hóa toàn bộ tòa nhà trong không gian 3D.
+                Mô hình kiến trúc số 3D Twin • Tổ hợp Cassavas Đà Nẵng
               </h2>
               <p className="text-base sm:text-lg text-neutral-600 max-w-2xl mt-2.5 font-normal leading-relaxed">
-                Khám phá tháp đôi 26 tầng, giám sát năng lượng, cảm biến an ninh PCCC, thang máy kính xuyên thấu và trạng thái phân tầng trong thời gian thực.
+                Tái hiện chuẩn xác 10 bản vẽ thiết kế: Tháp 28 tầng mái vát chéo, Tháp văn phòng, Vòm cong Cassavas & màn hình LED quảng cáo, không gian 3D căn hộ VIP Suite và bể bơi vô cực ốc đảo tầng 5.
               </p>
             </div>
 

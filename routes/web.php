@@ -6,6 +6,7 @@ use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Zone3DRenderController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -120,6 +121,10 @@ Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities']
 Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities']);
 Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
+
+// WebGL 3D Headless Render APIs (node-webgl)
+Route::get('/api/v1/zones/3d-snapshot', [Zone3DRenderController::class, 'getSnapshotStatus']);
+Route::post('/api/v1/zones/render-3d-snapshot', [Zone3DRenderController::class, 'renderSnapshot']);
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
 Route::prefix('api/v1/admin')->group(function () {

@@ -606,15 +606,16 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       unreadNotificationCount={notifications.filter((n) => !n.isRead).length}
       extraTopbarActions={
         <>
-          {/* Quick 3D Building Toggle */}
+          {/* Quick 3D Building Toggle (WebGL Digital Twin) */}
           <button
             type="button"
             onClick={() => setIs3DModelOpen(true)}
-            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-sky-700 border border-sky-100 shadow-xs hover:shadow-sm transition-all cursor-pointer"
-            title="Xem mô hình 3D tòa nhà"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-sky-500/20 hover:shadow-sky-500/35 transition-all cursor-pointer"
+            title="Khám phá Mô Hình 3D Digital Twin (WebGL)"
           >
-            <Layers className="w-3.5 h-3.5 text-sky-500 animate-pulse-subtle" />
-            <span>Mô hình 3D</span>
+            <Layers className="w-3.5 h-3.5 text-sky-200" />
+            <span className="hidden sm:inline">Mô Hình 3D</span>
+            <span className="px-1.5 py-0.2 rounded-md bg-white/20 text-[10px] font-mono">WebGL</span>
           </button>
 
           {/* Building Selector Dropdown */}
@@ -1366,27 +1367,27 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           MODAL: MÔ HÌNH 3D TÒA NHÀ (INTERACTIVE 3D VIEWER)
           ======================================================== */}
       {is3DModelOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-5xl h-[85vh] rounded-3xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl overflow-hidden flex flex-col relative">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white/80">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-6xl h-[92vh] rounded-3xl bg-slate-900 border border-white/20 shadow-2xl overflow-hidden flex flex-col relative">
+            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-900/90 text-white">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-sky-500 text-white flex items-center justify-center shadow-sm">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center shadow-md">
                   <Layers className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-neutral-900">Mô hình phân tầng 3D Tòa nhà</h3>
-                  <p className="text-[11px] text-slate-400">Khối / Tòa nhà & Căn hộ trực quan</p>
+                  <h3 className="font-bold text-sm text-white">Mô Hình 3D Digital Twin Tòa Nhà (WebGL)</h3>
+                  <p className="text-[11px] text-slate-400">Khối nhà, phân tầng kiến trúc & kết xuất ảnh Three.js headless</p>
                 </div>
               </div>
               <button
                 onClick={() => setIs3DModelOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-2 sm:p-4 bg-slate-950 custom-scrollbar">
               <Building3DModel />
             </div>
           </div>

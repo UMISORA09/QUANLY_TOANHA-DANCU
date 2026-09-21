@@ -17,8 +17,10 @@ import {
   BatteryCharging,
   Eye,
   Sliders,
-  Split
+  Split,
+  Box
 } from 'lucide-react';
+import { Building3DViewer } from './Admin/Building3DViewer';
 
 export interface BuildingTier {
   id: string;
@@ -126,6 +128,7 @@ export const Building3DModel: React.FC<Building3DModelProps> = ({
   highAlert = false,
   isCompact = false
 }) => {
+  const [engineMode, setEngineMode] = useState<'webgl_3d' | 'bim_svg'>('webgl_3d');
   const [selectedTierId, setSelectedTierId] = useState<string>('residence_high');
   const [viewAngle, setViewAngle] = useState<'isometric' | 'front' | 'exploded'>('isometric');
   const [activeLayer, setActiveLayer] = useState<'all' | 'energy' | 'security' | 'iot'>('all');
@@ -180,90 +183,188 @@ export const Building3DModel: React.FC<Building3DModelProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-neutral-500 dark:text-slate-400">
-              Mô phỏng phối cảnh trục đo đa tầng • Tháp đôi Cassavas Tower 26 Tầng (92.4m)
+              Mô phỏng phối cảnh trực quan WebGL & Trục đo đa tầng • Tháp đôi Cassavas
             </p>
           </div>
         </div>
 
-        {/* View Angle & Mode Controls */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <div className="flex items-center rounded-lg p-0.5 bg-neutral-100/80 dark:bg-slate-800/90 border border-neutral-200/60 dark:border-slate-700/60">
-            <button
-              onClick={() => setViewAngle('isometric')}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                viewAngle === 'isometric'
-                  ? 'bg-white dark:bg-cyan-500 text-neutral-950 dark:text-slate-950 font-bold shadow-xs'
-                  : 'text-neutral-600 dark:text-slate-400 hover:text-neutral-900'
-              }`}
-              title="Phối cảnh trục đo 3 chiều tiêu chuẩn"
-            >
-              Isometric 3D
-            </button>
-            <button
-              onClick={() => setViewAngle('front')}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                viewAngle === 'front'
-                  ? 'bg-white dark:bg-cyan-500 text-neutral-950 dark:text-slate-950 font-bold shadow-xs'
-                  : 'text-neutral-600 dark:text-slate-400 hover:text-neutral-900'
-              }`}
-              title="Mặt đứng kiến trúc trực diện"
-            >
-              Mặt đứng
-            </button>
-            <button
-              onClick={() => setViewAngle('exploded')}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 ${
-                viewAngle === 'exploded'
-                  ? 'bg-sky-500 text-white font-bold shadow-xs'
-                  : 'text-neutral-600 dark:text-slate-400 hover:text-neutral-900'
-              }`}
-              title="Mặt cắt phân tầng bóc tách cấu trúc"
-            >
-              <Split className="w-3 h-3" />
-              <span>Phân tầng bóc tách</span>
-            </button>
-          </div>
+        {/* Engine Switcher (WebGL 3D GPU vs BIM SVG) */}
+        <div className="flex items-center p-1 rounded-xl bg-neutral-100 dark:bg-slate-800 border border-neutral-200/80 dark:border-slate-700/80 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setEngineMode('webgl_3d')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              engineMode === 'webgl_3d'
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'text-slate-600 dark:text-slate-400 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <Box className="w-3.5 h-3.5" />
+            <span>WebGL 3D (GPU)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setEngineMode('bim_svg')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              engineMode === 'bim_svg'
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'text-slate-600 dark:text-slate-400 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Sơ Đồ BIM 2.5D</span>
+          </button>
+        </div>
 
-          {/* Layer Filter Pills */}
-          <div className="hidden sm:flex items-center gap-1">
-            <button
-              onClick={() => setActiveLayer('all')}
-              className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
-                activeLayer === 'all'
-                  ? 'bg-neutral-900 text-white dark:bg-slate-700 border-transparent'
-                  : 'bg-transparent border-neutral-300 dark:border-slate-700 text-neutral-600 dark:text-slate-400'
-              }`}
-            >
-              Tất cả
-            </button>
-            <button
-              onClick={() => setActiveLayer('energy')}
-              className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 transition-colors ${
-                activeLayer === 'energy'
-                  ? 'bg-amber-500 text-white border-transparent'
-                  : 'bg-transparent border-neutral-300 dark:border-slate-700 text-neutral-600 dark:text-slate-400'
-              }`}
-            >
-              <Zap className="w-2.5 h-2.5" />
-              Điện & Sạc
-            </button>
-            <button
-              onClick={() => setActiveLayer('security')}
-              className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 transition-colors ${
-                activeLayer === 'security'
-                  ? 'bg-rose-500 text-white border-transparent'
-                  : 'bg-transparent border-neutral-300 dark:border-slate-700 text-neutral-600 dark:text-slate-400'
-              }`}
-            >
-              <ShieldAlert className="w-2.5 h-2.5" />
-              An ninh PCCC
-            </button>
+        {/* View Angle & Mode Controls (Chỉ hiển thị trong chế độ Sơ đồ BIM 2.5D) */}
+        {engineMode === 'bim_svg' && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <div className="flex items-center rounded-lg p-0.5 bg-neutral-100/80 dark:bg-slate-800/90 border border-neutral-200/60 dark:border-slate-700/60">
+              <button
+                onClick={() => setViewAngle('isometric')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                  viewAngle === 'isometric'
+                    ? 'bg-white dark:bg-cyan-500 text-neutral-950 dark:text-slate-950 font-bold shadow-xs'
+                    : 'text-neutral-600 dark:text-slate-400 hover:text-neutral-900'
+                }`}
+                title="Phối cảnh trục đo 3 chiều tiêu chuẩn"
+              >
+                Isometric 3D
+              </button>
+              <button
+                onClick={() => setViewAngle('front')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                  viewAngle === 'front'
+                    ? 'bg-white dark:bg-cyan-500 text-neutral-950 dark:text-slate-950 font-bold shadow-xs'
+                    : 'text-neutral-600 dark:text-slate-400 hover:text-neutral-900'
+                }`}
+                title="Mặt đứng kiến trúc trực diện"
+              >
+                Mặt đứng
+              </button>
+              <button
+                onClick={() => setViewAngle('exploded')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 ${
+                  viewAngle === 'exploded'
+                    ? 'bg-sky-500 text-white font-bold shadow-xs'
+                    : 'text-neutral-600 dark:text-slate-400 hover:text-neutral-900'
+                }`}
+                title="Mặt cắt phân tầng bóc tách cấu trúc"
+              >
+                <Split className="w-3 h-3" />
+                <span>Phân tầng bóc tách</span>
+              </button>
+            </div>
+
+            {/* Layer Filter Pills */}
+            <div className="hidden sm:flex items-center gap-1">
+              <button
+                onClick={() => setActiveLayer('all')}
+                className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                  activeLayer === 'all'
+                    ? 'bg-neutral-900 text-white dark:bg-slate-700 border-transparent'
+                    : 'bg-transparent border-neutral-300 dark:border-slate-700 text-neutral-600 dark:text-slate-400'
+                }`}
+              >
+                Tất cả
+              </button>
+              <button
+                onClick={() => setActiveLayer('energy')}
+                className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 transition-colors ${
+                  activeLayer === 'energy'
+                    ? 'bg-amber-500 text-white border-transparent'
+                    : 'bg-transparent border-neutral-300 dark:border-slate-700 text-neutral-600 dark:text-slate-400'
+                }`}
+              >
+                <Zap className="w-2.5 h-2.5" />
+                Điện & Sạc
+              </button>
+              <button
+                onClick={() => setActiveLayer('security')}
+                className={`px-2 py-1 rounded text-[11px] font-medium border flex items-center gap-1 transition-colors ${
+                  activeLayer === 'security'
+                    ? 'bg-rose-500 text-white border-transparent'
+                    : 'bg-transparent border-neutral-300 dark:border-slate-700 text-neutral-600 dark:text-slate-400'
+                }`}
+              >
+                <ShieldAlert className="w-2.5 h-2.5" />
+                An ninh PCCC
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Key Architectural & Engineering Metrics Ribbon */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 my-3">
+        <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-slate-900/60 border border-neutral-200/60 dark:border-slate-800 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-500 flex items-center justify-center font-bold text-xs">
+            28T
+          </div>
+          <div>
+            <div className="text-[10px] text-neutral-500 dark:text-slate-400">Chiều cao công trình</div>
+            <div className="text-xs font-black font-mono">95.00m (Tháp 10)</div>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-slate-900/60 border border-neutral-200/60 dark:border-slate-800 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-xs">
+            BIM
+          </div>
+          <div>
+            <div className="text-[10px] text-neutral-500 dark:text-slate-400">Tổng sàn xây dựng</div>
+            <div className="text-xs font-black font-mono">72.150 m²</div>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-slate-900/60 border border-neutral-200/60 dark:border-slate-800 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xs">
+            PCCC
+          </div>
+          <div>
+            <div className="text-[10px] text-neutral-500 dark:text-slate-400">An toàn phòng cháy</div>
+            <div className="text-xs font-black font-mono">TCVN 06:2022</div>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-slate-900/60 border border-neutral-200/60 dark:border-slate-800 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-xs">
+            EV
+          </div>
+          <div>
+            <div className="text-[10px] text-neutral-500 dark:text-slate-400">Trạm sạc xe điện</div>
+            <div className="text-xs font-black font-mono">24 Trụ (120kW)</div>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-slate-900/60 border border-neutral-200/60 dark:border-slate-800 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-cyan-500/15 text-cyan-500 flex items-center justify-center font-bold text-xs">
+            T5
+          </div>
+          <div>
+            <div className="text-[10px] text-neutral-500 dark:text-slate-400">Bể bơi vô cực & Bar</div>
+            <div className="text-xs font-black font-mono">Ốc Đảo Sinh Thái</div>
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-slate-900/60 border border-neutral-200/60 dark:border-slate-800 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-indigo-500/15 text-indigo-500 flex items-center justify-center font-bold text-xs">
+            MEP
+          </div>
+          <div>
+            <div className="text-[10px] text-neutral-500 dark:text-slate-400">Trạm biến áp</div>
+            <div className="text-xs font-black font-mono">2 x 2000 kVA</div>
           </div>
         </div>
       </div>
 
-      {/* Main 3D Stage & Interactive Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-4 items-center min-h-[500px]">
+      {engineMode === 'webgl_3d' ? (
+        <div className="w-full min-h-[740px] sm:min-h-[780px]">
+          <Building3DViewer />
+        </div>
+      ) : (
+        /* Main 3D Stage & Interactive Columns */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-4 items-center min-h-[500px]">
         {/* Left Side: Precision Architectural 3D SVG Viewport */}
         <div
           className={`lg:col-span-7 relative flex items-center justify-center min-h-[440px] sm:min-h-[520px] overflow-hidden rounded-xl border transition-colors duration-700 ${
@@ -908,6 +1009,7 @@ export const Building3DModel: React.FC<Building3DModelProps> = ({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

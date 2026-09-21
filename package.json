@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "render:3d": "node scripts/render_building_snapshot.mjs"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
@@ -21,10 +22,13 @@
         "@laravel/multiplex": "^0.4.1"
     },
     "dependencies": {
+        "@onirenaud/node-webgl": "^0.2.0",
+        "@types/three": "^0.186.0",
         "lucide": "^1.45.0",
         "lucide-react": "^1.44.0",
         "morphicons": "^1.7.1",
         "react": "^19.3.0",
-        "react-dom": "^19.3.0"
+        "react-dom": "^19.3.0",
+        "three": "^0.186.0"
     }
 }
