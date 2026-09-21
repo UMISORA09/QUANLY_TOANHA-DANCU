@@ -339,6 +339,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     () => {
       const baseItems = [
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
+        { id: 'studio-3d', label: '3D Studio CAD/BIM Riêng', icon: Layers, badge: 'PRO' },
         { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
         { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
@@ -575,6 +576,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     } else {
       window.history.pushState({ tab: id }, '', `/admin?tab=${id}`);
     }
+    if (id === 'studio-3d') {
+      window.location.href = '/studio-3d';
+      return;
+    }
     if (id === 'buildings') {
       setIs3DModelOpen(true);
     } else if (id !== 'overview') {
@@ -606,17 +611,16 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       unreadNotificationCount={notifications.filter((n) => !n.isRead).length}
       extraTopbarActions={
         <>
-          {/* Quick 3D Building Toggle (WebGL Digital Twin) */}
-          <button
-            type="button"
-            onClick={() => setIs3DModelOpen(true)}
+          {/* Quick 3D Building Dedicated Studio Link */}
+          <a
+            href="/studio-3d"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-sky-500/20 hover:shadow-sky-500/35 transition-all cursor-pointer"
-            title="Khám phá Mô Hình 3D Digital Twin (WebGL)"
+            title="Mở Không Gian 3D Studio Riêng Biệt (Full-screen CAD & BIM)"
           >
             <Layers className="w-3.5 h-3.5 text-sky-200" />
-            <span className="hidden sm:inline">Mô Hình 3D</span>
-            <span className="px-1.5 py-0.2 rounded-md bg-white/20 text-[10px] font-mono">WebGL</span>
-          </button>
+            <span className="hidden sm:inline">3D Studio Riêng</span>
+            <span className="px-1.5 py-0.2 rounded-md bg-white/20 text-[10px] font-mono">PBR PRO</span>
+          </a>
 
           {/* Building Selector Dropdown */}
           <div className="relative">
@@ -759,6 +763,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
 
             <div className="flex items-center gap-2.5">
+              <a
+                href="/studio-3d"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-sky-600/25 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer"
+              >
+                <Layers className="w-4 h-4 text-sky-200 animate-pulse" />
+                <span>Mở 3D Studio Riêng</span>
+              </a>
+
               <button
                 onClick={() => setIsExportModalOpen(true)}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-neutral-900/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 group cursor-pointer"
@@ -1379,12 +1391,21 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                   <p className="text-[11px] text-slate-400">Khối nhà, phân tầng kiến trúc & kết xuất ảnh Three.js headless</p>
                 </div>
               </div>
-              <button
-                onClick={() => setIs3DModelOpen(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href="/studio-3d"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  <span>Mở Studio Riêng</span>
+                </a>
+                <button
+                  onClick={() => setIs3DModelOpen(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-2 sm:p-4 bg-slate-950 custom-scrollbar">

@@ -41,6 +41,22 @@ Route::get('/admin/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
+Route::get('/studio-3d', function () {
+    return view('welcome');
+});
+
+Route::get('/studio-3d/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
+Route::get('/3d', function () {
+    return view('welcome');
+});
+
+Route::get('/mo-hinh-3d', function () {
+    return view('welcome');
+});
+
 Route::get('/dashboard', function () {
     return view('welcome');
 });

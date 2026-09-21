@@ -6,6 +6,7 @@ import ResidentHome from './Pages/ResidentHome';
 import ReceptionHome from './Pages/ReceptionHome';
 import NotFound from './Pages/NotFound';
 import AmenityManagement from './Pages/Admin/AmenityManagement';
+import Studio3DPage from './Pages/Studio3DPage';
 
 interface UserSession {
   role: string;
@@ -128,6 +129,23 @@ const App: React.FC = () => {
     setCurrentUser(null);
     navigateTo('/home');
   };
+
+  // 0. Phân hệ 3D Digital Twin CAD/BIM Studio Riêng biệt (Dedicated 3D Studio)
+  const is3DStudioPath =
+    currentPath === '/studio-3d' ||
+    currentPath.startsWith('/studio-3d') ||
+    currentPath === '/3d' ||
+    currentPath === '/mo-hinh-3d' ||
+    currentPath === '/admin/studio-3d';
+
+  if (is3DStudioPath) {
+    return (
+      <Studio3DPage
+        onBack={() => navigateTo('/admin')}
+        onNavigateHome={() => navigateTo('/home')}
+      />
+    );
+  }
 
   // 1. Phân hệ Quản Trị Viên (Admin Console - Toàn quyền & Chuyển cổng)
   const isAmenityAdminPath =
