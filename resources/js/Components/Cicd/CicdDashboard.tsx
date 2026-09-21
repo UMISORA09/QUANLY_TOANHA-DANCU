@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Terminal,
   Play,
@@ -93,11 +93,11 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
   };
 
   // Fetch all dashboard data
-  const fetchData = useCallback(async (silent = false) => {
+  const fetchData = useCallback(async (silent = false, force = false) => {
     if (!silent) setIsLoading(true);
     setError(null);
     try {
-      const bundle = await cicdApi.getDashboardBundle(filters);
+      const bundle = await cicdApi.getDashboardBundle(undefined, force);
 
       setOverview(bundle.overview);
       setPipelines(bundle.pipelines);
@@ -115,7 +115,38 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       if (!silent) setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [filters]);
+  }, []);
+
+  // Lọc pipelines tức thì trên client (0ms - Instantaneous Client Filtering)
+  const filteredPipelines = useMemo(() => {
+    return pipelines.filter((p) => {
+      // 1. Lọc theo trạng thái
+      if (filters.status && filters.status !== 'all' && p.status !== filters.status) {
+        return false;
+      }
+      // 2. Lọc theo nhánh
+      if (filters.branch && filters.branch !== 'all' && !p.branch.toLowerCase().includes(filters.branch.toLowerCase())) {
+        return false;
+      }
+      // 3. Lọc theo workflow
+      if (filters.workflow && filters.workflow !== 'all' && !p.workflow_file.toLowerCase().includes(filters.workflow.toLowerCase())) {
+        return false;
+      }
+      // 4. Tìm kiếm từ khóa tức thì
+      if (filters.search && filters.search.trim()) {
+        const q = filters.search.trim().toLowerCase();
+        const match =
+          (p.name && p.name.toLowerCase().includes(q)) ||
+          (p.branch && p.branch.toLowerCase().includes(q)) ||
+          (p.commit_sha && p.commit_sha.toLowerCase().includes(q)) ||
+          (p.commit_message && p.commit_message.toLowerCase().includes(q)) ||
+          (p.author && p.author.toLowerCase().includes(q)) ||
+          (p.author_login && p.author_login.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [pipelines, filters]);
 
   useEffect(() => {
     fetchData();
@@ -128,17 +159,46 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
 
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        fetchData(true);
+        fetchData(true, true);
       }
     }, 6000);
 
     return () => clearInterval(interval);
   }, [overview?.running_count, fetchData]);
 
+  // Tự động tải hoạt động mới theo thời gian thực (Real-time Activity Auto-refresh)
+  const [isRefreshingActivities, setIsRefreshingActivities] = useState<boolean>(false);
+  const fetchActivities = useCallback(async (force = false) => {
+    try {
+      setIsRefreshingActivities(true);
+      const newActs = await cicdApi.getActivities(force);
+      setActivities(newActs);
+    } catch (e) {
+      console.warn('Failed to refresh activities:', e);
+    } finally {
+      setIsRefreshingActivities(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'activity') return;
+
+    // Khi chuyển qua tab activity, tải mới ngay lập tức
+    fetchActivities(true);
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchActivities(true);
+      }
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [activeTab, fetchActivities]);
+
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchData(true);
-    showToast('Đã làm mới dữ liệu CI/CD');
+    fetchData(true, true);
+    showToast('Đã làm mới dữ liệu CI/CD từ GitHub');
   };
 
   const handleSelectPipeline = (pipeline: PipelineItem) => {
@@ -150,6 +210,10 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
     const res = await cicdApi.runPipeline(payload);
     showToast(res.message, 'success');
     fetchData(true);
+    // Tự động tải lại sau 2.5s để hiển thị lượt chạy mới nhất từ GitHub Actions Runner
+    setTimeout(() => {
+      fetchData(true);
+    }, 2500);
   };
 
   const handleRollbackSubmit = async (targetVersion: string) => {
@@ -347,11 +411,11 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
           <PipelineFilters
             onFilterChange={setFilters}
             availableBranches={['all', ...gitBranches]}
-            totalResults={pipelines.length}
+            totalResults={filteredPipelines.length}
           />
           <PipelineTable
-            pipelines={pipelines}
-            isLoading={isLoading}
+            pipelines={filteredPipelines}
+            isLoading={isLoading && pipelines.length === 0}
             onSelectPipeline={handleSelectPipeline}
             canRun={canRunPipeline}
           />
@@ -381,13 +445,23 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
             <EnvironmentCards environments={environments} isLoading={isLoading} />
           </div>
 
-          <SystemHealthView health={health} isLoading={isLoading} onRefresh={() => fetchData(true)} />
+          <SystemHealthView
+            health={health}
+            isLoading={isLoading}
+            onRefresh={() => fetchData(true)}
+            onHealthUpdate={(newHealth) => setHealth(newHealth)}
+          />
         </div>
       )}
 
       {/* TAB CONTENT: ACTIVITY */}
       {activeTab === 'activity' && (
-        <ActivityTimeline activities={activities} isLoading={isLoading} />
+        <ActivityTimeline
+          activities={activities}
+          isLoading={isLoading}
+          onRefresh={() => fetchActivities(true)}
+          isRefreshing={isRefreshingActivities}
+        />
       )}
 
       {/* PIPELINE DETAIL DRAWER */}

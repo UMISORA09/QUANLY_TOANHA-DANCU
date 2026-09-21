@@ -32,7 +32,7 @@ class HealthCheckController extends Controller
             }
         }
 
-        return 'a83f21c';
+        return 'unknown';
     }
 
     /**
