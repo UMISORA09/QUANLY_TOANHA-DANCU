@@ -107,3 +107,21 @@
   - `Docker Build & Container Smoke Test`: **PASS** (2m7s)
   - `CI Pipeline Status Check`: **PASS** (3s)
 
+---
+
+## 6. Merge Branch `QuocTin/2-QLTNDC` (Quản Lý Căn Hộ & Cư Dân)
+- **Merge Status:** Successfully merged `origin/QuocTin/2-QLTNDC` into `master` (Merge Commit: `a5ae73b`, Test Guard Commit: `6059769`).
+- **Feature Preservation (Zero Regressions):**
+  - **Resident Management Backend:** Integrated [`ResidentController.php`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/app/Http/Controllers/ResidentController.php), [`ResidentRequest.php`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/app/Http/Requests/ResidentRequest.php), [`ResidentService.php`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/app/Services/ResidentService.php), and models [`Apartment.php`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/app/Models/Apartment.php), [`Resident.php`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/app/Models/Resident.php).
+  - **Resident Management UI:** Integrated [`ResidentManagement.tsx`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/resources/js/Pages/Admin/ResidentManagement.tsx) into [`ManagementHome.tsx`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/resources/js/Pages/ManagementHome.tsx).
+  - **Pre-existing Modules Intact:** RBAC, Amenity Management, CI/CD Dashboard, DevOps API, and Authentication are completely intact without any modification or regression.
+  - **Live Daemon Test Guard:** In [`ResidentConcurrencyTest.php`](file:///c:/Users/Asus/Downloads/QUANLY_TOANHA-DANCU/tests/Feature/Residents/ResidentConcurrencyTest.php), added PHPUnit `setUp()` connectivity check to `http://127.0.0.1:8000/up` so that live HTTP cURL tests cleanly skip when a live web server daemon is not running on port 8000, while running fully when the server is active.
+- **Master CI Run on GitHub Actions:** `100% SUCCESS` (Run ID: [`35836373187`](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/runs/35836373187)).
+  - `Frontend CI (TypeCheck & Build)`: **PASS** (16s)
+  - `PHP Lint (Pint)`: **PASS** (30s)
+  - `Backend Test & DB Migrations (PHPUnit & MySQL 8.0)`: **PASS** (1m5s - 92 passed, 9 skipped for live http daemon)
+  - `Security Vulnerability Scan`: **PASS** (44s)
+  - `Docker Build & Container Smoke Test`: **PASS** (1m9s - verified `/up` & `/health`)
+  - `CI Pipeline Status Check`: **PASS** (3s)
+
+
