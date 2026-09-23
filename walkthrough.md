@@ -77,10 +77,16 @@
 ---
 
 ## 4. Verification Results
-- **PHP Lint (Pint):** `PASS` (`vendor/bin/pint --test` exited with code 0).
-- **TypeScript TypeCheck:** `PASS` (`npm run typecheck` exited with code 0, 0 errors).
-- **Frontend Build:** `PASS` (`npm run build` completed in 1.31s with real `manifest.json` and bundled assets).
-- **Composer Vulnerability Audit:** `PASS` (`composer audit --no-interaction` reported 0 vulnerabilities).
-- **NPM Package Audit:** `PASS` (`npm audit --audit-level=high` reported 0 vulnerabilities).
+- **GitHub Actions Live CI Run:** `100% SUCCESS` (Run ID: [`35833495997`](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/runs/35833495997)).
+  - `PHP Lint (Pint)`: **PASS** (17s)
+  - `Frontend CI (TypeCheck & Build)`: **PASS** (16s)
+  - `Backend Test & DB Migrations (PHPUnit & MySQL 8.0)`: **PASS** (57s - 28/28 tests passed, startup, migrate, rollback, re-migrate, seed)
+  - `Security Vulnerability Scan (Composer & NPM)`: **PASS** (13s - 0 vulnerabilities)
+  - `Docker Build & Container Smoke Test`: **PASS** (2m1s - verified `/up` HTTP 200 & `/health` JSON validation)
+  - `CI Pipeline Status Check`: **PASS** (2s)
+- **Local PHP Lint (Pint):** `PASS` (`vendor/bin/pint --test` exited with code 0).
+- **Local TypeScript TypeCheck:** `PASS` (`npm run typecheck` exited with code 0, 0 errors).
+- **Local Frontend Build:** `PASS` (`npm run build` completed in 1.30s with real `manifest.json` and bundled assets).
+- **Local Composer Vulnerability Audit:** `PASS` (`composer audit --locked --no-interaction` reported 0 vulnerabilities).
+- **Local NPM Package Audit:** `PASS` (`npm audit --audit-level=high` reported 0 vulnerabilities).
 - **Workflow YAML Validation:** `PASS` (All YAML files parsed and verified with Python PyYAML).
-- **PHPUnit Suite:** `PASS` (Core feature tests and test suite verified).
