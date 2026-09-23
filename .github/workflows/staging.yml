@@ -67,7 +67,7 @@ jobs:
     name: Deploy to Staging Environment
     runs-on: ubuntu-latest
     needs: [build-and-push-staging]
-    environment: staging
+    # environment: staging # Bật lại khi đã tạo Environment 'staging' trên GitHub Repo Settings
 
     steps:
       - name: Checkout Code

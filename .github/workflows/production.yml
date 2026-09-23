@@ -72,7 +72,7 @@ jobs:
     name: Deploy to Production Server
     runs-on: ubuntu-latest
     needs: [build-and-push-production]
-    environment: production
+    # environment: production # Bật lại khi đã tạo Environment 'production' trên GitHub Repo Settings
 
     steps:
       - name: Checkout Code
