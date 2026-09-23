@@ -205,7 +205,11 @@ class ApiService {
 
       if (!response.ok) {
         const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
-        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        error.status = response.status;
+        error.data = data;
+        error.errors = data?.errors;
+        throw error;
       }
 
       return { data: data as T, etag: newEtag, notModified: false };
@@ -1013,6 +1017,170 @@ class ApiService {
       method: 'DELETE',
     });
   }
+
+  // ================= QUẢN LÝ CHỦ HỘ & NHÂN KHẨU CĂN HỘ (ADMIN) =================
+  async getResidents(params: {
+    search?: string;
+    apartment_id?: string;
+    resident_type?: string;
+    is_active?: boolean | string;
+    is_head_of_household?: boolean | string;
+    sort_by?: string;
+    sort_order?: 'asc' | 'desc';
+    page?: number;
+    limit?: number;
+  } = {}) {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.apartment_id) q.append('apartment_id', params.apartment_id);
+    if (params.resident_type) q.append('resident_type', params.resident_type);
+    if (params.is_active !== undefined && params.is_active !== '') q.append('is_active', String(params.is_active));
+    if (params.is_head_of_household !== undefined && params.is_head_of_household !== '') q.append('is_head_of_household', String(params.is_head_of_household));
+    if (params.sort_by) q.append('sort_by', params.sort_by);
+    if (params.sort_order) q.append('sort_order', params.sort_order);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit) q.append('limit', String(params.limit));
+
+    return this.request<{
+      success: boolean;
+      data: ResidentItem[];
+      meta: { current_page: number; last_page: number; per_page: number; total: number };
+    }>(`/residents?${q.toString()}`);
+  }
+
+  async getResident(id: string) {
+    return this.request<{
+      success: boolean;
+      data: ResidentDetailResponse;
+    }>(`/residents/${id}`);
+  }
+
+  async createResident(data: {
+    apartment_id: string;
+    user_id: string;
+    resident_type: string;
+    is_head_of_household?: boolean;
+    stay_start_date: string;
+    stay_end_date?: string | null;
+    relationship_to_head?: string;
+    occupation?: string | null;
+    is_active?: boolean;
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: ResidentItem;
+    }>('/residents', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateResident(id: string, data: Partial<{
+    resident_type: string;
+    is_head_of_household: boolean;
+    stay_start_date: string;
+    stay_end_date: string | null;
+    relationship_to_head: string;
+    occupation: string | null;
+    is_active: boolean;
+    updated_at?: string;
+  }>) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: ResidentItem;
+    }>(`/residents/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteResident(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/residents/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getApartmentsForFilter() {
+    return this.request<{
+      success: boolean;
+      data: ApartmentSummaryItem[];
+    }>('/meta/apartments');
+  }
+}
+
+export interface ResidentItem {
+  id: string;
+  user_id: string;
+  apartment_id: string;
+  resident_type: 'OWNER' | 'TENANT' | 'FAMILY_MEMBER';
+  is_head_of_household: boolean;
+  stay_start_date: string;
+  stay_end_date?: string | null;
+  relationship_to_head: 'SELF' | 'SPOUSE' | 'CHILD' | 'PARENT' | 'TENANT' | 'MAID' | string;
+  occupation?: string | null;
+  vehicle_count: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
+  user?: {
+    id: string;
+    username: string;
+    full_name: string;
+    phone_number: string;
+    email: string;
+    national_id_number?: string | null;
+    avatar_url?: string | null;
+    status: string;
+    gender?: string | null;
+    date_of_birth?: string | null;
+  };
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id?: string;
+    floor_id?: string;
+    status?: string;
+    room_type?: string;
+    gross_floor_area_sqm?: number;
+  };
+}
+
+export interface ResidentDetailResponse {
+  resident: ResidentItem;
+  apartment: {
+    id: string;
+    apartment_number: string;
+    block_id?: string;
+    floor_id?: string;
+    status?: string;
+    room_type?: string;
+    gross_floor_area_sqm?: number;
+  };
+  head_of_household?: ResidentItem | null;
+  household_members: ResidentItem[];
+  total_members: number;
+}
+
+export interface ApartmentSummaryItem {
+  id: string;
+  apartment_number: string;
+  block_id?: string;
+  status: string;
+  residents_count: number;
+  head_of_household?: {
+    id: string;
+    user?: {
+      id: string;
+      full_name: string;
+      phone_number: string;
+    };
+  } | null;
 }
 
 export interface UserRbac {
