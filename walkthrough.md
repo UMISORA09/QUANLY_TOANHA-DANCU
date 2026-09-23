@@ -90,3 +90,20 @@
 - **Local Composer Vulnerability Audit:** `PASS` (`composer audit --locked --no-interaction` reported 0 vulnerabilities).
 - **Local NPM Package Audit:** `PASS` (`npm audit --audit-level=high` reported 0 vulnerabilities).
 - **Workflow YAML Validation:** `PASS` (All YAML files parsed and verified with Python PyYAML).
+
+---
+
+## 5. Master Merge & Team Feature Preservation
+- **Merge Status:** Successfully merged `DangNguyen/CI-CD` into `master` (Merge Commit: `976ec62`).
+- **Feature Preservation (Zero Regressions):**
+  - **RBAC Controllers & Services:** All controllers (`RoleController.php`, `PermissionController.php`, `UserController.php`), middleware (`AuthenticateBearer.php`, `CheckPermission.php`), seeders (`RbacSeeder.php`), and services (`RbacService.php`) maintained intact.
+  - **RBAC Frontend Management:** `resources/js/Pages/Admin/RbacManagement.tsx` preserved with full role, permission, matrix, and user assignment capabilities.
+  - **Seamless API Overload:** Resolved TypeScript naming collision in `resources/js/Services/api.ts` by overloading `getUser()` to support both local session retrieval (`getUser(): any | null`) and RBAC server fetch (`getUser(id: string): Promise<{ success: boolean; data: UserRbac }>`), plus `getUserById(id: string)`.
+- **Master CI Run on GitHub Actions:** `100% SUCCESS` (Run ID: [`35835029472`](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/actions/runs/35835029472)).
+  - `Frontend CI (TypeCheck & Build)`: **PASS** (15s)
+  - `PHP Lint (Pint)`: **PASS** (27s)
+  - `Backend Test & DB Migrations (PHPUnit & MySQL 8.0)`: **PASS** (1m10s - 28/28 tests passed including RBAC test suites)
+  - `Security Vulnerability Scan`: **PASS** (15s)
+  - `Docker Build & Container Smoke Test`: **PASS** (2m7s)
+  - `CI Pipeline Status Check`: **PASS** (3s)
+
