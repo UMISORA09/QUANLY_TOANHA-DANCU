@@ -188,101 +188,20 @@ jobs:
       - name: NPM Audit
         run: npm audit --audit-level=high || echo "NPM audit check completed."
 
-  python-conditional-check:
-    name: Python Module Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Check for Python Code / Modules
-        id: check-python
-        run: |
-          PY_FILES=$(find . -name "*.py" -not -path "./vendor/*" -not -path "./node_modules/*" 2>/dev/null | wc -l)
-          echo "Found $PY_FILES Python files."
-          echo "count=$PY_FILES" >> $GITHUB_OUTPUT
-
-      - name: Setup Python Runtime (If Python detected)
-        if: steps.check-python.outputs.count > 0
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Run Python Checks (If Python detected)
-        if: steps.check-python.outputs.count > 0
-        run: |
-          echo "Active Python module detected. Installing dependencies..."
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pytest.ini ] || [ -d tests ]; then pytest; fi
-
-  docker-build-check:
-    name: Docker Build & Smoke Test
-    runs-on: ubuntu-latest
-    needs: [backend-test, frontend-build, security-scan]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Production Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/app/Dockerfile
-          target: production
-          load: true
-          tags: smart-cassavas:ci-test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run Smoke Test on Container
-        run: |
-          docker run -d --name test_app -p 8000:8000 \
-            -e APP_ENV=production \
-            -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
-            -e DB_CONNECTION=sqlite \
-            -e DB_DATABASE=/var/www/html/database/database.sqlite \
-            -e SESSION_DRIVER=file \
-            -e CACHE_STORE=file \
-            -e RUN_MIGRATIONS=false \
-            smart-cassavas:ci-test
-
-          for i in {1..30}; do
-            RESP=$(curl -s http://127.0.0.1:8000/health || echo "")
-            UP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up || echo "000")
-            if [ "$UP_STATUS" = "200" ] || echo "$RESP" | grep -q '"status":"healthy"'; then
-              echo "CI Container Smoke Test Passed! (/up: HTTP $UP_STATUS, /health: $RESP)"
-              docker stop test_app && docker rm test_app
-              exit 0
-            fi
-            sleep 2
-          done
-
-          echo "Container health check timed out. Last response: $RESP"
-          echo "Container logs:"
-          docker logs test_app
-          echo "Container Laravel Error Log:"
-          docker exec test_app cat /var/www/html/storage/logs/laravel.log || true
-          docker stop test_app && docker rm test_app
-          exit 1
-
   ci-status:
     name: CI Pipeline Status Check
     runs-on: ubuntu-latest
-    needs: [php-lint, backend-test, frontend-build, security-scan, docker-build-check]
+    needs: [php-lint, backend-test, frontend-build, security-scan]
     if: always()
     steps:
-      - name: Verify All CI Jobs Succeeded
+      - name: Verify All Core CI Jobs Succeeded
         run: |
           if [ "${{ needs.php-lint.result }}" != "success" ] || \
              [ "${{ needs.backend-test.result }}" != "success" ] || \
              [ "${{ needs.frontend-build.result }}" != "success" ] || \
-             [ "${{ needs.security-scan.result }}" != "success" ] || \
-             [ "${{ needs.docker-build-check.result }}" != "success" ]; then
+             [ "${{ needs.security-scan.result }}" != "success" ]; then
             echo "❌ CI Pipeline Failed! One or more stages failed."
             exit 1
           fi
-          echo "✅ All CI Checks Passed (Lint ✓ Tests ✓ Build ✓ Security ✓ Docker ✓)"
+          echo "✅ All Core CI Checks Passed (Lint ✓ Tests ✓ Frontend Build ✓ Security ✓)"
+

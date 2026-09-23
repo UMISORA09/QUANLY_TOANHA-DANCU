@@ -1,14 +1,6 @@
-name: Docker Build & GHCR Publish
+name: Docker Verification & Manual Publish
 
 on:
-  push:
-    branches:
-      - main
-      - master
-      - develop
-    tags:
-      - 'v*.*.*'
-      - 'v*'
   pull_request:
     branches:
       - main
