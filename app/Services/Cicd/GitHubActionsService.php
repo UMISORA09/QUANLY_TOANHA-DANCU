@@ -379,7 +379,7 @@ class GitHubActionsService
             [
                 'id' => 'staging',
                 'name' => 'Staging (Máy chủ kiểm thử tiền phát hành)',
-                'url' => env('STAGING_URL', 'https://staging.cassavas.vn'),
+                'url' => env('STAGING_URL', null),
                 'status' => $stagingImage ? 'operational' : 'not_deployed',
                 'version' => $stagingImage ?: 'Chưa triển khai',
                 'commit_sha' => $commitSha,
@@ -392,7 +392,7 @@ class GitHubActionsService
             [
                 'id' => 'production',
                 'name' => 'Production (Máy chủ vận hành cư dân thực tế)',
-                'url' => env('PROD_URL', 'https://cassavas.vn'),
+                'url' => env('PROD_URL', null),
                 'status' => $prodImage ? 'operational' : 'not_deployed',
                 'version' => $prodImage ?: 'Chưa triển khai',
                 'commit_sha' => $commitSha,

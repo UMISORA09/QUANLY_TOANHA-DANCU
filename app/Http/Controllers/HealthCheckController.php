@@ -67,9 +67,14 @@ class HealthCheckController extends Controller
         $uptime = defined('LARAVEL_START') ? round(microtime(true) - LARAVEL_START, 2) : 0.0;
 
         $overallStatus = ($databaseStatus === 'healthy' && $cacheStatus !== 'unhealthy') ? 'healthy' : 'degraded';
+        if ($databaseStatus === 'unhealthy') {
+            $overallStatus = 'unhealthy';
+        }
+
+        $httpStatus = ($overallStatus === 'unhealthy') ? 503 : 200;
 
         return response()->json([
-            'status' => 'healthy',
+            'status' => $overallStatus,
             'system' => $overallStatus,
             'database' => $databaseStatus,
             'cache' => $cacheStatus,
@@ -77,7 +82,7 @@ class HealthCheckController extends Controller
             'timestamp' => now()->toIso8601String(),
             'uptime_seconds' => $uptime,
             'database_latency_ms' => $databaseLatencyMs,
-        ], 200);
+        ], $httpStatus);
     }
 
     /**

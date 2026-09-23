@@ -1,12 +1,6 @@
 name: CD - Production Deployment
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
-      - 'v*'
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       release_tag:
@@ -36,10 +30,8 @@ jobs:
       - name: Determine Image Release Tag
         id: tag
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
             echo "image_tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
-          elif [ -n "${GITHUB_REF_NAME}" ] && [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "image_tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
           else
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
             echo "image_tag=sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
@@ -72,7 +64,8 @@ jobs:
     name: Deploy to Production Server
     runs-on: ubuntu-latest
     needs: [build-and-push-production]
-    # environment: production # Bật lại khi đã tạo Environment 'production' trên GitHub Repo Settings
+    environment:
+      name: production
 
     steps:
       - name: Checkout Code
@@ -87,7 +80,7 @@ jobs:
         run: |
           if [ -z "$PROD_HOST" ] || [ -z "$PROD_USER" ] || [ -z "$PROD_SSH_KEY" ]; then
             echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::warning ::Production deployment is configured with environment protection. Awaiting PROD_HOST, PROD_USER, PROD_SSH_KEY secrets."
+            echo "::notice ::PRODUCTION DEPLOYMENT NOT CONFIGURED: Awaiting PROD_HOST, PROD_USER, PROD_SSH_KEY secrets."
           else
             echo "configured=true" >> $GITHUB_OUTPUT
           fi
@@ -114,10 +107,14 @@ jobs:
             chmod +x scripts/*.sh || true
             ./scripts/deploy.sh "${REGISTRY}/${IMAGE_NAME}:${RELEASE_TAG}"
 
-      - name: Production Deployment Report
+      - name: Production Deployment Status Report
         run: |
           echo "========================================================================"
-          echo "🚀 PRODUCTION DEPLOYMENT COMPLETED"
-          echo "Release Image: ghcr.io/${{ github.repository }}:${{ needs.build-and-push-production.outputs.image_tag }}"
-          echo "Zero-Downtime Verification & Automated Rollback: Active"
+          if [ "${{ steps.check-secrets.outputs.configured }}" = "true" ]; then
+            echo "🚀 PRODUCTION DEPLOYMENT COMPLETED"
+            echo "Release Image: ghcr.io/${{ github.repository }}:${{ needs.build-and-push-production.outputs.image_tag }}"
+          else
+            echo "⚠️ PRODUCTION DEPLOYMENT SKIPPED: Server credentials (PROD_HOST/PROD_USER/PROD_SSH_KEY) are not configured."
+            echo "Image has been built and pushed to GHCR: ghcr.io/${{ github.repository }}:${{ needs.build-and-push-production.outputs.image_tag }}"
+          fi
           echo "========================================================================"
