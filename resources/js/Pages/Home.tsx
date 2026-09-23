@@ -469,6 +469,25 @@ export const Home: React.FC<HomeProps> = ({
                               </a>
 
                               <a
+                                href="/dev"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserDropdownOpen(false);
+                                  window.history.pushState({}, '', '/dev');
+                                  window.dispatchEvent(new PopStateEvent('popstate'));
+                                }}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer group mt-0.5"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-slate-950 text-cyan-400 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                  <Zap className="w-4 h-4 text-cyan-400" />
+                                </div>
+                                <div className="flex flex-col text-left">
+                                  <span className="font-bold text-slate-900">Developer Console (Dev / AI / IoT)</span>
+                                  <span className="text-[10px] text-slate-500 font-mono">/dev</span>
+                                </div>
+                              </a>
+
+                              <a
                                 href="/quan-ly"
                                 onClick={(e) => {
                                   e.preventDefault();
@@ -644,6 +663,19 @@ export const Home: React.FC<HomeProps> = ({
               </div>
             ) : (
               <>
+                <a
+                  href="/dev/login"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/dev/login');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="hidden lg:inline-flex items-center gap-1.5 text-xs font-mono font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300/80 px-2.5 py-2 rounded-md transition-all shadow-2xs mr-1"
+                  title="Cổng Đăng Nhập Riêng Cho Developer & Quản Trị Hệ Thống"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                  <span>Dev Login</span>
+                </a>
                 <button
                   onClick={() => openAuth('register')}
                   className="text-sm font-medium text-neutral-700 hover:text-neutral-950 px-3 py-2 rounded-md transition-colors"

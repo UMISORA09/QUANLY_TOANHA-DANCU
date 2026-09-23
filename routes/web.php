@@ -54,6 +54,14 @@ Route::get('/admin/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
+Route::get('/dev', function () {
+    return view('welcome');
+});
+
+Route::get('/dev/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/dashboard', function () {
     return view('welcome');
 });

@@ -8,11 +8,14 @@ import NotFound from './Pages/NotFound';
 import AmenityManagement from './Pages/Admin/AmenityManagement';
 import PublicStatusPage from './Pages/PublicStatusPage';
 import IncidentHistoryPage from './Pages/IncidentHistoryPage';
+import { DevLoginPage } from './Pages/Dev/DevLoginPage';
+import { DevConsolePage } from './Pages/Dev/DevConsolePage';
 
 interface UserSession {
   role: string;
   email: string;
   name: string;
+  isDev?: boolean;
 }
 
 const App: React.FC = () => {
@@ -44,6 +47,11 @@ const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (role: string, email: string) => {
+    const isDev =
+      email.toLowerCase().includes('dev') ||
+      email === 'dev@cassavas.vn' ||
+      email === 'dev@smartcassavas.vn' ||
+      window.location.pathname.startsWith('/dev');
     const isAdmin =
       role === 'admin' ||
       role.toLowerCase() === 'admin' ||
@@ -61,7 +69,7 @@ const App: React.FC = () => {
       role === 'resident' ||
       role.toLowerCase().includes('resident');
 
-    const normalizedRole = isAdmin
+    const normalizedRole = isAdmin || isDev
       ? 'admin'
       : isManager
       ? 'manager'
@@ -71,9 +79,12 @@ const App: React.FC = () => {
 
     const session: UserSession = {
       role: normalizedRole,
+      isDev: isDev,
       email:
         email ||
-        (isAdmin
+        (isDev
+          ? 'dev@cassavas.vn'
+          : isAdmin
           ? 'admin@cassavas.vn'
           : isManager
           ? 'quanly@cassavas.vn'
@@ -81,7 +92,9 @@ const App: React.FC = () => {
           ? 'letan@cassavas.vn'
           : 'nguyenvanan@cassavas.vn'),
       name:
-        isAdmin
+        isDev
+          ? 'Dev Team'
+          : isAdmin
           ? 'Admin Cassavas'
           : isManager
           ? 'Ban Quản Lý'
@@ -99,8 +112,11 @@ const App: React.FC = () => {
     setCurrentUser(session);
 
     // Điều hướng theo đúng vai trò được xác thực
-    // Chỉ có admin mới vào /admin và có quyền chuyển cổng
-    if (isAdmin) {
+    if (isDev) {
+      setTimeout(() => {
+        navigateTo('/dev');
+      }, 350);
+    } else if (isAdmin) {
       setTimeout(() => {
         navigateTo('/admin');
       }, 350);
@@ -146,6 +162,51 @@ const App: React.FC = () => {
       <IncidentHistoryPage
         onBackStatus={() => navigateTo('/status')}
         onBackHome={() => navigateTo('/home')}
+      />
+    );
+  }
+
+  // 0.1 Phân hệ Đăng Nhập Riêng cho Developer & Quản Trị Hệ Thống (Khác với Quản lý tòa nhà)
+  const isDevLoginPath =
+    currentPath === '/dev/login' ||
+    currentPath === '/admin/login' ||
+    currentPath === '/dev/dang-nhap' ||
+    currentPath === '/admin/dang-nhap';
+
+  if (isDevLoginPath) {
+    return (
+      <DevLoginPage
+        onLoginSuccess={(role, email) => {
+          handleLoginSuccess(role, email);
+          setTimeout(() => {
+            navigateTo('/dev');
+          }, 350);
+        }}
+        onNavigateHome={() => navigateTo('/home')}
+        onNavigateManagerLogin={() => navigateTo('/login')}
+      />
+    );
+  }
+
+  // 0.2 Phân hệ Developer Console (Dành riêng cho Dev Team & Admin Kỹ thuật)
+  const isDevConsolePath =
+    currentPath === '/dev' ||
+    currentPath.startsWith('/dev/') ||
+    currentPath === '/developer' ||
+    currentPath.startsWith('/developer/') ||
+    currentPath === '/admin/dev';
+
+  if (isDevConsolePath) {
+    return (
+      <DevConsolePage
+        onLogout={() => {
+          handleLogout();
+          navigateTo('/dev/login');
+        }}
+        onNavigateHome={() => navigateTo('/home')}
+        onNavigateManager={() => navigateTo('/quan-ly')}
+        userName={currentUser?.name || 'Dev Team'}
+        userEmail={currentUser?.email || 'dev@cassavas.vn'}
       />
     );
   }
