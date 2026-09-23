@@ -49,7 +49,7 @@ jobs:
       - name: Run Composer Audit
         run: |
           echo "Kiểm tra lỗ hổng bảo mật PHP Composer (blocking gate)..."
-          composer audit --no-interaction
+          composer audit --locked --no-interaction
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

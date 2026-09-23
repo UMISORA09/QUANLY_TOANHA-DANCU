@@ -214,7 +214,7 @@ jobs:
           coverage: none
 
       - name: Composer Vulnerability Audit
-        run: composer audit --no-interaction
+        run: composer audit --locked --no-interaction
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
