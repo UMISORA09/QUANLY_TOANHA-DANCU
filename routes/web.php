@@ -9,6 +9,7 @@ use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ReceptionPortalController;
+use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
@@ -215,6 +216,19 @@ Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
     Route::put('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
     Route::patch('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
     Route::delete('permissions/{id}', [PermissionController::class, 'destroy'])->middleware('permission:PERMISSION:DELETE');
+});
+
+// ==========================================
+// QUẢN LÝ CHỦ HỘ VÀ NHÂN KHẨU CĂN HỘ (ADMIN)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('residents', [ResidentController::class, 'index']);
+    Route::post('residents', [ResidentController::class, 'store']);
+    Route::get('residents/{id}', [ResidentController::class, 'show']);
+    Route::put('residents/{id}', [ResidentController::class, 'update']);
+    Route::patch('residents/{id}', [ResidentController::class, 'update']);
+    Route::delete('residents/{id}', [ResidentController::class, 'destroy']);
+    Route::get('meta/apartments', [ResidentController::class, 'apartments']);
 });
 
 // Meta endpoints
