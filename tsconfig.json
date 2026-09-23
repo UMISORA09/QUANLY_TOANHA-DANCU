@@ -3,6 +3,7 @@
     "target": "ESNext",
     "useDefineForClassFields": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "types": ["node"],
     "allowJs": false,
     "skipLibCheck": true,
     "strict": true,
@@ -17,5 +18,9 @@
       "@/*": ["./resources/js/*"]
     }
   },
-  "include": ["resources/js/**/*"]
+  "include": [
+    "resources/js/**/*",
+    "playwright.config.ts",
+    "tests/e2e/**/*"
+  ]
 }
