@@ -50,10 +50,44 @@ jobs:
       - name: Run Laravel Pint Check
         run: vendor/bin/pint --test
 
-  backend-test:
-    name: Backend Test & Migrations (PHPUnit)
+  frontend-ci:
+    name: Frontend CI (TypeCheck & Build)
     runs-on: ubuntu-latest
-    needs: [php-lint]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Type-Check
+        run: npm run typecheck
+
+      - name: Build Frontend Assets
+        run: npm run build
+
+      - name: Verify Build Artifacts
+        run: |
+          test -f public/build/manifest.json || { echo "Missing manifest.json"; exit 1; }
+          ls -lh public/build/assets/
+
+      - name: Upload Frontend Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-artifacts
+          path: public/build/
+          retention-days: 7
+
+  backend-test:
+    name: Backend Test & DB Migrations (PHPUnit & MySQL 8.0)
+    runs-on: ubuntu-latest
+    needs: [php-lint, frontend-ci]
 
     services:
       mysql:
@@ -94,12 +128,31 @@ jobs:
       - name: Install Composer Dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
+      - name: Download Frontend Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build-artifacts
+          path: public/build
+
       - name: Configure Environment File
         run: |
           cp .env.example .env
           php artisan key:generate
 
-      - name: Verify Database Connection & Run Migrations
+      - name: Wait for MySQL Service
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -u root -prootpassword --silent; then
+              echo "MySQL is ready and accepting connections."
+              exit 0
+            fi
+            echo "Waiting for MySQL... ($i/30)"
+            sleep 2
+          done
+          echo "MySQL service failed to start in time."
+          exit 1
+
+      - name: Database Startup, Migration, Rollback & Re-migration
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
@@ -108,11 +161,14 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: rootpassword
         run: |
-          php artisan migrate:status || php artisan migrate --force
-          php artisan migrate:rollback --step=1
-          php artisan migrate --force
+          echo "1. Run initial migrations"
+          php artisan migrate --force --no-interaction
+          echo "2. Test rollback 1 step"
+          php artisan migrate:rollback --step=1 --force --no-interaction
+          echo "3. Re-migrate to latest schema"
+          php artisan migrate --force --no-interaction
 
-      - name: Seed Database for Test Suite
+      - name: Database Seeding Verification
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
@@ -121,12 +177,8 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: rootpassword
         run: |
-          php artisan db:seed --force || echo "No default DatabaseSeeder, seeding migrations already populated tables."
-
-      - name: Setup Mock Vite Manifest for Tests
-        run: |
-          mkdir -p public/build
-          echo '{"resources/css/app.css":{"file":"assets/app.css"},"resources/js/app.tsx":{"file":"assets/app.js"}}' > public/build/manifest.json
+          echo "Seed database tables via DatabaseSeeder"
+          php artisan db:seed --force --no-interaction
 
       - name: Run PHPUnit Test Suite
         env:
@@ -137,35 +189,20 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: rootpassword
           APP_ENV: testing
-        run: vendor/bin/phpunit --colors=always
+        run: vendor/bin/phpunit --colors=always --log-junit phpunit-report.xml
 
-  frontend-build:
-    name: Frontend Build (Vite & React)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Upload PHPUnit Results Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Build Frontend Production Bundle
-        run: npm run build
-
-      - name: Verify Build Artifacts
-        run: |
-          test -f public/build/manifest.json || { echo "Missing manifest.json"; exit 1; }
-          ls -lh public/build/assets/
+          name: phpunit-test-results
+          path: phpunit-report.xml
+          retention-days: 7
 
   security-scan:
     name: Security Vulnerability Scan
     runs-on: ubuntu-latest
+    needs: [backend-test, frontend-ci]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -176,8 +213,8 @@ jobs:
           php-version: '8.4'
           coverage: none
 
-      - name: Composer Audit
-        run: composer audit || echo "Composer audit check completed with warnings."
+      - name: Composer Vulnerability Audit
+        run: composer audit --locked --no-interaction
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -185,41 +222,13 @@ jobs:
           node-version: 22
           cache: 'npm'
 
-      - name: NPM Audit
-        run: npm audit --audit-level=high || echo "NPM audit check completed."
+      - name: NPM Package Audit
+        run: npm audit --audit-level=high
 
-  python-conditional-check:
-    name: Python Module Check
+  docker-verification:
+    name: Docker Build & Container Smoke Test
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Check for Python Code / Modules
-        id: check-python
-        run: |
-          PY_FILES=$(find . -name "*.py" -not -path "./vendor/*" -not -path "./node_modules/*" 2>/dev/null | wc -l)
-          echo "Found $PY_FILES Python files."
-          echo "count=$PY_FILES" >> $GITHUB_OUTPUT
-
-      - name: Setup Python Runtime (If Python detected)
-        if: steps.check-python.outputs.count > 0
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Run Python Checks (If Python detected)
-        if: steps.check-python.outputs.count > 0
-        run: |
-          echo "Active Python module detected. Installing dependencies..."
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pytest.ini ] || [ -d tests ]; then pytest; fi
-
-  docker-build-check:
-    name: Docker Build & Smoke Test
-    runs-on: ubuntu-latest
-    needs: [backend-test, frontend-build, security-scan]
+    needs: [security-scan]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -234,55 +243,80 @@ jobs:
           file: docker/app/Dockerfile
           target: production
           load: true
-          tags: smart-cassavas:ci-test
+          tags: smart-cassavas:smoke-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run Smoke Test on Container
+      - name: Start Production Container for Smoke Test
         run: |
-          docker run -d --name test_app -p 8000:8000 \
+          docker run -d --name smoke_app -p 8000:8000 \
             -e APP_ENV=production \
-            -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            -e APP_KEY=base64:6bW+uN89m43gZpP5xLqA7K2s8D9F0G1H2J3K4L5M6N7= \
             -e DB_CONNECTION=sqlite \
             -e DB_DATABASE=/var/www/html/database/database.sqlite \
             -e SESSION_DRIVER=file \
             -e CACHE_STORE=file \
             -e RUN_MIGRATIONS=false \
-            smart-cassavas:ci-test
+            smart-cassavas:smoke-test
 
+      - name: Run Container Health & Smoke Test
+        run: |
+          echo "Waiting for container startup and probing health endpoints..."
           for i in {1..30}; do
-            RESP=$(curl -s http://127.0.0.1:8000/health || echo "")
             UP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up || echo "000")
-            if [ "$UP_STATUS" = "200" ] || echo "$RESP" | grep -q '"status":"healthy"'; then
-              echo "CI Container Smoke Test Passed! (/up: HTTP $UP_STATUS, /health: $RESP)"
-              docker stop test_app && docker rm test_app
+            HEALTH_RESP=$(curl -s http://127.0.0.1:8000/health || echo "")
+
+            if [ "$UP_STATUS" = "200" ] && echo "$HEALTH_RESP" | grep -q '"status"'; then
+              echo "✅ Container Smoke Test Passed!"
+              echo "Endpoint /up: HTTP $UP_STATUS"
+              echo "Endpoint /health: $HEALTH_RESP"
+              docker stop smoke_app && docker rm smoke_app
               exit 0
             fi
+            echo "Attempt $i: /up status=$UP_STATUS, /health response=$HEALTH_RESP. Retrying in 2s..."
             sleep 2
           done
 
-          echo "Container health check timed out. Last response: $RESP"
-          echo "Container logs:"
-          docker logs test_app
-          echo "Container Laravel Error Log:"
-          docker exec test_app cat /var/www/html/storage/logs/laravel.log || true
-          docker stop test_app && docker rm test_app
+          echo "❌ Container Smoke Test Timed Out. Container logs:"
+          docker logs smoke_app
+          docker stop smoke_app && docker rm smoke_app
           exit 1
 
   ci-status:
     name: CI Pipeline Status Check
     runs-on: ubuntu-latest
-    needs: [php-lint, backend-test, frontend-build, security-scan, docker-build-check]
+    needs: [php-lint, frontend-ci, backend-test, security-scan, docker-verification]
     if: always()
     steps:
-      - name: Verify All CI Jobs Succeeded
+      - name: Evaluate Core CI Stage Outcomes
         run: |
-          if [ "${{ needs.php-lint.result }}" != "success" ] || \
-             [ "${{ needs.backend-test.result }}" != "success" ] || \
-             [ "${{ needs.frontend-build.result }}" != "success" ] || \
-             [ "${{ needs.security-scan.result }}" != "success" ] || \
-             [ "${{ needs.docker-build-check.result }}" != "success" ]; then
-            echo "❌ CI Pipeline Failed! One or more stages failed."
+          LINT="${{ needs.php-lint.result }}"
+          FRONTEND="${{ needs.frontend-ci.result }}"
+          BACKEND="${{ needs.backend-test.result }}"
+          SECURITY="${{ needs.security-scan.result }}"
+          DOCKER="${{ needs.docker-verification.result }}"
+
+          echo "=== CI Pipeline Results Summary ==="
+          echo "PHP Lint (Pint):        $LINT"
+          echo "Frontend CI:             $FRONTEND"
+          echo "Backend Tests & DB:      $BACKEND"
+          echo "Security Vulnerabilities:$SECURITY"
+          echo "Docker Verification:     $DOCKER"
+          echo "==================================="
+
+          FAILED_STAGES=()
+          [ "$LINT" != "success" ] && FAILED_STAGES+=("PHP Lint ($LINT)")
+          [ "$FRONTEND" != "success" ] && FAILED_STAGES+=("Frontend CI ($FRONTEND)")
+          [ "$BACKEND" != "success" ] && FAILED_STAGES+=("Backend Tests & DB ($BACKEND)")
+          [ "$SECURITY" != "success" ] && FAILED_STAGES+=("Security Vulnerabilities ($SECURITY)")
+          [ "$DOCKER" != "success" ] && FAILED_STAGES+=("Docker Verification ($DOCKER)")
+
+          if [ ${#FAILED_STAGES[@]} -gt 0 ]; then
+            echo "❌ CI FAILED: The following required stages did not succeed:"
+            for stage in "${FAILED_STAGES[@]}"; do
+              echo "  - $stage"
+            done
             exit 1
           fi
-          echo "✅ All CI Checks Passed (Lint ✓ Tests ✓ Build ✓ Security ✓ Docker ✓)"
+
+          echo "✅ All Core CI Checks Passed: Lint ✓ Frontend ✓ Backend/DB ✓ Security ✓ Docker Verification ✓"

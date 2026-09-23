@@ -32,7 +32,6 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
 
   dependency-audit:
     name: Dependency Vulnerability Audit (Composer & NPM)
@@ -49,8 +48,8 @@ jobs:
 
       - name: Run Composer Audit
         run: |
-          echo "Kiểm tra lỗ hổng thư viện PHP Composer..."
-          composer audit --no-interaction || echo "::warning ::Phát hiện cảnh báo bảo mật trong thư viện Composer."
+          echo "Kiểm tra lỗ hổng bảo mật PHP Composer (blocking gate)..."
+          composer audit --locked --no-interaction
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -60,8 +59,8 @@ jobs:
 
       - name: Run NPM Audit
         run: |
-          echo "Kiểm tra lỗ hổng thư viện Frontend Node.js..."
-          npm audit --audit-level=high || echo "::warning ::Phát hiện cảnh báo bảo mật trong npm packages."
+          echo "Kiểm tra lỗ hổng bảo mật Node.js packages (blocking gate)..."
+          npm audit --audit-level=high
 
   container-security-scan:
     name: Docker Container Vulnerability Scan (Trivy)
@@ -70,16 +69,25 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build Local Image for Scanning
-        run: |
-          docker build -t smart-cassavas:security-scan -f docker/app/Dockerfile --target production .
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          target: production
+          load: true
+          tags: smart-cassavas:security-scan
+          cache-from: type=gha
 
       - name: Run Aqua Security Trivy Vulnerability Scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           image-ref: 'smart-cassavas:security-scan'
           format: 'table'
-          exit-code: '0'
+          exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'

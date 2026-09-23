@@ -22,8 +22,8 @@ class GitHubActionsService
 
     public function __construct()
     {
-        $this->owner = env('GITHUB_REPOSITORY_OWNER', 'UMISORA09');
-        $this->repo = env('GITHUB_REPOSITORY_NAME', 'QUANLY_TOANHA-DANCU');
+        $this->owner = env('GITHUB_OWNER', env('GITHUB_REPOSITORY_OWNER', 'UMISORA09'));
+        $this->repo = env('GITHUB_REPO', env('GITHUB_REPOSITORY_NAME', 'QUANLY_TOANHA-DANCU'));
         $this->token = env('GITHUB_TOKEN', env('GITHUB_API_TOKEN', null));
         $this->apiBase = "https://api.github.com/repos/{$this->owner}/{$this->repo}";
         $this->storagePath = storage_path('app/cicd_runs.json');
@@ -40,45 +40,55 @@ class GitHubActionsService
     /**
      * Lấy toàn bộ bundle dữ liệu CI/CD trong 1 request duy nhất (Tối ưu tốc độ tối đa)
      */
-    public function getDashboardBundle(array $filters = []): array
+    public function getDashboardBundle(array $filters = [], bool $force = false): array
     {
-        $branches = $this->getGitBranches();
-        $health = $this->getSystemHealth();
-        $pipelines = $this->getPipelines($filters);
-        $deployments = $this->getDeployments();
-        $environments = $this->getEnvironments();
-        $activities = $this->getRecentActivities();
+        $cacheKey = 'cicd_dashboard_bundle_'.md5(json_encode($filters));
+        if ($force) {
+            Cache::forget($cacheKey);
+            Cache::forget('cicd_pipelines_'.md5(json_encode($filters)));
+            Cache::forget('cicd_recent_activities');
+            Cache::forget('cicd_git_branches');
+        }
 
-        $total = count($pipelines);
-        $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
-        $failed = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'failed'));
-        $running = count(array_filter($pipelines, fn ($p) => in_array($p['status'] ?? '', ['in_progress', 'running', 'queued'], true)));
-        $lastDeployedProd = $this->getLastDeployedImageRef('production');
-        $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
+        return Cache::remember($cacheKey, 6, function () use ($filters, $force) {
+            $branches = $this->getGitBranches();
+            $health = $this->getSystemHealth();
+            $pipelines = $this->getPipelines($filters, $force);
+            $deployments = $this->getDeployments();
+            $environments = $this->getEnvironments();
+            $activities = $this->getRecentActivities($pipelines, $force);
 
-        $overview = [
-            'total_pipelines' => $total,
-            'success_count' => $success,
-            'failed_count' => $failed,
-            'running_count' => $running,
-            'success_rate' => $total > 0 ? round(($success / $total) * 100, 1) : 100,
-            'latest_pipeline' => $pipelines[0] ?? null,
-            'production_status' => $lastDeployedProd ? 'healthy' : 'not_deployed',
-            'production_version' => $lastDeployedProd ?: 'Chưa triển khai',
-            'staging_version' => $lastDeployedStaging ?: 'Chưa triển khai',
-            'system_health' => $health['status'] ?? 'ok',
-            'is_live_github' => $this->isLiveGitHubAvailable(),
-        ];
+            $total = count($pipelines);
+            $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
+            $failed = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'failed'));
+            $running = count(array_filter($pipelines, fn ($p) => in_array($p['status'] ?? '', ['in_progress', 'running', 'queued'], true)));
+            $lastDeployedProd = $this->getLastDeployedImageRef('production');
+            $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
 
-        return [
-            'overview' => $overview,
-            'pipelines' => $pipelines,
-            'deployments' => $deployments,
-            'environments' => $environments,
-            'health' => $health,
-            'activities' => $activities,
-            'branches' => $branches,
-        ];
+            $overview = [
+                'total_pipelines' => $total,
+                'success_count' => $success,
+                'failed_count' => $failed,
+                'running_count' => $running,
+                'success_rate' => $total > 0 ? round(($success / $total) * 100, 1) : 100,
+                'latest_pipeline' => $pipelines[0] ?? null,
+                'production_status' => $lastDeployedProd ? 'healthy' : 'not_deployed',
+                'production_version' => $lastDeployedProd ?: 'Chưa triển khai',
+                'staging_version' => $lastDeployedStaging ?: 'Chưa triển khai',
+                'system_health' => $health['status'] ?? 'ok',
+                'is_live_github' => $this->isLiveGitHubAvailable(),
+            ];
+
+            return [
+                'overview' => $overview,
+                'pipelines' => $pipelines,
+                'deployments' => $deployments,
+                'environments' => $environments,
+                'health' => $health,
+                'activities' => $activities,
+                'branches' => $branches,
+            ];
+        });
     }
 
     /**
@@ -115,61 +125,71 @@ class GitHubActionsService
     /**
      * Lấy danh sách pipelines thực tế (từ GitHub Actions hoặc các lượt chạy thực tế)
      */
-    public function getPipelines(array $filters = []): array
+    public function getPipelines(array $filters = [], bool $force = false): array
     {
-        $runs = [];
+        $cacheKey = 'cicd_pipelines_'.md5(json_encode($filters));
+        if ($force) {
+            Cache::forget($cacheKey);
+        }
 
-        // 1. Thử lấy từ GitHub Actions API nếu có Token
-        if ($this->isLiveGitHubAvailable()) {
-            try {
-                $response = Http::withToken($this->token)
-                    ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                    ->timeout(8)
-                    ->get("{$this->apiBase}/actions/runs", [
-                        'per_page' => 25,
-                        'branch' => $filters['branch'] ?? null,
-                    ]);
+        return Cache::remember($cacheKey, 8, function () use ($filters) {
+            $runs = [];
 
-                if ($response->successful()) {
-                    $githubRuns = $response->json('workflow_runs') ?? [];
-                    $runs = array_map([$this, 'formatGitHubRun'], $githubRuns);
+            // 1. Thử lấy từ GitHub Actions API nếu có Token
+            if ($this->isLiveGitHubAvailable()) {
+                try {
+                    $queryParams = ['per_page' => 25];
+                    if (! empty($filters['branch']) && $filters['branch'] !== 'all') {
+                        $queryParams['branch'] = $filters['branch'];
+                    }
+
+                    $response = Http::withToken($this->token)
+                        ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                        ->timeout(3.5)
+                        ->get("{$this->apiBase}/actions/runs", $queryParams);
+
+                    if ($response->successful()) {
+                        $githubRuns = $response->json('workflow_runs') ?? [];
+                        $runs = array_map([$this, 'formatGitHubRun'], $githubRuns);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('GitHub Actions API call failed: '.$e->getMessage());
                 }
-            } catch (\Throwable $e) {
-                Log::warning('GitHub Actions API call failed: '.$e->getMessage());
             }
-        }
 
-        // 2. Kết hợp với các lượt chạy thực tế do người dùng kích hoạt trên hệ thống
-        $localRuns = $this->getStoredLocalRuns();
-        $allRuns = array_merge($runs, $localRuns);
+            // 2. Kết hợp với các lượt chạy thực tế do người dùng kích hoạt trên hệ thống
+            $localRuns = $this->getStoredLocalRuns();
+            $allRuns = array_merge($runs, $localRuns);
 
-        // Sắp xếp theo thời gian mới nhất trước
-        usort($allRuns, function ($a, $b) {
-            return strtotime($b['created_at'] ?? 'now') - strtotime($a['created_at'] ?? 'now');
+            // Sắp xếp theo thời gian mới nhất trước
+            usort($allRuns, function ($a, $b) {
+                return strtotime($b['created_at'] ?? 'now') - strtotime($a['created_at'] ?? 'now');
+            });
+
+            // Áp dụng bộ lọc thực tế
+            if (! empty($filters['status']) && $filters['status'] !== 'all') {
+                $allRuns = array_values(array_filter($allRuns, fn ($i) => ($i['status'] ?? '') === $filters['status']));
+            }
+            if (! empty($filters['branch']) && $filters['branch'] !== 'all') {
+                $allRuns = array_values(array_filter($allRuns, fn ($i) => str_contains($i['branch'] ?? '', $filters['branch'])));
+            }
+            if (! empty($filters['workflow']) && $filters['workflow'] !== 'all') {
+                $allRuns = array_values(array_filter($allRuns, fn ($i) => str_contains($i['workflow_file'] ?? '', $filters['workflow'])));
+            }
+            if (! empty($filters['search'])) {
+                $q = mb_strtolower(trim($filters['search']));
+                $allRuns = array_values(array_filter($allRuns, function ($i) use ($q) {
+                    return str_contains(mb_strtolower($i['name'] ?? ''), $q) ||
+                        str_contains(mb_strtolower($i['branch'] ?? ''), $q) ||
+                        str_contains(mb_strtolower($i['commit_sha'] ?? ''), $q) ||
+                        str_contains(mb_strtolower($i['commit_message'] ?? ''), $q) ||
+                        str_contains(mb_strtolower($i['author'] ?? ''), $q) ||
+                        str_contains(mb_strtolower($i['author_login'] ?? ''), $q);
+                }));
+            }
+
+            return $allRuns;
         });
-
-        // Áp dụng bộ lọc thực tế
-        if (! empty($filters['status']) && $filters['status'] !== 'all') {
-            $allRuns = array_values(array_filter($allRuns, fn ($i) => ($i['status'] ?? '') === $filters['status']));
-        }
-        if (! empty($filters['branch']) && $filters['branch'] !== 'all') {
-            $allRuns = array_values(array_filter($allRuns, fn ($i) => str_contains($i['branch'] ?? '', $filters['branch'])));
-        }
-        if (! empty($filters['workflow']) && $filters['workflow'] !== 'all') {
-            $allRuns = array_values(array_filter($allRuns, fn ($i) => str_contains($i['workflow_file'] ?? '', $filters['workflow'])));
-        }
-        if (! empty($filters['search'])) {
-            $q = mb_strtolower(trim($filters['search']));
-            $allRuns = array_values(array_filter($allRuns, function ($i) use ($q) {
-                return str_contains(mb_strtolower($i['name'] ?? ''), $q) ||
-                    str_contains(mb_strtolower($i['branch'] ?? ''), $q) ||
-                    str_contains(mb_strtolower($i['commit_sha'] ?? ''), $q) ||
-                    str_contains(mb_strtolower($i['commit_message'] ?? ''), $q) ||
-                    str_contains(mb_strtolower($i['author'] ?? ''), $q);
-            }));
-        }
-
-        return $allRuns;
     }
 
     /**
@@ -260,7 +280,10 @@ class GitHubActionsService
                     ->get($endpoint);
 
                 if ($response->successful()) {
-                    return $header.$this->maskSecrets($response->body());
+                    $body = $response->body();
+                    $cleanBody = mb_convert_encoding($body, 'UTF-8', 'UTF-8');
+
+                    return $header.$this->maskSecrets($cleanBody);
                 }
             } catch (\Throwable $e) {
                 // log fetch failed
@@ -294,6 +317,8 @@ class GitHubActionsService
         $prodImage = $this->getLastDeployedImageRef('production');
         $stagingImage = $this->getLastDeployedImageRef('staging');
         $commitSha = $this->getLatestCommitSha();
+        $prodDeployedAt = $this->getDeploymentTimestamp('production');
+        $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
 
         return [
             [
@@ -304,8 +329,8 @@ class GitHubActionsService
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $prodImage ? 'healthy' : 'not_deployed',
                 'deployed_by' => $prodImage ? 'GitHub Actions CD' : 'Chưa có',
-                'deployed_at' => $prodImage ? now()->toIso8601String() : 'Chưa kích hoạt',
-                'response_time_ms' => $prodImage ? 120 : 0,
+                'deployed_at' => $prodDeployedAt ?: 'Chưa kích hoạt',
+                'response_time_ms' => 0,
                 'release_notes' => $prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Kích hoạt bằng git tag v* hoặc nút "Triển khai Production".',
             ],
             [
@@ -316,8 +341,8 @@ class GitHubActionsService
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $stagingImage ? 'healthy' : 'not_deployed',
                 'deployed_by' => $stagingImage ? 'GitHub Actions CD' : 'Chưa có',
-                'deployed_at' => $stagingImage ? now()->toIso8601String() : 'Chưa kích hoạt',
-                'response_time_ms' => $stagingImage ? 85 : 0,
+                'deployed_at' => $stagingDeployedAt ?: 'Chưa kích hoạt',
+                'response_time_ms' => 0,
                 'release_notes' => $stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào main/develop.',
             ],
         ];
@@ -331,6 +356,8 @@ class GitHubActionsService
         $commitSha = substr($this->getLatestCommitSha(), 0, 7);
         $prodImage = $this->getLastDeployedImageRef('production');
         $stagingImage = $this->getLastDeployedImageRef('staging');
+        $prodDeployedAt = $this->getDeploymentTimestamp('production');
+        $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
 
         // Đo latency thực tế tới CSDL / App local
         $dbLatency = $this->measureDatabaseLatency();
@@ -345,33 +372,33 @@ class GitHubActionsService
                 'commit_sha' => $commitSha,
                 'last_deployment' => now()->toIso8601String(),
                 'response_time_ms' => $dbLatency,
-                'uptime_percentage' => '100%',
+                'uptime_percentage' => 'N/A (local)',
                 'branch' => $this->getCurrentBranch(),
                 'approval_required' => false,
             ],
             [
                 'id' => 'staging',
                 'name' => 'Staging (Máy chủ kiểm thử tiền phát hành)',
-                'url' => env('STAGING_URL', 'https://staging.cassavas.vn'),
+                'url' => env('STAGING_URL', null),
                 'status' => $stagingImage ? 'operational' : 'not_deployed',
                 'version' => $stagingImage ?: 'Chưa triển khai',
                 'commit_sha' => $commitSha,
-                'last_deployment' => $stagingImage ? now()->toIso8601String() : 'N/A',
-                'response_time_ms' => $stagingImage ? 85 : 0,
-                'uptime_percentage' => $stagingImage ? '99.9%' : 'N/A',
+                'last_deployment' => $stagingDeployedAt ?: 'N/A',
+                'response_time_ms' => 0,
+                'uptime_percentage' => 'N/A (chưa đo)',
                 'branch' => 'develop',
                 'approval_required' => false,
             ],
             [
                 'id' => 'production',
                 'name' => 'Production (Máy chủ vận hành cư dân thực tế)',
-                'url' => env('PROD_URL', 'https://cassavas.vn'),
+                'url' => env('PROD_URL', null),
                 'status' => $prodImage ? 'operational' : 'not_deployed',
                 'version' => $prodImage ?: 'Chưa triển khai',
                 'commit_sha' => $commitSha,
-                'last_deployment' => $prodImage ? now()->toIso8601String() : 'N/A',
-                'response_time_ms' => $prodImage ? 120 : 0,
-                'uptime_percentage' => $prodImage ? '99.99%' : 'N/A',
+                'last_deployment' => $prodDeployedAt ?: 'N/A',
+                'response_time_ms' => 0,
+                'uptime_percentage' => 'N/A (chưa đo)',
                 'branch' => 'main',
                 'approval_required' => true,
             ],
@@ -396,12 +423,15 @@ class GitHubActionsService
         $diskUsed = $diskTotal - $diskFree;
         $diskPercent = round(($diskUsed / $diskTotal) * 100, 1);
 
+        // Đo thời gian khởi tạo request thực tế
+        $phpResponseTime = defined('LARAVEL_START') ? round((microtime(true) - LARAVEL_START) * 1000) : 0;
+
         $components = [
             [
                 'name' => 'PHP Application Runtime',
                 'status' => 'operational',
-                'version' => 'PHP '.PHP_VERSION.' (Laravel 13)',
-                'response_time' => '5ms',
+                'version' => 'PHP '.PHP_VERSION.' (Laravel '.app()->version().')',
+                'response_time' => "{$phpResponseTime}ms",
             ],
             [
                 'name' => 'MySQL 8.0 Database Server',
@@ -413,19 +443,19 @@ class GitHubActionsService
                 'name' => 'Vietnamese Smart Search Engine',
                 'status' => 'operational',
                 'version' => 'SmartSearchDriver PHP',
-                'response_time' => '18ms',
+                'response_time' => 'N/A',
             ],
             [
                 'name' => 'Storage & File System',
                 'status' => $diskPercent > 92 ? 'degraded' : 'operational',
                 'version' => "{$diskPercent}% đã dùng (".round($diskUsed / (1024 * 1024 * 1024), 1).'GB / '.round($diskTotal / (1024 * 1024 * 1024), 1).'GB)',
-                'response_time' => '1ms',
+                'response_time' => 'N/A',
             ],
             [
                 'name' => 'Docker Engine',
                 'status' => 'operational',
                 'version' => 'Docker Compose v2',
-                'response_time' => '< 5ms',
+                'response_time' => 'N/A',
             ],
         ];
 
@@ -443,53 +473,146 @@ class GitHubActionsService
     }
 
     /**
-     * Lấy nhật ký hoạt động thực tế từ Git Commits (100% THẬT, KHÔNG MOCK)
+     * Lấy nhật ký hoạt động thực tế từ GitHub API và Git Commits (Tự động cập nhật hoạt động mới nhất)
      */
-    public function getRecentActivities(): array
+    public function getRecentActivities(?array $pipelines = null, bool $force = false): array
     {
-        return Cache::remember('cicd_recent_activities', 15, function () {
-            $activities = [];
-            try {
-                // Đọc 15 commit gần nhất thực tế từ git log của tất cả thành viên
-                $output = shell_exec('git log -n 15 --pretty=format:"%H|%h|%an|%ae|%cI|%s" 2>/dev/null');
-                if ($output) {
-                    $lines = explode("\n", trim($output));
-                    foreach ($lines as $line) {
-                        $parts = explode('|', $line, 6);
-                        if (count($parts) === 6) {
-                            [$fullSha, $shortSha, $author, $email, $date, $message] = $parts;
+        if ($force) {
+            Cache::forget('cicd_recent_activities');
+        }
 
-                            $type = 'commit';
-                            $lowerMsg = mb_strtolower($message);
-                            if (str_starts_with($lowerMsg, 'ci') || str_contains($lowerMsg, 'github actions') || str_contains($lowerMsg, 'pipeline')) {
-                                $type = 'ci';
-                            } elseif (str_starts_with($lowerMsg, 'feat')) {
-                                $type = 'feature';
-                            } elseif (str_starts_with($lowerMsg, 'fix')) {
-                                $type = 'fix';
-                            } elseif (str_starts_with($lowerMsg, 'merge')) {
-                                $type = 'merge';
-                            } elseif (str_starts_with($lowerMsg, 'docker') || str_contains($lowerMsg, 'docker')) {
-                                $type = 'build';
+        return Cache::remember('cicd_recent_activities', 10, function () use ($pipelines) {
+            $activities = [];
+
+            // 1. Chuyển đổi các lượt chạy pipeline thực tế (Build / Test / Deploy) thành hoạt động
+            $runs = $pipelines ?? $this->getPipelines();
+            foreach (array_slice($runs, 0, 15) as $p) {
+                $wf = strtolower($p['workflow_file'] ?? '');
+                $type = 'build';
+                if (str_contains($wf, 'docker')) {
+                    $type = 'build';
+                } elseif (str_contains($wf, 'cd') || str_contains($wf, 'deploy') || str_contains($wf, 'staging') || str_contains($wf, 'prod')) {
+                    $type = 'deploy';
+                } elseif (str_contains($wf, 'ci') || str_contains($wf, 'test')) {
+                    $type = 'test';
+                }
+
+                $status = match ($p['status'] ?? '') {
+                    'running', 'in_progress', 'queued' => 'running',
+                    'failed', 'failure' => 'failed',
+                    default => 'success',
+                };
+
+                $prefix = match ($status) {
+                    'running' => 'Đang chạy',
+                    'failed' => 'Thất bại',
+                    default => 'Hoàn thành',
+                };
+
+                $activities[] = [
+                    'id' => "act-run-{$p['id']}",
+                    'type' => $type,
+                    'title' => "{$prefix} {$p['name']} #{$p['run_number']}",
+                    'description' => "[{$p['branch']}] {$p['commit_message']} ({$p['commit_sha']})",
+                    'status' => $status,
+                    'actor' => $p['author'] ?? 'DevOps',
+                    'timestamp' => $p['created_at'] ?? now()->toIso8601String(),
+                ];
+            }
+
+            // 2. Lấy các commits mới nhất thực tế từ GitHub API
+            $githubCommitsFound = false;
+            if ($this->isLiveGitHubAvailable()) {
+                try {
+                    $response = Http::withToken($this->token)
+                        ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                        ->timeout(3)
+                        ->get("{$this->apiBase}/commits", ['per_page' => 15]);
+
+                    if ($response->successful()) {
+                        $commits = $response->json() ?? [];
+                        foreach ($commits as $c) {
+                            $sha = substr($c['sha'] ?? '', 0, 7);
+                            $rawMsg = $c['commit']['message'] ?? 'Commit';
+                            $title = explode("\n", $rawMsg)[0];
+                            $login = $c['author']['login'] ?? null;
+                            $gitName = $c['commit']['author']['name'] ?? null;
+                            $author = $this->resolveMemberName($login, $gitName);
+                            $date = $c['commit']['author']['date'] ?? now()->toIso8601String();
+
+                            $lower = mb_strtolower($title);
+                            $type = 'build';
+                            if (str_starts_with($lower, 'test') || str_contains($lower, 'test')) {
+                                $type = 'test';
+                            } elseif (str_starts_with($lower, 'deploy') || str_contains($lower, 'release')) {
+                                $type = 'deploy';
+                            } elseif (str_starts_with($lower, 'sec') || str_contains($lower, 'security')) {
+                                $type = 'security';
+                            } elseif (str_starts_with($lower, 'rollback')) {
+                                $type = 'rollback';
                             }
 
+                            $descPrefix = str_starts_with($lower, 'merge ') ? 'Hợp nhất commit' : 'Commit';
+
                             $activities[] = [
-                                'id' => "act-{$shortSha}",
+                                'id' => "act-gh-{$sha}",
                                 'type' => $type,
-                                'title' => $message,
-                                'description' => "Commit {$shortSha} bởi {$author} ({$email})",
+                                'title' => $title,
+                                'description' => "{$descPrefix} {$sha} bởi {$author}",
                                 'status' => 'success',
                                 'actor' => $author,
                                 'timestamp' => $date,
                             ];
                         }
+                        $githubCommitsFound = true;
                     }
+                } catch (\Throwable $e) {
+                    Log::warning('GitHub Commits API failed: '.$e->getMessage());
                 }
-            } catch (\Throwable $e) {
-                Log::warning('Failed to load git activities: '.$e->getMessage());
             }
 
-            return $activities;
+            // 3. Fallback đọc git log nội bộ nếu GitHub API không khả dụng
+            if (! $githubCommitsFound) {
+                try {
+                    $output = shell_exec('git log -n 15 --pretty=format:"%H|%h|%an|%ae|%cI|%s" 2>/dev/null');
+                    if ($output) {
+                        $lines = explode("\n", trim($output));
+                        foreach ($lines as $line) {
+                            $parts = explode('|', $line, 6);
+                            if (count($parts) === 6) {
+                                [$fullSha, $shortSha, $author, $email, $date, $message] = $parts;
+                                $lowerMsg = mb_strtolower($message);
+                                $type = 'build';
+                                if (str_starts_with($lowerMsg, 'test')) {
+                                    $type = 'test';
+                                } elseif (str_starts_with($lowerMsg, 'deploy')) {
+                                    $type = 'deploy';
+                                }
+
+                                $activities[] = [
+                                    'id' => "act-local-{$shortSha}",
+                                    'type' => $type,
+                                    'title' => $message,
+                                    'description' => "Commit {$shortSha} bởi {$author}",
+                                    'status' => 'success',
+                                    'actor' => $author,
+                                    'timestamp' => $date,
+                                ];
+                            }
+                        }
+                    }
+                } catch (\Throwable) {
+                    // ignore
+                }
+            }
+
+            // 4. Sắp xếp tất cả hoạt động theo thời gian giảm dần (mới nhất lên đầu)
+            usort($activities, function ($a, $b) {
+                return strtotime($b['timestamp'] ?? 'now') - strtotime($a['timestamp'] ?? 'now');
+            });
+
+            // Giới hạn 25 hoạt động mới nhất
+            return array_slice($activities, 0, 25);
         });
     }
 
@@ -543,7 +666,7 @@ class GitHubActionsService
                 // fallback
             }
 
-            return ['main', 'DangNguyen/CI-CD', 'DangNguyen/amenity-management', 'QuocTin/rbac-auth', 'xuanhoa/fix_all', 'xuanhoa/home'];
+            return ['main'];
         });
     }
 
@@ -575,58 +698,69 @@ class GitHubActionsService
     }
 
     /**
-     * Kích hoạt chạy workflow thực tế (Run Pipeline)
+     * Kích hoạt chạy workflow thực tế (Run Pipeline trực tiếp lên GitHub Actions)
      */
     public function triggerWorkflow(string $workflowId, string $branch = 'main', array $inputs = []): array
     {
-        $author = 'Admin Cassavas';
-        $commitSha = substr($this->getLatestCommitSha(), 0, 7);
+        // Chuẩn hóa tên workflow nếu truyền kèm tiền tố cd-
+        if ($workflowId === 'cd-staging.yml') {
+            $workflowId = 'staging.yml';
+        } elseif ($workflowId === 'cd-production.yml') {
+            $workflowId = 'production.yml';
+        }
 
-        // Nếu có GitHub Token: Kích hoạt trực tiếp lên GitHub Actions API
+        // Kích hoạt trực tiếp lên GitHub Actions API
         if ($this->isLiveGitHubAvailable()) {
             try {
+                $payload = ['ref' => $branch];
+
+                // Chuẩn hóa inputs theo từng workflow cụ thể (chỉ gửi input mà workflow có khai báo)
+                $filteredInputs = [];
+                if ($workflowId === 'staging.yml') {
+                    $filteredInputs['image_tag'] = (string) ($inputs['image_tag'] ?? 'staging');
+                } elseif ($workflowId === 'production.yml') {
+                    $filteredInputs['release_tag'] = (string) ($inputs['release_tag'] ?? $inputs['tag'] ?? 'production');
+                }
+                // Chú ý: ci.yml và docker.yml không khai báo workflow_dispatch.inputs nên không được gửi payload['inputs']
+
+                if (! empty($filteredInputs)) {
+                    $payload['inputs'] = $filteredInputs;
+                }
+
                 $response = Http::withToken($this->token)
                     ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                    ->post("{$this->apiBase}/actions/workflows/{$workflowId}/dispatches", [
-                        'ref' => $branch,
-                        'inputs' => $inputs,
-                    ]);
+                    ->timeout(6)
+                    ->post("{$this->apiBase}/actions/workflows/{$workflowId}/dispatches", $payload);
 
                 if ($response->successful()) {
+                    // Xóa cache ngay lập tức để lần refresh kế tiếp hiển thị run thật từ GitHub Actions
+                    Cache::flush();
+
                     return [
                         'success' => true,
-                        'message' => "Workflow {$workflowId} đã được kích hoạt trực tiếp lên GitHub Actions trên nhánh {$branch}.",
+                        'message' => "Workflow {$workflowId} đã được kích hoạt thành công trên GitHub Actions (nhánh {$branch}). Đang khởi động runner...",
                     ];
                 }
+
+                $errorDetail = $response->json('message') ?? "Mã phản hồi HTTP {$response->status()} từ GitHub";
+
+                return [
+                    'success' => false,
+                    'message' => "GitHub từ chối kích hoạt: {$errorDetail}. Vui lòng kiểm tra lại nhánh '{$branch}' hoặc workflow '{$workflowId}'.",
+                ];
             } catch (\Throwable $e) {
                 Log::error('Trigger workflow failed: '.$e->getMessage());
+
+                return [
+                    'success' => false,
+                    'message' => 'Lỗi kết nối tới GitHub Actions: '.$e->getMessage(),
+                ];
             }
         }
 
-        // Ghi nhận lượt chạy thực tế vào storage cục bộ
-        $newRun = [
-            'id' => (string) time(),
-            'run_number' => count($this->getStoredLocalRuns()) + 1,
-            'name' => $this->getWorkflowFriendlyName($workflowId),
-            'workflow_file' => $workflowId,
-            'status' => 'queued',
-            'branch' => $branch,
-            'commit_sha' => $commitSha,
-            'commit_message' => "Kích hoạt thủ công qua Dashboard: {$workflowId}",
-            'author' => $author,
-            'trigger' => 'workflow_dispatch',
-            'duration' => 'Vừa kích hoạt',
-            'created_at' => now()->toIso8601String(),
-            'url' => "https://github.com/{$this->owner}/{$this->repo}/actions",
-            'log_content' => "2026-09-18 [START] Kích hoạt workflow {$workflowId} trên nhánh {$branch}.\nNgười thực hiện: {$author}\nCommit: {$commitSha}\nTrạng thái: Đang xếp hàng (Queued)...",
-        ];
-
-        $this->saveLocalRun($newRun);
-
         return [
-            'success' => true,
-            'message' => "Lượt chạy '{$workflowId}' trên nhánh '{$branch}' đã được khởi tạo và ghi nhận thành công.",
-            'pipeline_id' => $newRun['id'],
+            'success' => false,
+            'message' => 'Hệ thống chưa cấu hình GITHUB_TOKEN để kích hoạt pipeline thật.',
         ];
     }
 
@@ -692,22 +826,118 @@ class GitHubActionsService
 
     protected function formatGitHubRun(array $run): array
     {
+        $actorInfo = $this->resolveRunActor($run);
+
+        $branch = $run['head_branch'] ?? 'main';
+        $commitSha = substr($run['head_sha'] ?? '0000000', 0, 7);
+        $event = $run['event'] ?? 'push';
+
+        // Lấy commit message gốc từ head_commit hoặc display_title
+        $rawMessage = $run['head_commit']['message'] ?? $run['display_title'] ?? 'Git Commit';
+        $firstLineMsg = trim(explode("\n", $rawMessage)[0]);
+        $lowerMsg = mb_strtolower($firstLineMsg);
+
+        // Xác định chính xác trigger và nội dung thực thi
+        $trigger = $event;
+        $isBaseBranch = in_array($branch, ['master', 'main', 'develop']);
+        $isMergeCommit = str_starts_with($lowerMsg, 'merge branch') || str_starts_with($lowerMsg, 'merge pull request') || str_starts_with($lowerMsg, 'merge ');
+
+        if ($event === 'workflow_dispatch') {
+            $trigger = 'manual';
+            // Khi chạy thủ công (manual dispatch), nội dung thực thi là kích hoạt workflow trên nhánh cụ thể
+            $commitMessage = "Kích hoạt thủ công trên nhánh {$branch} (Commit {$commitSha})";
+        } elseif ($event === 'push') {
+            if ($isBaseBranch && $isMergeCommit) {
+                $trigger = 'merge';
+                $commitMessage = $firstLineMsg;
+            } else {
+                $trigger = 'push';
+                // Nếu đẩy mã lên nhánh tính năng nhưng commit thừa kế từ master là merge commit cũ:
+                if (! $isBaseBranch && $isMergeCommit) {
+                    $commitMessage = "Cập nhật mã nguồn nhánh {$branch} (tại {$commitSha})";
+                } else {
+                    $commitMessage = $firstLineMsg;
+                }
+            }
+        } elseif ($event === 'pull_request') {
+            $trigger = 'pull_request';
+            $commitMessage = $run['display_title'] ?? $firstLineMsg;
+        } else {
+            $commitMessage = $firstLineMsg;
+        }
+
         return [
             'id' => (string) $run['id'],
             'run_number' => $run['run_number'] ?? 0,
             'name' => $run['name'] ?? 'Pipeline',
             'workflow_file' => basename($run['path'] ?? 'ci.yml'),
             'status' => $this->normalizeStatus($run['status'] ?? '', $run['conclusion'] ?? null),
-            'branch' => $run['head_branch'] ?? 'main',
-            'commit_sha' => substr($run['head_sha'] ?? '0000000', 0, 7),
-            'commit_message' => $run['head_commit']['message'] ?? 'Git Commit',
-            'author' => $run['actor']['login'] ?? 'DevOps',
-            'author_avatar' => $run['actor']['avatar_url'] ?? null,
-            'trigger' => $run['event'] ?? 'push',
+            'branch' => $branch,
+            'commit_sha' => $commitSha,
+            'commit_message' => $commitMessage,
+            'raw_commit_message' => $firstLineMsg,
+            'author' => $actorInfo['author'],
+            'author_login' => $actorInfo['author_login'],
+            'author_avatar' => $actorInfo['author_avatar'],
+            'trigger' => $trigger,
             'duration' => $this->calculateDuration($run['run_started_at'] ?? $run['created_at'], $run['updated_at']),
             'created_at' => $run['created_at'],
             'url' => $run['html_url'] ?? null,
         ];
+    }
+
+    /**
+     * Xác định chính xác thông tin người thực hiện push, merge, hoặc trigger pipeline
+     */
+    protected function resolveRunActor(array $run): array
+    {
+        // 1. triggering_actor: Người thực tế bấm push, merge hoặc trigger run
+        // 2. actor: GitHub user gán với run
+        // 3. head_commit.author / committer: Người viết code trong Git
+        $triggeringActor = $run['triggering_actor'] ?? null;
+        $fallbackActor = $run['actor'] ?? null;
+
+        $actorObj = $triggeringActor ?: $fallbackActor;
+        $login = $actorObj['login'] ?? null;
+        $avatar = $actorObj['avatar_url'] ?? null;
+
+        $headCommit = $run['head_commit'] ?? [];
+        $gitAuthor = $headCommit['author']['name'] ?? null;
+        $gitCommitter = $headCommit['committer']['name'] ?? null;
+
+        $displayName = $this->resolveMemberName($login, $gitAuthor ?: $gitCommitter);
+
+        return [
+            'author' => $displayName,
+            'author_login' => $login ?? $displayName,
+            'author_avatar' => $avatar,
+        ];
+    }
+
+    /**
+     * Ánh xạ thông tin thành viên (Username / Git Author) sang tên thực tế hiển thị
+     */
+    protected function resolveMemberName(?string $login, ?string $fallbackName = null): string
+    {
+        $memberMap = [
+            'UMISORA09' => 'Xuân Hoà',
+            'Ma1910' => 'Đặng Đăng Nguyên',
+            'lequoctin7526-bit' => 'Quốc Tín',
+        ];
+
+        if ($login && isset($memberMap[$login])) {
+            return $memberMap[$login];
+        }
+
+        if ($fallbackName && ! str_contains(strtolower($fallbackName), 'bot') && ! str_contains(strtolower($fallbackName), 'github')) {
+            if (mb_strtolower(trim($fallbackName)) === 'ma') {
+                return 'Đặng Đăng Nguyên';
+            }
+
+            return $fallbackName;
+        }
+
+        return $login ?: ($fallbackName ?: 'DevOps');
     }
 
     protected function normalizeStatus(string $status, ?string $conclusion): string
@@ -758,7 +988,7 @@ class GitHubActionsService
             return $ref;
         }
 
-        return '61bc9af';
+        return 'unknown';
     }
 
     protected function getCurrentBranch(): string
@@ -785,11 +1015,27 @@ class GitHubActionsService
         return null;
     }
 
+    /**
+     * Lấy thời gian deploy thực tế dựa trên filemtime của file marker
+     */
+    protected function getDeploymentTimestamp(string $env = 'production'): ?string
+    {
+        $filename = $env === 'staging' ? '.last_deployed_staging_image' : '.last_deployed_image';
+        $path = base_path($filename);
+        if (File::exists($path)) {
+            $mtime = filemtime($path);
+
+            return $mtime ? date('c', $mtime) : null;
+        }
+
+        return null;
+    }
+
     protected function measureDatabaseLatency(): int
     {
         try {
             $start = microtime(true);
-            DB::connection()->getPdo();
+            DB::select('SELECT 1');
 
             return (int) round((microtime(true) - $start) * 1000);
         } catch (\Throwable $e) {
@@ -802,8 +1048,9 @@ class GitHubActionsService
         return match ($workflowId) {
             'ci.yml' => 'CI - Continuous Integration',
             'docker.yml' => 'Docker Build & GHCR Publish',
-            'cd-staging.yml' => 'CD - Staging Deployment',
-            'cd-production.yml' => 'CD - Production Deployment',
+            'staging.yml', 'cd-staging.yml' => 'CD - Staging Deployment',
+            'production.yml', 'cd-production.yml' => 'CD - Production Deployment',
+            'security.yml' => 'Security Audit & Vulnerability Scanner',
             default => $workflowId,
         };
     }

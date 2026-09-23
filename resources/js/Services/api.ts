@@ -138,7 +138,12 @@ class ApiService {
     localStorage.removeItem('smart_cassavas_token');
   }
 
-  public getUser(): any | null {
+  public getUser(): any | null;
+  public getUser(id: string): Promise<{ success: boolean; data: UserRbac }>;
+  public getUser(id?: string): any | null | Promise<{ success: boolean; data: UserRbac }> {
+    if (typeof id === 'string') {
+      return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
+    }
     try {
       const u = localStorage.getItem('smart_cassavas_user');
       return u ? JSON.parse(u) : null;
@@ -911,8 +916,8 @@ class ApiService {
     }>(`/users?${q.toString()}`);
   }
 
-  async getUser(id: string) {
-    return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
+  async getUserById(id: string) {
+    return this.getUser(id);
   }
 
   async createUser(data: { username: string; phone_number: string; email: string; full_name: string; password: string; status?: string; roles?: string[] }) {

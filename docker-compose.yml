@@ -8,6 +8,9 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ./:/var/www/html
       - /var/www/html/node_modules
