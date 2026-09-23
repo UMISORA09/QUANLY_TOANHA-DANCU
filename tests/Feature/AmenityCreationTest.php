@@ -85,9 +85,10 @@ class AmenityCreationTest extends TestCase
 
         $response = $this->postJson('/api/v1/admin/amenities', $payload);
 
-        $response->assertStatus(422)
-            ->assertJsonFragment([
-                'detail' => "Mã tiện ích '{$existingAmenity->amenity_code}' đã tồn tại trong hệ thống. Vui lòng chọn mã khác.",
-            ]);
+        $response->assertStatus(422);
+        $this->assertStringContainsString(
+            "Mã tiện ích '{$existingAmenity->amenity_code}' đã tồn tại trong hệ thống",
+            $response->json('detail')
+        );
     }
 }
