@@ -15,12 +15,18 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     php artisan migrate --force --no-interaction
 fi
 
-# Nếu container được truyền lệnh tùy biến (ví dụ: queue:work, schedule:run, artisan...), thực thi lệnh đó
+# Nếu container được truyền lệnh tùy biến (ví dụ: queue:work, schedule:run, php-fpm...), thực thi lệnh đó
 if [ "$#" -gt 0 ]; then
     echo "[Production Docker] Thực thi lệnh tùy biến: $*"
     exec "$@"
 fi
 
-# Mặc định khởi chạy PHP-FPM ở chế độ foreground
-echo "[Production Docker] Khởi động PHP-FPM FastCGI server tại port 9000..."
-exec php-fpm -F
+# Nếu cấu hình SERVER_MODE=fpm, chạy PHP-FPM cho kiến trúc Nginx reverse proxy
+if [ "${SERVER_MODE:-}" = "fpm" ]; then
+    echo "[Production Docker] Khởi động PHP-FPM FastCGI server tại port 9000..."
+    exec php-fpm -F
+fi
+
+# Mặc định khởi chạy HTTP server tại cổng 8000 (hỗ trợ standalone container và CI smoke test)
+echo "[Production Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:8000 ..."
+exec php artisan serve --host=0.0.0.0 --port=8000

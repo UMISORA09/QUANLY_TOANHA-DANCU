@@ -22,6 +22,8 @@ services:
       SESSION_STORE: cache
       QUEUE_CONNECTION: redis
       RUN_MIGRATIONS: "false"
+      SERVER_MODE: fpm
+    command: php-fpm -F
     volumes:
       - app_public:/var/www/html/public
     expose:

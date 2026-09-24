@@ -146,6 +146,6 @@ COPY docker/app/php-fpm.conf /usr/local/etc/php-fpm.d/zz-production.conf
 COPY docker/app/entrypoint.prod.sh /usr/local/bin/entrypoint.prod.sh
 RUN chmod +x /usr/local/bin/entrypoint.prod.sh
 
-EXPOSE 9000
+EXPOSE 8000 9000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.prod.sh"]
