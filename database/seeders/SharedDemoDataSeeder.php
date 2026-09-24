@@ -245,15 +245,30 @@ class SharedDemoDataSeeder extends Seeder
 
             $userIdMap = [];
             foreach ($demoUsers as $du) {
-                $existing = DB::table('users')->where('email', $du['email'])->orWhere('username', $du['username'])->first();
-                $uId = $existing ? $existing->id : (string) Str::uuid();
-                $userIdMap[$du['username']] = $uId;
+                $existing = DB::table('users')
+                    ->where('email', $du['email'])
+                    ->orWhere('username', $du['username'])
+                    ->orWhere('phone_number', $du['phone_number'])
+                    ->first();
 
-                DB::table('users')->updateOrInsert(
-                    ['email' => $du['email']],
-                    [
+                if ($existing) {
+                    $uId = $existing->id;
+                    DB::table('users')->where('id', $uId)->update([
+                        'username' => $du['username'],
+                        'email' => $du['email'],
+                        'phone_number' => $du['phone_number'],
+                        'password_hash' => Hash::make($du['password']),
+                        'full_name' => $du['full_name'],
+                        'gender' => $du['gender'],
+                        'status' => 'ACTIVE',
+                        'updated_at' => $baseTime,
+                    ]);
+                } else {
+                    $uId = (string) Str::uuid();
+                    DB::table('users')->insert([
                         'id' => $uId,
                         'username' => $du['username'],
+                        'email' => $du['email'],
                         'phone_number' => $du['phone_number'],
                         'password_hash' => Hash::make($du['password']),
                         'full_name' => $du['full_name'],
@@ -261,8 +276,9 @@ class SharedDemoDataSeeder extends Seeder
                         'status' => 'ACTIVE',
                         'created_at' => $baseTime,
                         'updated_at' => $baseTime,
-                    ]
-                );
+                    ]);
+                }
+                $userIdMap[$du['username']] = $uId;
 
                 $rId = $roleIdMap[$du['role']] ?? null;
                 if ($rId) {
