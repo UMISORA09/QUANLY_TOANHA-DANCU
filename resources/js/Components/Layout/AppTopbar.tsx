@@ -59,14 +59,14 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
   })();
 
   const effectiveUserRole =
-    userRole === 'admin' || sessionUser?.role === 'admin'
+    userRole === 'admin' || userRole === 'dev' || sessionUser?.role === 'admin' || sessionUser?.role === 'dev'
       ? 'admin'
       : (userRole || sessionUser?.role || 'manager');
 
   const isAdmin = effectiveUserRole === 'admin';
 
-  // CHỈ CÓ ADMIN MỚI CÓ QUYỀN ĐƯỢC CHUYỂN CỔNG
-  const canSwitchPortal = isAdmin || (showPortalSwitcher && userRole === 'admin');
+  // CHỈ CÓ ADMIN / DEV MỚI CÓ QUYỀN ĐƯỢC CHUYỂN CỔNG
+  const canSwitchPortal = isAdmin || (showPortalSwitcher && (userRole === 'admin' || userRole === 'dev'));
 
   // Fullscreen Detection
   useEffect(() => {
@@ -256,6 +256,7 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
                       const isCurrent =
                         (portalRole ? portal.role === portalRole : false) ||
                         portal.path === currentPath ||
+                        (portal.path === '/dev' && (currentPath.startsWith('/dev') || currentPath.startsWith('/developer'))) ||
                         (portal.path === '/admin' && currentPath.startsWith('/admin')) ||
                         (portal.path === '/quan-ly' && (currentPath.startsWith('/quan-ly') || currentPath.startsWith('/manager') || currentPath === '/dashboard')) ||
                         (portal.path === '/le-tan' && (currentPath.startsWith('/le-tan') || currentPath.startsWith('/receptionist'))) ||

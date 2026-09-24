@@ -34,9 +34,11 @@ import {
   Flame,
   CheckCircle2,
   Terminal,
+  Bot,
+  Cpu,
 } from 'lucide-react';
 
-export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin';
+export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin' | 'dev';
 
 export interface NavigationItem {
   id: string;
@@ -148,9 +150,28 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'system_settings', label: 'Cấu hình Tòa nhà & IoT', icon: Sliders },
     ],
   },
+
+  // ================= 5. DEVELOPER & QUẢN TRỊ KỸ THUẬT (DEV CONSOLE) =================
+  dev: {
+    role: 'dev',
+    roleName: 'Developer & Quản Trị Hệ Thống',
+    portalSubtitle: 'DEVELOPER CONSOLE',
+    sectionTitle: 'KHÔNG GIAN KỸ THUẬT & PHÁT TRIỂN',
+    icon: Terminal,
+    defaultPath: '/dev',
+    items: [
+      { id: 'overview', label: 'Bàn làm việc Dev', icon: LayoutDashboard },
+      { id: 'ai_triage', label: 'AI Chatbot & Triage Ticket', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
+      { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
+      { id: 'audit_flags', label: 'Feature Flags & Audit Logs', icon: Sliders, badge: '5 flags' },
+      { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },
+      { id: 'manager_portal', label: 'Cổng Vận Hành Quản Lý', icon: Building2 },
+    ],
+  },
 };
 
 export const QUICK_PORTALS = [
+  { role: 'dev', label: 'Cổng Kỹ Thuật (Dev Console)', path: '/dev', icon: Terminal, color: 'text-cyan-500' },
   { role: 'admin', label: 'Cổng Quản Trị Hệ Thống (Admin)', path: '/admin', icon: Shield, color: 'text-amber-500' },
   { role: 'manager', label: 'Cổng Ban Quản Lý (Manager)', path: '/quan-ly', icon: Building2, color: 'text-sky-500' },
   { role: 'receptionist', label: 'Cổng Lễ Tân & An Ninh', path: '/le-tan', icon: Building, color: 'text-indigo-500' },

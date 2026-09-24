@@ -112,13 +112,10 @@ const App: React.FC = () => {
     setCurrentUser(session);
 
     // Điều hướng theo đúng vai trò được xác thực
-    if (isDev) {
+    // Admin / Dev điều hướng trực tiếp vào trang Dev Console
+    if (isDev || isAdmin) {
       setTimeout(() => {
         navigateTo('/dev');
-      }, 350);
-    } else if (isAdmin) {
-      setTimeout(() => {
-        navigateTo('/admin');
       }, 350);
     } else if (isManager) {
       setTimeout(() => {
@@ -194,6 +191,8 @@ const App: React.FC = () => {
     currentPath.startsWith('/dev/') ||
     currentPath === '/developer' ||
     currentPath.startsWith('/developer/') ||
+    currentPath === '/admin' ||
+    currentPath === '/admin/' ||
     currentPath === '/admin/dev';
 
   if (isDevConsolePath) {
@@ -205,8 +204,8 @@ const App: React.FC = () => {
         }}
         onNavigateHome={() => navigateTo('/home')}
         onNavigateManager={() => navigateTo('/quan-ly')}
-        userName={currentUser?.name || 'Dev Team'}
-        userEmail={currentUser?.email || 'dev@cassavas.vn'}
+        userName={currentUser?.name || (currentUser?.role === 'admin' ? 'Admin & Dev Team' : 'Dev Team')}
+        userEmail={currentUser?.email || (currentUser?.role === 'admin' ? 'admin@cassavas.vn' : 'dev@cassavas.vn')}
       />
     );
   }

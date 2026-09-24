@@ -51,9 +51,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     }
   })();
 
-  // ĐẶC QUYỀN ADMIN: Luôn duy trì quyền admin khi admin di chuyển giữa các cổng
+  // ĐẶC QUYỀN ADMIN / DEV: Luôn duy trì quyền admin khi admin di chuyển giữa các cổng
   const effectiveUserRole: UserRole =
-    userRole === 'admin' || sessionUser?.role === 'admin'
+    userRole === 'admin' || userRole === 'dev' || sessionUser?.role === 'admin' || sessionUser?.role === 'dev'
       ? 'admin'
       : (userRole || (sessionUser?.role as UserRole) || role);
 
