@@ -399,26 +399,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <p className="text-[11px] text-neutral-400 mt-2.5 font-normal">
                 Chọn một vai trò để vào thẳng khu vực làm việc.
               </p>
-
-              {/* Developer Login Link Banner */}
-              <div className="mt-3.5 p-2.5 rounded-xl bg-slate-950 text-slate-200 border border-slate-800 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                  <span className="text-[11px] font-mono font-medium text-slate-300">Cổng Developer & System Admin</span>
-                </div>
-                <a
-                  href="/dev/login"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onClose();
-                    window.history.pushState({}, '', '/dev/login');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }}
-                  className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 flex items-center gap-1"
-                >
-                  Đăng nhập Dev ➔
-                </a>
-              </div>
             </div>
 
             {/* Divider */}

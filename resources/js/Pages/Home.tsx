@@ -663,19 +663,6 @@ export const Home: React.FC<HomeProps> = ({
               </div>
             ) : (
               <>
-                <a
-                  href="/dev/login"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.history.pushState({}, '', '/dev/login');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }}
-                  className="hidden lg:inline-flex items-center gap-1.5 text-xs font-mono font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300/80 px-2.5 py-2 rounded-md transition-all shadow-2xs mr-1"
-                  title="Cổng Đăng Nhập Riêng Cho Developer & Quản Trị Hệ Thống"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-                  <span>Dev Login</span>
-                </a>
                 <button
                   onClick={() => openAuth('register')}
                   className="text-sm font-medium text-neutral-700 hover:text-neutral-950 px-3 py-2 rounded-md transition-colors"

@@ -8,7 +8,6 @@ import NotFound from './Pages/NotFound';
 import AmenityManagement from './Pages/Admin/AmenityManagement';
 import PublicStatusPage from './Pages/PublicStatusPage';
 import IncidentHistoryPage from './Pages/IncidentHistoryPage';
-import { DevLoginPage } from './Pages/Dev/DevLoginPage';
 import { DevConsolePage } from './Pages/Dev/DevConsolePage';
 
 interface UserSession {
@@ -163,7 +162,7 @@ const App: React.FC = () => {
     );
   }
 
-  // 0.1 Phân hệ Đăng Nhập Riêng cho Developer & Quản Trị Hệ Thống (Khác với Quản lý tòa nhà)
+  // 0.1 Nếu truy cập các URL đăng nhập dev cũ, tự động chuyển về trang /login chung
   const isDevLoginPath =
     currentPath === '/dev/login' ||
     currentPath === '/admin/login' ||
@@ -171,18 +170,8 @@ const App: React.FC = () => {
     currentPath === '/admin/dang-nhap';
 
   if (isDevLoginPath) {
-    return (
-      <DevLoginPage
-        onLoginSuccess={(role, email) => {
-          handleLoginSuccess(role, email);
-          setTimeout(() => {
-            navigateTo('/dev');
-          }, 350);
-        }}
-        onNavigateHome={() => navigateTo('/home')}
-        onNavigateManagerLogin={() => navigateTo('/login')}
-      />
-    );
+    navigateTo('/login');
+    return null;
   }
 
   // 0.2 Phân hệ Developer Console (Dành riêng cho Dev Team & Admin Kỹ thuật)
@@ -200,7 +189,7 @@ const App: React.FC = () => {
       <DevConsolePage
         onLogout={() => {
           handleLogout();
-          navigateTo('/dev/login');
+          navigateTo('/login');
         }}
         onNavigateHome={() => navigateTo('/home')}
         onNavigateManager={() => navigateTo('/quan-ly')}

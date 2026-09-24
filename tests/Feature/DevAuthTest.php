@@ -13,13 +13,10 @@ class DevAuthTest extends TestCase
     {
         $this->withoutVite();
 
-        $responseLogin = $this->get('/dev/login');
-        $responseLogin->assertStatus(200);
-
-        $responseAdminLogin = $this->get('/admin/login');
-        $responseAdminLogin->assertStatus(200);
-
         $responseDev = $this->get('/dev');
         $responseDev->assertStatus(200);
+
+        $responseAdmin = $this->get('/admin');
+        $responseAdmin->assertStatus(200);
     }
 }
