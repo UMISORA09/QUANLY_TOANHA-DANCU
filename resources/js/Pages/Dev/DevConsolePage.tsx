@@ -487,3 +487,5 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
     </AppLayout>
   );
 };
+
+export default DevConsolePage;

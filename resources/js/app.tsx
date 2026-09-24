@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
-import Home from './Pages/Home';
-import ManagementHome from './Pages/ManagementHome';
-import ResidentHome from './Pages/ResidentHome';
-import ReceptionHome from './Pages/ReceptionHome';
-import NotFound from './Pages/NotFound';
-import AmenityManagement from './Pages/Admin/AmenityManagement';
-import PublicStatusPage from './Pages/PublicStatusPage';
-import IncidentHistoryPage from './Pages/IncidentHistoryPage';
-import { DevConsolePage } from './Pages/Dev/DevConsolePage';
+import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
+import PageLoadingFallback from './Components/Common/PageLoadingFallback';
+
+// Tách nhỏ bundle (Code Splitting) với React.lazy để tải trang ban đầu tức thì
+const Home = lazy(() => import('./Pages/Home'));
+const ManagementHome = lazy(() => import('./Pages/ManagementHome'));
+const ResidentHome = lazy(() => import('./Pages/ResidentHome'));
+const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
+const DevConsolePage = lazy(() => import('./Pages/Dev/DevConsolePage'));
+const PublicStatusPage = lazy(() => import('./Pages/PublicStatusPage'));
+const IncidentHistoryPage = lazy(() => import('./Pages/IncidentHistoryPage'));
+const NotFound = lazy(() => import('./Pages/NotFound'));
 
 interface UserSession {
   role: string;
@@ -142,6 +145,8 @@ const App: React.FC = () => {
     setCurrentUser(null);
     navigateTo('/home');
   };
+
+  const renderContent = () => {
 
   // 0. Phân hệ Public Status Page (Công khai cho toàn bộ người dùng theo dõi hệ thống)
   if (currentPath === '/status' || currentPath === '/status/') {
@@ -379,16 +384,25 @@ const App: React.FC = () => {
       ? 'login'
       : null;
 
+    return (
+      <Home
+        initialAuthModal={initialAuthMode}
+        onLoginSuccess={handleLoginSuccess}
+        onNavigateAdmin={() => navigateTo('/admin')}
+        onNavigateManager={() => navigateTo('/quan-ly')}
+        onNavigateResident={() => navigateTo('/cu-dan')}
+        onNavigateReception={() => navigateTo('/le-tan')}
+        currentUserRole={currentUser?.role}
+      />
+    );
+  };
+
   return (
-    <Home
-      initialAuthModal={initialAuthMode}
-      onLoginSuccess={handleLoginSuccess}
-      onNavigateAdmin={() => navigateTo('/admin')}
-      onNavigateManager={() => navigateTo('/quan-ly')}
-      onNavigateResident={() => navigateTo('/cu-dan')}
-      onNavigateReception={() => navigateTo('/le-tan')}
-      currentUserRole={currentUser?.role}
-    />
+    <ChunkErrorBoundary>
+      <Suspense fallback={<PageLoadingFallback />}>
+        {renderContent()}
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 };
 
