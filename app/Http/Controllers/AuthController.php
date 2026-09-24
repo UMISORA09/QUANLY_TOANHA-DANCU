@@ -36,6 +36,8 @@ class AuthController extends Controller
 
         // Bản đồ alias cho các tài khoản demo nhanh
         $aliasMap = [
+            'dev@cassavas.vn' => 'admin@cassavas.vn',
+            'dev@smartcassavas.vn' => 'admin@cassavas.vn',
             'admin@smartcassavas.vn' => 'admin@cassavas.vn',
             'quanly@smartcassavas.vn' => 'quanly@cassavas.vn',
             'letan@smartcassavas.vn' => 'letan@cassavas.vn',
