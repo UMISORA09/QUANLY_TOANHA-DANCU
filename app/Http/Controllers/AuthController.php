@@ -47,7 +47,7 @@ class AuthController extends Controller
         $searchIdentifier = $aliasMap[$identifier] ?? $identifier;
 
         // Tìm user trong database theo username, email hoặc số điện thoại
-        $user = User::with('roles.permissions')
+        $user = User::with('roles:id,role_code')
             ->where(function ($q) use ($searchIdentifier) {
                 $q->where('username', $searchIdentifier)
                     ->orWhere('email', $searchIdentifier)
@@ -56,30 +56,24 @@ class AuthController extends Controller
             ->first();
 
         if (! $user) {
+            // Chống Timing Attack: chạy dummy bcrypt hash có hằng số thời gian
+            Hash::check($password, '$2y$12$e0MYzXyjpJS7Pd0RVvHwHeFj4G3pUa9qYVp8P9yWJt1h2oV6y5fGu');
+
             return response()->json([
                 'success' => false,
-                'detail' => 'Tài khoản không tồn tại trong hệ thống tòa nhà!',
-                'message' => 'Tài khoản không tồn tại trong hệ thống tòa nhà!',
+                'detail' => 'Thông tin đăng nhập không hợp lệ.',
+                'message' => 'Thông tin đăng nhập không hợp lệ.',
             ], 401);
         }
 
-        // Kiểm tra mật khẩu
-        $isValidPassword = false;
-
-        if (! empty($user->password_hash) && Hash::check($password, $user->password_hash)) {
-            $isValidPassword = true;
-        }
-
-        // Chấp nhận mật khẩu seed mặc định hoặc demo
-        if ($password === '123567' || $password === 'Cassavas@2026' || $password === 'admin123' || $password === 'password') {
-            $isValidPassword = true;
-        }
+        // Kiểm tra mật khẩu chuẩn xác thực cryptographic hash
+        $isValidPassword = ! empty($user->password_hash) && Hash::check($password, $user->password_hash);
 
         if (! $isValidPassword) {
             return response()->json([
                 'success' => false,
-                'detail' => 'Mật khẩu không chính xác. Mật khẩu mặc định hệ thống là: 123567',
-                'message' => 'Mật khẩu không chính xác. Mật khẩu mặc định hệ thống là: 123567',
+                'detail' => 'Thông tin đăng nhập không hợp lệ.',
+                'message' => 'Thông tin đăng nhập không hợp lệ.',
             ], 401);
         }
 
@@ -120,26 +114,34 @@ class AuthController extends Controller
         $tokenHash = hash('sha256', $token);
 
         try {
-            DB::table('user_sessions')->insert([
-                'id' => (string) Str::uuid(),
-                'user_id' => $user->id,
-                'refresh_token_hash' => $tokenHash,
-                'device_name' => 'Web Dashboard',
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-                'expires_at' => now()->addDays(7),
-                'is_revoked' => 0,
-                'created_at' => now(),
-            ]);
+            DB::transaction(function () use ($user, $tokenHash, $request) {
+                DB::table('user_sessions')->insert([
+                    'id' => (string) Str::uuid(),
+                    'user_id' => $user->id,
+                    'refresh_token_hash' => $tokenHash,
+                    'device_name' => 'Web Dashboard',
+                    'ip_address' => $request->ip(),
+                    'user_agent' => substr((string) $request->userAgent(), 0, 1000),
+                    'expires_at' => now()->addDays(7),
+                    'is_revoked' => 0,
+                    'created_at' => now(),
+                ]);
 
-            // Cập nhật thời điểm đăng nhập cuối
-            $user->updateQuietly([
-                'last_login_at' => now(),
-                'last_login_ip' => $request->ip(),
-                'failed_login_attempts' => 0,
-            ]);
-        } catch (\Throwable) {
-            // ignore session insert error
+                // Cập nhật thời điểm đăng nhập cuối
+                $user->updateQuietly([
+                    'last_login_at' => now(),
+                    'last_login_ip' => $request->ip(),
+                    'failed_login_attempts' => 0,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'detail' => 'Không thể tạo phiên đăng nhập. Vui lòng thử lại.',
+                'message' => 'Không thể tạo phiên đăng nhập. Vui lòng thử lại.',
+            ], 503);
         }
 
         return response()->json([
@@ -186,11 +188,11 @@ class AuthController extends Controller
                     ->first();
 
                 if ($session) {
-                    $user = User::with('roles.permissions')->find($session->user_id);
+                    $user = User::with('roles:id,role_code')->find($session->user_id);
                 } elseif (str_starts_with($token, 'smart_token_')) {
                     $parts = explode('_', $token);
                     if (isset($parts[2]) && strlen($parts[2]) === 36) {
-                        $user = User::with('roles.permissions')->find($parts[2]);
+                        $user = User::with('roles:id,role_code')->find($parts[2]);
                     }
                 }
             }

@@ -16,11 +16,35 @@ class ResidentPortalController extends Controller
      */
     public function overview(Request $request): JsonResponse
     {
-        $userId = $request->query('user_id');
+        // Ưu tiên xác thực người dùng từ Bearer token để bảo mật, sau đó mới dùng fallback query param
+        $user = $request->user();
+        if (! $user) {
+            $authHeader = $request->header('Authorization');
+            if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
+                $token = trim(substr($authHeader, 7));
+                $tokenHash = hash('sha256', $token);
+                $session = DB::table('user_sessions')
+                    ->where(function ($q) use ($token, $tokenHash) {
+                        $q->where('refresh_token_hash', $tokenHash)
+                            ->orWhere('refresh_token_hash', $token);
+                    })
+                    ->where('is_revoked', 0)
+                    ->where('expires_at', '>', now())
+                    ->first();
 
-        // Tìm user theo id hoặc lấy tài khoản cư dân mẫu Nguyễn Văn An
-        $user = null;
-        if (! empty($userId)) {
+                if ($session) {
+                    $user = DB::table('users')->where('id', $session->user_id)->first();
+                } elseif (str_starts_with($token, 'smart_token_')) {
+                    $parts = explode('_', $token);
+                    if (isset($parts[2]) && strlen($parts[2]) === 36) {
+                        $user = DB::table('users')->where('id', $parts[2])->first();
+                    }
+                }
+            }
+        }
+
+        $userId = $request->query('user_id');
+        if (! $user && ! empty($userId)) {
             $user = DB::table('users')->where('id', $userId)->first();
         }
 
@@ -53,17 +77,27 @@ class ResidentPortalController extends Controller
 
         $apartmentId = $residentRecord ? $residentRecord->apartment_id : null;
 
+        $apartmentSelect = [
+            'apartments.id',
+            'apartments.apartment_number',
+            'apartments.floor_number',
+            'apartments.room_type',
+            'apartments.gross_floor_area_sqm',
+            'apartments.net_usable_area_sqm',
+            'apartments.bedroom_count',
+            'apartments.bathroom_count',
+            'apartments.status',
+            'blocks.block_name',
+            'blocks.block_code',
+            'blocks.hotline_phone',
+        ];
+
         $apartment = null;
         if ($apartmentId) {
             $apartment = DB::table('apartments')
                 ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
                 ->where('apartments.id', $apartmentId)
-                ->select(
-                    'apartments.*',
-                    'blocks.block_name',
-                    'blocks.block_code',
-                    'blocks.hotline_phone'
-                )
+                ->select($apartmentSelect)
                 ->first();
         }
 
@@ -71,30 +105,47 @@ class ResidentPortalController extends Controller
             $apartment = DB::table('apartments')
                 ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
                 ->where('apartments.apartment_number', 'A1-05')
-                ->select(
-                    'apartments.*',
-                    'blocks.block_name',
-                    'blocks.block_code',
-                    'blocks.hotline_phone'
-                )
+                ->select($apartmentSelect)
                 ->first();
             if ($apartment) {
                 $apartmentId = $apartment->id;
             }
         }
 
-        // 2. Danh sách Hóa đơn
+        // 2. Hóa đơn: Tính KPI nợ đọng trực tiếp từ Database và giới hạn 10 hóa đơn gần nhất cho overview
         $invoicesQuery = DB::table('invoices');
         if ($apartmentId) {
             $invoicesQuery->where('apartment_id', $apartmentId);
         } else {
             $invoicesQuery->where('resident_user_id', $user->id);
         }
-        $invoices = $invoicesQuery
+
+        $unpaidStats = (clone $invoicesQuery)
+            ->whereIn('status', ['ISSUED', 'OVERDUE'])
+            ->selectRaw('COUNT(*) as unpaid_count, COALESCE(SUM(remaining_balance), 0) as total_debt')
+            ->first();
+
+        $totalDebt = (float) ($unpaidStats->total_debt ?? 0);
+        $unpaidInvoicesCount = (int) ($unpaidStats->unpaid_count ?? 0);
+
+        $invoices = (clone $invoicesQuery)
+            ->select([
+                'id',
+                'invoice_number',
+                'invoice_type',
+                'billing_period',
+                'total_amount',
+                'paid_amount',
+                'remaining_balance',
+                'status',
+                'due_date',
+                'created_at',
+            ])
             ->orderBy('due_date', 'desc')
+            ->limit(10)
             ->get();
 
-        // 3. Danh sách Sự cố & Phản ánh (Tickets)
+        // 3. Sự cố & Phản ánh (Tickets): Giới hạn 10 tickets gần nhất cho overview
         $ticketsQuery = DB::table('tickets')
             ->leftJoin('ticket_categories', 'tickets.category_id', '=', 'ticket_categories.id');
         if ($apartmentId) {
@@ -105,12 +156,28 @@ class ResidentPortalController extends Controller
         } else {
             $ticketsQuery->where('tickets.creator_user_id', $user->id);
         }
-        $tickets = $ticketsQuery
-            ->select('tickets.*', 'ticket_categories.category_name', 'ticket_categories.category_code')
+
+        $activeTicketsCount = (clone $ticketsQuery)
+            ->whereIn('tickets.status', ['NEW', 'IN_PROGRESS', 'PROCESSING', 'RECEIVED'])
+            ->count();
+
+        $tickets = (clone $ticketsQuery)
+            ->select([
+                'tickets.id',
+                'tickets.ticket_number',
+                'tickets.title',
+                'tickets.priority',
+                'tickets.status',
+                'tickets.description',
+                'tickets.created_at',
+                'ticket_categories.category_name',
+                'ticket_categories.category_code',
+            ])
             ->orderBy('tickets.created_at', 'desc')
+            ->limit(10)
             ->get();
 
-        // 4. Danh sách Lịch đặt tiện ích (Amenity Bookings)
+        // 4. Lịch đặt tiện ích (Amenity Bookings): Giới hạn 10 booking gần nhất cho overview
         $bookingsQuery = DB::table('amenity_bookings')
             ->leftJoin('amenities', 'amenity_bookings.amenity_id', '=', 'amenities.id');
         if ($apartmentId) {
@@ -121,13 +188,32 @@ class ResidentPortalController extends Controller
         } else {
             $bookingsQuery->where('amenity_bookings.resident_user_id', $user->id);
         }
-        $bookings = $bookingsQuery
-            ->select('amenity_bookings.*', 'amenities.amenity_name', 'amenities.location_detail', 'amenities.amenity_code')
+
+        $upcomingBookingsCount = (clone $bookingsQuery)
+            ->where('amenity_bookings.status', 'CONFIRMED')
+            ->count();
+
+        $bookings = (clone $bookingsQuery)
+            ->select([
+                'amenity_bookings.id',
+                'amenity_bookings.booking_code',
+                'amenity_bookings.amenity_id',
+                'amenity_bookings.booking_date',
+                'amenity_bookings.start_time',
+                'amenity_bookings.end_time',
+                'amenity_bookings.total_amount',
+                'amenity_bookings.status',
+                'amenity_bookings.created_at',
+                'amenities.amenity_name',
+                'amenities.location_detail',
+                'amenities.amenity_code',
+            ])
             ->orderBy('amenity_bookings.booking_date', 'desc')
             ->orderBy('amenity_bookings.start_time', 'asc')
+            ->limit(10)
             ->get();
 
-        // 5. Danh sách Khách đăng ký ra vào (Visitors)
+        // 5. Khách đăng ký ra vào (Visitors): Giới hạn 10 khách gần nhất cho overview
         $visitorsQuery = DB::table('visitor_registrations');
         if ($apartmentId) {
             $visitorsQuery->where(function ($q) use ($apartmentId, $user) {
@@ -137,11 +223,30 @@ class ResidentPortalController extends Controller
         } else {
             $visitorsQuery->where('host_resident_user_id', $user->id);
         }
-        $visitors = $visitorsQuery
+
+        $activeVisitorsCount = (clone $visitorsQuery)
+            ->where('qr_pass_status', 'ACTIVE')
+            ->count();
+
+        $visitors = (clone $visitorsQuery)
+            ->select([
+                'id',
+                'visitor_name',
+                'phone_number',
+                'id_card_number',
+                'expected_arrival_time',
+                'expected_departure_time',
+                'qr_pass_code',
+                'qr_pass_status',
+                'license_plate',
+                'status',
+                'created_at',
+            ])
             ->orderBy('expected_arrival_time', 'desc')
+            ->limit(10)
             ->get();
 
-        // 6. Danh sách các Tiện ích khả dụng để cư dân có thể đặt
+        // 6. Danh sách các Tiện ích khả dụng
         $availableAmenities = DB::table('amenities')
             ->where('is_active', 1)
             ->select('id', 'amenity_name', 'amenity_code', 'location_detail', 'max_capacity_per_slot', 'hourly_rate')
@@ -151,10 +256,6 @@ class ResidentPortalController extends Controller
         $ticketCategories = DB::table('ticket_categories')
             ->select('id', 'category_name', 'category_code')
             ->get();
-
-        // Thống kê nhanh
-        $unpaidInvoices = $invoices->whereIn('status', ['ISSUED', 'OVERDUE']);
-        $totalDebt = $unpaidInvoices->sum('remaining_balance');
 
         return response()->json([
             'user' => [
@@ -182,11 +283,11 @@ class ResidentPortalController extends Controller
                 'hotline_phone' => $apartment->hotline_phone ?? '024 3999 1111',
             ] : null,
             'kpis' => [
-                'unpaid_invoices_count' => $unpaidInvoices->count(),
+                'unpaid_invoices_count' => $unpaidInvoicesCount,
                 'total_debt' => (float) $totalDebt,
-                'active_tickets_count' => $tickets->whereIn('status', ['NEW', 'IN_PROGRESS', 'PROCESSING', 'RECEIVED'])->count(),
-                'upcoming_bookings_count' => $bookings->where('status', 'CONFIRMED')->count(),
-                'active_visitors_count' => $visitors->where('qr_pass_status', 'ACTIVE')->count(),
+                'active_tickets_count' => $activeTicketsCount,
+                'upcoming_bookings_count' => $upcomingBookingsCount,
+                'active_visitors_count' => $activeVisitorsCount,
             ],
             'invoices' => $invoices,
             'tickets' => $tickets,

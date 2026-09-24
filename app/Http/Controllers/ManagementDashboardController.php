@@ -16,7 +16,7 @@ class ManagementDashboardController extends Controller
      */
     public function overview(): JsonResponse
     {
-        $data = Cache::remember('management_dashboard_overview_metrics', 30, function () {
+        $data = Cache::remember('management_dashboard:v1:overview', 120, function () {
             $today = Carbon::create(2026, 9, 15)->toDateString();
 
             // 1. KPI THỐNG KÊ
