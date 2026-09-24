@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
+import { RbacManagement } from '../Admin/RbacManagement';
+import { AmenityManagement } from '../Admin/AmenityManagement';
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -121,7 +123,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
 
   return (
     <AppLayout
-      role="dev"
+      role="admin"
       userRole="admin"
       activeItemId={activeTab}
       onItemClick={(id) => {
@@ -135,25 +137,27 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       userEmail={userEmail}
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
-      statusText="Hệ thống Developer & Kỹ thuật đang vận hành ổn định"
+      statusText="Hệ thống Quản trị & Kỹ thuật (Admin / Dev) đang vận hành ổn định"
     >
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
         {/* Breadcrumb & Title Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
           <div>
-            <div className="flex items-center gap-2 text-xs font-mono font-bold tracking-wider text-cyan-600 uppercase mb-1">
-              <Terminal className="w-4 h-4 text-cyan-500" />
-              <span>DEVELOPER & SYSTEM ADMIN CONSOLE</span>
+            <div className="flex items-center gap-2 text-xs font-mono font-bold tracking-wider text-amber-600 uppercase mb-1">
+              <Shield className="w-4 h-4 text-amber-500" />
+              <span>ADMIN & DEVELOPER CONSOLE HỢP NHẤT</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              {activeTab === 'overview' && 'Bàn Làm Việc Developer Console'}
+              {activeTab === 'overview' && 'Bàn Làm Việc Quản Trị & Kỹ Thuật (Admin / Dev)'}
+              {activeTab === 'roles' && 'Phân Quyền Tài Khoản (RBAC Matrix)'}
+              {activeTab === 'amenities' && 'Quản Lý Tiện Ích & Cấu Hình Slot'}
               {activeTab === 'ai_triage' && 'AI Chatbot & Phân Loại Sự Cố Tự Động (Triage)'}
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
               {activeTab === 'cicd' && 'Hệ Thống Tự Động Hóa CI/CD & DevOps Pipeline'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Quản lý hạ tầng kỹ thuật, mô phỏng IoT, tri thức AI RAG và kiểm toán hệ thống Smart Cassavas.
+              Toàn quyền quản trị tài khoản, phân quyền, cấu hình tiện ích, CI/CD và hạ tầng kỹ thuật IoT.
             </p>
           </div>
 
@@ -481,6 +485,20 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {activeTab === 'cicd' && (
           <div className="space-y-6">
             <CicdDashboard userRole="admin" />
+          </div>
+        )}
+
+        {/* TAB 6: PHÂN QUYỀN TÀI KHOẢN (RBAC) */}
+        {activeTab === 'roles' && (
+          <div className="space-y-6">
+            <RbacManagement embedded={true} />
+          </div>
+        )}
+
+        {/* TAB 7: QUẢN LÝ TIỆN ÍCH */}
+        {activeTab === 'amenities' && (
+          <div className="space-y-6">
+            <AmenityManagement embedded={true} />
           </div>
         )}
       </div>

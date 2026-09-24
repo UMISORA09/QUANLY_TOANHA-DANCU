@@ -114,10 +114,10 @@ const App: React.FC = () => {
     setCurrentUser(session);
 
     // Điều hướng theo đúng vai trò được xác thực
-    // Admin / Dev điều hướng trực tiếp vào trang Dev Console
+    // Admin / Dev điều hướng trực tiếp vào Cổng Quản Trị & Kỹ Thuật (/admin)
     if (isDev || isAdmin) {
       setTimeout(() => {
-        navigateTo('/dev');
+        navigateTo('/admin');
       }, 350);
     } else if (isManager) {
       setTimeout(() => {
@@ -179,32 +179,7 @@ const App: React.FC = () => {
     return null;
   }
 
-  // 0.2 Phân hệ Developer Console (Dành riêng cho Dev Team & Admin Kỹ thuật)
-  const isDevConsolePath =
-    currentPath === '/dev' ||
-    currentPath.startsWith('/dev/') ||
-    currentPath === '/developer' ||
-    currentPath.startsWith('/developer/') ||
-    currentPath === '/admin' ||
-    currentPath === '/admin/' ||
-    currentPath === '/admin/dev';
-
-  if (isDevConsolePath) {
-    return (
-      <DevConsolePage
-        onLogout={() => {
-          handleLogout();
-          navigateTo('/login');
-        }}
-        onNavigateHome={() => navigateTo('/home')}
-        onNavigateManager={() => navigateTo('/quan-ly')}
-        userName={currentUser?.name || (currentUser?.role === 'admin' ? 'Admin & Dev Team' : 'Dev Team')}
-        userEmail={currentUser?.email || (currentUser?.role === 'admin' ? 'admin@cassavas.vn' : 'dev@cassavas.vn')}
-      />
-    );
-  }
-
-  // 1. Phân hệ Quản Trị Viên (Admin Console - Toàn quyền & Chuyển cổng)
+  // 1. Phân hệ Quản Trị Viên & Kỹ Thuật (Admin & Dev Console HỢP NHẤT LÀ 1)
   const isAmenityAdminPath =
     currentPath === '/admin/amenities' ||
     currentPath === '/admin/tien-ich' ||
@@ -225,16 +200,20 @@ const App: React.FC = () => {
     currentPath.startsWith('/admin/roles') ||
     currentPath.startsWith('/admin/rbac');
 
-  const isAdminPath =
+  const isUnifiedAdminDevPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
+    currentPath === '/dev' ||
+    currentPath.startsWith('/dev/') ||
+    currentPath === '/developer' ||
+    currentPath.startsWith('/developer/') ||
     isAmenityAdminPath ||
     isCicdAdminPath ||
     isRoleAdminPath;
 
-  if (isAdminPath) {
-    // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin, chuyển về đúng cổng của họ
-    if (currentUser && currentUser.role !== 'admin') {
+  if (isUnifiedAdminDevPath) {
+    // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
+    if (currentUser && currentUser.role !== 'admin' && !currentUser.isDev) {
       if (currentUser.role === 'manager') {
         navigateTo('/quan-ly');
         return null;
@@ -256,15 +235,18 @@ const App: React.FC = () => {
       ? 'amenities'
       : isRoleAdminPath
       ? 'roles'
-      : (urlTab || undefined);
+      : (urlTab || 'overview');
 
     return (
-      <ManagementHome
-        onLogout={handleLogout}
+      <DevConsolePage
+        onLogout={() => {
+          handleLogout();
+          navigateTo('/login');
+        }}
         onNavigateHome={() => navigateTo('/home')}
-        userRole="admin"
-        userName={currentUser?.role === 'admin' ? currentUser.name : 'Admin Cassavas'}
-        userEmail={currentUser?.role === 'admin' ? currentUser.email : 'admin@cassavas.vn'}
+        onNavigateManager={() => navigateTo('/quan-ly')}
+        userName={currentUser?.name || 'Admin & Dev Team'}
+        userEmail={currentUser?.email || 'admin@cassavas.vn'}
         initialTab={tabToUse}
       />
     );
