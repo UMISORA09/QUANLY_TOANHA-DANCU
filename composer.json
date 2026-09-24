@@ -38,6 +38,7 @@
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php artisan key:generate",
             "@php artisan migrate --force",
+            "@php artisan db:seed --class=Database\\\\Seeders\\\\DatabaseSeeder --force",
             "npm install --ignore-scripts",
             "npm run build"
         ],
@@ -45,8 +46,15 @@
             "Composer\\Config::disableProcessTimeout",
             "@php artisan dev"
         ],
+        "db:migrate": "@php artisan migrate --force --no-interaction",
+        "db:seed": "@php artisan db:seed --class=Database\\\\Seeders\\\\DatabaseSeeder --force --no-interaction",
+        "db:seed:demo": "@php artisan db:seed --class=Database\\\\Seeders\\\\SharedDemoDataSeeder --force --no-interaction",
+        "db:init": [
+            "@db:migrate",
+            "@db:seed"
+        ],
         "test": [
-            "@php artisan config:clear --ansi @no_additional_args",
+            "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
         "post-autoload-dump": [

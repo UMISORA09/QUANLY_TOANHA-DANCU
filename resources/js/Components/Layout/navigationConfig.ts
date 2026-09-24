@@ -129,50 +129,49 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     ],
   },
 
-  // ================= 4. QUẢN TRỊ VIÊN (ADMIN PORTAL) =================
+  // ================= 4. QUẢN TRỊ VIÊN & KỸ THUẬT (ADMIN & DEV PORTAL) =================
   admin: {
     role: 'admin',
-    roleName: 'Quản Trị Viên (Admin)',
-    portalSubtitle: 'SYSTEM ADMINISTRATOR',
-    sectionTitle: 'TRUNG TÂM QUẢN TRỊ HỆ THỐNG',
+    roleName: 'Quản Trị Viên & Kỹ Thuật (Admin / Dev)',
+    portalSubtitle: 'SYSTEM ADMINISTRATOR & DEV CONSOLE',
+    sectionTitle: 'TRUNG TÂM QUẢN TRỊ & KỸ THUẬT',
     icon: Shield,
     defaultPath: '/admin',
     items: [
-      { id: 'overview', label: 'Tổng quan Hệ thống', icon: LayoutDashboard },
-      { id: 'roles', label: 'Phân quyền', icon: Shield, badge: 'Toàn quyền', badgeType: 'warning' },
-      { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
+      { id: 'roles', label: 'Phân quyền tài khoản (RBAC)', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
       { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
-      { id: 'billing', label: 'Tài chính & Doanh thu', icon: CreditCard },
-      { id: 'maintenance', label: 'Kỹ thuật & Trang thiết bị', icon: Wrench },
-      { id: 'tickets', label: 'Xử lý Yêu cầu & Sự cố', icon: AlertCircle, badge: '12', badgeType: 'danger' },
-      { id: 'reports', label: 'Báo cáo & Kiểm toán Log', icon: BarChart3 },
-      { id: 'cicd', label: 'CI/CD & DevOps', icon: Terminal, badge: 'Pipeline', badgeType: 'success', isNew: true },
-      { id: 'system_settings', label: 'Cấu hình Tòa nhà & IoT', icon: Sliders },
-    ],
-  },
-
-  // ================= 5. DEVELOPER & QUẢN TRỊ KỸ THUẬT (DEV CONSOLE) =================
-  dev: {
-    role: 'dev',
-    roleName: 'Developer & Quản Trị Hệ Thống',
-    portalSubtitle: 'DEVELOPER CONSOLE',
-    sectionTitle: 'KHÔNG GIAN KỸ THUẬT & PHÁT TRIỂN',
-    icon: Terminal,
-    defaultPath: '/dev',
-    items: [
-      { id: 'overview', label: 'Bàn làm việc Dev', icon: LayoutDashboard },
       { id: 'ai_triage', label: 'AI Chatbot & Triage Ticket', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Audit Logs', icon: Sliders, badge: '5 flags' },
       { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },
-      { id: 'manager_portal', label: 'Cổng Vận Hành Quản Lý', icon: Building2 },
+      { id: 'manager_portal', label: 'Chuyển sang Cổng Ban Quản Lý', icon: Building2 },
+    ],
+  },
+
+  // ================= 5. DEVELOPER (HỢP NHẤT CHUNG VỚI ADMIN) =================
+  dev: {
+    role: 'admin',
+    roleName: 'Quản Trị Viên & Kỹ Thuật (Admin / Dev)',
+    portalSubtitle: 'SYSTEM ADMINISTRATOR & DEV CONSOLE',
+    sectionTitle: 'TRUNG TÂM QUẢN TRỊ & KỸ THUẬT',
+    icon: Shield,
+    defaultPath: '/admin',
+    items: [
+      { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
+      { id: 'roles', label: 'Phân quyền tài khoản (RBAC)', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
+      { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
+      { id: 'ai_triage', label: 'AI Chatbot & Triage Ticket', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
+      { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
+      { id: 'audit_flags', label: 'Feature Flags & Audit Logs', icon: Sliders, badge: '5 flags' },
+      { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },
+      { id: 'manager_portal', label: 'Chuyển sang Cổng Ban Quản Lý', icon: Building2 },
     ],
   },
 };
 
 export const QUICK_PORTALS = [
-  { role: 'dev', label: 'Cổng Kỹ Thuật (Dev Console)', path: '/dev', icon: Terminal, color: 'text-cyan-500' },
-  { role: 'admin', label: 'Cổng Quản Trị Hệ Thống (Admin)', path: '/admin', icon: Shield, color: 'text-amber-500' },
+  { role: 'admin', label: 'Cổng Quản Trị & Kỹ Thuật (Admin / Dev)', path: '/admin', icon: Shield, color: 'text-amber-500' },
   { role: 'manager', label: 'Cổng Ban Quản Lý (Manager)', path: '/quan-ly', icon: Building2, color: 'text-sky-500' },
   { role: 'receptionist', label: 'Cổng Lễ Tân & An Ninh', path: '/le-tan', icon: Building, color: 'text-indigo-500' },
   { role: 'resident', label: 'Cổng Dịch Vụ Cư Dân', path: '/cu-dan', icon: Home, color: 'text-emerald-500' },

@@ -264,9 +264,12 @@ class RbacSecurityTest extends TestCase
      */
     public function test_login_returns_permissions_and_role_details(): void
     {
+        $admin = User::where('username', 'admin')->first();
+        $password = ($admin && Hash::check('Admin@123456', $admin->password_hash)) ? 'Admin@123456' : '123567';
+
         $response = $this->postJson('/api/v1/auth/login', [
             'username' => 'admin',
-            'password' => '123567',
+            'password' => $password,
         ]);
 
         $response->assertStatus(200)
