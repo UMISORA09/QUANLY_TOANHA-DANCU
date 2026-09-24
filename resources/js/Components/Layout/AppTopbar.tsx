@@ -250,48 +250,68 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
                       <span>ĐẶC QUYỀN QUẢN TRỊ VIÊN</span>
                       <span className="text-amber-600 font-bold">CHUYỂN CỔNG</span>
                     </div>
-                    {QUICK_PORTALS.map((portal) => {
-                      const Icon = portal.icon;
+                    {(() => {
                       const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-                      const isCurrent =
-                        (portalRole ? portal.role === portalRole : false) ||
-                        portal.path === currentPath ||
-                        (portal.path === '/dev' && (currentPath.startsWith('/dev') || currentPath.startsWith('/developer'))) ||
-                        (portal.path === '/admin' && currentPath.startsWith('/admin')) ||
-                        (portal.path === '/quan-ly' && (currentPath.startsWith('/quan-ly') || currentPath.startsWith('/manager') || currentPath === '/dashboard')) ||
-                        (portal.path === '/le-tan' && (currentPath.startsWith('/le-tan') || currentPath.startsWith('/receptionist'))) ||
-                        (portal.path === '/cu-dan' && (currentPath.startsWith('/cu-dan') || currentPath.startsWith('/resident')));
-                      return (
-                        <a
-                          key={portal.role}
-                          href={portal.path}
-                          onClick={() => setIsPortalDropdownOpen(false)}
-                          className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all my-0.5 ${
-                            isCurrent
-                              ? 'bg-amber-50/90 text-amber-950 font-bold border border-amber-200/80 shadow-2xs'
-                              : 'text-slate-600 hover:text-neutral-900 hover:bg-slate-100/80'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-7 h-7 rounded-lg bg-white border border-slate-200/60 flex items-center justify-center shrink-0 shadow-2xs">
-                              <Icon className={`w-4 h-4 ${portal.color}`} />
+
+                      // Xác định DUY NHẤT một portal active dựa trên URL hiện tại (Ưu tiên tuyệt đối) hoặc portalRole
+                      let activePortalRole: UserRole = 'manager';
+                      if (currentPath === '/dev' || currentPath.startsWith('/dev/') || currentPath === '/developer' || currentPath.startsWith('/developer/')) {
+                        activePortalRole = 'dev';
+                      } else if (currentPath === '/admin' || currentPath.startsWith('/admin/')) {
+                        activePortalRole = 'admin';
+                      } else if (currentPath === '/quan-ly' || currentPath.startsWith('/quan-ly/') || currentPath === '/manager' || currentPath.startsWith('/manager/') || currentPath === '/dashboard') {
+                        activePortalRole = 'manager';
+                      } else if (currentPath === '/le-tan' || currentPath.startsWith('/le-tan/') || currentPath === '/receptionist' || currentPath.startsWith('/receptionist/')) {
+                        activePortalRole = 'receptionist';
+                      } else if (currentPath === '/cu-dan' || currentPath.startsWith('/cu-dan/') || currentPath === '/resident' || currentPath.startsWith('/resident/')) {
+                        activePortalRole = 'resident';
+                      } else if (portalRole) {
+                        activePortalRole = portalRole;
+                      }
+
+                      return QUICK_PORTALS.map((portal) => {
+                        const Icon = portal.icon;
+                        const isCurrent = portal.role === activePortalRole;
+
+                        return (
+                          <a
+                            key={portal.role}
+                            href={portal.path}
+                            onClick={(e) => {
+                              setIsPortalDropdownOpen(false);
+                              if (window.location.pathname !== portal.path) {
+                                e.preventDefault();
+                                window.history.pushState({}, '', portal.path);
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                              }
+                            }}
+                            className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all my-0.5 ${
+                              isCurrent
+                                ? 'bg-amber-50/90 text-amber-950 font-bold border border-amber-200/80 shadow-2xs'
+                                : 'text-slate-600 hover:text-neutral-900 hover:bg-slate-100/80'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-7 h-7 rounded-lg bg-white border border-slate-200/60 flex items-center justify-center shrink-0 shadow-2xs">
+                                <Icon className={`w-4 h-4 ${portal.color}`} />
+                              </div>
+                              <div className="flex flex-col text-left min-w-0">
+                                <span className="font-semibold text-slate-900 truncate">{portal.label}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">{portal.path}</span>
+                              </div>
                             </div>
-                            <div className="flex flex-col text-left min-w-0">
-                              <span className="font-semibold text-slate-900 truncate">{portal.label}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">{portal.path}</span>
-                            </div>
-                          </div>
-                          {isCurrent ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 font-semibold shrink-0 ml-2">
-                              <span>Hiện tại</span>
-                              <span className="w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-200" />
-                            </span>
-                          ) : (
-                            <ExternalLink className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-2" />
-                          )}
-                        </a>
-                      );
-                    })}
+                            {isCurrent ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 font-semibold shrink-0 ml-2">
+                                <span>Hiện tại</span>
+                                <span className="w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-200" />
+                              </span>
+                            ) : (
+                              <ExternalLink className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-2" />
+                            )}
+                          </a>
+                        );
+                      });
+                    })()}
                   </div>
                 </>
               )}

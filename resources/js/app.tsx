@@ -292,12 +292,11 @@ const App: React.FC = () => {
     }
 
     const isUserAdmin = currentUser?.role === 'admin';
-    const effectiveRole = isUserAdmin ? 'admin' : 'manager';
     return (
       <ManagementHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home')}
-        userRole={effectiveRole}
+        userRole="manager"
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
       />
