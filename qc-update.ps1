@@ -186,17 +186,22 @@ try {
     }
 
     Write-QCLog "Fetching updates for branch '$targetBranch' from origin..." "White"
-    git fetch origin $targetBranch 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $fetchOutput = git fetch origin $targetBranch 2>&1
+    $fetchExit = $LASTEXITCODE
+    if ($fetchExit -ne 0) {
         Write-Host "========================================" -ForegroundColor Red
         Write-QCLog "QC UPDATE FAILED" "Red"
-        Write-QCLog "Cannot fetch updates for branch '$targetBranch' from origin." "Red"
+        Write-QCLog "Cannot fetch updates for branch '$targetBranch' from origin (exit code $fetchExit):" "Red"
+        $fetchOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
         Write-Host "========================================" -ForegroundColor Red
         exit 1
     }
 
     $CURRENT_COMMIT = (git rev-parse HEAD 2>&1 | Out-String).Trim()
-    $TARGET_COMMIT = (git rev-parse "origin/$targetBranch" 2>&1 | Out-String).Trim()
+    $TARGET_COMMIT = (git rev-parse FETCH_HEAD 2>&1 | Out-String).Trim()
+    if (-not $TARGET_COMMIT -or $LASTEXITCODE -ne 0) {
+        $TARGET_COMMIT = (git rev-parse "origin/$targetBranch" 2>&1 | Out-String).Trim()
+    }
     $SHORT_CURRENT = $CURRENT_COMMIT.Substring(0, 7)
     $SHORT_TARGET = $TARGET_COMMIT.Substring(0, 7)
 
