@@ -6,6 +6,8 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
-.env
+.env*
 *.sql
 *.md
+database/*.sqlite
+storage/app/**
