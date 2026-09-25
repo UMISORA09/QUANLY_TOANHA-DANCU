@@ -1,0 +1,16 @@
+.env*
+*.sql
+database/*.sqlite
+.git/
+.github/
+.codex/
+docs/
+tests/
+images/
+storage/app/
+node_modules/
+vendor/
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
