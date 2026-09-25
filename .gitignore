@@ -32,4 +32,7 @@ backend/.env
 backend/**/__pycache__/
 /boost.json
 /images/
+.qc-candidate/
+.qc-update.lock
+.last_qc_commit
 

@@ -95,6 +95,35 @@ Mọi thao tác phát triển, kiểm thử và bảo trì đều được thự
 
 ---
 
+## ⚡ QC LOCAL UPDATE (CẬP NHẬT 1 LỆNH AN TOÀN CHO MÁY QC)
+
+Dành cho Tester / QC trên máy local. Khi Developer push code mới lên GitHub, người làm QC chỉ cần chạy **MỘT câu lệnh duy nhất** trên PowerShell:
+
+```powershell
+.\qc-update.ps1
+```
+
+Hoặc chỉ định cụ thể nhánh cần cập nhật:
+```powershell
+.\qc-update.ps1 -Branch <ten_nhanh>
+```
+
+### Cơ chế Safe Deployment tự động:
+1. **Kiểm tra môi trường (Environment Check)**: Kiểm tra Git, Docker, Docker Compose và trạng thái Docker daemon.
+2. **Khóa tiến trình (Concurrency Lock)**: Cơ chế lock file `.qc-update.lock` đảm bảo chỉ có duy nhất 1 tiến trình update tại một thời điểm.
+3. **Bảo vệ mã nguồn cục bộ (Local Changes Detection)**: Tự động dừng nếu phát hiện file uncommitted trên máy QC, tuyệt đối không ghi đè mất mát dữ liệu hoặc tệp `.env`.
+4. **Lấy mã nguồn mới (Fetch Target Commit)**: Lấy commit mới từ GitHub (`git fetch origin <branch>`). Nếu commit đã trùng khớp, hiển thị `Already up to date` và dừng an toàn.
+5. **Chuẩn bị môi trường cô lập (.qc-candidate)**: Sử dụng `git worktree` tạo thư mục độc lập cho commit mới. Thư mục chính đang phục vụ QC hoàn toàn không bị ảnh hưởng.
+6. **Kiểm tra cú pháp & Biên dịch (Validate & Build)**: Kiểm tra cú pháp PHP (PHP Lint), kiểm tra và đồng bộ Composer, biên dịch giao diện Vite.
+7. **Kiểm tra sức khỏe độc lập (Health Check Port 8001)**: Khởi chạy candidate container trên cổng `8001` (với `RUN_MIGRATIONS=false`), liên tục kiểm tra endpoint `/health` thực tế.
+8. **Kích hoạt an toàn (Activation)**:
+   - **Nếu Candidate PASS**: Chuyển mã nguồn chính sang commit mới, đồng bộ bundle/vendor, chạy migrations an toàn và restart container cổng `8000`.
+   - **Nếu Candidate FAIL**: Giữ nguyên 100% phiên bản cũ đang chạy ổn định.
+9. **Tự động Rollback (Safe Rollback)**: Nếu sau khi kích hoạt trên cổng `8000` mà `/health` không phản hồi, hệ thống tự động rollback về commit ổn định trước đó.
+
+---
+
+
 ## 🔄 HỆ THỐNG CI/CD (CONTINUOUS INTEGRATION & DEPLOYMENT)
 
 Dự án áp dụng quy trình CI/CD tự động hóa toàn diện qua **GitHub Actions**, **Docker Buildx**, **GitHub Container Registry (GHCR)** và **SSH Deployment**.

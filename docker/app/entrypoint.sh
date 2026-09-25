@@ -29,9 +29,11 @@ if [ ! -d "public/build" ]; then
     npm run build
 fi
 
-# Tự động chạy migrations
-echo "[Docker] Chạy migrations cơ sở dữ liệu..."
-php artisan migrate --force
+# Tự động chạy migrations (mặc định bật)
+if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
+    echo "[Docker] Chạy migrations cơ sở dữ liệu..."
+    php artisan migrate --force
+fi
 
 # Khởi động server
 echo "[Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:8000 ..."
