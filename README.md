@@ -95,31 +95,30 @@ Mọi thao tác phát triển, kiểm thử và bảo trì đều được thự
 
 ---
 
-## ⚡ QC LOCAL UPDATE (CẬP NHẬT 1 LỆNH AN TOÀN CHO MÁY QC)
+## ⚡ QC LOCAL AUTO WATCH & SAFE DEPLOYMENT (TỰ ĐỘNG THEO DÕI & TRIỂN KHAI QC)
 
-Dành cho Tester / QC trên máy local. Khi Developer push code mới lên GitHub, người làm QC chỉ cần chạy **MỘT câu lệnh duy nhất** trên PowerShell:
+Dành cho Tester / QC trên máy local. Người làm QC chỉ cần mở terminal PowerShell tại thư mục dự án và chạy đúng **MỘT câu lệnh duy nhất**:
 
 ```powershell
 .\qc-update.ps1
 ```
 
-Hoặc chỉ định cụ thể nhánh cần cập nhật:
-```powershell
-.\qc-update.ps1 -Branch <ten_nhanh>
-```
+*(Tùy chọn: `.\qc-update.ps1 -Branch <ten_nhanh>` hoặc `.\qc-update.ps1 -PollIntervalSeconds 10` hoặc `.\qc-update.ps1 -Once` để chạy 1 lần).*
 
-### Cơ chế Safe Deployment tự động:
-1. **Kiểm tra môi trường (Environment Check)**: Kiểm tra Git, Docker, Docker Compose và trạng thái Docker daemon.
-2. **Khóa tiến trình (Concurrency Lock)**: Cơ chế lock file `.qc-update.lock` đảm bảo chỉ có duy nhất 1 tiến trình update tại một thời điểm.
-3. **Bảo vệ mã nguồn cục bộ (Local Changes Detection)**: Tự động dừng nếu phát hiện file uncommitted trên máy QC, tuyệt đối không ghi đè mất mát dữ liệu hoặc tệp `.env`.
-4. **Lấy mã nguồn mới (Fetch Target Commit)**: Lấy commit mới từ GitHub (`git fetch origin <branch>`). Nếu commit đã trùng khớp, hiển thị `Already up to date` và dừng an toàn.
-5. **Chuẩn bị môi trường cô lập (.qc-candidate)**: Sử dụng `git worktree` tạo thư mục độc lập cho commit mới. Thư mục chính đang phục vụ QC hoàn toàn không bị ảnh hưởng.
-6. **Kiểm tra cú pháp & Biên dịch (Validate & Build)**: Kiểm tra cú pháp PHP (PHP Lint), kiểm tra và đồng bộ Composer, biên dịch giao diện Vite.
-7. **Kiểm tra sức khỏe độc lập (Health Check Port 8001)**: Khởi chạy candidate container trên cổng `8001` (với `RUN_MIGRATIONS=false`), liên tục kiểm tra endpoint `/health` thực tế.
-8. **Kích hoạt an toàn (Activation)**:
-   - **Nếu Candidate PASS**: Chuyển mã nguồn chính sang commit mới, đồng bộ bundle/vendor, chạy migrations an toàn và restart container cổng `8000`.
-   - **Nếu Candidate FAIL**: Giữ nguyên 100% phiên bản cũ đang chạy ổn định.
-9. **Tự động Rollback (Safe Rollback)**: Nếu sau khi kích hoạt trên cổng `8000` mà `/health` không phản hồi, hệ thống tự động rollback về commit ổn định trước đó.
+### Cách thức hoạt động:
+1. **Khởi động Watcher (`QC AUTO WATCH = ON`)**: Script duy trì chạy liên tục, tự động thăm dò branch phát triển trên GitHub định kỳ (mặc định mỗi 5 giây).
+2. **Developer Git Push → Tự động nhận diện**: Ngay khi Developer push commit mới, Watcher phát hiện sự thay đổi (`LOCAL_COMMIT != REMOTE_COMMIT`) và khởi động quy trình Safe Deployment.
+3. **Môi trường Candidate cô lập (`.qc-candidate`)**: Mã nguồn mới được chuẩn bị trong Git Worktree riêng biệt. Ứng dụng hiện tại đang phục vụ QC trên cổng `8000` **hoàn toàn không bị ảnh hưởng hay gián đoạn**.
+4. **Kiểm định toàn diện (Lint, Build, Candidate Health Check)**:
+   - Kiểm tra cú pháp PHP (PHP Lint) trên các tệp thay đổi.
+   - Kiểm tra Composer dependencies và biên dịch frontend Vite bundle.
+   - Khởi chạy candidate container trên cổng `8001` (`RUN_MIGRATIONS=false`) và kiểm tra endpoint `/health` thực tế.
+5. **Kích hoạt an toàn hoặc Bảo toàn phiên bản cũ**:
+   - **Nếu Candidate PASS**: Kích hoạt lên môi trường active (cổng `8000`), thực thi database migrations an toàn và xác minh lại `/health`.
+   - **Nếu Candidate FAIL**: Giữ nguyên 100% phiên bản cũ đang chạy ổn định, không để lỗi từ commit mới phá hỏng môi trường QC. Tiếp tục theo dõi commit kế tiếp.
+6. **Dừng Watcher (`QC AUTO WATCH = OFF`)**:
+   - Khi cần dừng, người dùng chỉ cần nhấn **`Ctrl + C`**.
+   - Script dọn dẹp các tệp tạm, giải phóng lock và dừng an toàn. Khi Watcher đã OFF, code mới từ Developer push lên sẽ không tự động nạp vào máy QC cho đến khi người dùng chạy lại `.\qc-update.ps1`.
 
 ---
 
