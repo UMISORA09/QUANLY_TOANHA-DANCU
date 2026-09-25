@@ -83,7 +83,7 @@ jobs:
           cache-from: type=gha
 
       - name: Run Aqua Security Trivy Vulnerability Scanner
-        uses: aquasecurity/trivy-action@v0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'smart-cassavas:security-scan'
           format: 'table'
