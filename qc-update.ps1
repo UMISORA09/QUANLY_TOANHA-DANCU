@@ -282,6 +282,7 @@ try {
     Write-QCLog "PHP Syntax Check: PASSED" "Green"
 
     # Kiem tra thay doi composer.json
+    $vendorMount = ""
     $composerDiff = git diff --name-only $CURRENT_COMMIT $TARGET_COMMIT -- 'composer.json' 'composer.lock'
     if ($composerDiff) {
         Write-QCLog "Composer dependencies changed. Syncing vendor in candidate..." "Yellow"
@@ -294,13 +295,13 @@ try {
             git worktree remove --force .qc-candidate 2>$null
             exit 1
         }
+        $vendorMount = "${candidateDir}/vendor"
     } else {
-        if (Test-Path (Join-Path $projectRoot "vendor")) {
-            Copy-Item -Path (Join-Path $projectRoot "vendor") -Destination (Join-Path $candidateDir "vendor") -Recurse -Force
-        }
+        $vendorMount = "${projectRoot}/vendor"
     }
 
     # Kiem tra thay doi frontend Vite
+    $buildMount = ""
     $frontendDiff = git diff --name-only $CURRENT_COMMIT $TARGET_COMMIT -- 'package.json' 'resources/' 'vite.config.js'
     if ($frontendDiff) {
         Write-QCLog "Frontend files changed. Compiling Vite bundle..." "Yellow"
@@ -310,10 +311,9 @@ try {
             git worktree remove --force .qc-candidate 2>$null
             exit 1
         }
+        $buildMount = "${candidateDir}/public/build"
     } else {
-        if (Test-Path (Join-Path $projectRoot "public/build")) {
-            Copy-Item -Path (Join-Path $projectRoot "public/build") -Destination (Join-Path $candidateDir "public/build") -Recurse -Force
-        }
+        $buildMount = "${projectRoot}/public/build"
     }
     Write-QCLog "Build assets: PASSED" "Green"
 
@@ -329,11 +329,32 @@ try {
 
     docker rm -f $candidateContainerName 2>$null | Out-Null
 
+    # Trich xuat volume node_modules tu active container de tranh npm install lai
+    $mountLines = docker inspect --format='{{range .Mounts}}{{println .Destination .Name}}{{end}}' $activeContainerName 2>$null
+    $nodeVol = ""
+    foreach ($line in $mountLines) {
+        if ($line -match '^/var/www/html/node_modules\s+(\S+)') {
+            $nodeVol = $matches[1]
+            break
+        }
+    }
+
+    $candidateVolumeArgs = @("-v", "${candidateDir}:/var/www/html")
+    if ($nodeVol) {
+        $candidateVolumeArgs += @("-v", "${nodeVol}:/var/www/html/node_modules")
+    }
+    if ($vendorMount -and (Test-Path $vendorMount)) {
+        $candidateVolumeArgs += @("-v", "${vendorMount}:/var/www/html/vendor")
+    }
+    if ($buildMount -and (Test-Path $buildMount)) {
+        $candidateVolumeArgs += @("-v", "${buildMount}:/var/www/html/public/build")
+    }
+
     # Khoi chay candidate container voi RUN_MIGRATIONS=false de khong lam thay doi CSDL truoc khi pass
     docker run -d --name $candidateContainerName `
         --network $network `
         -p 8001:8000 `
-        -v "${candidateDir}:/var/www/html" `
+        $candidateVolumeArgs `
         -e APP_ENV=local `
         -e APP_DEBUG=true `
         -e RUN_MIGRATIONS=false `
