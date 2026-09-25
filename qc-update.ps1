@@ -447,17 +447,12 @@ try {
             continue
         }
 
-        # Kiem tra Docker Daemon con hoat dong
-        $dockerCheck = docker ps --filter "name=smart_cassavas_app" --format "{{.Names}}" 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-QCWatchLog "Docker unavailable. Retrying in ${PollIntervalSeconds}s..." "Yellow"
-            Start-Sleep -Seconds $PollIntervalSeconds
-            continue
-        }
-
-        # Fetch cap nhat moi tu remote branch
-        $fetchOutput = git fetch origin $targetBranch 2>&1
+        # Fetch cap nhat moi tu remote branch va do thoi gian mang
+        $fetchStart = Get-Date
+        $fetchOutput = git fetch -q origin $targetBranch 2>&1
         $fetchExit = $LASTEXITCODE
+        $networkDuration = ((Get-Date) - $fetchStart).TotalSeconds
+
         if ($fetchExit -ne 0) {
             Write-QCWatchLog "GitHub check FAILED (Network/SSH). Keeping current version. Retrying in ${PollIntervalSeconds}s..." "Yellow"
             Start-Sleep -Seconds $PollIntervalSeconds
@@ -475,7 +470,7 @@ try {
 
         if ($localCommit -eq $remoteCommit) {
             # Khong co commit moi
-            Write-QCWatchLog "Checking GitHub... No new commit (Current: $shortLocal)" "Gray"
+            Write-QCWatchLog "Checking GitHub... No new commit (Current: $shortLocal | Network: $([Math]::Round($networkDuration, 1))s)" "Gray"
         } else {
             # Phat hien commit moi
             Write-QCWatchLog "New commit detected!" "Green"
@@ -496,7 +491,9 @@ try {
             break
         }
 
-        Start-Sleep -Seconds $PollIntervalSeconds
+        # Can bang thoi gian nghi: Neu mang da mat thoi gian thi chi nghi bu khoang con lai
+        $sleepSec = [Math]::Max(1, [int]($PollIntervalSeconds - $networkDuration))
+        Start-Sleep -Seconds $sleepSec
     }
 
 } finally {
