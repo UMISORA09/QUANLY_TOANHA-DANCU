@@ -71,6 +71,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
       { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'amenities', label: 'Tiện ích tòa nhà', icon: Sparkles },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
@@ -139,6 +140,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'overview', label: 'Tổng quan Hệ thống', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền', icon: Shield, badge: 'Toàn quyền', badgeType: 'warning' },
       { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'billing', label: 'Tài chính & Doanh thu', icon: CreditCard },
       { id: 'maintenance', label: 'Kỹ thuật & Trang thiết bị', icon: Wrench },

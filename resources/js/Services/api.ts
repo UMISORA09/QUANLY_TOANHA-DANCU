@@ -1111,6 +1111,228 @@ class ApiService {
       data: ApartmentSummaryItem[];
     }>('/meta/apartments');
   }
+
+  // ==========================================
+  // TEMPORARY REGISTRATIONS APIs
+  // ==========================================
+  async getTemporaryRegistrations(params?: Record<string, string | number | boolean | undefined | null>) {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          query.append(key, String(value));
+        }
+      });
+    }
+    const qStr = query.toString();
+    return this.request<{
+      success: boolean;
+      data: TemporaryRegistrationItem[];
+      meta: {
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+      };
+    }>(`/residents/temporary-registrations${qStr ? `?${qStr}` : ''}`);
+  }
+
+  async getTemporaryRegistrationById(id: string) {
+    return this.request<{
+      success: boolean;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}`);
+  }
+
+  async createTemporaryRegistration(data: {
+    resident_id: string;
+    apartment_id: string;
+    registration_type: 'TEMPORARY_STAY' | 'TEMPORARY_ABSENCE';
+    start_date: string;
+    end_date: string;
+    reason: string;
+    identity_card_front_url?: string | null;
+    identity_card_back_url?: string | null;
+    notes?: string | null;
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>('/residents/temporary-registrations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTemporaryRegistration(id: string, data: Partial<{
+    registration_type: 'TEMPORARY_STAY' | 'TEMPORARY_ABSENCE';
+    start_date: string;
+    end_date: string;
+    reason: string;
+    identity_card_front_url?: string | null;
+    identity_card_back_url?: string | null;
+    notes?: string | null;
+    police_reference_code?: string | null;
+    updated_at?: string;
+  }>) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteTemporaryRegistration(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/residents/temporary-registrations/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async approveTemporaryRegistration(id: string, data?: { notes?: string; police_reference_code?: string }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  }
+
+  async rejectTemporaryRegistration(id: string, reason: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async submitTemporaryRegistrationToPolice(id: string, data?: { police_reference_code?: string; notes?: string }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}/submit-police`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  }
+
+  async uploadTemporaryRegistrationCccd(file: File, side: 'front' | 'back' = 'front') {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('side', side);
+
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+    const token = this.getAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/residents/temporary-registrations/upload-cccd`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => null);
+      throw new Error(errorJson?.message || 'Tải ảnh CCCD thất bại.');
+    }
+
+    return response.json() as Promise<{ success: boolean; message: string; url: string }>;
+  }
+
+  async exportTemporaryRegistrationForm(id: string) {
+    return this.request<{
+      success: boolean;
+      data: TemporaryRegistrationExportData;
+    }>(`/residents/temporary-registrations/${id}/export`);
+  }
+
+  getTemporaryRegistrationDownloadUrl(id: string) {
+    return `${API_BASE_URL}/residents/temporary-registrations/${id}/download`;
+  }
+}
+
+export interface TemporaryRegistrationItem {
+  id: string;
+  resident_id: string;
+  apartment_id: string;
+  registration_type: 'TEMPORARY_STAY' | 'TEMPORARY_ABSENCE';
+  start_date: string;
+  end_date: string;
+  reason: string;
+  police_status: 'PENDING_POLICE_SUBMISSION' | 'SUBMITTED_TO_POLICE' | 'APPROVED' | 'REJECTED' | string;
+  police_reference_code?: string | null;
+  identity_card_front_url?: string | null;
+  identity_card_back_url?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  resident?: {
+    id: string;
+    user_id: string;
+    apartment_id: string;
+    resident_type: string;
+    is_head_of_household: boolean;
+    relationship_to_head?: string | null;
+    occupation?: string | null;
+    user?: {
+      id: string;
+      username: string;
+      full_name: string;
+      phone_number: string;
+      email: string;
+      national_id_number?: string | null;
+      avatar_url?: string | null;
+      gender?: string | null;
+      date_of_birth?: string | null;
+      status: string;
+    };
+  };
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id?: string;
+    floor_id?: string;
+    room_type?: string;
+    status: string;
+  };
+  reviewer?: {
+    id: string;
+    username: string;
+    full_name: string;
+    phone_number?: string;
+    email: string;
+  } | null;
+}
+
+export interface TemporaryRegistrationExportData {
+  registration: TemporaryRegistrationItem;
+  resident: any;
+  user: any;
+  apartment: any;
+  reviewer: any;
+  form_code: string;
+  form_title: string;
+  police_status: string;
+  police_reference_code?: string | null;
+  html_content: string;
 }
 
 export interface ResidentItem {

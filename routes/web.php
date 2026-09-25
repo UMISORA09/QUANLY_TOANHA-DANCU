@@ -13,6 +13,7 @@ use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\UserController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -216,6 +217,38 @@ Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
     Route::put('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
     Route::patch('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
     Route::delete('permissions/{id}', [PermissionController::class, 'destroy'])->middleware('permission:PERMISSION:DELETE');
+});
+
+// ==========================================
+// ĐĂNG KÝ VÀ DUYỆT TẠM TRÚ / TẠM VẮNG (ADMIN)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('residents/temporary-registrations', [TemporaryRegistrationController::class, 'index']);
+    Route::post('residents/temporary-registrations', [TemporaryRegistrationController::class, 'store']);
+    Route::get('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'show']);
+    Route::put('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::patch('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::delete('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'destroy']);
+    Route::post('residents/temporary-registrations/{id}/approve', [TemporaryRegistrationController::class, 'approve']);
+    Route::post('residents/temporary-registrations/{id}/reject', [TemporaryRegistrationController::class, 'reject']);
+    Route::post('residents/temporary-registrations/{id}/submit-police', [TemporaryRegistrationController::class, 'submitToPolice']);
+    Route::post('residents/temporary-registrations/upload-cccd', [TemporaryRegistrationController::class, 'uploadCccd']);
+    Route::get('residents/temporary-registrations/{id}/export', [TemporaryRegistrationController::class, 'exportForm']);
+    Route::get('residents/temporary-registrations/{id}/download', [TemporaryRegistrationController::class, 'downloadForm']);
+
+    // Direct / Alias routes
+    Route::get('temporary-registrations', [TemporaryRegistrationController::class, 'index']);
+    Route::post('temporary-registrations', [TemporaryRegistrationController::class, 'store']);
+    Route::get('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'show']);
+    Route::put('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::patch('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::delete('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'destroy']);
+    Route::post('temporary-registrations/{id}/approve', [TemporaryRegistrationController::class, 'approve']);
+    Route::post('temporary-registrations/{id}/reject', [TemporaryRegistrationController::class, 'reject']);
+    Route::post('temporary-registrations/{id}/submit-police', [TemporaryRegistrationController::class, 'submitToPolice']);
+    Route::post('temporary-registrations/upload-cccd', [TemporaryRegistrationController::class, 'uploadCccd']);
+    Route::get('temporary-registrations/{id}/export', [TemporaryRegistrationController::class, 'exportForm']);
+    Route::get('temporary-registrations/{id}/download', [TemporaryRegistrationController::class, 'downloadForm']);
 });
 
 // ==========================================

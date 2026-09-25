@@ -49,6 +49,7 @@ import { AmenityManagement } from './Admin/AmenityManagement';
 import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
 import { RbacManagement } from './Admin/RbacManagement';
 import { ResidentManagement } from './Admin/ResidentManagement';
+import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -351,6 +352,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
         { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
         { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
         { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
@@ -757,6 +759,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'residents' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ResidentManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'temporary_registrations' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <TemporaryRegistrationManagement embedded={true} />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">
