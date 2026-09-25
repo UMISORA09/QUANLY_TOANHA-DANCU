@@ -33,3 +33,6 @@ backend/**/__pycache__/
 /boost.json
 /images/
 
+
+.vercel
+.env*

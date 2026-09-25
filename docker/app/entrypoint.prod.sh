@@ -27,6 +27,7 @@ if [ "${SERVER_MODE:-}" = "fpm" ]; then
     exec php-fpm -F
 fi
 
-# Mặc định khởi chạy HTTP server tại cổng 8000 (hỗ trợ standalone container và CI smoke test)
-echo "[Production Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:8000 ..."
-exec php artisan serve --host=0.0.0.0 --port=8000
+# Mặc định khởi chạy HTTP server tại cổng $PORT hoặc 8000 (hỗ trợ Railway, standalone container và CI smoke test)
+APP_PORT="${PORT:-8000}"
+echo "[Production Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:${APP_PORT} ..."
+exec php artisan serve --host=0.0.0.0 --port="${APP_PORT}"
