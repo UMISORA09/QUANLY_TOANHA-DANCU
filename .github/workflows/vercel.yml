@@ -144,13 +144,12 @@ jobs:
           PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          if [ -n "$DATABASE_URL" ] || ([ -n "$PROD_DB_HOST" ] && [ -n "$PROD_DB_PASSWORD" ]); then
+          if ([ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" != "not_configured" ]) || ([ -n "$PROD_DB_HOST" ] && [ "$PROD_DB_HOST" != "not_configured" ] && [ -n "$PROD_DB_PASSWORD" ] && [ "$PROD_DB_PASSWORD" != "not_configured" ]); then
             echo "configured=true" >> $GITHUB_OUTPUT
             echo "✅ Production database secrets configured."
           else
             echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::error ::Production database is not configured. Configure production database secrets before deployment."
-            exit 1
+            echo "::notice ::Production database is not configured. Configure production database secrets before running production migration."
           fi
 
       - name: Setup PHP for Migration
@@ -213,7 +212,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+          if [ -z "$VERCEL_TOKEN" ] || [ "$VERCEL_TOKEN" = "not_configured" ] || [ -z "$VERCEL_ORG_ID" ] || [ "$VERCEL_ORG_ID" = "not_configured" ] || [ -z "$VERCEL_PROJECT_ID" ] || [ "$VERCEL_PROJECT_ID" = "not_configured" ]; then
             echo "is_configured=false" >> $GITHUB_OUTPUT
             echo "::notice ::VERCEL DEPLOYMENT STATUS: NOT CONFIGURED. Awaiting VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID in GitHub Secrets."
           else

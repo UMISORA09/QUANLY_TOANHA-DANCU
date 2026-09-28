@@ -187,7 +187,7 @@ jobs:
           STAGING_USER: ${{ secrets.STAGING_USER }}
           STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
         run: |
-          if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_SSH_KEY" ]; then
+          if [ -z "$STAGING_HOST" ] || [ "$STAGING_HOST" = "not_configured" ] || [ -z "$STAGING_USER" ] || [ "$STAGING_USER" = "not_configured" ] || [ -z "$STAGING_SSH_KEY" ] || [ "$STAGING_SSH_KEY" = "not_configured" ]; then
             echo "configured=false" >> $GITHUB_OUTPUT
             echo "::error ::DEPLOYMENT FAILED: Staging server credentials (STAGING_HOST, STAGING_USER, STAGING_SSH_KEY) are not configured in GitHub Secrets."
             echo "Final Status: NOT_DEPLOYED"
