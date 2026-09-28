@@ -6,6 +6,7 @@ use App\Models\Apartment;
 use App\Models\Resident;
 use App\Models\Role;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -486,6 +487,9 @@ class ResidentCreateTest extends TestCase
 
     /**
      * TEST CASE 14: Soft-deleted resident behavior
+     *
+     * MySQL unique constraint uq_resident_apt(user_id, apartment_id) bao gồm cả soft-deleted rows.
+     * Khi tạo lại resident cùng user_id + apartment_id → DB ném Integrity Constraint Violation.
      */
     public function test_case_14_soft_deleted_resident_behavior(): void
     {
@@ -508,7 +512,7 @@ class ResidentCreateTest extends TestCase
         $resident->delete();
         $this->assertSoftDeleted('residents', ['id' => $resident->id]);
 
-        // Thử thêm lại U07 + A07 qua API
+        // Thử thêm lại U07 + cùng apartment qua API
         $payload = [
             'user_id' => $u07->id,
             'apartment_id' => $apt->id,
@@ -518,24 +522,29 @@ class ResidentCreateTest extends TestCase
             'relationship_to_head' => 'CHILD',
         ];
 
-        $response = $this->withHeader('Authorization', "Bearer {$token}")
-            ->postJson('/api/v1/residents', $payload);
+        $duplicateBlocked = false;
 
-        // Ghi lại behavior thực tế để báo cáo chi tiết
-        $status = $response->status();
-        $body = $response->json();
+        try {
+            $response = $this->withHeader('Authorization', "Bearer {$token}")
+                ->postJson('/api/v1/residents', $payload);
 
-        echo PHP_EOL.'============================================================'.PHP_EOL;
-        echo 'TEST CASE 14: SOFT DELETED RESIDENT'.PHP_EOL;
-        echo "HTTP status: {$status}".PHP_EOL;
-        echo 'Response body: '.json_encode($body, JSON_UNESCAPED_UNICODE).PHP_EOL;
-        echo '============================================================'.PHP_EOL;
+            $status = $response->status();
 
-        // Kiểm tra xem database constraint uq_resident_apt có chặn duplicate không
-        // Nếu MySQL chặn: response sẽ là 500 do QueryException Duplicate Entry (hoặc 409/422 nếu có catch)
-        $this->assertTrue(in_array($status, [409, 422, 500], true), "Actual HTTP status: {$status}");
+            // Nếu controller xử lý đúng, response phải là lỗi (409/422/500)
+            $this->assertTrue(
+                in_array($status, [409, 422, 500], true),
+                "Expected error response for duplicate resident. Got HTTP {$status}"
+            );
+            $duplicateBlocked = true;
+        } catch (QueryException $e) {
+            // MySQL ném Integrity Constraint Violation khi controller không có try-catch
+            $this->assertStringContainsString('Duplicate entry', $e->getMessage());
+            $duplicateBlocked = true;
+        }
 
-        // Tổng số record (bao gồm trashed) không được vượt quá 1 nếu unique constraint chặn, hoặc báo cáo chính xác
+        $this->assertTrue($duplicateBlocked, 'Duplicate resident phải bị chặn bởi DB constraint hoặc controller logic');
+
+        // Tổng số record (bao gồm trashed) vẫn phải là 1 — duplicate bị chặn
         $totalRecordsIncludingTrashed = Resident::withTrashed()
             ->where('user_id', $u07->id)
             ->where('apartment_id', $apt->id)
