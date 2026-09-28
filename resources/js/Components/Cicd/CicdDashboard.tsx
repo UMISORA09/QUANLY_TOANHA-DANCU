@@ -220,7 +220,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
     setIsDetailOpen(true);
   };
 
-  const handleRunPipelineSubmit = async (payload: { workflow: string; branch: string; environment: string }) => {
+  const handleRunPipelineSubmit = async (payload: { workflow: string; branch: string; environment: string; inputs?: Record<string, string> }) => {
     const res = await cicdApi.runPipeline(payload);
     showToast(res.message, 'success');
     fetchData(true);

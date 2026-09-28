@@ -869,6 +869,27 @@ class GitHubActionsService
     }
 
     /**
+     * Xác định nhánh mặc định để điều phối CI/CD (Ưu tiên GIT_DEPLOY_BRANCH hoặc nhánh Git hiện tại)
+     */
+    public function getDefaultBranch(): string
+    {
+        if ($envBranch = env('GIT_DEPLOY_BRANCH')) {
+            return $envBranch;
+        }
+
+        try {
+            $current = trim((string) shell_exec('git branch --show-current 2>/dev/null'));
+            if (! empty($current)) {
+                return $current;
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return 'main';
+    }
+
+    /**
      * Kích hoạt chạy workflow thực tế (Run Pipeline trực tiếp lên GitHub Actions)
      */
     public function triggerWorkflow(string $workflowId, string $branch = 'main', array $inputs = []): array
@@ -878,6 +899,8 @@ class GitHubActionsService
             $workflowId = 'staging.yml';
         } elseif ($workflowId === 'cd-production.yml') {
             $workflowId = 'production.yml';
+        } elseif ($workflowId === 'cd-vercel.yml') {
+            $workflowId = 'vercel.yml';
         }
 
         // Kích hoạt trực tiếp lên GitHub Actions API
@@ -890,9 +913,15 @@ class GitHubActionsService
                 if ($workflowId === 'staging.yml') {
                     $filteredInputs['image_tag'] = (string) ($inputs['image_tag'] ?? 'staging');
                 } elseif ($workflowId === 'production.yml') {
-                    $filteredInputs['release_tag'] = (string) ($inputs['release_tag'] ?? $inputs['tag'] ?? 'production');
+                    $filteredInputs['release_tag'] = (string) ($inputs['release_tag'] ?? $inputs['tag'] ?? 'v1.0.0');
+                } elseif ($workflowId === 'vercel.yml') {
+                    $filteredInputs['target_env'] = (string) ($inputs['target_env'] ?? ($inputs['environment'] === 'staging' ? 'preview' : 'production'));
+                } elseif ($workflowId === 'rollback.yml') {
+                    $filteredInputs['environment'] = (string) ($inputs['environment'] ?? 'production');
+                    $filteredInputs['target_version'] = (string) ($inputs['target_version'] ?? 'previous');
+                    $filteredInputs['reason'] = (string) ($inputs['reason'] ?? 'Dashboard manual rollback trigger');
                 }
-                // Chú ý: ci.yml và docker.yml không khai báo workflow_dispatch.inputs nên không được gửi payload['inputs']
+                // Chú ý: ci.yml và security.yml không khai báo workflow_dispatch.inputs nên không được gửi payload['inputs']
 
                 if (! empty($filteredInputs)) {
                     $payload['inputs'] = $filteredInputs;
@@ -900,7 +929,7 @@ class GitHubActionsService
 
                 $response = Http::withToken($this->token)
                     ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                    ->timeout(6)
+                    ->timeout(8)
                     ->post("{$this->apiBase}/actions/workflows/{$workflowId}/dispatches", $payload);
 
                 if ($response->successful()) {
@@ -909,7 +938,7 @@ class GitHubActionsService
 
                     return [
                         'success' => true,
-                        'message' => "Workflow {$workflowId} đã được kích hoạt thành công trên GitHub Actions (nhánh {$branch}). Đang khởi động runner...",
+                        'message' => "Workflow {$workflowId} đã được kích hoạt thành công trên GitHub Actions (nhánh {$branch}). Runner đang khởi động...",
                     ];
                 }
 
@@ -944,6 +973,8 @@ class GitHubActionsService
                     ->post("{$this->apiBase}/actions/runs/{$runId}/rerun");
 
                 if ($response->successful()) {
+                    Cache::flush();
+
                     return ['success' => true, 'message' => "Pipeline #{$runId} đang được thực thi lại trên GitHub."];
                 }
             } catch (\Throwable $e) {
@@ -963,6 +994,8 @@ class GitHubActionsService
                     ->post("{$this->apiBase}/actions/runs/{$runId}/cancel");
 
                 if ($response->successful()) {
+                    Cache::flush();
+
                     return ['success' => true, 'message' => "Pipeline #{$runId} đã được hủy trên GitHub."];
                 }
             } catch (\Throwable $e) {
@@ -973,22 +1006,43 @@ class GitHubActionsService
         return ['success' => true, 'message' => "Đã gửi yêu cầu hủy pipeline #{$runId}."];
     }
 
+    /**
+     * Kích hoạt Deploy thật sự tới môi trường đích qua GitHub Actions CD
+     */
     public function deploy(string $environment, ?string $imageTag = null): array
     {
-        return [
-            'success' => true,
-            'message' => "Lệnh triển khai tới {$environment} đã được tiếp nhận. Đang kiểm tra cấu hình SSH & Health check...",
-            'deployment_id' => 'dep-'.time(),
-        ];
+        $branch = $this->getDefaultBranch();
+
+        if ($environment === 'vercel') {
+            return $this->triggerWorkflow('vercel.yml', $branch, [
+                'target_env' => 'production',
+            ]);
+        }
+
+        if ($environment === 'staging') {
+            return $this->triggerWorkflow('staging.yml', $branch, [
+                'image_tag' => $imageTag ?: 'staging',
+            ]);
+        }
+
+        // Production
+        return $this->triggerWorkflow('production.yml', $branch, [
+            'release_tag' => $imageTag ?: 'v1.0.0',
+        ]);
     }
 
+    /**
+     * Kích hoạt Rollback thật sự tới môi trường đích qua GitHub Actions Rollback Workflow
+     */
     public function rollback(string $environment, string $targetVersion): array
     {
-        return [
-            'success' => true,
-            'message' => "Lệnh khôi phục {$environment} về phiên bản {$targetVersion} đã được tiếp nhận an toàn.",
-            'rollback_id' => 'rb-'.time(),
-        ];
+        $branch = $this->getDefaultBranch();
+
+        return $this->triggerWorkflow('rollback.yml', $branch, [
+            'environment' => $environment,
+            'target_version' => $targetVersion,
+            'reason' => "Kích hoạt Rollback an toàn cho {$environment} về phiên bản {$targetVersion} từ DevOps Dashboard",
+        ]);
     }
 
     // =========================================================================

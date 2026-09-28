@@ -199,6 +199,98 @@ jobs:
           path: phpunit-report.xml
           retention-days: 7
 
+  e2e-test:
+    name: End-to-End Test (Playwright E2E)
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-ci]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo, pdo_sqlite, mbstring, xml, ctype, iconv
+          coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: Download Frontend Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build-artifacts
+          path: public/build
+
+      - name: Configure E2E Testing Environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+
+      - name: Run Database Migrations & Seeds for E2E
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ${{ github.workspace }}/database/database.sqlite
+        run: |
+          php artisan migrate --force --no-interaction
+          php artisan db:seed --force --no-interaction
+
+      - name: Install Playwright Browsers & OS Dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Start Laravel Local Server for E2E
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ${{ github.workspace }}/database/database.sqlite
+        run: |
+          php artisan serve --host=127.0.0.1 --port=8000 &
+          echo "Waiting for Laravel web server to start..."
+          for i in {1..30}; do
+            if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up | grep -q "200"; then
+              echo "✅ Laravel server operational on http://127.0.0.1:8000"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "❌ Failed to start Laravel server within 30 seconds"
+          exit 1
+
+      - name: Run Playwright E2E Tests
+        env:
+          APP_URL: http://127.0.0.1:8000
+          CI: true
+        run: npm run test:e2e
+
+      - name: Upload Playwright Test Report Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   security-scan:
     name: Security Vulnerability Scan
     runs-on: ubuntu-latest
@@ -310,7 +402,7 @@ jobs:
   ci-status:
     name: CI Pipeline Status Check
     runs-on: ubuntu-latest
-    needs: [php-lint, frontend-ci, backend-test, security-scan, docker-verification]
+    needs: [php-lint, frontend-ci, backend-test, e2e-test, security-scan, docker-verification]
     if: always()
     steps:
       - name: Evaluate Core CI Stage Outcomes
@@ -318,6 +410,7 @@ jobs:
           LINT="${{ needs.php-lint.result }}"
           FRONTEND="${{ needs.frontend-ci.result }}"
           BACKEND="${{ needs.backend-test.result }}"
+          E2E="${{ needs.e2e-test.result }}"
           SECURITY="${{ needs.security-scan.result }}"
           DOCKER="${{ needs.docker-verification.result }}"
 
@@ -325,6 +418,7 @@ jobs:
           echo "PHP Lint (Pint):        $LINT"
           echo "Frontend CI:             $FRONTEND"
           echo "Backend Tests & DB:      $BACKEND"
+          echo "Playwright E2E Tests:    $E2E"
           echo "Security Vulnerabilities:$SECURITY"
           echo "Docker Verification:     $DOCKER"
           echo "==================================="
@@ -333,6 +427,7 @@ jobs:
           [ "$LINT" != "success" ] && FAILED_STAGES+=("PHP Lint ($LINT)")
           [ "$FRONTEND" != "success" ] && FAILED_STAGES+=("Frontend CI ($FRONTEND)")
           [ "$BACKEND" != "success" ] && FAILED_STAGES+=("Backend Tests & DB ($BACKEND)")
+          [ "$E2E" != "success" ] && FAILED_STAGES+=("Playwright E2E Tests ($E2E)")
           [ "$SECURITY" != "success" ] && FAILED_STAGES+=("Security Vulnerabilities ($SECURITY)")
           [ "$DOCKER" != "success" ] && FAILED_STAGES+=("Docker Verification ($DOCKER)")
 
@@ -344,4 +439,4 @@ jobs:
             exit 1
           fi
 
-          echo "✅ All Core CI Checks Passed: Lint ✓ Frontend ✓ Backend/DB ✓ Security ✓ Docker Verification ✓"
+          echo "✅ All Core CI Checks Passed: Lint ✓ Frontend ✓ Backend/DB ✓ Playwright E2E ✓ Security ✓ Docker Verification ✓"
