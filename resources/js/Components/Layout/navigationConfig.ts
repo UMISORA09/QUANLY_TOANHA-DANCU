@@ -32,7 +32,6 @@ import {
   CalendarDays,
   Camera,
   Flame,
-  CheckCircle2,
   Terminal,
   Bot,
   Cpu,
@@ -73,6 +72,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
       { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'amenities', label: 'Tiện ích tòa nhà', icon: Sparkles },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
@@ -140,6 +140,8 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền tài khoản (RBAC)', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
+      { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage Ticket', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
@@ -151,7 +153,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
 
   // ================= 5. DEVELOPER (HỢP NHẤT CHUNG VỚI ADMIN) =================
   dev: {
-    role: 'admin',
+    role: 'dev',
     roleName: 'Quản Trị Viên & Kỹ Thuật (Admin / Dev)',
     portalSubtitle: 'SYSTEM ADMINISTRATOR & DEV CONSOLE',
     sectionTitle: 'TRUNG TÂM QUẢN TRỊ & KỸ THUẬT',
@@ -160,6 +162,8 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền tài khoản (RBAC)', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
+      { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage Ticket', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
