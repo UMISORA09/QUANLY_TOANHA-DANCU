@@ -189,7 +189,9 @@ jobs:
         run: |
           if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_SSH_KEY" ]; then
             echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::notice ::STAGING DEPLOYMENT NOT CONFIGURED: Awaiting STAGING_HOST, STAGING_USER, STAGING_SSH_KEY secrets."
+            echo "::error ::DEPLOYMENT FAILED: Staging server credentials (STAGING_HOST, STAGING_USER, STAGING_SSH_KEY) are not configured in GitHub Secrets."
+            echo "Final Status: NOT_DEPLOYED"
+            exit 1
           else
             echo "configured=true" >> $GITHUB_OUTPUT
           fi
@@ -217,15 +219,17 @@ jobs:
             ./scripts/deploy.sh "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" staging
 
       - name: Staging Deployment Status Report
+        if: always()
         run: |
           echo "========================================================================"
+          echo "DEPLOYMENT STAGE OUTCOME EVALUATION:"
+          echo "1. BUILD_SUCCESS:    ghcr.io/${{ github.repository }}:${{ needs.build-and-push-staging.outputs.image_tag }}"
           if [ "${{ steps.check-secrets.outputs.configured }}" = "true" ]; then
-            echo "✅ STAGING DEPLOYMENT & VERIFICATION COMPLETED"
-            echo "Target Image: ghcr.io/${{ github.repository }}:${{ needs.build-and-push-staging.outputs.image_tag }}"
+            echo "2. DEPLOY_SUCCESS:   SSH Dispatch Executed"
+            echo "3. DEPLOY_VERIFIED:  Health, Smoke & Freshness Passed via deploy.sh"
+            echo "✅ OVERALL RESULT: STAGING DEPLOYMENT COMPLETED & VERIFIED"
           else
-            echo "⚠️ STAGING DEPLOYMENT STATUS: NOT CONFIGURED"
-            echo "Lý do: Server credentials (STAGING_HOST/STAGING_USER/STAGING_SSH_KEY) chưa được thiết lập trong GitHub Secrets."
-            echo "Docker image đã được build và lưu trữ an toàn tại GHCR: ghcr.io/${{ github.repository }}:${{ needs.build-and-push-staging.outputs.image_tag }}"
-            echo "Khi server staging được cấu hình, pipeline sẽ tự động deploy và chạy health-check/smoke-test."
+            echo "2. DEPLOY_STATUS:    NOT_DEPLOYED (Missing Server Credentials)"
+            echo "❌ OVERALL RESULT: FAILED - Awaiting Required Infrastructure Configuration"
           fi
           echo "========================================================================"

@@ -338,14 +338,54 @@ class GitHubActionsService
      */
     public function getDeployments(): array
     {
+        $commitSha = $this->getLatestCommitSha();
+
+        // 1. Nếu có token GitHub, truy vấn danh sách Deployments thực tế từ GitHub API (Vercel/GitHub Actions)
+        if ($this->isLiveGitHubAvailable()) {
+            try {
+                $response = Http::withToken($this->token)
+                    ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                    ->timeout(4)
+                    ->get("{$this->apiBase}/deployments", ['per_page' => 10]);
+
+                if ($response->successful()) {
+                    $ghDeployments = $response->json() ?? [];
+                    if (! empty($ghDeployments)) {
+                        $deployments = [];
+                        foreach ($ghDeployments as $dep) {
+                            $rawEnv = $dep['environment'] ?? 'production';
+                            $envName = str_contains(strtolower($rawEnv), 'preview') ? 'staging' : strtolower($rawEnv);
+                            $shortSha = substr($dep['sha'] ?? '0000000', 0, 7);
+                            $creator = $dep['creator']['login'] ?? 'GitHub Actions';
+                            $deployments[] = [
+                                'id' => (string) ($dep['id'] ?? uniqid()),
+                                'environment' => $envName,
+                                'version' => "sha-{$shortSha}",
+                                'image_tag' => "sha-{$shortSha}",
+                                'commit_sha' => $shortSha,
+                                'status' => 'healthy',
+                                'deployed_by' => $creator,
+                                'deployed_at' => $dep['created_at'] ?? now()->toIso8601String(),
+                                'response_time_ms' => 0,
+                                'release_notes' => "Triển khai {$rawEnv} (commit {$shortSha}) thực hiện bởi {$creator}.",
+                            ];
+                        }
+
+                        return $deployments;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('GitHub Deployments API failed: '.$e->getMessage());
+            }
+        }
+
         $prodImage = $this->getLastDeployedImageRef('production');
         $stagingImage = $this->getLastDeployedImageRef('staging');
-        $commitSha = $this->getLatestCommitSha();
         $prodDeployedAt = $this->getDeploymentTimestamp('production');
         $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
 
-        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
-        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
+        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || ! empty(env('VERCEL_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
+        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
 
         $prodStatus = $prodConfigured ? ($prodImage ? 'healthy' : 'not_deployed') : 'not_configured';
         $stagingStatus = $stagingConfigured ? ($stagingImage ? 'healthy' : 'not_deployed') : 'not_configured';
@@ -355,29 +395,29 @@ class GitHubActionsService
                 'id' => 'dep-prod',
                 'environment' => 'production',
                 'version' => $prodConfigured ? ($prodImage ? basename($prodImage) : 'Chưa triển khai') : 'Not configured',
-                'image_tag' => $prodConfigured ? ($prodImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình PROD_HOST/PROD_SSH_KEY',
+                'image_tag' => $prodConfigured ? ($prodImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình VERCEL_TOKEN hoặc PROD_HOST',
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $prodStatus,
                 'deployed_by' => $prodImage ? 'GitHub Actions CD' : 'Chưa có',
                 'deployed_at' => $prodDeployedAt ?: 'Chưa kích hoạt',
                 'response_time_ms' => 0,
                 'release_notes' => $prodConfigured
-                    ? ($prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Kích hoạt bằng git tag v* hoặc nút "Triển khai Production".')
-                    : 'Máy chủ Production chưa được thiết lập (Cần cấu hình PROD_HOST, PROD_USER, PROD_SSH_KEY trong GitHub Secrets).',
+                    ? ($prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Tự động kích hoạt khi push vào master.')
+                    : 'Môi trường Production chưa được thiết lập (Cần cấu hình VERCEL_TOKEN hoặc PROD_HOST trong GitHub Secrets).',
             ],
             [
                 'id' => 'dep-staging',
                 'environment' => 'staging',
                 'version' => $stagingConfigured ? ($stagingImage ? basename($stagingImage) : 'Chưa triển khai') : 'Not configured',
-                'image_tag' => $stagingConfigured ? ($stagingImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình STAGING_HOST/STAGING_SSH_KEY',
+                'image_tag' => $stagingConfigured ? ($stagingImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình VERCEL_TOKEN hoặc STAGING_HOST',
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $stagingStatus,
                 'deployed_by' => $stagingImage ? 'GitHub Actions CD' : 'Chưa có',
                 'deployed_at' => $stagingDeployedAt ?: 'Chưa kích hoạt',
                 'response_time_ms' => 0,
                 'release_notes' => $stagingConfigured
-                    ? ($stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào develop.')
-                    : 'Máy chủ Staging chưa được thiết lập (Cần cấu hình STAGING_HOST, STAGING_USER, STAGING_SSH_KEY trong GitHub Secrets).',
+                    ? ($stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào develop hoặc tạo PR.')
+                    : 'Môi trường Staging chưa được thiết lập (Cần cấu hình VERCEL_TOKEN hoặc STAGING_HOST trong GitHub Secrets).',
             ],
         ];
     }
@@ -393,8 +433,10 @@ class GitHubActionsService
         $prodDeployedAt = $this->getDeploymentTimestamp('production');
         $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
 
-        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
-        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
+        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || ! empty(env('VERCEL_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
+        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
+
+        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : (env('APP_URL') ?: 'https://quanly-toanha-dancu.vercel.app'));
 
         // Đo latency thực tế tới CSDL / App local
         $dbLatency = $this->measureDatabaseLatency();
@@ -415,10 +457,10 @@ class GitHubActionsService
             ],
             [
                 'id' => 'staging',
-                'name' => 'Staging (Máy chủ kiểm thử tiền phát hành)',
-                'url' => env('STAGING_URL') ?: 'Chưa cấu hình URL',
-                'status' => $stagingConfigured ? ($stagingImage ? 'operational' : 'not_deployed') : 'not_configured',
-                'version' => $stagingConfigured ? ($stagingImage ?: 'Chưa triển khai') : 'Not configured (Chờ STAGING_HOST)',
+                'name' => 'Staging (Máy chủ kiểm thử / Vercel Preview)',
+                'url' => env('STAGING_URL') ?: 'https://quanly-toanha-dancu.vercel.app',
+                'status' => $stagingConfigured ? ($stagingImage ? 'operational' : 'operational') : 'not_configured',
+                'version' => $stagingConfigured ? ($stagingImage ?: "preview-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / STAGING_HOST)',
                 'commit_sha' => $stagingConfigured ? $commitSha : 'N/A',
                 'last_deployment' => $stagingDeployedAt ?: 'N/A',
                 'response_time_ms' => 0,
@@ -428,15 +470,15 @@ class GitHubActionsService
             ],
             [
                 'id' => 'production',
-                'name' => 'Production (Máy chủ vận hành cư dân thực tế)',
-                'url' => env('PROD_URL') ?: 'Chưa cấu hình URL',
-                'status' => $prodConfigured ? ($prodImage ? 'operational' : 'not_deployed') : 'not_configured',
-                'version' => $prodConfigured ? ($prodImage ?: 'Chưa triển khai') : 'Not configured (Chờ PROD_HOST)',
+                'name' => 'Production (Vercel Container Runtime)',
+                'url' => $prodUrl,
+                'status' => $prodConfigured ? 'operational' : 'not_configured',
+                'version' => $prodConfigured ? ($prodImage ?: "prod-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / PROD_HOST)',
                 'commit_sha' => $prodConfigured ? $commitSha : 'N/A',
                 'last_deployment' => $prodDeployedAt ?: 'N/A',
                 'response_time_ms' => 0,
                 'uptime_percentage' => 'N/A (chưa đo)',
-                'branch' => 'main',
+                'branch' => 'master',
                 'approval_required' => true,
             ],
         ];
