@@ -80,7 +80,7 @@ class ResidentPortalController extends Controller
         $apartmentSelect = [
             'apartments.id',
             'apartments.apartment_number',
-            'apartments.floor_number',
+            'floors.floor_number',
             'apartments.room_type',
             'apartments.gross_floor_area_sqm',
             'apartments.net_usable_area_sqm',
@@ -96,6 +96,7 @@ class ResidentPortalController extends Controller
         if ($apartmentId) {
             $apartment = DB::table('apartments')
                 ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
+                ->leftJoin('floors', 'apartments.floor_id', '=', 'floors.id')
                 ->where('apartments.id', $apartmentId)
                 ->select($apartmentSelect)
                 ->first();
@@ -104,6 +105,7 @@ class ResidentPortalController extends Controller
         if (! $apartment) {
             $apartment = DB::table('apartments')
                 ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
+                ->leftJoin('floors', 'apartments.floor_id', '=', 'floors.id')
                 ->where('apartments.apartment_number', 'A1-05')
                 ->select($apartmentSelect)
                 ->first();
@@ -132,7 +134,7 @@ class ResidentPortalController extends Controller
             ->select([
                 'id',
                 'invoice_number',
-                'invoice_type',
+                DB::raw("'MONTHLY' as invoice_type"),
                 'billing_period',
                 'total_amount',
                 'paid_amount',
@@ -232,14 +234,14 @@ class ResidentPortalController extends Controller
             ->select([
                 'id',
                 'visitor_name',
-                'phone_number',
-                'id_card_number',
+                'visitor_phone as phone_number',
+                'visitor_national_id as id_card_number',
                 'expected_arrival_time',
                 'expected_departure_time',
-                'qr_pass_code',
+                'qr_access_pass_code as qr_pass_code',
                 'qr_pass_status',
-                'license_plate',
-                'status',
+                'vehicle_license_plate as license_plate',
+                DB::raw('qr_pass_status as status'),
                 'created_at',
             ])
             ->orderBy('expected_arrival_time', 'desc')

@@ -255,6 +255,11 @@ class ApiService {
     return this.request<any>('/auth/me');
   }
 
+  // ================= RESIDENT PORTAL =================
+  async getResidentOverview(): Promise<any> {
+    return this.request<any>('/resident/overview');
+  }
+
   // ================= CATEGORIES =================
   async getCategories(forceRefresh: boolean = false): Promise<Category[]> {
     const key = 'amenities:categories';

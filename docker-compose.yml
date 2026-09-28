@@ -8,9 +8,6 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     volumes:
       - ./:/var/www/html
       - /var/www/html/node_modules
@@ -24,7 +21,8 @@ services:
       - DB_USERNAME=root
       - DB_PASSWORD=123567
       - SESSION_DRIVER=file
-      - CACHE_STORE=file
+      - CACHE_STORE=redis
+      - PHP_CLI_SERVER_WORKERS=8
       - QUEUE_CONNECTION=sync
       - REDIS_CLIENT=phpredis
       - REDIS_HOST=redis
