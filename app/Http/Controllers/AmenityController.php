@@ -70,10 +70,13 @@ class AmenityController extends Controller
      */
     public function getBlocks(): JsonResponse
     {
-        $blocks = DB::table('blocks')
-            ->select('id', 'block_name', 'block_code')
-            ->orderBy('block_name')
-            ->get();
+        $version = $this->getDataVersion();
+        $blocks = Cache::remember("blocks_list_v{$version}", 3600, function () {
+            return DB::table('blocks')
+                ->select('id', 'block_name', 'block_code')
+                ->orderBy('block_name')
+                ->get();
+        });
 
         return response()->json($blocks);
     }
@@ -83,28 +86,31 @@ class AmenityController extends Controller
      */
     public function getCategories(): JsonResponse
     {
-        $categories = DB::table('amenity_categories')
-            ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at')
-            ->orderBy('category_name')
-            ->get();
+        $version = $this->getDataVersion();
+        $result = Cache::remember("amenity_categories_v{$version}", 3600, function () {
+            $categories = DB::table('amenity_categories')
+                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at')
+                ->orderBy('category_name')
+                ->get();
 
-        $amenityCounts = DB::table('amenities')
-            ->whereNull('deleted_at')
-            ->groupBy('category_id')
-            ->select('category_id', DB::raw('count(*) as count'))
-            ->pluck('count', 'category_id')
-            ->toArray();
+            $amenityCounts = DB::table('amenities')
+                ->whereNull('deleted_at')
+                ->groupBy('category_id')
+                ->select('category_id', DB::raw('count(*) as count'))
+                ->pluck('count', 'category_id')
+                ->toArray();
 
-        $result = $categories->map(function ($cat) use ($amenityCounts) {
-            return [
-                'id' => $cat->id,
-                'category_name' => $cat->category_name,
-                'category_code' => $cat->category_code,
-                'icon_name' => $cat->icon_name,
-                'description' => $cat->description,
-                'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
-                'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
-            ];
+            return $categories->map(function ($cat) use ($amenityCounts) {
+                return [
+                    'id' => $cat->id,
+                    'category_name' => $cat->category_name,
+                    'category_code' => $cat->category_code,
+                    'icon_name' => $cat->icon_name,
+                    'description' => $cat->description,
+                    'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
+                    'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
+                ];
+            });
         });
 
         return response()->json($result);
@@ -240,7 +246,9 @@ class AmenityController extends Controller
             ]);
         }
 
-        $result = $this->amenityService->getPaginatedAmenities($filters);
+        $result = Cache::remember("amenities_page_{$fingerprint}", 600, function () use ($filters) {
+            return $this->amenityService->getPaginatedAmenities($filters);
+        });
 
         return response()->json($result, 200, [
             'ETag' => $etag,
@@ -253,7 +261,10 @@ class AmenityController extends Controller
      */
     public function getAmenity(string $id): JsonResponse
     {
-        $amenity = $this->amenityService->getAmenityById($id);
+        $version = $this->getDataVersion();
+        $amenity = Cache::remember("amenity_detail_{$id}_v{$version}", 600, function () use ($id) {
+            return $this->amenityService->getAmenityById($id);
+        });
 
         if (! $amenity) {
             return response()->json(['detail' => 'Không tìm thấy tiện ích.'], 404);
@@ -505,24 +516,27 @@ class AmenityController extends Controller
      */
     public function getTimeSlots(string $amenityId): JsonResponse
     {
-        $slots = DB::table('amenity_time_slots')
-            ->where('amenity_id', $amenityId)
-            ->orderBy('day_of_week')
-            ->orderBy('slot_start_time')
-            ->get();
+        $version = $this->getDataVersion();
+        $res = Cache::remember("amenity_slots_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
+            $slots = DB::table('amenity_time_slots')
+                ->where('amenity_id', $amenityId)
+                ->orderBy('day_of_week')
+                ->orderBy('slot_start_time')
+                ->get();
 
-        $res = $slots->map(function ($s) {
-            return [
-                'id' => $s->id,
-                'amenity_id' => $s->amenity_id,
-                'day_of_week' => (int) $s->day_of_week,
-                'slot_start_time' => substr($s->slot_start_time, 0, 5),
-                'slot_end_time' => substr($s->slot_end_time, 0, 5),
-                'slot_label' => $s->slot_label,
-                'max_bookings' => (int) $s->max_bookings,
-                'is_active' => (bool) $s->is_active,
-                'created_at' => Carbon::parse($s->created_at)->toIso8601String(),
-            ];
+            return $slots->map(function ($s) {
+                return [
+                    'id' => $s->id,
+                    'amenity_id' => $s->amenity_id,
+                    'day_of_week' => (int) $s->day_of_week,
+                    'slot_start_time' => substr($s->slot_start_time, 0, 5),
+                    'slot_end_time' => substr($s->slot_end_time, 0, 5),
+                    'slot_label' => $s->slot_label,
+                    'max_bookings' => (int) $s->max_bookings,
+                    'is_active' => (bool) $s->is_active,
+                    'created_at' => Carbon::parse($s->created_at)->toIso8601String(),
+                ];
+            });
         });
 
         return response()->json($res);
@@ -671,22 +685,25 @@ class AmenityController extends Controller
      */
     public function getBlackouts(string $amenityId): JsonResponse
     {
-        $blackouts = DB::table('amenity_blackouts')
-            ->where('amenity_id', $amenityId)
-            ->orderBy('blackout_date', 'desc')
-            ->get();
+        $version = $this->getDataVersion();
+        $res = Cache::remember("amenity_blackouts_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
+            $blackouts = DB::table('amenity_blackouts')
+                ->where('amenity_id', $amenityId)
+                ->orderBy('blackout_date', 'desc')
+                ->get();
 
-        $res = $blackouts->map(function ($b) {
-            return [
-                'id' => $b->id,
-                'amenity_id' => $b->amenity_id,
-                'blackout_date' => $b->blackout_date,
-                'start_time' => $b->start_time ? substr($b->start_time, 0, 5) : null,
-                'end_time' => $b->end_time ? substr($b->end_time, 0, 5) : null,
-                'reason' => $b->reason,
-                'created_by' => $b->created_by,
-                'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
-            ];
+            return $blackouts->map(function ($b) {
+                return [
+                    'id' => $b->id,
+                    'amenity_id' => $b->amenity_id,
+                    'blackout_date' => $b->blackout_date,
+                    'start_time' => $b->start_time ? substr($b->start_time, 0, 5) : null,
+                    'end_time' => $b->end_time ? substr($b->end_time, 0, 5) : null,
+                    'reason' => $b->reason,
+                    'created_by' => $b->created_by,
+                    'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
+                ];
+            });
         });
 
         return response()->json($res);

@@ -39,6 +39,6 @@ elif [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     php artisan migrate --force
 fi
 
-# Khởi động server trực tiếp với multi-workers và router script
+# Khởi động server trực tiếp với multi-workers, document root public và router script
 echo "[Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:8000 (Workers: ${PHP_CLI_SERVER_WORKERS:-8}) ..."
-exec php -S 0.0.0.0:8000 vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+exec php -S 0.0.0.0:8000 -t public server.php
