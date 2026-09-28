@@ -26,7 +26,7 @@ class CicdDashboardController extends Controller
             'search' => $request->query('search'),
         ];
 
-        $data = $this->cicdService->getDashboardBundle($filters);
+        $data = $this->cicdService->getDashboardBundle($filters, $request->boolean('force'));
         $elapsed = round((microtime(true) - $start) * 1000, 2);
 
         return response()->json([
@@ -170,11 +170,24 @@ class CicdDashboardController extends Controller
     }
 
     /**
+     * Kết quả kiểm tra bảo mật (Security Audit)
+     */
+    public function security(): JsonResponse
+    {
+        $security = $this->cicdService->getSecurityAudit();
+
+        return response()->json([
+            'success' => true,
+            'data' => $security,
+        ]);
+    }
+
+    /**
      * Lịch sử hoạt động gần đây
      */
-    public function activities(): JsonResponse
+    public function activities(Request $request): JsonResponse
     {
-        $activities = $this->cicdService->getRecentActivities();
+        $activities = $this->cicdService->getRecentActivities(null, $request->boolean('force'));
 
         return response()->json([
             'success' => true,

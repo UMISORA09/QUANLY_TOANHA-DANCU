@@ -15,6 +15,23 @@ class ResidentConcurrencyTest extends TestCase
 {
     protected string $baseUrl = 'http://127.0.0.1:8000/api/v1';
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $ch = curl_init('http://127.0.0.1:8000/up');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+        curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            $this->markTestSkipped('Live HTTP daemon at http://127.0.0.1:8000 is not running.');
+        }
+    }
+
     /**
      * Tạo tài khoản Admin kèm token phiên đăng nhập
      */

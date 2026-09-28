@@ -59,7 +59,7 @@ const WORKFLOW_DEFINITIONS: WorkflowDefinition[] = [
     stages: ['Buildx Multi-Stage', 'Local Smoke Test /health', 'Tag Commit SHA & Latest', 'Push GHCR'],
   },
   {
-    id: 'cd-staging.yml',
+    id: 'staging.yml',
     name: 'CD - Triển khai máy chủ Staging (Staging Deployment)',
     shortDesc: 'Kéo Docker image từ GHCR, khởi động container và chạy health check tự động trên máy chủ Staging.',
     targetEnv: 'Staging Server (staging.cassavas.vn)',
@@ -71,7 +71,7 @@ const WORKFLOW_DEFINITIONS: WorkflowDefinition[] = [
     stages: ['Pull Image GHCR', 'Backup Version Hiện Tại', 'Deploy Container', 'Thăm dò /health'],
   },
   {
-    id: 'cd-production.yml',
+    id: 'production.yml',
     name: 'CD - Phát hành Production (Release Deployment - Yêu cầu phê duyệt)',
     shortDesc: 'Triển khai phiên bản phát hành chính thức lên máy chủ tòa nhà, có cổng phê duyệt và tự động rollback nếu lỗi.',
     targetEnv: 'Production Server (cassavas.vn - Hệ thống vận hành thực tế)',
@@ -99,7 +99,8 @@ export const RunPipelineModal: React.FC<RunPipelineModalProps> = ({
   const currentWorkflow =
     WORKFLOW_DEFINITIONS.find((w) => w.id === selectedWorkflowId) || WORKFLOW_DEFINITIONS[0];
 
-  const isProduction = currentWorkflow.id === 'cd-production.yml';
+  const isProduction =
+    currentWorkflow.id === 'production.yml' || currentWorkflow.id === 'cd-production.yml';
 
   // Nhóm các nhánh theo thành viên trong nhóm để trực quan và dễ quản lý
   const groupedBranches = React.useMemo(() => {
@@ -154,9 +155,9 @@ export const RunPipelineModal: React.FC<RunPipelineModalProps> = ({
     setError(null);
     try {
       const environment =
-        currentWorkflow.id === 'cd-production.yml'
+        currentWorkflow.id === 'production.yml' || currentWorkflow.id === 'cd-production.yml'
           ? 'production'
-          : currentWorkflow.id === 'cd-staging.yml'
+          : currentWorkflow.id === 'staging.yml' || currentWorkflow.id === 'cd-staging.yml'
           ? 'staging'
           : 'development';
 

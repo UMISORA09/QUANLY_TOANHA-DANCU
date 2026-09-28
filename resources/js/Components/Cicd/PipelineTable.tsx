@@ -78,7 +78,7 @@ export const PipelineTable: React.FC<PipelineTableProps> = ({
     }
   };
 
-  if (isLoading) {
+  if (isLoading && pipelines.length === 0) {
     return (
       <div className="rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="p-8 text-center space-y-3">
@@ -140,7 +140,10 @@ export const PipelineTable: React.FC<PipelineTableProps> = ({
                       {p.name}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400 truncate max-w-xs mt-0.5">
+                  <div
+                    className="text-[11px] text-slate-500 font-medium truncate max-w-sm mt-0.5"
+                    title={p.commit_message}
+                  >
                     {p.commit_message}
                   </div>
                 </td>
@@ -163,27 +166,46 @@ export const PipelineTable: React.FC<PipelineTableProps> = ({
 
                 {/* Author */}
                 <td className="py-3.5 px-4 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     {p.author_avatar ? (
                       <img
                         src={p.author_avatar}
                         alt={p.author}
-                        className="w-5 h-5 rounded-full object-cover ring-1 ring-slate-200"
+                        className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
                       />
                     ) : (
-                      <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                      <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">
                         {p.author.slice(0, 1).toUpperCase()}
                       </div>
                     )}
-                    <span className="font-medium text-neutral-800">{p.author}</span>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-neutral-800 text-xs leading-snug">{p.author}</span>
+                      {p.author_login && p.author_login !== p.author && (
+                        <span className="text-[10px] text-slate-400 font-mono leading-none">@{p.author_login}</span>
+                      )}
+                    </div>
                   </div>
                 </td>
 
                 {/* Trigger */}
                 <td className="py-3.5 px-4 whitespace-nowrap">
-                  <span className="capitalize px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider">
-                    {p.trigger}
-                  </span>
+                  {p.trigger === 'merge' ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold uppercase tracking-wider">
+                      Merge
+                    </span>
+                  ) : p.trigger === 'push' ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-bold uppercase tracking-wider">
+                      Push
+                    </span>
+                  ) : p.trigger === 'manual' ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase tracking-wider">
+                      Manual
+                    </span>
+                  ) : (
+                    <span className="capitalize px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider">
+                      {p.trigger}
+                    </span>
+                  )}
                 </td>
 
                 {/* Duration */}

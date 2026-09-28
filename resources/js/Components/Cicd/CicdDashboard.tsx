@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Terminal,
   Play,
@@ -26,7 +26,10 @@ import {
   EnvironmentItem,
   SystemHealthStatus,
   ActivityItem,
+  SecurityAuditData,
+  FreshnessOverviewData,
 } from '../../Services/cicdApi';
+import { FreshnessObservabilityView } from './FreshnessObservabilityView';
 import { PipelineStatsCards } from './PipelineStatsCards';
 import { PipelineFlow } from './PipelineFlow';
 import { PipelineFilters, FilterState } from './PipelineFilters';
@@ -46,7 +49,7 @@ interface CicdDashboardProps {
 
 export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin' }) => {
   // Navigation tabs within CI/CD Dashboard
-  const [activeTab, setActiveTab] = useState<'pipelines' | 'deployments' | 'environments' | 'activity'>('pipelines');
+  const [activeTab, setActiveTab] = useState<'pipelines' | 'deployments' | 'environments' | 'freshness' | 'security' | 'activity'>('pipelines');
 
   // Data states
   const [overview, setOverview] = useState<CicdOverviewStats | null>(null);
@@ -54,7 +57,9 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
   const [deployments, setDeployments] = useState<DeploymentItem[]>([]);
   const [environments, setEnvironments] = useState<EnvironmentItem[]>([]);
   const [health, setHealth] = useState<SystemHealthStatus | null>(null);
+  const [security, setSecurity] = useState<SecurityAuditData | null>(null);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [freshness, setFreshness] = useState<FreshnessOverviewData | null>(null);
 
   // Loading & Error states
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -93,20 +98,29 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
   };
 
   // Fetch all dashboard data
-  const fetchData = useCallback(async (silent = false) => {
+  const fetchData = useCallback(async (silent = false, force = false) => {
     if (!silent) setIsLoading(true);
     setError(null);
     try {
-      const bundle = await cicdApi.getDashboardBundle(filters);
+      const [bundle, freshnessData] = await Promise.all([
+        cicdApi.getDashboardBundle(undefined, force),
+        cicdApi.getFreshness(force).catch(() => null),
+      ]);
 
       setOverview(bundle.overview);
       setPipelines(bundle.pipelines);
       setDeployments(bundle.deployments);
       setEnvironments(bundle.environments);
       setHealth(bundle.health);
+      if (bundle.security) {
+        setSecurity(bundle.security);
+      }
       setActivities(bundle.activities);
       if (bundle.branches && bundle.branches.length > 0) {
         setGitBranches(bundle.branches);
+      }
+      if (freshnessData) {
+        setFreshness(freshnessData);
       }
     } catch (err) {
       console.error(err);
@@ -115,7 +129,38 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       if (!silent) setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [filters]);
+  }, []);
+
+  // Lọc pipelines tức thì trên client (0ms - Instantaneous Client Filtering)
+  const filteredPipelines = useMemo(() => {
+    return pipelines.filter((p) => {
+      // 1. Lọc theo trạng thái
+      if (filters.status && filters.status !== 'all' && p.status !== filters.status) {
+        return false;
+      }
+      // 2. Lọc theo nhánh
+      if (filters.branch && filters.branch !== 'all' && !p.branch.toLowerCase().includes(filters.branch.toLowerCase())) {
+        return false;
+      }
+      // 3. Lọc theo workflow
+      if (filters.workflow && filters.workflow !== 'all' && !p.workflow_file.toLowerCase().includes(filters.workflow.toLowerCase())) {
+        return false;
+      }
+      // 4. Tìm kiếm từ khóa tức thì
+      if (filters.search && filters.search.trim()) {
+        const q = filters.search.trim().toLowerCase();
+        const match =
+          (p.name && p.name.toLowerCase().includes(q)) ||
+          (p.branch && p.branch.toLowerCase().includes(q)) ||
+          (p.commit_sha && p.commit_sha.toLowerCase().includes(q)) ||
+          (p.commit_message && p.commit_message.toLowerCase().includes(q)) ||
+          (p.author && p.author.toLowerCase().includes(q)) ||
+          (p.author_login && p.author_login.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [pipelines, filters]);
 
   useEffect(() => {
     fetchData();
@@ -128,17 +173,46 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
 
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        fetchData(true);
+        fetchData(true, true);
       }
     }, 6000);
 
     return () => clearInterval(interval);
   }, [overview?.running_count, fetchData]);
 
+  // Tự động tải hoạt động mới theo thời gian thực (Real-time Activity Auto-refresh)
+  const [isRefreshingActivities, setIsRefreshingActivities] = useState<boolean>(false);
+  const fetchActivities = useCallback(async (force = false) => {
+    try {
+      setIsRefreshingActivities(true);
+      const newActs = await cicdApi.getActivities(force);
+      setActivities(newActs);
+    } catch (e) {
+      console.warn('Failed to refresh activities:', e);
+    } finally {
+      setIsRefreshingActivities(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'activity') return;
+
+    // Khi chuyển qua tab activity, tải mới ngay lập tức
+    fetchActivities(true);
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchActivities(true);
+      }
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [activeTab, fetchActivities]);
+
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchData(true);
-    showToast('Đã làm mới dữ liệu CI/CD');
+    fetchData(true, true);
+    showToast('Đã làm mới dữ liệu CI/CD từ GitHub');
   };
 
   const handleSelectPipeline = (pipeline: PipelineItem) => {
@@ -150,6 +224,10 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
     const res = await cicdApi.runPipeline(payload);
     showToast(res.message, 'success');
     fetchData(true);
+    // Tự động tải lại sau 2.5s để hiển thị lượt chạy mới nhất từ GitHub Actions Runner
+    setTimeout(() => {
+      fetchData(true);
+    }, 2500);
   };
 
   const handleRollbackSubmit = async (targetVersion: string) => {
@@ -239,9 +317,12 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
               <span>GitHub Actions</span>
             </a>
           ) : (
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-mono border border-slate-200/80">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Local Runner</span>
+            <span
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-mono border border-slate-200/80"
+              title="Cần cấu hình GITHUB_TOKEN trong .env để kết nối trực tiếp với GitHub Actions API"
+            >
+              <span className="w-2 h-2 rounded-full bg-slate-400" />
+              <span>GitHub API: Not configured</span>
             </span>
           )}
 
@@ -308,8 +389,10 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2 overflow-x-auto">
         {[
           { id: 'pipelines', label: 'Danh sách Pipelines', icon: Layers, badge: String(pipelines.length) },
-          { id: 'deployments', label: 'Triển khai & Bản phát hành', icon: Server, badge: 'Active' },
+          { id: 'deployments', label: 'Triển khai & Bản phát hành', icon: Server, badge: overview?.production_status === 'healthy' ? 'Active' : 'Unconfigured' },
           { id: 'environments', label: 'Môi trường & System Health', icon: HeartPulse },
+          { id: 'freshness', label: 'Freshness Observability', icon: Clock, badge: freshness?.overall_state || 'Check' },
+          { id: 'security', label: 'Bảo mật & Quét lỗ hổng', icon: Shield, badge: security?.status === 'configured' ? (security.summary || 'Checked') : 'Not configured' },
           { id: 'activity', label: 'Nhật ký Hoạt động', icon: Activity },
         ].map((tab) => {
           const TabIcon = tab.icon;
@@ -347,11 +430,11 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
           <PipelineFilters
             onFilterChange={setFilters}
             availableBranches={['all', ...gitBranches]}
-            totalResults={pipelines.length}
+            totalResults={filteredPipelines.length}
           />
           <PipelineTable
-            pipelines={pipelines}
-            isLoading={isLoading}
+            pipelines={filteredPipelines}
+            isLoading={isLoading && pipelines.length === 0}
             onSelectPipeline={handleSelectPipeline}
             canRun={canRunPipeline}
           />
@@ -381,13 +464,163 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
             <EnvironmentCards environments={environments} isLoading={isLoading} />
           </div>
 
-          <SystemHealthView health={health} isLoading={isLoading} onRefresh={() => fetchData(true)} />
+          <SystemHealthView
+            health={health}
+            isLoading={isLoading}
+            onRefresh={() => fetchData(true)}
+            onHealthUpdate={(newHealth) => setHealth(newHealth)}
+          />
         </div>
+      )}
+
+      {/* TAB CONTENT: SECURITY */}
+      {activeTab === 'security' && (
+        <div className="space-y-6">
+          <div className="rounded-2xl bg-white/85 backdrop-blur-md p-6 border border-slate-200/80 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-900">
+                    Bảo mật & Quét Lỗ Hổng Tự Động (Security Audit)
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Quét rò rỉ mã khóa bí mật, kiểm tra CVE gói phụ thuộc và lỗ hổng container Docker
+                  </p>
+                </div>
+              </div>
+
+              {security?.status === 'configured' && security.run_url && (
+                <a
+                  href={security.run_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-neutral-800 text-xs font-semibold transition-colors"
+                >
+                  <span>Xem báo cáo GitHub</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                </a>
+              )}
+            </div>
+
+            {security?.status !== 'configured' && (
+              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-900 text-xs space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>Trạng thái kết nối API: Not configured</span>
+                </div>
+                <p className="text-amber-800">
+                  Quy trình quét bảo mật được thiết lập tại <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">.github/workflows/security.yml</code>. Để đồng bộ dữ liệu thời gian thực từ GitHub Runner lên Dashboard này, vui lòng cấu hình biến môi trường <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">GITHUB_TOKEN</code> trong tệp <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">.env</code>.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Gitleaks Secret Scanner */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-neutral-800">Gitleaks Secret Scan</span>
+                  {security?.gitleaks === 'success' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Passed</span>
+                  ) : security?.gitleaks === 'failure' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">Leak Detected</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">Not configured</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Rà soát toàn bộ lịch sử commit để phát hiện API key, mật khẩu, JWT token bị rò rỉ.
+                </p>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  Công cụ: Gitleaks Action v2
+                </div>
+              </div>
+
+              {/* Composer Audit */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-neutral-800">Composer PHP Audit</span>
+                  {security?.dependency_audit === 'success' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Passed</span>
+                  ) : security?.dependency_audit === 'failure' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">CVE Found</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">Not configured</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Kiểm tra cơ sở dữ liệu lỗ hổng bảo mật FriendsOfPHP & Packagist Security Advisories.
+                </p>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  Lệnh: composer audit --locked
+                </div>
+              </div>
+
+              {/* NPM Audit */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-neutral-800">NPM Package Audit</span>
+                  {security?.dependency_audit === 'success' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Passed</span>
+                  ) : security?.dependency_audit === 'failure' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">CVE Found</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">Not configured</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Rà soát các gói Javascript/Node.js mức độ nghiêm trọng High/Critical.
+                </p>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  Lệnh: npm audit --audit-level=high
+                </div>
+              </div>
+
+              {/* Trivy Container Scan */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-neutral-800">Trivy Container Scan</span>
+                  {security?.trivy_container === 'success' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Passed</span>
+                  ) : security?.trivy_container === 'failure' ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">Vulnerabilities</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">Not configured</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Quét sâu toàn bộ hệ điều hành Bookworm và thư viện trong Docker Production Image.
+                </p>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  Công cụ: Aqua Trivy Action
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: FRESHNESS OBSERVABILITY */}
+      {activeTab === 'freshness' && (
+        <FreshnessObservabilityView
+          freshness={freshness}
+          isLoading={isLoading}
+          onRefresh={() => {
+            cicdApi.getFreshness(true).then(setFreshness).catch(console.error);
+          }}
+        />
       )}
 
       {/* TAB CONTENT: ACTIVITY */}
       {activeTab === 'activity' && (
-        <ActivityTimeline activities={activities} isLoading={isLoading} />
+        <ActivityTimeline
+          activities={activities}
+          isLoading={isLoading}
+          onRefresh={() => fetchActivities(true)}
+          isRefreshing={isRefreshingActivities}
+        />
       )}
 
       {/* PIPELINE DETAIL DRAWER */}

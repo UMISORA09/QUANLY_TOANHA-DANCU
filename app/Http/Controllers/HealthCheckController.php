@@ -9,14 +9,23 @@ use Illuminate\Support\Facades\DB;
 class HealthCheckController extends Controller
 {
     /**
-     * Lấy commit SHA ngắn gọn của bản phát hành hiện tại.
+     * Lấy version và commit SHA của bản phát hành hiện tại.
      */
     protected function getAppVersion(): string
     {
-        $version = env('APP_VERSION', env('COMMIT_SHA', ''));
-
+        $version = env('APP_VERSION', '');
         if (! empty($version)) {
-            return substr($version, 0, 7);
+            return $version;
+        }
+
+        return $this->getCommitSha();
+    }
+
+    protected function getCommitSha(): string
+    {
+        $sha = env('COMMIT_SHA', '');
+        if (! empty($sha)) {
+            return substr($sha, 0, 7);
         }
 
         $headFile = base_path('.git/HEAD');
@@ -32,7 +41,7 @@ class HealthCheckController extends Controller
             }
         }
 
-        return 'a83f21c';
+        return 'unknown';
     }
 
     /**
@@ -67,17 +76,24 @@ class HealthCheckController extends Controller
         $uptime = defined('LARAVEL_START') ? round(microtime(true) - LARAVEL_START, 2) : 0.0;
 
         $overallStatus = ($databaseStatus === 'healthy' && $cacheStatus !== 'unhealthy') ? 'healthy' : 'degraded';
+        if ($databaseStatus === 'unhealthy') {
+            $overallStatus = 'unhealthy';
+        }
+
+        $httpStatus = ($overallStatus === 'unhealthy') ? 503 : 200;
 
         return response()->json([
-            'status' => 'healthy',
+            'status' => $overallStatus,
             'system' => $overallStatus,
             'database' => $databaseStatus,
             'cache' => $cacheStatus,
             'version' => $this->getAppVersion(),
+            'commit_sha' => $this->getCommitSha(),
+            'build_time' => env('BUILD_TIME', null),
             'timestamp' => now()->toIso8601String(),
             'uptime_seconds' => $uptime,
             'database_latency_ms' => $databaseLatencyMs,
-        ], 200);
+        ], $httpStatus);
     }
 
     /**

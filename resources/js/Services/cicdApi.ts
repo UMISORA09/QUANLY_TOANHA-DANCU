@@ -15,6 +15,7 @@ export interface PipelineItem {
   commit_sha: string;
   commit_message: string;
   author: string;
+  author_login?: string | null;
   author_avatar?: string | null;
   trigger: string;
   duration: string;
@@ -46,7 +47,7 @@ export interface DeploymentItem {
   version: string;
   image_tag: string;
   commit_sha: string;
-  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'not_deployed';
+  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'not_deployed' | 'not_configured';
   deployed_by: string;
   deployed_at: string;
   response_time_ms: number;
@@ -57,7 +58,7 @@ export interface EnvironmentItem {
   id: 'production' | 'staging' | 'development';
   name: string;
   url: string;
-  status: 'operational' | 'degraded' | 'down' | 'not_deployed';
+  status: 'operational' | 'degraded' | 'down' | 'not_deployed' | 'not_configured';
   version: string;
   commit_sha: string;
   last_deployment: string;
@@ -86,6 +87,18 @@ export interface SystemHealthStatus {
   };
 }
 
+export interface SecurityAuditData {
+  status: 'configured' | 'not_configured' | 'unavailable';
+  message?: string;
+  run_id?: string;
+  run_url?: string;
+  last_run_at?: string;
+  gitleaks: 'success' | 'failure' | 'running' | 'queued' | 'unknown' | 'not_configured';
+  dependency_audit: 'success' | 'failure' | 'running' | 'queued' | 'unknown' | 'not_configured';
+  trivy_container: 'success' | 'failure' | 'running' | 'queued' | 'unknown' | 'not_configured';
+  summary?: string;
+}
+
 export interface CicdOverviewStats {
   total_pipelines: number;
   success_count: number;
@@ -95,8 +108,9 @@ export interface CicdOverviewStats {
   latest_pipeline: PipelineItem | null;
   production_status: string;
   production_version: string;
+  staging_status: string;
   staging_version: string;
-  system_health: 'operational' | 'degraded' | 'down';
+  system_health: string;
   is_live_github: boolean;
 }
 
@@ -110,6 +124,66 @@ export interface ActivityItem {
   timestamp: string;
 }
 
+export type FreshnessState = 'FRESH' | 'STALE' | 'CRITICAL' | 'UNKNOWN' | 'UNAVAILABLE';
+
+export interface FreshnessSourceItem {
+  source: string;
+  table?: string;
+  name: string;
+  type: 'data' | 'monitoring';
+  status: FreshnessState;
+  last_update_at?: string | null;
+  last_event_at?: string | null;
+  last_observed_at?: string | null;
+  age_seconds: number | null;
+  warning_threshold: number;
+  critical_threshold: number;
+  error?: string;
+  message?: string;
+  workflow?: string;
+  commit_sha?: string;
+  environment?: string;
+  version?: string;
+  timestamp_field?: string;
+}
+
+export interface FreshnessIncidentItem {
+  id?: number;
+  source: string;
+  source_type: string;
+  state: string;
+  age_seconds?: number;
+  threshold_seconds?: number;
+  source_timestamp?: string;
+  detected_at: string;
+  resolved_at?: string;
+  details?: string;
+}
+
+export interface FreshnessOverviewData {
+  status: 'fresh' | 'stale' | 'critical' | 'unknown' | 'unavailable';
+  overall_state: FreshnessState;
+  checked_at: string;
+  collector: {
+    status: FreshnessState;
+    last_success_at: string | null;
+    age_seconds: number;
+    warning_threshold: number;
+    critical_threshold: number;
+    errors_count: number;
+  };
+  github_actions: FreshnessSourceItem;
+  deployment: FreshnessSourceItem;
+  application_health: FreshnessSourceItem;
+  database: {
+    status: FreshnessState;
+    last_data_update_at: string | null;
+    age_seconds: number | null;
+    sources: FreshnessSourceItem[];
+  };
+  incidents: FreshnessIncidentItem[];
+}
+
 const API_BASE = '/api/admin/cicd';
 
 export interface DashboardBundleData {
@@ -118,17 +192,20 @@ export interface DashboardBundleData {
   deployments: DeploymentItem[];
   environments: EnvironmentItem[];
   health: SystemHealthStatus;
+  security?: SecurityAuditData;
   activities: ActivityItem[];
   branches: string[];
+  freshness?: FreshnessOverviewData;
 }
 
 export const cicdApi = {
-  async getDashboardBundle(filters?: { status?: string; branch?: string; workflow?: string; search?: string }): Promise<DashboardBundleData> {
+  async getDashboardBundle(filters?: { status?: string; branch?: string; workflow?: string; search?: string }, force = false): Promise<DashboardBundleData> {
     const params = new URLSearchParams();
     if (filters?.status && filters.status !== 'all') params.append('status', filters.status);
     if (filters?.branch && filters.branch !== 'all') params.append('branch', filters.branch);
     if (filters?.workflow && filters.workflow !== 'all') params.append('workflow', filters.workflow);
     if (filters?.search) params.append('search', filters.search);
+    if (force) params.append('force', '1');
 
     const res = await fetch(`${API_BASE}/bundle?${params.toString()}`);
     if (!res.ok) throw new Error('Không thể tải dữ liệu CI/CD');
@@ -199,8 +276,16 @@ export const cicdApi = {
     return json.data;
   },
 
-  async getActivities(): Promise<ActivityItem[]> {
-    const res = await fetch(`${API_BASE}/activities`);
+  async getSecurity(): Promise<SecurityAuditData> {
+    const res = await fetch(`${API_BASE}/security`);
+    if (!res.ok) throw new Error('Không thể tải kết quả kiểm tra bảo mật');
+    const json = await res.json();
+    return json.data;
+  },
+
+  async getActivities(force = false): Promise<ActivityItem[]> {
+    const url = force ? `${API_BASE}/activities?force=1` : `${API_BASE}/activities`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error('Không thể tải hoạt động gần đây');
     const json = await res.json();
     return json.data;
@@ -208,9 +293,9 @@ export const cicdApi = {
 
   async getBranches(): Promise<string[]> {
     const res = await fetch(`${API_BASE}/branches`);
-    if (!res.ok) return ['main', 'DangNguyen/CI-CD', 'DangNguyen/amenity-management'];
+    if (!res.ok) return ['main'];
     const json = await res.json();
-    return json.data || ['main', 'DangNguyen/CI-CD', 'DangNguyen/amenity-management'];
+    return json.data || ['main'];
   },
 
   async runPipeline(payload: { workflow: string; branch?: string; environment?: string }): Promise<{ success: boolean; message: string }> {
@@ -264,5 +349,11 @@ export const cicdApi = {
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Không thể kích hoạt rollback');
     return json;
+  },
+
+  async getFreshness(force = false): Promise<FreshnessOverviewData> {
+    const res = await fetch(`/api/monitoring/freshness${force ? '?force=1' : ''}`);
+    if (!res.ok) throw new Error('Không thể tải dữ liệu Freshness Observability');
+    return await res.json();
   },
 };

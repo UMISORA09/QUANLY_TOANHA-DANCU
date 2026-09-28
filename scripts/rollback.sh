@@ -7,20 +7,26 @@
 
 set -eo pipefail
 
+DEPLOY_ENV="${1:-production}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
 
 echo "========================================================================"
 echo "BẮT ĐẦU QUY TRÌNH ROLLBACK KHẨN CẤP"
-echo "Thời gian: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "Môi trường: $DEPLOY_ENV"
+echo "Thời gian: $(TZ='Asia/Ho_Chi_Minh' date +'%Y-%m-%dT%H:%M:%S+07:00')"
 echo "========================================================================"
 
-BACKUP_IMAGE_FILE=".last_deployed_image"
+if [ "$DEPLOY_ENV" = "staging" ]; then
+    BACKUP_IMAGE_FILE=".last_deployed_staging_image"
+else
+    BACKUP_IMAGE_FILE=".last_deployed_image"
+fi
 
 if [ ! -f "$BACKUP_IMAGE_FILE" ] || [ ! -s "$BACKUP_IMAGE_FILE" ]; then
     echo "LỖI: Không tìm thấy tệp ghi nhận phiên bản ổn định trước đó ($BACKUP_IMAGE_FILE)!"
-    echo "Vui lòng chỉ định thủ công image ổn định cần phục hồi: ./scripts/deploy.sh <IMAGE_TAG>"
+    echo "Vui lòng chỉ định thủ công image ổn định cần phục hồi: ./scripts/deploy.sh <IMAGE_TAG> $DEPLOY_ENV"
     exit 1
 fi
 
@@ -32,7 +38,7 @@ export DEPLOY_IMAGE="$PREVIOUS_IMAGE"
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
 echo "Đang kiểm tra sức khỏe hệ thống sau khi phục hồi (Rollback Verification)..."
-if "$SCRIPT_DIR/health-check.sh" "http://localhost:8000/health" 15 2; then
+if "$SCRIPT_DIR/health-check.sh" "http://localhost:8000/health" 20 2; then
     echo "========================================================================"
     echo "ROLLBACK HOÀN TẤT THÀNH CÔNG AN TOÀN!"
     echo "Hệ thống Smart Cassavas đã khôi phục ổn định về: $PREVIOUS_IMAGE"

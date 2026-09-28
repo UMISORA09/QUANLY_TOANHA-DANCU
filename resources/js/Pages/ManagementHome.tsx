@@ -45,6 +45,7 @@ import {
   Terminal
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
+import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';
 import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
 import { RbacManagement } from './Admin/RbacManagement';
@@ -759,6 +760,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'residents' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ResidentManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'buildings' ? (
+            <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
+              <BuildingListManagement />
             </div>
           ) : activeMenuId === 'temporary_registrations' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">

@@ -124,7 +124,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           ======================================================== */}
       <aside
         aria-label="Menu điều hướng chính"
-        aria-hidden={!mobileOpen}
         className={`fixed lg:relative top-0 left-0 z-50 h-screen shrink-0 bg-white/95 lg:bg-white/85 backdrop-blur-2xl border-r border-white/60 shadow-2xl lg:shadow-xs flex-col justify-between transition-all duration-300 ease-in-out glass-specular-edge overflow-x-hidden ${
           mobileOpen
             ? 'flex w-72 max-w-[85vw] translate-x-0'

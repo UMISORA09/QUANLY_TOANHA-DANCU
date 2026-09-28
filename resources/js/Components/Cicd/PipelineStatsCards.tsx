@@ -82,20 +82,44 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
       value: stats.production_version,
       subtext: 'Cụm máy chủ trực tiếp',
       icon: ShieldCheck,
-      color: 'text-amber-600',
+      color: stats.production_status === 'healthy' || stats.production_status === 'operational' ? 'text-emerald-600' : 'text-slate-500',
       bgColor: 'bg-white/80 border-slate-200/80',
-      badge: 'Healthy 99.9%',
-      badgeColor: 'bg-emerald-100 text-emerald-800',
+      badge: stats.production_status === 'not_configured'
+        ? 'Not configured'
+        : (stats.production_status === 'healthy' || stats.production_status === 'operational'
+          ? 'Operational'
+          : (stats.production_status === 'degraded'
+            ? 'Degraded'
+            : (stats.production_status === 'unhealthy' || stats.production_status === 'down' ? 'Down' : 'Chưa triển khai'))),
+      badgeColor: stats.production_status === 'healthy' || stats.production_status === 'operational'
+        ? 'bg-emerald-100 text-emerald-800'
+        : (stats.production_status === 'degraded'
+          ? 'bg-amber-100 text-amber-800'
+          : (stats.production_status === 'unhealthy' || stats.production_status === 'down'
+            ? 'bg-rose-100 text-rose-800'
+            : 'bg-slate-100 text-slate-600')),
     },
     {
       title: 'Staging CD',
       value: stats.staging_version,
       subtext: 'Môi trường kiểm thử',
       icon: Server,
-      color: 'text-indigo-600',
+      color: stats.staging_status === 'healthy' || stats.staging_status === 'operational' ? 'text-indigo-600' : 'text-slate-500',
       bgColor: 'bg-white/80 border-slate-200/80',
-      badge: 'Up to date',
-      badgeColor: 'bg-indigo-100 text-indigo-800',
+      badge: stats.staging_status === 'not_configured'
+        ? 'Not configured'
+        : (stats.staging_status === 'healthy' || stats.staging_status === 'operational'
+          ? 'Operational'
+          : (stats.staging_status === 'degraded'
+            ? 'Degraded'
+            : (stats.staging_status === 'unhealthy' || stats.staging_status === 'down' ? 'Down' : 'Chưa triển khai'))),
+      badgeColor: stats.staging_status === 'healthy' || stats.staging_status === 'operational'
+        ? 'bg-indigo-100 text-indigo-800'
+        : (stats.staging_status === 'degraded'
+          ? 'bg-amber-100 text-amber-800'
+          : (stats.staging_status === 'unhealthy' || stats.staging_status === 'down'
+            ? 'bg-rose-100 text-rose-800'
+            : 'bg-slate-100 text-slate-600')),
     },
   ];
 

@@ -95,6 +95,34 @@ Mọi thao tác phát triển, kiểm thử và bảo trì đều được thự
 
 ---
 
+## ⚡ QC LOCAL AUTO WATCH & SAFE DEPLOYMENT (TỰ ĐỘNG THEO DÕI & TRIỂN KHAI QC)
+
+Dành cho Tester / QC trên máy local. Người làm QC chỉ cần mở terminal PowerShell tại thư mục dự án và chạy đúng **MỘT câu lệnh duy nhất**:
+
+```powershell
+.\qc-update.ps1
+```
+
+*(Tùy chọn: `.\qc-update.ps1 -Branch <ten_nhanh>` hoặc `.\qc-update.ps1 -PollIntervalSeconds 10` hoặc `.\qc-update.ps1 -Once` để chạy 1 lần).*
+
+### Cách thức hoạt động:
+1. **Khởi động Watcher (`QC AUTO WATCH = ON`)**: Script duy trì chạy liên tục, tự động thăm dò branch phát triển trên GitHub định kỳ (mặc định mỗi 5 giây).
+2. **Developer Git Push → Tự động nhận diện**: Ngay khi Developer push commit mới, Watcher phát hiện sự thay đổi (`LOCAL_COMMIT != REMOTE_COMMIT`) và khởi động quy trình Safe Deployment.
+3. **Môi trường Candidate cô lập (`.qc-candidate`)**: Mã nguồn mới được chuẩn bị trong Git Worktree riêng biệt. Ứng dụng hiện tại đang phục vụ QC trên cổng `8000` **hoàn toàn không bị ảnh hưởng hay gián đoạn**.
+4. **Kiểm định toàn diện (Lint, Build, Candidate Health Check)**:
+   - Kiểm tra cú pháp PHP (PHP Lint) trên các tệp thay đổi.
+   - Kiểm tra Composer dependencies và biên dịch frontend Vite bundle.
+   - Khởi chạy candidate container trên cổng `8001` (`RUN_MIGRATIONS=false`) và kiểm tra endpoint `/health` thực tế.
+5. **Kích hoạt an toàn hoặc Bảo toàn phiên bản cũ**:
+   - **Nếu Candidate PASS**: Kích hoạt lên môi trường active (cổng `8000`), thực thi database migrations an toàn và xác minh lại `/health`.
+   - **Nếu Candidate FAIL**: Giữ nguyên 100% phiên bản cũ đang chạy ổn định, không để lỗi từ commit mới phá hỏng môi trường QC. Tiếp tục theo dõi commit kế tiếp.
+6. **Dừng Watcher (`QC AUTO WATCH = OFF`)**:
+   - Khi cần dừng, người dùng chỉ cần nhấn **`Ctrl + C`**.
+   - Script dọn dẹp các tệp tạm, giải phóng lock và dừng an toàn. Khi Watcher đã OFF, code mới từ Developer push lên sẽ không tự động nạp vào máy QC cho đến khi người dùng chạy lại `.\qc-update.ps1`.
+
+---
+
+
 ## 🔄 HỆ THỐNG CI/CD (CONTINUOUS INTEGRATION & DEPLOYMENT)
 
 Dự án áp dụng quy trình CI/CD tự động hóa toàn diện qua **GitHub Actions**, **Docker Buildx**, **GitHub Container Registry (GHCR)** và **SSH Deployment**.
@@ -175,6 +203,7 @@ Hệ thống cung cấp đầy đủ tài liệu kiến trúc và vận hành ch
 - ⚙️ [Hướng Dẫn Vận Hành CI/CD](docs/ci-cd.md): Chi tiết 4 pipeline CI, Staging, Production và Security.
 - 🚀 [Hướng Dẫn Triển Khai Máy Chủ](docs/deployment.md): Zero-Downtime deployment và cấu hình GitHub Secrets.
 - ⏪ [Sổ Tay Phục Hồi & Rollback](docs/rollback.md): Quy trình rollback an toàn và bảo toàn CSDL.
+- ⏱️ [Giám Sát Độ Tươi Mới Dữ Liệu (Freshness Observability)](docs/freshness-monitoring.md): Kiến trúc đo lường Data Freshness & Monitoring Freshness, Prometheus rules, Alertmanager và Incident tracking.
 - 📊 [Giám Sát Hệ Thống](docs/monitoring.md): Tích hợp Sentry, Prometheus (`/metrics`) và Grafana.
 - 🚨 [Cảnh Báo & Bất Thường](docs/alerting.md): Ngưỡng kích hoạt và tích hợp Discord/Slack Webhook.
 - 🩺 [Sổ Tay Xử Lý Sự Cố](docs/troubleshooting.md): Debug container và truy vết lỗi với `X-Request-ID`.
@@ -184,10 +213,12 @@ Hệ thống cung cấp đầy đủ tài liệu kiến trúc và vận hành ch
 ## 🚦 ĐƯỜNG DẪN GIÁM SÁT & VẬN HÀNH
 
 - **DevOps Dashboard (Admin)**: `/admin/cicd` hoặc `/devops`
+- **Freshness Observability Endpoint**: `/api/monitoring/freshness`
 - **Trang Trạng Thái Công Khai (Public Status)**: `/status`
 - **Lịch Sử Bảo Trì & Sự Cố (Public Incidents)**: `/status/incidents`
 - **Health Check Endpoint**: `/health` hoặc `/api/health`
 - **CSDL Health Check**: `/api/db-health`
 - **Prometheus Metrics Scraper**: `/metrics`
+
 
 

@@ -12,13 +12,21 @@ import {
   Filter,
 } from 'lucide-react';
 import { ActivityItem } from '../../Services/cicdApi';
+import { RefreshCw } from 'lucide-react';
 
 interface ActivityTimelineProps {
   activities: ActivityItem[];
   isLoading: boolean;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
-export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, isLoading }) => {
+export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
+  activities,
+  isLoading,
+  onRefresh,
+  isRefreshing = false,
+}) => {
   const [filterType, setFilterType] = useState<string>('all');
 
   const filtered = filterType === 'all'
@@ -40,6 +48,32 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
     }
   };
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'running':
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Đang chạy
+          </span>
+        );
+      case 'failed':
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+            <XCircle className="w-3 h-3 text-rose-500" />
+            Thất bại
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
+            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            Thành công
+          </span>
+        );
+    }
+  };
+
   const formatRelativeTime = (iso: string) => {
     try {
       const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -52,7 +86,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
     }
   };
 
-  if (isLoading) {
+  if (isLoading && activities.length === 0) {
     return (
       <div className="rounded-2xl bg-white/80 p-6 border border-slate-200 animate-pulse space-y-3">
         <div className="h-5 w-40 bg-slate-200 rounded" />
@@ -63,29 +97,55 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
 
   return (
     <div className="rounded-2xl bg-white/85 backdrop-blur-md p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-4">
-      {/* Title & Filter buttons */}
+      {/* Title, Live Badge & Filter buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-sky-600" />
-          <h3 className="text-sm font-bold text-neutral-900">Nhật ký Hoạt động DevOps (Recent Activity)</h3>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-sky-600" />
+            <h3 className="text-sm font-bold text-neutral-900">Nhật ký Hoạt động DevOps (Recent Activity)</h3>
+          </div>
+          {/* Live indicator */}
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+            </span>
+            LIVE
+          </span>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-1 text-xs">
-          {['all', 'build', 'deploy', 'test', 'security'].map((type) => (
+        <div className="flex items-center gap-2">
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            {['all', 'build', 'deploy', 'test', 'security'].map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setFilterType(type)}
+                className={`px-2.5 py-1 rounded-lg font-bold capitalize transition-colors cursor-pointer ${
+                  filterType === type
+                    ? 'bg-neutral-900 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
+          {/* Manual Refresh Button */}
+          {onRefresh && (
             <button
-              key={type}
               type="button"
-              onClick={() => setFilterType(type)}
-              className={`px-2.5 py-1 rounded-lg font-bold capitalize transition-colors cursor-pointer ${
-                filterType === type
-                  ? 'bg-neutral-900 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              onClick={onRefresh}
+              className={`p-1.5 rounded-xl text-slate-400 hover:text-neutral-800 hover:bg-slate-100 transition-colors cursor-pointer ${
+                isRefreshing ? 'animate-spin text-sky-600' : ''
               }`}
+              title="Làm mới nhật ký ngay"
             >
-              {type}
+              <RefreshCw className="w-4 h-4" />
             </button>
-          ))}
+          )}
         </div>
       </div>
 
@@ -104,7 +164,10 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
 
               <div className="flex-1 min-w-0 space-y-0.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-neutral-900">{act.title}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-bold text-neutral-900 truncate">{act.title}</span>
+                    {getStatusBadge(act.status)}
+                  </div>
                   <span className="text-[11px] text-slate-400 font-mono shrink-0">
                     {formatRelativeTime(act.timestamp)}
                   </span>

@@ -4,6 +4,7 @@ use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CicdDashboardController;
 use App\Http\Controllers\DevOpsApiController;
+use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MetricsController;
@@ -52,6 +53,14 @@ Route::get('/admin', function () {
 });
 
 Route::get('/admin/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
+Route::get('/dev', function () {
+    return view('welcome');
+});
+
+Route::get('/dev/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
@@ -120,9 +129,9 @@ Route::post('/api/v1/resident/amenity-bookings', [ResidentPortalController::clas
 Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
 
-// API Auth
-Route::post('/api/v1/auth/login', [AuthController::class, 'login']);
-Route::post('/api/auth/login', [AuthController::class, 'login']);
+// API Auth (Có Throttle Rate Limiting chống Brute-Force)
+Route::post('/api/v1/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/api/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::get('/api/v1/auth/me', [AuthController::class, 'me']);
 Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
 
@@ -326,7 +335,9 @@ Route::prefix('api/admin/cicd')->group(function () {
     Route::get('deployments', [CicdDashboardController::class, 'deployments']);
     Route::get('environments', [CicdDashboardController::class, 'environments']);
     Route::get('health', [CicdDashboardController::class, 'health']);
+    Route::get('security', [CicdDashboardController::class, 'security']);
     Route::get('activities', [CicdDashboardController::class, 'activities']);
+    Route::get('freshness', [FreshnessController::class, 'index']);
     Route::post('pipelines/run', [CicdDashboardController::class, 'runPipeline']);
     Route::post('pipelines/{id}/retry', [CicdDashboardController::class, 'retryPipeline']);
     Route::post('pipelines/{id}/cancel', [CicdDashboardController::class, 'cancelPipeline']);
@@ -364,6 +375,7 @@ Route::withoutMiddleware([
     Route::get('/api/health', [HealthCheckController::class, 'health']);
     Route::get('/api/db-health', [HealthCheckController::class, 'dbHealth']);
     Route::get('/metrics', [MetricsController::class, 'metrics']);
+    Route::get('/api/monitoring/freshness', [FreshnessController::class, 'index']);
 });
 
 // DevOps Management & Metrics APIs

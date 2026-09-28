@@ -218,9 +218,20 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
 
               <div className="p-2.5 rounded-xl bg-white border border-slate-200/80">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Người chạy</span>
-                <div className="flex items-center gap-1 font-bold text-neutral-800 truncate">
-                  <User className="w-3 h-3 text-slate-400 shrink-0" />
-                  <span className="truncate">{pipeline.author}</span>
+                <div className="flex items-center gap-1.5 font-bold text-neutral-800 truncate">
+                  {pipeline.author_avatar ? (
+                    <img
+                      src={pipeline.author_avatar}
+                      alt={pipeline.author}
+                      className="w-4 h-4 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
+                    />
+                  ) : (
+                    <User className="w-3 h-3 text-slate-400 shrink-0" />
+                  )}
+                  <span className="truncate text-xs">{pipeline.author}</span>
+                  {pipeline.author_login && pipeline.author_login !== pipeline.author && (
+                    <span className="text-[10px] text-slate-400 font-mono font-normal truncate">(@{pipeline.author_login})</span>
+                  )}
                 </div>
               </div>
 

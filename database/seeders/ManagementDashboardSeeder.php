@@ -151,16 +151,20 @@ class ManagementDashboardSeeder extends Seeder
 
         $userMap = [];
         foreach ($users as $u) {
-            $existing = DB::table('users')->where('email', $u['email'])->first();
+            $existing = DB::table('users')
+                ->where('email', $u['email'])
+                ->orWhere('username', $u['username'])
+                ->orWhere('phone_number', $u['phone_number'])
+                ->first();
             $userId = $existing ? $existing->id : $u['id'];
             $userMap[$u['username']] = $userId;
 
             DB::table('users')->updateOrInsert(
-                ['email' => $u['email']],
+                ['id' => $userId],
                 [
-                    'id' => $userId,
-                    'username' => $u['username'],
-                    'phone_number' => $u['phone_number'],
+                    'email' => $existing ? $existing->email : $u['email'],
+                    'username' => $existing ? $existing->username : $u['username'],
+                    'phone_number' => $existing ? $existing->phone_number : $u['phone_number'],
                     'password_hash' => $defaultPassword,
                     'full_name' => $u['full_name'],
                     'gender' => $u['gender'],
