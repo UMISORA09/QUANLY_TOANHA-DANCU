@@ -4,6 +4,7 @@ use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CicdDashboardController;
 use App\Http\Controllers\DevOpsApiController;
+use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MetricsController;
@@ -293,7 +294,9 @@ Route::prefix('api/admin/cicd')->group(function () {
     Route::get('deployments', [CicdDashboardController::class, 'deployments']);
     Route::get('environments', [CicdDashboardController::class, 'environments']);
     Route::get('health', [CicdDashboardController::class, 'health']);
+    Route::get('security', [CicdDashboardController::class, 'security']);
     Route::get('activities', [CicdDashboardController::class, 'activities']);
+    Route::get('freshness', [FreshnessController::class, 'index']);
     Route::post('pipelines/run', [CicdDashboardController::class, 'runPipeline']);
     Route::post('pipelines/{id}/retry', [CicdDashboardController::class, 'retryPipeline']);
     Route::post('pipelines/{id}/cancel', [CicdDashboardController::class, 'cancelPipeline']);
@@ -331,6 +334,7 @@ Route::withoutMiddleware([
     Route::get('/api/health', [HealthCheckController::class, 'health']);
     Route::get('/api/db-health', [HealthCheckController::class, 'dbHealth']);
     Route::get('/metrics', [MetricsController::class, 'metrics']);
+    Route::get('/api/monitoring/freshness', [FreshnessController::class, 'index']);
 });
 
 // DevOps Management & Metrics APIs

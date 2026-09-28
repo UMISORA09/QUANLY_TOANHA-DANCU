@@ -203,6 +203,7 @@ Hệ thống cung cấp đầy đủ tài liệu kiến trúc và vận hành ch
 - ⚙️ [Hướng Dẫn Vận Hành CI/CD](docs/ci-cd.md): Chi tiết 4 pipeline CI, Staging, Production và Security.
 - 🚀 [Hướng Dẫn Triển Khai Máy Chủ](docs/deployment.md): Zero-Downtime deployment và cấu hình GitHub Secrets.
 - ⏪ [Sổ Tay Phục Hồi & Rollback](docs/rollback.md): Quy trình rollback an toàn và bảo toàn CSDL.
+- ⏱️ [Giám Sát Độ Tươi Mới Dữ Liệu (Freshness Observability)](docs/freshness-monitoring.md): Kiến trúc đo lường Data Freshness & Monitoring Freshness, Prometheus rules, Alertmanager và Incident tracking.
 - 📊 [Giám Sát Hệ Thống](docs/monitoring.md): Tích hợp Sentry, Prometheus (`/metrics`) và Grafana.
 - 🚨 [Cảnh Báo & Bất Thường](docs/alerting.md): Ngưỡng kích hoạt và tích hợp Discord/Slack Webhook.
 - 🩺 [Sổ Tay Xử Lý Sự Cố](docs/troubleshooting.md): Debug container và truy vết lỗi với `X-Request-ID`.
@@ -212,10 +213,12 @@ Hệ thống cung cấp đầy đủ tài liệu kiến trúc và vận hành ch
 ## 🚦 ĐƯỜNG DẪN GIÁM SÁT & VẬN HÀNH
 
 - **DevOps Dashboard (Admin)**: `/admin/cicd` hoặc `/devops`
+- **Freshness Observability Endpoint**: `/api/monitoring/freshness`
 - **Trang Trạng Thái Công Khai (Public Status)**: `/status`
 - **Lịch Sử Bảo Trì & Sự Cố (Public Incidents)**: `/status/incidents`
 - **Health Check Endpoint**: `/health` hoặc `/api/health`
 - **CSDL Health Check**: `/api/db-health`
 - **Prometheus Metrics Scraper**: `/metrics`
+
 
 

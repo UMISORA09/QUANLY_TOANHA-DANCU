@@ -62,8 +62,19 @@ class GitHubActionsService
             $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
             $failed = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'failed'));
             $running = count(array_filter($pipelines, fn ($p) => in_array($p['status'] ?? '', ['in_progress', 'running', 'queued'], true)));
+            $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
+            $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
+
             $lastDeployedProd = $this->getLastDeployedImageRef('production');
             $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
+
+            $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
+            $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Not configured (Chờ PROD_HOST)';
+
+            $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
+            $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Not configured (Chờ STAGING_HOST)';
+
+            $security = $this->getSecurityAudit();
 
             $overview = [
                 'total_pipelines' => $total,
@@ -72,10 +83,11 @@ class GitHubActionsService
                 'running_count' => $running,
                 'success_rate' => $total > 0 ? round(($success / $total) * 100, 1) : 100,
                 'latest_pipeline' => $pipelines[0] ?? null,
-                'production_status' => $lastDeployedProd ? 'healthy' : 'not_deployed',
-                'production_version' => $lastDeployedProd ?: 'Chưa triển khai',
-                'staging_version' => $lastDeployedStaging ?: 'Chưa triển khai',
-                'system_health' => $health['status'] ?? 'ok',
+                'production_status' => $prodStatus,
+                'production_version' => $prodVersion,
+                'staging_status' => $stagingStatus,
+                'staging_version' => $stagingVersion,
+                'system_health' => $health['status'] ?? 'unknown',
                 'is_live_github' => $this->isLiveGitHubAvailable(),
             ];
 
@@ -85,6 +97,7 @@ class GitHubActionsService
                 'deployments' => $deployments,
                 'environments' => $environments,
                 'health' => $health,
+                'security' => $security,
                 'activities' => $activities,
                 'branches' => $branches,
             ];
@@ -104,8 +117,18 @@ class GitHubActionsService
 
         $latest = $pipelines[0] ?? null;
         $health = $this->getSystemHealth();
+
+        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
+        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
+
         $lastDeployedProd = $this->getLastDeployedImageRef('production');
         $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
+
+        $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
+        $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Not configured (Chờ PROD_HOST)';
+
+        $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
+        $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Not configured (Chờ STAGING_HOST)';
 
         return [
             'total_pipelines' => $total,
@@ -114,10 +137,11 @@ class GitHubActionsService
             'running_count' => $running,
             'success_rate' => $total > 0 ? round(($success / $total) * 100, 1) : 100,
             'latest_pipeline' => $latest,
-            'production_status' => $lastDeployedProd ? 'healthy' : 'not_deployed',
-            'production_version' => $lastDeployedProd ?: 'Chưa triển khai',
-            'staging_version' => $lastDeployedStaging ?: 'Chưa triển khai',
-            'system_health' => $health['status'] ?? 'ok',
+            'production_status' => $prodStatus,
+            'production_version' => $prodVersion,
+            'staging_status' => $stagingStatus,
+            'staging_version' => $stagingVersion,
+            'system_health' => $health['status'] ?? 'unknown',
             'is_live_github' => $this->isLiveGitHubAvailable(),
         ];
     }
@@ -320,30 +344,40 @@ class GitHubActionsService
         $prodDeployedAt = $this->getDeploymentTimestamp('production');
         $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
 
+        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
+        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
+
+        $prodStatus = $prodConfigured ? ($prodImage ? 'healthy' : 'not_deployed') : 'not_configured';
+        $stagingStatus = $stagingConfigured ? ($stagingImage ? 'healthy' : 'not_deployed') : 'not_configured';
+
         return [
             [
                 'id' => 'dep-prod',
                 'environment' => 'production',
-                'version' => $prodImage ? basename($prodImage) : 'Chưa triển khai',
-                'image_tag' => $prodImage ?: 'Chưa cấu hình image',
+                'version' => $prodConfigured ? ($prodImage ? basename($prodImage) : 'Chưa triển khai') : 'Not configured',
+                'image_tag' => $prodConfigured ? ($prodImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình PROD_HOST/PROD_SSH_KEY',
                 'commit_sha' => substr($commitSha, 0, 7),
-                'status' => $prodImage ? 'healthy' : 'not_deployed',
+                'status' => $prodStatus,
                 'deployed_by' => $prodImage ? 'GitHub Actions CD' : 'Chưa có',
                 'deployed_at' => $prodDeployedAt ?: 'Chưa kích hoạt',
                 'response_time_ms' => 0,
-                'release_notes' => $prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Kích hoạt bằng git tag v* hoặc nút "Triển khai Production".',
+                'release_notes' => $prodConfigured
+                    ? ($prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Kích hoạt bằng git tag v* hoặc nút "Triển khai Production".')
+                    : 'Máy chủ Production chưa được thiết lập (Cần cấu hình PROD_HOST, PROD_USER, PROD_SSH_KEY trong GitHub Secrets).',
             ],
             [
                 'id' => 'dep-staging',
                 'environment' => 'staging',
-                'version' => $stagingImage ? basename($stagingImage) : 'Chưa triển khai',
-                'image_tag' => $stagingImage ?: 'Chưa cấu hình image',
+                'version' => $stagingConfigured ? ($stagingImage ? basename($stagingImage) : 'Chưa triển khai') : 'Not configured',
+                'image_tag' => $stagingConfigured ? ($stagingImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình STAGING_HOST/STAGING_SSH_KEY',
                 'commit_sha' => substr($commitSha, 0, 7),
-                'status' => $stagingImage ? 'healthy' : 'not_deployed',
+                'status' => $stagingStatus,
                 'deployed_by' => $stagingImage ? 'GitHub Actions CD' : 'Chưa có',
                 'deployed_at' => $stagingDeployedAt ?: 'Chưa kích hoạt',
                 'response_time_ms' => 0,
-                'release_notes' => $stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào main/develop.',
+                'release_notes' => $stagingConfigured
+                    ? ($stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào develop.')
+                    : 'Máy chủ Staging chưa được thiết lập (Cần cấu hình STAGING_HOST, STAGING_USER, STAGING_SSH_KEY trong GitHub Secrets).',
             ],
         ];
     }
@@ -359,6 +393,9 @@ class GitHubActionsService
         $prodDeployedAt = $this->getDeploymentTimestamp('production');
         $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
 
+        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
+        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
+
         // Đo latency thực tế tới CSDL / App local
         $dbLatency = $this->measureDatabaseLatency();
 
@@ -367,11 +404,11 @@ class GitHubActionsService
                 'id' => 'development',
                 'name' => 'Development (Môi trường Local Docker)',
                 'url' => 'http://localhost:8000',
-                'status' => 'operational',
+                'status' => $dbLatency !== -1 ? 'operational' : 'degraded',
                 'version' => "local-dev ({$commitSha})",
                 'commit_sha' => $commitSha,
                 'last_deployment' => now()->toIso8601String(),
-                'response_time_ms' => $dbLatency,
+                'response_time_ms' => max(0, $dbLatency),
                 'uptime_percentage' => 'N/A (local)',
                 'branch' => $this->getCurrentBranch(),
                 'approval_required' => false,
@@ -379,10 +416,10 @@ class GitHubActionsService
             [
                 'id' => 'staging',
                 'name' => 'Staging (Máy chủ kiểm thử tiền phát hành)',
-                'url' => env('STAGING_URL', null),
-                'status' => $stagingImage ? 'operational' : 'not_deployed',
-                'version' => $stagingImage ?: 'Chưa triển khai',
-                'commit_sha' => $commitSha,
+                'url' => env('STAGING_URL') ?: 'Chưa cấu hình URL',
+                'status' => $stagingConfigured ? ($stagingImage ? 'operational' : 'not_deployed') : 'not_configured',
+                'version' => $stagingConfigured ? ($stagingImage ?: 'Chưa triển khai') : 'Not configured (Chờ STAGING_HOST)',
+                'commit_sha' => $stagingConfigured ? $commitSha : 'N/A',
                 'last_deployment' => $stagingDeployedAt ?: 'N/A',
                 'response_time_ms' => 0,
                 'uptime_percentage' => 'N/A (chưa đo)',
@@ -392,10 +429,10 @@ class GitHubActionsService
             [
                 'id' => 'production',
                 'name' => 'Production (Máy chủ vận hành cư dân thực tế)',
-                'url' => env('PROD_URL', null),
-                'status' => $prodImage ? 'operational' : 'not_deployed',
-                'version' => $prodImage ?: 'Chưa triển khai',
-                'commit_sha' => $commitSha,
+                'url' => env('PROD_URL') ?: 'Chưa cấu hình URL',
+                'status' => $prodConfigured ? ($prodImage ? 'operational' : 'not_deployed') : 'not_configured',
+                'version' => $prodConfigured ? ($prodImage ?: 'Chưa triển khai') : 'Not configured (Chờ PROD_HOST)',
+                'commit_sha' => $prodConfigured ? $commitSha : 'N/A',
                 'last_deployment' => $prodDeployedAt ?: 'N/A',
                 'response_time_ms' => 0,
                 'uptime_percentage' => 'N/A (chưa đo)',
@@ -403,6 +440,78 @@ class GitHubActionsService
                 'approval_required' => true,
             ],
         ];
+    }
+
+    /**
+     * Lấy kết quả kiểm tra bảo mật thực tế (Gitleaks, Composer audit, NPM audit, Trivy)
+     */
+    public function getSecurityAudit(): array
+    {
+        $cacheKey = 'cicd_security_audit';
+
+        return Cache::remember($cacheKey, 15, function () {
+            if ($this->isLiveGitHubAvailable()) {
+                try {
+                    $res = Http::withToken($this->token)
+                        ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                        ->timeout(4)
+                        ->get("{$this->apiBase}/actions/workflows/security.yml/runs", ['per_page' => 1]);
+
+                    if ($res->successful()) {
+                        $runs = $res->json('workflow_runs') ?? [];
+                        if (! empty($runs)) {
+                            $run = $runs[0];
+                            $runId = $run['id'];
+
+                            $jobsRes = Http::withToken($this->token)
+                                ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                                ->timeout(4)
+                                ->get("{$this->apiBase}/actions/runs/{$runId}/jobs");
+
+                            $jobs = $jobsRes->successful() ? ($jobsRes->json('jobs') ?? []) : [];
+
+                            $gitleaks = 'unknown';
+                            $deps = 'unknown';
+                            $trivy = 'unknown';
+
+                            foreach ($jobs as $j) {
+                                $name = strtolower($j['name'] ?? '');
+                                $conc = $j['conclusion'] ?? ($j['status'] === 'in_progress' ? 'running' : 'queued');
+                                if (str_contains($name, 'gitleaks') || str_contains($name, 'secret')) {
+                                    $gitleaks = $conc;
+                                } elseif (str_contains($name, 'dependency') || str_contains($name, 'composer') || str_contains($name, 'npm')) {
+                                    $deps = $conc;
+                                } elseif (str_contains($name, 'trivy') || str_contains($name, 'container')) {
+                                    $trivy = $conc;
+                                }
+                            }
+
+                            return [
+                                'status' => 'configured',
+                                'run_id' => (string) $runId,
+                                'run_url' => $run['html_url'],
+                                'last_run_at' => $run['created_at'],
+                                'gitleaks' => $gitleaks,
+                                'dependency_audit' => $deps,
+                                'trivy_container' => $trivy,
+                                'summary' => $run['conclusion'] ?? $run['status'],
+                            ];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Security audit GitHub call failed: '.$e->getMessage());
+                }
+            }
+
+            return [
+                'status' => 'not_configured',
+                'message' => 'Chưa cấu hình GITHUB_TOKEN hoặc chưa có lượt chạy workflow security.yml trên GitHub.',
+                'gitleaks' => 'not_configured',
+                'dependency_audit' => 'not_configured',
+                'trivy_container' => 'not_configured',
+                'summary' => 'not_configured',
+            ];
+        });
     }
 
     /**
@@ -426,6 +535,19 @@ class GitHubActionsService
         // Đo thời gian khởi tạo request thực tế
         $phpResponseTime = defined('LARAVEL_START') ? round((microtime(true) - LARAVEL_START) * 1000) : 0;
 
+        // Kiểm tra thực tế Docker CLI
+        $dockerStatus = 'not_available';
+        $dockerVer = 'Chưa phát hiện Docker CLI';
+        try {
+            $dVer = @shell_exec('docker --version 2>/dev/null');
+            if (! empty($dVer)) {
+                $dockerStatus = 'operational';
+                $dockerVer = trim($dVer);
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
         $components = [
             [
                 'name' => 'PHP Application Runtime',
@@ -436,12 +558,12 @@ class GitHubActionsService
             [
                 'name' => 'MySQL 8.0 Database Server',
                 'status' => $dbStatus,
-                'version' => 'MySQL 8.0 Docker',
+                'version' => 'MySQL 8.0',
                 'response_time' => "{$dbLatency}ms",
             ],
             [
                 'name' => 'Vietnamese Smart Search Engine',
-                'status' => 'operational',
+                'status' => $dbStatus === 'operational' ? 'operational' : 'down',
                 'version' => 'SmartSearchDriver PHP',
                 'response_time' => 'N/A',
             ],
@@ -453,14 +575,21 @@ class GitHubActionsService
             ],
             [
                 'name' => 'Docker Engine',
-                'status' => 'operational',
-                'version' => 'Docker Compose v2',
+                'status' => $dockerStatus,
+                'version' => $dockerVer,
                 'response_time' => 'N/A',
             ],
         ];
 
+        $overallStatus = 'healthy';
+        if ($dbStatus === 'down') {
+            $overallStatus = 'unhealthy';
+        } elseif ($diskPercent > 92 || $dockerStatus === 'not_available') {
+            $overallStatus = 'degraded';
+        }
+
         return [
-            'status' => $dbStatus === 'operational' ? 'healthy' : 'degraded',
+            'status' => $overallStatus,
             'services' => $components,
             'components' => $components,
             'metrics' => [

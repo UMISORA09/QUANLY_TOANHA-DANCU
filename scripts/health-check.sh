@@ -12,7 +12,7 @@ RETRY_INTERVAL="${3:-3}"
 
 echo "========================================================================"
 echo "BẮT ĐẦU KIỂM TRA SỨC KHỎE HỆ THỐNG: $HEALTH_URL"
-echo "Thời gian: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "Thời gian: $(TZ='Asia/Ho_Chi_Minh' date +'%Y-%m-%dT%H:%M:%S+07:00')"
 echo "Số lần thử tối đa: $MAX_RETRIES (Chu kỳ: ${RETRY_INTERVAL}s)"
 echo "========================================================================"
 

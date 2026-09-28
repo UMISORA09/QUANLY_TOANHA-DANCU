@@ -170,6 +170,19 @@ class CicdDashboardController extends Controller
     }
 
     /**
+     * Kết quả kiểm tra bảo mật (Security Audit)
+     */
+    public function security(): JsonResponse
+    {
+        $security = $this->cicdService->getSecurityAudit();
+
+        return response()->json([
+            'success' => true,
+            'data' => $security,
+        ]);
+    }
+
+    /**
      * Lịch sử hoạt động gần đây
      */
     public function activities(Request $request): JsonResponse
