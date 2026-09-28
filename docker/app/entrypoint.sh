@@ -29,8 +29,12 @@ if [ ! -d "public/build" ]; then
     npm run build
 fi
 
-# Tự động chạy migrations (mặc định bật)
-if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
+# Tự động khởi tạo database và nạp dữ liệu mẫu development
+if [ -f "/usr/local/bin/dev-init.sh" ]; then
+    /usr/local/bin/dev-init.sh
+elif [ -f "docker/app/dev-init.sh" ]; then
+    bash docker/app/dev-init.sh
+elif [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     echo "[Docker] Chạy migrations cơ sở dữ liệu..."
     php artisan migrate --force
 fi

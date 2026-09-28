@@ -38,15 +38,16 @@ class AmenityManagementTest extends TestCase
      */
     public function test_cannot_reduce_capacity_below_active_bookings(): void
     {
-        // Lấy tiện ích đang có lượt đặt chỗ trong database
-        $amenityWithBookings = DB::table('amenity_bookings')
+        // Chọn tiện ích có ít nhất một slot sẽ vi phạm nếu giảm sức chứa xuống 1
+        $amenityId = DB::table('amenity_bookings')
+            ->select('amenity_id')
             ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
             ->whereNull('deleted_at')
-            ->first();
+            ->groupBy('amenity_id', 'booking_date', 'start_time', 'end_time')
+            ->havingRaw('COUNT(*) > 1 OR SUM(attendee_count) > 1')
+            ->value('amenity_id');
 
-        $this->assertNotNull($amenityWithBookings, 'Phải có ít nhất 1 tiện ích có booking trong CSDL để kiểm thử.');
-
-        $amenityId = $amenityWithBookings->amenity_id;
+        $this->assertNotNull($amenityId, 'Phải có ít nhất 1 slot vượt sức chứa 1 để kiểm thử.');
 
         // Thử giảm sức chứa xuống 1 (thấp hơn số người/lượt đặt thực tế)
         $response = $this->putJson("/api/v1/admin/amenities/{$amenityId}", [

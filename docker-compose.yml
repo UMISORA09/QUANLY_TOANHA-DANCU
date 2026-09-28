@@ -26,8 +26,17 @@ services:
       - SESSION_DRIVER=file
       - CACHE_STORE=file
       - QUEUE_CONNECTION=sync
+      - REDIS_CLIENT=phpredis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RUN_DEV_INIT=${RUN_DEV_INIT:-true}
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
+      - SEED_DEMO_DATA=${SEED_DEMO_DATA:-true}
+      - SEED_CLASS=${SEED_CLASS:-Database\Seeders\DatabaseSeeder}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - cassavas_network
@@ -72,8 +81,26 @@ services:
     networks:
       - cassavas_network
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: smart_cassavas_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - cassavas_network
+
 volumes:
   mysql_data:
+    driver: local
+  redis_data:
     driver: local
 
 networks:

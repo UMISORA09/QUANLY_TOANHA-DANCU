@@ -55,6 +55,14 @@ Route::get('/admin/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
+Route::get('/dev', function () {
+    return view('welcome');
+});
+
+Route::get('/dev/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/dashboard', function () {
     return view('welcome');
 });
@@ -120,9 +128,9 @@ Route::post('/api/v1/resident/amenity-bookings', [ResidentPortalController::clas
 Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
 
-// API Auth
-Route::post('/api/v1/auth/login', [AuthController::class, 'login']);
-Route::post('/api/auth/login', [AuthController::class, 'login']);
+// API Auth (Có Throttle Rate Limiting chống Brute-Force)
+Route::post('/api/v1/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/api/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::get('/api/v1/auth/me', [AuthController::class, 'me']);
 Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
 

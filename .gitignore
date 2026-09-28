@@ -36,3 +36,6 @@ backend/**/__pycache__/
 .qc-update.lock
 .last_qc_commit
 
+
+.vercel
+.env*

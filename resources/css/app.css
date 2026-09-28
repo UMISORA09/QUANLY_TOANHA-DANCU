@@ -223,6 +223,7 @@
     );
     background-size: 250% 100%;
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: text-light-sweep 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
@@ -240,6 +241,7 @@
     );
     background-size: 250% 100%;
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: text-light-sweep 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
@@ -257,6 +259,7 @@
     );
     background-size: 250% 100%;
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: text-light-sweep 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
