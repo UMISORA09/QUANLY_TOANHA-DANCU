@@ -95,10 +95,17 @@ RUN npm run build
 # ==============================================================================
 FROM base AS production
 
+ARG APP_VERSION=dev
+ARG COMMIT_SHA=unknown
+ARG BUILD_TIME=unknown
+
 ENV APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr \
-    RUN_MIGRATIONS=false
+    RUN_MIGRATIONS=false \
+    APP_VERSION=${APP_VERSION} \
+    COMMIT_SHA=${COMMIT_SHA} \
+    BUILD_TIME=${BUILD_TIME}
 
 WORKDIR /var/www/html
 

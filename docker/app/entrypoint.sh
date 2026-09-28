@@ -34,6 +34,9 @@ if [ -f "/usr/local/bin/dev-init.sh" ]; then
     /usr/local/bin/dev-init.sh
 elif [ -f "docker/app/dev-init.sh" ]; then
     bash docker/app/dev-init.sh
+elif [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
+    echo "[Docker] Chạy migrations cơ sở dữ liệu..."
+    php artisan migrate --force
 fi
 
 # Khởi động server

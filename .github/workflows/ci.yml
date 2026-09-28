@@ -264,16 +264,41 @@ jobs:
           echo "Waiting for container startup and probing health endpoints..."
           for i in {1..30}; do
             UP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up || echo "000")
+            HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/health || echo "000")
             HEALTH_RESP=$(curl -s http://127.0.0.1:8000/health || echo "")
 
-            if [ "$UP_STATUS" = "200" ] && echo "$HEALTH_RESP" | grep -q '"status"'; then
-              echo "✅ Container Smoke Test Passed!"
-              echo "Endpoint /up: HTTP $UP_STATUS"
-              echo "Endpoint /health: $HEALTH_RESP"
-              docker stop smoke_app && docker rm smoke_app
-              exit 0
+            if [ "$UP_STATUS" = "200" ] && [ "$HEALTH_CODE" = "200" ]; then
+              if echo "$HEALTH_RESP" | grep -Eq '"status"\s*:\s*"(healthy|ok)"'; then
+                echo "✅ Container Smoke Test (Health) Passed!"
+                echo "Endpoint /up: HTTP $UP_STATUS"
+                echo "Endpoint /health: HTTP $HEALTH_CODE"
+
+                echo "Probing Freshness & Telemetry endpoints..."
+                FRESHNESS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/monitoring/freshness || echo "000")
+                METRICS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/metrics || echo "000")
+                METRICS_BODY=$(curl -s http://127.0.0.1:8000/metrics || echo "")
+
+                if [ "$FRESHNESS_CODE" != "200" ] || [ "$METRICS_CODE" != "200" ]; then
+                  echo "❌ Freshness/Metrics probe failed: /freshness=$FRESHNESS_CODE, /metrics=$METRICS_CODE"
+                  docker logs smoke_app
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+
+                if ! echo "$METRICS_BODY" | grep -q "freshness_age_seconds"; then
+                  echo "❌ Prometheus metrics missing freshness_age_seconds metric"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+
+                echo "✅ Container Freshness & Metrics Observability Verified! (/freshness: HTTP $FRESHNESS_CODE, /metrics: HTTP $METRICS_CODE)"
+                docker stop smoke_app && docker rm smoke_app
+                exit 0
+              else
+                echo "⚠️ /health returned HTTP 200 but status is not healthy: $HEALTH_RESP"
+              fi
             fi
-            echo "Attempt $i: /up status=$UP_STATUS, /health response=$HEALTH_RESP. Retrying in 2s..."
+            echo "Attempt $i: /up=$UP_STATUS, /health code=$HEALTH_CODE, resp=$HEALTH_RESP. Retrying in 2s..."
             sleep 2
           done
 

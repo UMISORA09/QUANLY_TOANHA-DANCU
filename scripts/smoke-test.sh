@@ -11,7 +11,7 @@ FAILED=0
 
 echo "========================================================================"
 echo "BẮT ĐẦU CHẠY SMOKE TEST SAU TRIỂN KHAI TẠI: $BASE_URL"
-echo "Thời gian: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "Thời gian: $(TZ='Asia/Ho_Chi_Minh' date +'%Y-%m-%dT%H:%M:%S+07:00')"
 echo "========================================================================"
 
 test_endpoint() {
