@@ -246,16 +246,20 @@ class ResidentPortalController extends Controller
             ->limit(10)
             ->get();
 
-        // 6. Danh sách các Tiện ích khả dụng
-        $availableAmenities = DB::table('amenities')
-            ->where('is_active', 1)
-            ->select('id', 'amenity_name', 'amenity_code', 'location_detail', 'max_capacity_per_slot', 'hourly_rate')
-            ->get();
+        // 6. Danh sách các Tiện ích khả dụng (Cache-Aside pattern cho master data)
+        $availableAmenities = Cache::remember('portal:amenities:available', 600, function () {
+            return DB::table('amenities')
+                ->where('is_active', 1)
+                ->select('id', 'amenity_name', 'amenity_code', 'location_detail', 'max_capacity_per_slot', 'hourly_rate')
+                ->get();
+        });
 
-        // 7. Danh mục Ticket
-        $ticketCategories = DB::table('ticket_categories')
-            ->select('id', 'category_name', 'category_code')
-            ->get();
+        // 7. Danh mục Ticket (Cache-Aside pattern cho master data)
+        $ticketCategories = Cache::remember('portal:ticket_categories:all', 600, function () {
+            return DB::table('ticket_categories')
+                ->select('id', 'category_name', 'category_code')
+                ->get();
+        });
 
         return response()->json([
             'user' => [
