@@ -200,6 +200,16 @@ const App: React.FC = () => {
     currentPath.startsWith('/admin/roles') ||
     currentPath.startsWith('/admin/rbac');
 
+  const isResidentAdminPath =
+    currentPath === '/admin/residents' ||
+    currentPath === '/admin/cu-dan' ||
+    currentPath.startsWith('/admin/residents');
+
+  const isTemporaryRegistrationAdminPath =
+    currentPath === '/admin/temporary-registrations' ||
+    currentPath === '/admin/tam-tru' ||
+    currentPath.startsWith('/admin/temporary-registrations');
+
   const isUnifiedAdminDevPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
@@ -209,7 +219,9 @@ const App: React.FC = () => {
     currentPath.startsWith('/developer/') ||
     isAmenityAdminPath ||
     isCicdAdminPath ||
-    isRoleAdminPath;
+    isRoleAdminPath ||
+    isResidentAdminPath ||
+    isTemporaryRegistrationAdminPath;
 
   if (isUnifiedAdminDevPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
@@ -235,6 +247,10 @@ const App: React.FC = () => {
       ? 'amenities'
       : isRoleAdminPath
       ? 'roles'
+      : isResidentAdminPath
+      ? 'residents'
+      : isTemporaryRegistrationAdminPath
+      ? 'temporary_registrations'
       : (urlTab || 'overview');
 
     return (
