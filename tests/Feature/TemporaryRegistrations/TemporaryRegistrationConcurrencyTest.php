@@ -14,6 +14,22 @@ use Tests\TestCase;
 
 class TemporaryRegistrationConcurrencyTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $ch = curl_init('http://127.0.0.1:8000/up');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+        curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            $this->markTestSkipped('Live HTTP daemon at http://127.0.0.1:8000 is not running.');
+        }
+    }
+
     protected function createAdminUser(string $nameSuffix = ''): array
     {
         $user = User::create([
