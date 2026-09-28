@@ -19,6 +19,8 @@ class ManagementDashboardSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 0;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF;');
         }
 
         $this->command->info('Đang nạp dữ liệu ảo cho Trang Quản trị Tòa nhà & Dân cư...');
@@ -856,6 +858,8 @@ class ManagementDashboardSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 1;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON;');
         }
 
         $this->command->info('✅ Nạp dữ liệu ảo cho Trang Quản Trị thành công 100%!');
