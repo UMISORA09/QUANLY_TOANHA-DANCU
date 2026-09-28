@@ -130,6 +130,10 @@ class ApiService {
     return localStorage.getItem('smart_cassavas_token');
   }
 
+  public getAuthToken(): string | null {
+    return this.getToken();
+  }
+
   public setToken(token: string) {
     localStorage.setItem('smart_cassavas_token', token);
   }
