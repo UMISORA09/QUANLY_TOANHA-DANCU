@@ -14,12 +14,22 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Bộ dữ liệu nền hệ thống
         $this->call([
             ManagementDashboardSeeder::class,
+            RbacSeeder::class,
             ResidentPortalSeeder::class,
             ReceptionPortalSeeder::class,
             AmenitySeeder::class,
             ZoneSeeder::class,
         ]);
+
+        // Bộ dữ liệu mẫu dùng chung cho toàn bộ nhóm (Shared Demo Data)
+        if (
+            ! app()->environment('production') &&
+            filter_var(env('SEED_DEMO_DATA', true), FILTER_VALIDATE_BOOLEAN)
+        ) {
+            $this->call(SharedDemoDataSeeder::class);
+        }
     }
 }

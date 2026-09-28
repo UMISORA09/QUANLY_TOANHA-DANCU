@@ -1,16 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
-import Home from './Pages/Home';
-import ManagementHome from './Pages/ManagementHome';
-import ResidentHome from './Pages/ResidentHome';
-import ReceptionHome from './Pages/ReceptionHome';
-import NotFound from './Pages/NotFound';
-import AmenityManagement from './Pages/Admin/AmenityManagement';
+import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
+import PageLoadingFallback from './Components/Common/PageLoadingFallback';
+
+// Tách nhỏ bundle (Code Splitting) với React.lazy để tải trang ban đầu tức thì
+const Home = lazy(() => import('./Pages/Home'));
+const ManagementHome = lazy(() => import('./Pages/ManagementHome'));
+const ResidentHome = lazy(() => import('./Pages/ResidentHome'));
+const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
+const DevConsolePage = lazy(() => import('./Pages/Dev/DevConsolePage'));
+const PublicStatusPage = lazy(() => import('./Pages/PublicStatusPage'));
+const IncidentHistoryPage = lazy(() => import('./Pages/IncidentHistoryPage'));
+const NotFound = lazy(() => import('./Pages/NotFound'));
 
 interface UserSession {
   role: string;
   email: string;
   name: string;
+  isDev?: boolean;
 }
 
 const App: React.FC = () => {
@@ -42,6 +49,11 @@ const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (role: string, email: string) => {
+    const isDev =
+      email.toLowerCase().includes('dev') ||
+      email === 'dev@cassavas.vn' ||
+      email === 'dev@smartcassavas.vn' ||
+      window.location.pathname.startsWith('/dev');
     const isAdmin =
       role === 'admin' ||
       role.toLowerCase() === 'admin' ||
@@ -59,7 +71,7 @@ const App: React.FC = () => {
       role === 'resident' ||
       role.toLowerCase().includes('resident');
 
-    const normalizedRole = isAdmin
+    const normalizedRole = isAdmin || isDev
       ? 'admin'
       : isManager
       ? 'manager'
@@ -69,9 +81,12 @@ const App: React.FC = () => {
 
     const session: UserSession = {
       role: normalizedRole,
+      isDev: isDev,
       email:
         email ||
-        (isAdmin
+        (isDev
+          ? 'dev@cassavas.vn'
+          : isAdmin
           ? 'admin@cassavas.vn'
           : isManager
           ? 'quanly@cassavas.vn'
@@ -79,7 +94,9 @@ const App: React.FC = () => {
           ? 'letan@cassavas.vn'
           : 'nguyenvanan@cassavas.vn'),
       name:
-        isAdmin
+        isDev
+          ? 'Dev Team'
+          : isAdmin
           ? 'Admin Cassavas'
           : isManager
           ? 'Ban Quản Lý'
@@ -97,8 +114,8 @@ const App: React.FC = () => {
     setCurrentUser(session);
 
     // Điều hướng theo đúng vai trò được xác thực
-    // Chỉ có admin mới vào /admin và có quyền chuyển cổng
-    if (isAdmin) {
+    // Admin / Dev điều hướng trực tiếp vào Cổng Quản Trị & Kỹ Thuật (/admin)
+    if (isDev || isAdmin) {
       setTimeout(() => {
         navigateTo('/admin');
       }, 350);
@@ -129,7 +146,40 @@ const App: React.FC = () => {
     navigateTo('/home');
   };
 
-  // 1. Phân hệ Quản Trị Viên (Admin Console - Toàn quyền & Chuyển cổng)
+  const renderContent = () => {
+
+  // 0. Phân hệ Public Status Page (Công khai cho toàn bộ người dùng theo dõi hệ thống)
+  if (currentPath === '/status' || currentPath === '/status/') {
+    return (
+      <PublicStatusPage
+        onBackHome={() => navigateTo('/home')}
+        onNavigateIncidents={() => navigateTo('/status/incidents')}
+      />
+    );
+  }
+
+  if (currentPath === '/status/incidents' || currentPath.startsWith('/status/incidents')) {
+    return (
+      <IncidentHistoryPage
+        onBackStatus={() => navigateTo('/status')}
+        onBackHome={() => navigateTo('/home')}
+      />
+    );
+  }
+
+  // 0.1 Nếu truy cập các URL đăng nhập dev cũ, tự động chuyển về trang /login chung
+  const isDevLoginPath =
+    currentPath === '/dev/login' ||
+    currentPath === '/admin/login' ||
+    currentPath === '/dev/dang-nhap' ||
+    currentPath === '/admin/dang-nhap';
+
+  if (isDevLoginPath) {
+    navigateTo('/login');
+    return null;
+  }
+
+  // 1. Phân hệ Quản Trị Viên & Kỹ Thuật (Admin & Dev Console HỢP NHẤT LÀ 1)
   const isAmenityAdminPath =
     currentPath === '/admin/amenities' ||
     currentPath === '/admin/tien-ich' ||
@@ -145,14 +195,35 @@ const App: React.FC = () => {
     return null;
   }
 
-  const isAdminPath =
+  const isCicdAdminPath =
+    currentPath === '/admin/cicd' ||
+    currentPath.startsWith('/admin/cicd') ||
+    currentPath === '/devops' ||
+    currentPath.startsWith('/devops') ||
+    currentPath === '/admin/devops' ||
+    currentPath.startsWith('/admin/devops');
+
+  const isRoleAdminPath =
+    currentPath === '/admin/roles' ||
+    currentPath === '/admin/rbac' ||
+    currentPath === '/admin/phan-quyen' ||
+    currentPath.startsWith('/admin/roles') ||
+    currentPath.startsWith('/admin/rbac');
+
+  const isUnifiedAdminDevPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
-    isAmenityAdminPath;
+    currentPath === '/dev' ||
+    currentPath.startsWith('/dev/') ||
+    currentPath === '/developer' ||
+    currentPath.startsWith('/developer/') ||
+    isAmenityAdminPath ||
+    isCicdAdminPath ||
+    isRoleAdminPath;
 
-  if (isAdminPath) {
-    // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin, chuyển về đúng cổng của họ
-    if (currentUser && currentUser.role !== 'admin') {
+  if (isUnifiedAdminDevPath) {
+    // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
+    if (currentUser && currentUser.role !== 'admin' && !currentUser.isDev) {
       if (currentUser.role === 'manager') {
         navigateTo('/quan-ly');
         return null;
@@ -168,15 +239,24 @@ const App: React.FC = () => {
     }
 
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabToUse = isAmenityAdminPath ? 'amenities' : (urlTab || undefined);
+    const tabToUse = isCicdAdminPath
+      ? 'cicd'
+      : isAmenityAdminPath
+      ? 'amenities'
+      : isRoleAdminPath
+      ? 'roles'
+      : (urlTab || 'overview');
 
     return (
-      <ManagementHome
-        onLogout={handleLogout}
+      <DevConsolePage
+        onLogout={() => {
+          handleLogout();
+          navigateTo('/login');
+        }}
         onNavigateHome={() => navigateTo('/home')}
-        userRole="admin"
-        userName={currentUser?.role === 'admin' ? currentUser.name : 'Admin Cassavas'}
-        userEmail={currentUser?.role === 'admin' ? currentUser.email : 'admin@cassavas.vn'}
+        onNavigateManager={() => navigateTo('/quan-ly')}
+        userName={currentUser?.name || 'Admin & Dev Team'}
+        userEmail={currentUser?.email || 'admin@cassavas.vn'}
         initialTab={tabToUse}
       />
     );
@@ -215,12 +295,11 @@ const App: React.FC = () => {
     const effectiveRole = isUserAdmin ? 'admin' : 'manager';
     const urlTab = new URLSearchParams(window.location.search).get('tab');
     const tabToUse = isZoneManagerPath ? 'zones' : (urlTab || undefined);
-
     return (
       <ManagementHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home')}
-        userRole={effectiveRole}
+        userRole="manager"
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
         initialTab={tabToUse}
@@ -308,16 +387,25 @@ const App: React.FC = () => {
       ? 'login'
       : null;
 
+    return (
+      <Home
+        initialAuthModal={initialAuthMode}
+        onLoginSuccess={handleLoginSuccess}
+        onNavigateAdmin={() => navigateTo('/admin')}
+        onNavigateManager={() => navigateTo('/quan-ly')}
+        onNavigateResident={() => navigateTo('/cu-dan')}
+        onNavigateReception={() => navigateTo('/le-tan')}
+        currentUserRole={currentUser?.role}
+      />
+    );
+  };
+
   return (
-    <Home
-      initialAuthModal={initialAuthMode}
-      onLoginSuccess={handleLoginSuccess}
-      onNavigateAdmin={() => navigateTo('/admin')}
-      onNavigateManager={() => navigateTo('/quan-ly')}
-      onNavigateResident={() => navigateTo('/cu-dan')}
-      onNavigateReception={() => navigateTo('/le-tan')}
-      currentUserRole={currentUser?.role}
-    />
+    <ChunkErrorBoundary>
+      <Suspense fallback={<PageLoadingFallback />}>
+        {renderContent()}
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 };
 

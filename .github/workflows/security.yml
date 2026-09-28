@@ -1,0 +1,124 @@
+name: Security & Vulnerability Scan
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  schedule:
+    # Quét bảo mật tự động lúc 02:00 UTC thứ 2 hàng tuần
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  secret-scan:
+    name: Secret & Credential Leak Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-audit:
+    name: Dependency Vulnerability Audit (Composer & NPM)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Run Composer Audit
+        run: |
+          echo "Kiểm tra lỗ hổng bảo mật PHP Composer (blocking gate)..."
+          composer audit --locked --no-interaction
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Run NPM Audit
+        run: |
+          echo "Kiểm tra lỗ hổng bảo mật Node.js packages (blocking gate)..."
+          npm audit --audit-level=high
+
+  container-security-scan:
+    name: Docker Container Vulnerability Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Local Image for Scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          target: production
+          load: true
+          tags: smart-cassavas:security-scan
+          cache-from: type=gha
+
+      - name: Run Aqua Security Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@v0.29.0
+        with:
+          image-ref: 'smart-cassavas:security-scan'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  security-status:
+    name: Security Gate Evaluation
+    runs-on: ubuntu-latest
+    needs: [secret-scan, dependency-audit, container-security-scan]
+    if: always()
+    steps:
+      - name: Evaluate Security Scan Outcomes
+        run: |
+          SECRETS="${{ needs.secret-scan.result }}"
+          DEPS="${{ needs.dependency-audit.result }}"
+          CONTAINER="${{ needs.container-security-scan.result }}"
+
+          echo "=== Security Audit Summary ==="
+          echo "Secret Scan (Gitleaks):   $SECRETS"
+          echo "Dependency Audit:         $DEPS"
+          echo "Container Vulnerabilities:$CONTAINER"
+          echo "=============================="
+
+          FAILED=0
+          [ "$SECRETS" != "success" ] && echo "❌ FAILED: Gitleaks detected secrets/credentials!" && FAILED=1
+          [ "$DEPS" != "success" ] && echo "❌ FAILED: Dependencies contain known vulnerabilities!" && FAILED=1
+          [ "$CONTAINER" != "success" ] && echo "❌ FAILED: Container image contains CRITICAL/HIGH vulnerabilities!" && FAILED=1
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "🚨 SECURITY GATE FAILED: Remediate the identified security issues before deployment."
+            exit 1
+          fi
+
+          echo "✅ All Security Checks Passed: No credential leaks, no dependency CVEs, no container CVEs."
+

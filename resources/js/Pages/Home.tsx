@@ -469,6 +469,25 @@ export const Home: React.FC<HomeProps> = ({
                               </a>
 
                               <a
+                                href="/dev"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserDropdownOpen(false);
+                                  window.history.pushState({}, '', '/dev');
+                                  window.dispatchEvent(new PopStateEvent('popstate'));
+                                }}
+                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer group mt-0.5"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-slate-950 text-cyan-400 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                  <Zap className="w-4 h-4 text-cyan-400" />
+                                </div>
+                                <div className="flex flex-col text-left">
+                                  <span className="font-bold text-slate-900">Developer Console (Dev / AI / IoT)</span>
+                                  <span className="text-[10px] text-slate-500 font-mono">/dev</span>
+                                </div>
+                              </a>
+
+                              <a
                                 href="/quan-ly"
                                 onClick={(e) => {
                                   e.preventDefault();

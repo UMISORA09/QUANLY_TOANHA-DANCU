@@ -1,0 +1,231 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "HỆ THỐNG GIÁM SÁT THỜI GIAN THỰC - SMART CASSAVAS",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "OFFLINE" }, "1": { "color": "green", "text": "ONLINE" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 2,
+      "title": "Trạng Thái CSDL MySQL",
+      "type": "stat",
+      "targets": [{ "expr": "smart_cassavas_database_status", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 3,
+      "title": "Uptime Ứng Dụng",
+      "type": "stat",
+      "targets": [{ "expr": "smart_cassavas_app_uptime_seconds", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "bytes",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 268435456 }, { "color": "red", "value": 536870912 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 4,
+      "title": "RAM Đang Dùng (PHP)",
+      "type": "stat",
+      "targets": [{ "expr": "smart_cassavas_memory_bytes", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.5 }, { "color": "red", "value": 1.0 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 5,
+      "title": "Độ Trễ CSDL (DB Latency)",
+      "type": "stat",
+      "targets": [{ "expr": "smart_cassavas_database_query_duration_seconds", "refId": "A" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 6,
+      "title": "DATA FRESHNESS OBSERVABILITY (ĐO LƯỜNG & GIÁM SÁT ĐỘ TƯƠI MỚI)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 60 },
+              { "color": "red", "value": 300 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 6 },
+      "id": 7,
+      "title": "Collector Age (Tuổi Collector)",
+      "type": "stat",
+      "targets": [{ "expr": "collector_data_age_seconds", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 60 },
+              { "color": "red", "value": 180 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 6 },
+      "id": 8,
+      "title": "Health Probe Observation Age",
+      "type": "stat",
+      "targets": [{ "expr": "freshness_age_seconds{source=\"application_health\"}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 3600 },
+              { "color": "red", "value": 86400 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 6 },
+      "id": 9,
+      "title": "GitHub Actions Run Age",
+      "type": "stat",
+      "targets": [{ "expr": "freshness_age_seconds{source=\"github_actions\"}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 86400 },
+              { "color": "red", "value": 604800 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 6 },
+      "id": 10,
+      "title": "DB Max Business Data Age",
+      "type": "stat",
+      "targets": [{ "expr": "max(freshness_age_seconds{type=\"data\", age!=\"-1\"})", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 7, "w": 16, "x": 0, "y": 10 },
+      "id": 11,
+      "title": "Xu Hướng Độ Tuổi Dữ Liệu Theo Thời Gian (Freshness Age Trend)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "freshness_age_seconds{type=\"monitoring\"}", "legendFormat": "{{source}} (monitoring)", "refId": "A" },
+        { "expr": "freshness_age_seconds{type=\"data\"}", "legendFormat": "{{source}} (business data)", "refId": "B" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "gray", "text": "NO" }, "1": { "color": "red", "text": "CRITICAL" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 10 },
+      "id": 12,
+      "title": "Sự Cố Freshness Đang Diễn Ra (Critical / Stale Alerts)",
+      "type": "stat",
+      "targets": [
+        { "expr": "job:freshness_critical:count", "legendFormat": "Critical Sources", "refId": "A" },
+        { "expr": "job:freshness_stale:count", "legendFormat": "Stale Sources", "refId": "B" },
+        { "expr": "job:freshness_unavailable:count", "legendFormat": "Unavailable Sources", "refId": "C" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["smart-cassavas", "devops", "freshness"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Smart Cassavas - DevOps Overview",
+  "uid": "smart-cassavas-overview",
+  "version": 2
+}

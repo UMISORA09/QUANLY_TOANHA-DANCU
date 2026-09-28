@@ -42,11 +42,15 @@ import {
   MoreVertical,
   Activity,
   Send,
-  Compass
+  Compass,
+  Terminal
 } from 'lucide-react';
-import { Building3DModel } from '../Components/Building3DModel';
+import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';
 import { ZoneManager } from '../Components/Admin/ZoneManager';
+import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
+import { RbacManagement } from './Admin/RbacManagement';
+import { ResidentManagement } from './Admin/ResidentManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -117,7 +121,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   const resolveInitialTab = (): string => {
     const path = window.location.pathname;
 
-    // 1. Kiểm tra URL path trực tiếp tới tiện ích hoặc khối tòa nhà
+    // 1. Kiểm tra URL path trực tiếp tới CI/CD, tiện ích, khối tòa nhà hoặc phân quyền
+    if (path === '/admin/cicd' || path.startsWith('/admin/cicd')) {
+      return 'cicd';
+    }
     if (path === '/admin/amenities' || path === '/admin/tien-ich' || path.startsWith('/admin/amenities')) {
       return 'amenities';
     }
@@ -129,6 +136,9 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path === '/admin/zones'
     ) {
       return 'zones';
+    }
+    if (path === '/admin/roles' || path === '/admin/rbac' || path === '/admin/phan-quyen' || path.startsWith('/admin/roles')) {
+      return 'roles';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -169,7 +179,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
-  const [is3DModelOpen, setIs3DModelOpen] = useState<boolean>(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketItem | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [chartActiveBar, setChartActiveBar] = useState<number | null>(5); // Default to T8
@@ -357,6 +366,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           { id: 'system_settings', label: 'Cấu hình Tòa nhà & IoT', icon: SlidersHorizontal, badge: null },
           { id: 'billing', label: 'Tài chính & Doanh thu Cấp cao', icon: Receipt, badge: String(kpis.unpaidInvoices) },
           { id: 'amenities', label: 'Cấu hình Danh mục Tiện ích', icon: Sparkles, badge: String(kpis.amenityBookings) },
+          { id: 'cicd', label: 'CI/CD & DevOps', icon: Terminal, badge: 'Pipeline' },
         ];
       }
 
@@ -582,18 +592,20 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
     // Cập nhật URL trên thanh địa chỉ (Deep Linking & History API)
     const basePath = userRole === 'admin' ? '/admin' : '/quan-ly';
-    if (id === 'amenities') {
+    if (id === 'cicd') {
+      window.history.pushState({ tab: id }, '', '/admin/cicd');
+    } else if (id === 'amenities') {
       window.history.pushState({ tab: id }, '', `${basePath}/amenities`);
     } else if (id === 'zones') {
       window.history.pushState({ tab: id }, '', `${basePath}/zones`);
+    } else if (id === 'roles' || id === 'rbac') {
+      window.history.pushState({ tab: id }, '', '/admin/roles');
     } else if (id === 'overview') {
       window.history.pushState({ tab: id }, '', basePath);
     } else {
       window.history.pushState({ tab: id }, '', `${basePath}?tab=${id}`);
     }
-    if (id === 'buildings') {
-      setIs3DModelOpen(true);
-    } else if (id !== 'overview') {
+    if (id !== 'overview') {
       showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === id)?.label}`);
     }
   };
@@ -622,17 +634,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       unreadNotificationCount={notifications.filter((n) => !n.isRead).length}
       extraTopbarActions={
         <>
-          {/* Quick 3D Building Toggle */}
-          <button
-            type="button"
-            onClick={() => setIs3DModelOpen(true)}
-            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-sky-700 border border-sky-100 shadow-xs hover:shadow-sm transition-all cursor-pointer"
-            title="Xem mô hình 3D tòa nhà"
-          >
-            <Layers className="w-3.5 h-3.5 text-sky-500 animate-pulse-subtle" />
-            <span>Mô hình 3D</span>
-          </button>
-
           {/* Building Selector Dropdown */}
           <div className="relative">
             <button
@@ -740,13 +741,29 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           </div>
         </div>
       )}
-          {activeMenuId === 'amenities' ? (
+          {activeMenuId === 'cicd' ? (
+            <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
+              <CicdDashboard userRole={userRole} />
+            </div>
+          ) : activeMenuId === 'amenities' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <AmenityManagement embedded={true} />
             </div>
           ) : activeMenuId === 'zones' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ZoneManager />
+            </div>
+          ) : activeMenuId === 'roles' || activeMenuId === 'rbac' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <RbacManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'residents' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <ResidentManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'buildings' ? (
+            <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
+              <BuildingListManagement />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">
@@ -1377,37 +1394,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
               >
                 Nhận phân công
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          MODAL: MÔ HÌNH 3D TÒA NHÀ (INTERACTIVE 3D VIEWER)
-          ======================================================== */}
-      {is3DModelOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-5xl h-[85vh] rounded-3xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl overflow-hidden flex flex-col relative">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-sky-500 text-white flex items-center justify-center shadow-sm">
-                  <Layers className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-neutral-900">Mô hình phân tầng 3D Tòa nhà</h3>
-                  <p className="text-[11px] text-slate-400">Khối / Tòa nhà & Căn hộ trực quan</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIs3DModelOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 custom-scrollbar">
-              <Building3DModel />
             </div>
           </div>
         </div>

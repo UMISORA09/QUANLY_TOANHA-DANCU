@@ -1,0 +1,13 @@
+# Cấu hình Nixpacks cho Railway để sử dụng PHP 8.4 LTS và Node.js 22 LTS
+[variables]
+NIXPACKS_PHP_VERSION = "8.4"
+NIXPACKS_PHP_ROOT_DIR = "public"
+
+[phases.setup]
+nixPkgs = ["php84", "php84Packages.composer", "nodejs_22"]
+
+[phases.build]
+cmds = [
+    "npm ci --ignore-scripts",
+    "npm run build"
+]
