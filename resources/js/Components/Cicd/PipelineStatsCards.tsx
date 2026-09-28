@@ -38,19 +38,19 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
 
   const cards = [
     {
-      title: 'Tỷ lệ Thành công',
+      title: 'Tỷ lệ đạt',
       value: `${stats.success_rate}%`,
-      subtext: `${stats.total_pipelines} lượt chạy gần đây`,
+      subtext: `${stats.total_pipelines} lượt gần đây`,
       icon: TrendingUp,
       color: 'text-emerald-600',
-      bgColor: 'bg-emerald-50/80 border-emerald-200/80',
+      bgColor: 'bg-emerald-50/70 border-emerald-200/80',
       badge: 'Tháng này',
       badgeColor: 'bg-emerald-100/80 text-emerald-800',
     },
     {
       title: 'CI Passing',
       value: stats.success_count,
-      subtext: 'Bản build đạt chuẩn',
+      subtext: 'Bản build chuẩn',
       icon: CheckCircle2,
       color: 'text-emerald-600',
       bgColor: 'bg-white/80 border-slate-200/80',
@@ -60,7 +60,7 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
     {
       title: 'Failed / Lỗi',
       value: stats.failed_count,
-      subtext: stats.failed_count === 0 ? 'Không có lỗi' : 'Cần kiểm tra lại',
+      subtext: stats.failed_count === 0 ? 'Không có lỗi' : 'Cần kiểm tra',
       icon: XCircle,
       color: stats.failed_count > 0 ? 'text-rose-600' : 'text-slate-400',
       bgColor: stats.failed_count > 0 ? 'bg-rose-50/60 border-rose-200/80' : 'bg-white/80 border-slate-200/80',
@@ -68,9 +68,9 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
       badgeColor: stats.failed_count > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700',
     },
     {
-      title: 'Đang chạy / Hàng đợi',
+      title: 'Đang chạy',
       value: stats.running_count,
-      subtext: stats.running_count > 0 ? 'Đang thực thi...' : 'Hệ thống sẵn sàng',
+      subtext: stats.running_count > 0 ? 'Đang thực thi' : 'Hệ thống sẵn sàng',
       icon: Play,
       color: stats.running_count > 0 ? 'text-sky-600 animate-pulse' : 'text-slate-500',
       bgColor: stats.running_count > 0 ? 'bg-sky-50/70 border-sky-200/80' : 'bg-white/80 border-slate-200/80',
@@ -79,13 +79,13 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
     },
     {
       title: 'Production',
-      value: stats.production_version,
+      value: stats.production_version || 'Chưa thiết lập',
       subtext: 'Cụm máy chủ trực tiếp',
       icon: ShieldCheck,
       color: stats.production_status === 'healthy' || stats.production_status === 'operational' ? 'text-emerald-600' : 'text-slate-500',
       bgColor: 'bg-white/80 border-slate-200/80',
       badge: stats.production_status === 'not_configured'
-        ? 'Not configured'
+        ? 'Unconfigured'
         : (stats.production_status === 'healthy' || stats.production_status === 'operational'
           ? 'Operational'
           : (stats.production_status === 'degraded'
@@ -101,13 +101,13 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
     },
     {
       title: 'Staging CD',
-      value: stats.staging_version,
+      value: stats.staging_version || 'Chưa thiết lập',
       subtext: 'Môi trường kiểm thử',
       icon: Server,
       color: stats.staging_status === 'healthy' || stats.staging_status === 'operational' ? 'text-indigo-600' : 'text-slate-500',
       bgColor: 'bg-white/80 border-slate-200/80',
       badge: stats.staging_status === 'not_configured'
-        ? 'Not configured'
+        ? 'Unconfigured'
         : (stats.staging_status === 'healthy' || stats.staging_status === 'operational'
           ? 'Operational'
           : (stats.staging_status === 'degraded'
@@ -127,29 +127,47 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
       {cards.map((card, idx) => {
         const Icon = card.icon;
+        const isNumeric = typeof card.value === 'number' || (typeof card.value === 'string' && /^[0-9%]+$/.test(card.value.trim()));
+
         return (
           <div
             key={idx}
-            className={`rounded-2xl backdrop-blur-md p-4 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 relative overflow-hidden group ${card.bgColor}`}
+            className={`rounded-2xl backdrop-blur-md p-3.5 sm:p-4 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 relative overflow-hidden flex flex-col justify-between min-h-[120px] group ${card.bgColor}`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">
-                {card.title}
-              </span>
-              <div className={`p-1.5 rounded-xl bg-slate-100/80 ${card.color}`}>
-                <Icon className="w-4 h-4" />
+            {/* Top row: Title and Icon */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5 gap-1">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">
+                  {card.title}
+                </span>
+                <div className={`p-1.5 rounded-xl bg-slate-100/80 shrink-0 ${card.color}`}>
+                  <Icon className="w-3.5 h-3.5" />
+                </div>
+              </div>
+
+              {/* Middle row: Big Value */}
+              <div className="flex items-baseline min-h-[34px]">
+                {isNumeric ? (
+                  <span className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight font-sans">
+                    {card.value}
+                  </span>
+                ) : (
+                  <span
+                    className="text-sm font-bold text-neutral-800 line-clamp-1 leading-snug py-1"
+                    title={String(card.value)}
+                  >
+                    {card.value}
+                  </span>
+                )}
               </div>
             </div>
 
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl sm:text-2xl font-black text-neutral-900 tracking-tight">
-                {card.value}
+            {/* Bottom row: Subtext and Badge */}
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100/80 text-[11px] text-slate-500 gap-1">
+              <span className="truncate pr-1 text-[11px]" title={card.subtext}>
+                {card.subtext}
               </span>
-            </div>
-
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-              <span className="truncate pr-1">{card.subtext}</span>
-              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${card.badgeColor}`}>
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold shrink-0 whitespace-nowrap ${card.badgeColor}`}>
                 {card.badge}
               </span>
             </div>

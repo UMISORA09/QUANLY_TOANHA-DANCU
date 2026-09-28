@@ -69,10 +69,10 @@ class GitHubActionsService
             $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
 
             $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
-            $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Not configured (Chờ PROD_HOST)';
+            $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
             $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
-            $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Not configured (Chờ STAGING_HOST)';
+            $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
             $security = $this->getSecurityAudit();
 
@@ -125,10 +125,10 @@ class GitHubActionsService
         $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
 
         $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
-        $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Not configured (Chờ PROD_HOST)';
+        $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
         $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
-        $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Not configured (Chờ STAGING_HOST)';
+        $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
         return [
             'total_pipelines' => $total,
