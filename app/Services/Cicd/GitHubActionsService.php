@@ -22,9 +22,9 @@ class GitHubActionsService
 
     public function __construct()
     {
-        $this->owner = env('GITHUB_OWNER', env('GITHUB_REPOSITORY_OWNER', 'UMISORA09'));
-        $this->repo = env('GITHUB_REPO', env('GITHUB_REPOSITORY_NAME', 'QUANLY_TOANHA-DANCU'));
-        $this->token = env('GITHUB_TOKEN', env('GITHUB_API_TOKEN', null));
+        $this->owner = config('services.github.owner') ?: env('GITHUB_OWNER', env('GITHUB_REPOSITORY_OWNER', 'UMISORA09'));
+        $this->repo = config('services.github.repo') ?: env('GITHUB_REPO', env('GITHUB_REPOSITORY_NAME', 'QUANLY_TOANHA-DANCU'));
+        $this->token = config('services.github.token') ?: env('GITHUB_TOKEN', env('GITHUB_API_TOKEN', null));
         $this->apiBase = "https://api.github.com/repos/{$this->owner}/{$this->repo}";
         $this->storagePath = storage_path('app/cicd_runs.json');
     }
