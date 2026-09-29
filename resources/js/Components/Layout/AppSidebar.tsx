@@ -129,7 +129,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             ? 'flex w-72 max-w-[85vw] translate-x-0'
             : isDesktopCollapsed
             ? 'hidden lg:flex lg:w-20 lg:translate-x-0'
-            : 'hidden lg:flex lg:w-72 lg:translate-x-0'
+            : 'hidden lg:flex lg:w-[294px] lg:translate-x-0'
         }`}
       >
         {/* ================= TOP BRAND HEADER ================= */}

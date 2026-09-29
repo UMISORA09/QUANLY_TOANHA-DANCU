@@ -298,7 +298,7 @@ export const cicdApi = {
     return json.data || ['main'];
   },
 
-  async runPipeline(payload: { workflow: string; branch?: string; environment?: string }): Promise<{ success: boolean; message: string }> {
+  async runPipeline(payload: { workflow: string; branch?: string; environment?: string; inputs?: Record<string, string> }): Promise<{ success: boolean; message: string }> {
     const res = await fetch(`${API_BASE}/pipelines/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },

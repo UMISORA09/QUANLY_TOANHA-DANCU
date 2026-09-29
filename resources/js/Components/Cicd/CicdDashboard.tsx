@@ -220,7 +220,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
     setIsDetailOpen(true);
   };
 
-  const handleRunPipelineSubmit = async (payload: { workflow: string; branch: string; environment: string }) => {
+  const handleRunPipelineSubmit = async (payload: { workflow: string; branch: string; environment: string; inputs?: Record<string, string> }) => {
     const res = await cicdApi.runPipeline(payload);
     showToast(res.message, 'success');
     fetchData(true);
@@ -386,7 +386,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       )}
 
       {/* SUB-VIEW TABS */}
-      <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2.5 overflow-x-auto scrollbar-subtle">
         {[
           { id: 'pipelines', label: 'Danh sách Pipelines', icon: Layers, badge: String(pipelines.length) },
           { id: 'deployments', label: 'Triển khai & Bản phát hành', icon: Server, badge: overview?.production_status === 'healthy' ? 'Active' : 'Unconfigured' },

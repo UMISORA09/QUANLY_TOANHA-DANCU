@@ -18,12 +18,17 @@ class HealthCheckController extends Controller
             return $version;
         }
 
+        $vercelRef = env('VERCEL_GIT_COMMIT_REF', '');
+        if (! empty($vercelRef)) {
+            return $vercelRef;
+        }
+
         return $this->getCommitSha();
     }
 
     protected function getCommitSha(): string
     {
-        $sha = env('COMMIT_SHA', '');
+        $sha = env('COMMIT_SHA', env('VERCEL_GIT_COMMIT_SHA', ''));
         if (! empty($sha)) {
             return substr($sha, 0, 7);
         }
@@ -82,7 +87,7 @@ class HealthCheckController extends Controller
 
         $httpStatus = ($overallStatus === 'unhealthy') ? 503 : 200;
 
-        return response()->json([
+        $data = [
             'status' => $overallStatus,
             'system' => $overallStatus,
             'database' => $databaseStatus,
@@ -93,7 +98,16 @@ class HealthCheckController extends Controller
             'timestamp' => now()->toIso8601String(),
             'uptime_seconds' => $uptime,
             'database_latency_ms' => $databaseLatencyMs,
-        ], $httpStatus);
+        ];
+
+        if (env('VERCEL_REGION')) {
+            $data['region'] = env('VERCEL_REGION');
+        }
+        if (env('VERCEL_ENV')) {
+            $data['vercel_env'] = env('VERCEL_ENV');
+        }
+
+        return response()->json($data, $httpStatus);
     }
 
     /**

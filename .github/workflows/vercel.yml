@@ -1,0 +1,308 @@
+name: CD - Vercel Deployment & Observability
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+      - develop
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Deployment Environment (production or preview)'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - preview
+
+concurrency:
+  group: vercel-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+jobs:
+  ci-gate:
+    name: Deployment Quality Gate (Lint, Build & Unit Tests)
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: quanly_toanha_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -prootpassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo, pdo_mysql, pdo_sqlite, mbstring, xml, ctype, iconv, intl, bcmath, gd, zip
+          coverage: none
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Code Style Check (Laravel Pint)
+        run: vendor/bin/pint --test
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: TypeScript Type-Check
+        run: npm run typecheck
+
+      - name: Build Frontend Assets
+        run: npm run build
+
+      - name: Configure Test Environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Wait for MySQL Service
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -u root -prootpassword --silent; then
+              echo "MySQL test container is operational."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL service failed to start."
+          exit 1
+
+      - name: Run Schema Migrations & Verify
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: quanly_toanha_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpassword
+        run: |
+          php artisan migrate --force --no-interaction
+          php artisan db:seed --force --no-interaction
+
+      - name: Execute PHPUnit Test Suite
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: quanly_toanha_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpassword
+          APP_ENV: testing
+        run: vendor/bin/phpunit --colors=always
+
+  production-migration:
+    name: Production Database Migration Gate
+    runs-on: ubuntu-latest
+    needs: [ci-gate]
+    if: github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'production')
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Validate Production Database Configuration
+        id: check-db-config
+        env:
+          PROD_DB_HOST: ${{ secrets.PROD_DB_HOST }}
+          PROD_DB_DATABASE: ${{ secrets.PROD_DB_DATABASE }}
+          PROD_DB_USERNAME: ${{ secrets.PROD_DB_USERNAME }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if ([ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" != "not_configured" ]) || ([ -n "$PROD_DB_HOST" ] && [ "$PROD_DB_HOST" != "not_configured" ] && [ -n "$PROD_DB_PASSWORD" ] && [ "$PROD_DB_PASSWORD" != "not_configured" ]); then
+            echo "configured=true" >> $GITHUB_OUTPUT
+            echo "✅ Production database secrets configured."
+          else
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::notice ::Production database is not configured. Configure production database secrets before running production migration."
+          fi
+
+      - name: Setup PHP for Migration
+        if: steps.check-db-config.outputs.configured == 'true'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo, pdo_mysql, mbstring, xml, ctype
+          coverage: none
+
+      - name: Install Composer Dependencies
+        if: steps.check-db-config.outputs.configured == 'true'
+        run: composer install --no-dev --prefer-dist --no-interaction --no-progress
+
+      - name: Execute Incremental Migrations
+        if: steps.check-db-config.outputs.configured == 'true'
+        env:
+          APP_ENV: production
+          DB_CONNECTION: mysql
+          DB_HOST: ${{ secrets.PROD_DB_HOST }}
+          DB_PORT: ${{ secrets.PROD_DB_PORT || 3306 }}
+          DB_DATABASE: ${{ secrets.PROD_DB_DATABASE }}
+          DB_USERNAME: ${{ secrets.PROD_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "Executing incremental migrations on Production Database..."
+          php artisan migrate --force --no-interaction
+          echo "✅ Production database migrations executed safely."
+
+  deploy-vercel:
+    name: Deploy to Vercel (Runtime & Platform)
+    runs-on: ubuntu-latest
+    needs: [ci-gate]
+    if: always() && needs.ci-gate.result == 'success'
+    outputs:
+      deploy_url: ${{ steps.deploy.outputs.url }}
+      is_production: ${{ steps.target.outputs.is_production }}
+      is_configured: ${{ steps.check-secrets.outputs.is_configured }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Determine Deployment Target
+        id: target
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/master" ] || [ "${{ github.event.inputs.target_env }}" = "production" ]; then
+            echo "is_production=true" >> $GITHUB_OUTPUT
+            echo "target=production" >> $GITHUB_OUTPUT
+          else
+            echo "is_production=false" >> $GITHUB_OUTPUT
+            echo "target=preview" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate Vercel Authentication Secrets
+        id: check-secrets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ "$VERCEL_TOKEN" = "not_configured" ] || [ -z "$VERCEL_ORG_ID" ] || [ "$VERCEL_ORG_ID" = "not_configured" ] || [ -z "$VERCEL_PROJECT_ID" ] || [ "$VERCEL_PROJECT_ID" = "not_configured" ]; then
+            echo "is_configured=false" >> $GITHUB_OUTPUT
+            echo "::notice ::VERCEL DEPLOYMENT STATUS: NOT CONFIGURED. Awaiting VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID in GitHub Secrets."
+          else
+            echo "is_configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js for Vercel CLI
+        if: steps.check-secrets.outputs.is_configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Vercel CLI
+        if: steps.check-secrets.outputs.is_configured == 'true'
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Environment Information
+        if: steps.check-secrets.outputs.is_configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ "${{ steps.target.outputs.is_production }}" = "true" ]; then
+            vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+          else
+            vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
+          fi
+
+      - name: Deploy to Vercel
+        id: deploy
+        if: steps.check-secrets.outputs.is_configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ "${{ steps.target.outputs.is_production }}" = "true" ]; then
+            DEPLOY_URL=$(vercel deploy --prod --token=$VERCEL_TOKEN)
+          else
+            DEPLOY_URL=$(vercel deploy --token=$VERCEL_TOKEN)
+          fi
+          echo "url=${DEPLOY_URL}" >> $GITHUB_OUTPUT
+          echo "🚀 Deployed URL: ${DEPLOY_URL}"
+
+  post-deploy-verify:
+    name: Post-Deployment Observability & Health Verification
+    runs-on: ubuntu-latest
+    needs: [deploy-vercel]
+    if: needs.deploy-vercel.outputs.is_configured == 'true' && needs.deploy-vercel.outputs.deploy_url != ''
+
+    steps:
+      - name: Verify Live Endpoints
+        env:
+          TARGET_URL: ${{ needs.deploy-vercel.outputs.deploy_url }}
+        run: |
+          echo "============================================================"
+          echo "Probing Live Deployment: ${TARGET_URL}"
+          echo "============================================================"
+
+          echo "1. Probing HTTP Root (/)"
+          ROOT_CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${TARGET_URL}/" || echo "000")
+          echo "   HTTP Root status: ${ROOT_CODE}"
+          [ "$ROOT_CODE" -lt 200 ] || [ "$ROOT_CODE" -ge 400 ] && { echo "❌ Root endpoint failed with HTTP ${ROOT_CODE}"; exit 1; }
+
+          echo "2. Probing /health"
+          HEALTH_JSON=$(curl -s -L "${TARGET_URL}/health" || echo "{}")
+          echo "   Health Payload: ${HEALTH_JSON}"
+          STATUS=$(echo "$HEALTH_JSON" | jq -r '.status // "unknown"')
+          DB_STATUS=$(echo "$HEALTH_JSON" | jq -r '.database // "unknown"')
+
+          if [ "$STATUS" != "healthy" ] && [ "$STATUS" != "ok" ]; then
+            echo "❌ Health check failed: overall status is '${STATUS}', database is '${DB_STATUS}'"
+            exit 1
+          fi
+          echo "   ✅ Health check passed: Status=${STATUS}, Database=${DB_STATUS}"
+
+          echo "3. Probing /api/monitoring/freshness"
+          FRESH_JSON=$(curl -s -L "${TARGET_URL}/api/monitoring/freshness" || echo "{}")
+          FRESH_STATE=$(echo "$FRESH_JSON" | jq -r '.overall_state // "UNKNOWN"')
+          echo "   Freshness overall state: ${FRESH_STATE}"
+
+          echo "4. Probing /metrics (Prometheus)"
+          METRICS_BODY=$(curl -s -L "${TARGET_URL}/metrics" || echo "")
+          if ! echo "$METRICS_BODY" | grep -q "freshness_age_seconds"; then
+            echo "⚠️ Warning: Metrics endpoint returned, but missing freshness_age_seconds"
+          else
+            echo "   ✅ Prometheus metrics verified successfully."
+          fi
+
+          echo "============================================================"
+          echo "✅ POST-DEPLOYMENT OBSERVABILITY VERIFICATION COMPLETED"
+          echo "============================================================"
