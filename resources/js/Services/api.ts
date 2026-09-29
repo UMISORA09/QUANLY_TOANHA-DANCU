@@ -260,27 +260,31 @@ class ApiService {
     const key = 'amenities:categories';
     const cached = amenityCache.get<Category[]>(key);
 
-    if (!forceRefresh && cached.exists && cached.data && cached.isFresh) {
+    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.isFresh) {
       return cached.data;
     }
 
     return amenityCache.dedupe(key, async () => {
       try {
-        const { data, etag, notModified } = await this.requestWithEtag<Category[]>(
+        const { data, etag, notModified } = await this.requestWithEtag<any>(
           '/admin/amenity-categories',
           cached.etag
         );
-        if (notModified && cached.data) {
+        if (notModified && Array.isArray(cached.data) && cached.data.length > 0) {
           amenityCache.touch(key);
           return cached.data;
         }
-        if (data) {
-          amenityCache.set(key, data, etag, 10 * 60 * 1000); // 10 mins fresh
-          return data;
+        const list: Category[] = Array.isArray(data)
+          ? data
+          : (Array.isArray(data?.data) ? data.data : (Array.isArray(data?.value) ? data.value : []));
+
+        if (list.length > 0) {
+          amenityCache.set(key, list, etag, 10 * 60 * 1000); // 10 mins fresh
+          return list;
         }
-        return cached.data || [];
+        return Array.isArray(cached.data) ? cached.data : [];
       } catch (err) {
-        if (cached.data) return cached.data;
+        if (Array.isArray(cached.data)) return cached.data;
         throw err;
       }
     });
@@ -824,22 +828,29 @@ class ApiService {
     const key = 'amenities:blocks';
     const cached = amenityCache.get<BlockOption[]>(key);
 
-    if (!forceRefresh && cached.exists && cached.data && cached.isFresh) {
+    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.isFresh) {
       return cached.data;
     }
 
     return amenityCache.dedupe(key, async () => {
       try {
-        let blocks: BlockOption[];
+        let rawBlocks: any;
         try {
-          blocks = await this.request<BlockOption[]>('/admin/blocks');
+          rawBlocks = await this.request<any>('/admin/blocks');
         } catch {
-          blocks = await this.request<BlockOption[]>('/meta/blocks');
+          rawBlocks = await this.request<any>('/meta/blocks');
         }
-        amenityCache.set(key, blocks, null, 15 * 60 * 1000); // 15 mins fresh
-        return blocks;
+        const blocks: BlockOption[] = Array.isArray(rawBlocks)
+          ? rawBlocks
+          : (Array.isArray(rawBlocks?.data) ? rawBlocks.data : (Array.isArray(rawBlocks?.value) ? rawBlocks.value : []));
+
+        if (blocks.length > 0) {
+          amenityCache.set(key, blocks, null, 15 * 60 * 1000); // 15 mins fresh
+          return blocks;
+        }
+        return Array.isArray(cached.data) ? cached.data : [];
       } catch (err) {
-        if (cached.data) return cached.data;
+        if (Array.isArray(cached.data)) return cached.data;
         throw err;
       }
     });

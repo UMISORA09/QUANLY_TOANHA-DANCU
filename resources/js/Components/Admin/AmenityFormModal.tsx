@@ -488,7 +488,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
                 >
                   <option value="">-- Chọn danh mục --</option>
-                  {categories.map((c) => (
+                  {(Array.isArray(categories) ? categories : []).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.category_name} ({c.category_code})
                     </option>
@@ -504,7 +504,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
                 >
                   <option value="">Toàn khu dân cư (Dùng chung)</option>
-                  {blocks.map((b) => (
+                  {(Array.isArray(blocks) ? blocks : []).map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.block_name} ({b.block_code})
                     </option>
@@ -721,7 +721,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                 </button>
               </div>
 
-              {galleryImages.length > 0 ? (
+              {Array.isArray(galleryImages) && galleryImages.length > 0 ? (
                 <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {galleryImages.map((imgUrl, idx) => (
                     <div key={idx} className="relative group rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 aspect-video flex items-center justify-center">
