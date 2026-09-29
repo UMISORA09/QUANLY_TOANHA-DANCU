@@ -48,7 +48,7 @@ const DEFAULT_FRESH_MS = 60 * 1000; // 1 phút (Fresh)
 const DEFAULT_STALE_MS = 15 * 60 * 1000; // 15 phút (Stale)
 const MAX_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 giờ (Hết hạn hoàn toàn)
 
-const STORAGE_PREFIX = 'smart_amenity_cache_v5:';
+const STORAGE_PREFIX = 'smart_amenity_cache_v6:';
 const BROADCAST_CHANNEL_NAME = 'smart_amenity_channel';
 const STORAGE_SYNC_KEY = 'smart_amenity_sync_event';
 

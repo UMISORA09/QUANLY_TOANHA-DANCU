@@ -234,8 +234,10 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         api.getCategories(forceRefresh),
         api.getBlocks(forceRefresh),
       ]);
-      setCategories(Array.isArray(cats) ? cats : []);
-      setBlocks(Array.isArray(blks) ? blks : []);
+      const validCats = Array.isArray(cats) ? cats : ((cats as any)?.data || (cats as any)?.value || []);
+      const validBlks = Array.isArray(blks) ? blks : ((blks as any)?.data || (blks as any)?.value || []);
+      setCategories(Array.isArray(validCats) ? validCats : []);
+      setBlocks(Array.isArray(validBlks) ? validBlks : []);
     } catch (err: any) {
       console.error('Failed to load metadata', err);
     }
