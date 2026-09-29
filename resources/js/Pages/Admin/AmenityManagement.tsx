@@ -803,8 +803,8 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
         {/* Data Table Card */}
         <div className="bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-          {/* Table Container */}
-          <div className="overflow-x-auto table-scrollbar">
+          {/* Table Container - Duy trì chiều cao tối thiểu để không bao giờ bị giật khung cuộn (Scroll Jump) khi đổi trang */}
+          <div className="overflow-x-auto table-scrollbar min-h-[540px]">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-neutral-200/80 bg-neutral-50/80 text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
@@ -1130,8 +1130,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang đầu */}
               <button
                 type="button"
-                disabled={page <= 1 || loading || isChangingPage}
-                onClick={() => setPage(1)}
+                disabled={page <= 1 || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!loading && !isChangingPage) setPage(1);
+                }}
                 onMouseEnter={() => handlePrefetchPage(1)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
                 title="Trang đầu"
@@ -1142,10 +1145,12 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang trước */}
               <button
                 type="button"
-                disabled={page <= 1 || loading || isChangingPage}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!loading && !isChangingPage) setPage((p) => Math.max(1, p - 1));
+                }}
                 onMouseEnter={() => handlePrefetchPage(Math.max(1, page - 1))}
-                onFocus={() => handlePrefetchPage(Math.max(1, page - 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
@@ -1168,10 +1173,12 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                     <button
                       key={`page-${pNum}`}
                       type="button"
-                      disabled={loading || isChangingPage}
-                      onClick={() => setPage(numVal)}
+                      disabled={loading}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (!loading && !isChangingPage && numVal !== page) setPage(numVal);
+                      }}
                       onMouseEnter={() => handlePrefetchPage(numVal)}
-                      onFocus={() => handlePrefetchPage(numVal)}
                       className={`min-w-[28px] h-[28px] px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                         isCurrent
                           ? 'bg-neutral-900 text-white shadow-xs'
@@ -1187,10 +1194,12 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang sau */}
               <button
                 type="button"
-                disabled={page >= totalPages || loading || isChangingPage}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!loading && !isChangingPage) setPage((p) => Math.min(totalPages, p + 1));
+                }}
                 onMouseEnter={() => handlePrefetchPage(Math.min(totalPages, page + 1))}
-                onFocus={() => handlePrefetchPage(Math.min(totalPages, page + 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
               >
                 <span className="hidden md:inline">Sau</span>
@@ -1200,10 +1209,12 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang cuối */}
               <button
                 type="button"
-                disabled={page >= totalPages || loading || isChangingPage}
-                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!loading && !isChangingPage) setPage(totalPages);
+                }}
                 onMouseEnter={() => handlePrefetchPage(totalPages)}
-                onFocus={() => handlePrefetchPage(totalPages)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
                 title="Trang cuối"
               >
