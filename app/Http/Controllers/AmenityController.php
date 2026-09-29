@@ -75,8 +75,30 @@ class AmenityController extends Controller
             return DB::table('blocks')
                 ->select('id', 'block_name', 'block_code')
                 ->orderBy('block_name')
-                ->get();
+                ->get()
+                ->map(fn ($b) => [
+                    'id' => (string) $b->id,
+                    'block_name' => $b->block_name,
+                    'block_code' => $b->block_code,
+                ])
+                ->values()
+                ->toArray();
         });
+
+        if (! is_array($blocks) || empty($blocks)) {
+            $blocks = DB::table('blocks')
+                ->select('id', 'block_name', 'block_code')
+                ->orderBy('block_name')
+                ->get()
+                ->map(fn ($b) => [
+                    'id' => (string) $b->id,
+                    'block_name' => $b->block_name,
+                    'block_code' => $b->block_code,
+                ])
+                ->values()
+                ->toArray();
+            Cache::put("blocks_list_v{$version}", $blocks, 3600);
+        }
 
         return response()->json($blocks);
     }
@@ -102,7 +124,7 @@ class AmenityController extends Controller
 
             return $categories->map(function ($cat) use ($amenityCounts) {
                 return [
-                    'id' => $cat->id,
+                    'id' => (string) $cat->id,
                     'category_name' => $cat->category_name,
                     'category_code' => $cat->category_code,
                     'icon_name' => $cat->icon_name,
@@ -110,8 +132,35 @@ class AmenityController extends Controller
                     'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
                     'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
                 ];
-            });
+            })->values()->toArray();
         });
+
+        if (! is_array($result) || empty($result)) {
+            $categories = DB::table('amenity_categories')
+                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at')
+                ->orderBy('category_name')
+                ->get();
+
+            $amenityCounts = DB::table('amenities')
+                ->whereNull('deleted_at')
+                ->groupBy('category_id')
+                ->select('category_id', DB::raw('count(*) as count'))
+                ->pluck('count', 'category_id')
+                ->toArray();
+
+            $result = $categories->map(function ($cat) use ($amenityCounts) {
+                return [
+                    'id' => (string) $cat->id,
+                    'category_name' => $cat->category_name,
+                    'category_code' => $cat->category_code,
+                    'icon_name' => $cat->icon_name,
+                    'description' => $cat->description,
+                    'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
+                    'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
+                ];
+            })->values()->toArray();
+            Cache::put("amenity_categories_v{$version}", $result, 3600);
+        }
 
         return response()->json($result);
     }

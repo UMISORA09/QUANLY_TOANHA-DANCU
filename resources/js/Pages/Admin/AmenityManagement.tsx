@@ -130,6 +130,15 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   const prevFilterSignatureRef = useRef<string>(
     `${debouncedSearch}|${selectedCategory}|${selectedBlock}|${selectedStatus}|${sortOrder}|10`
   );
+  const scrollPosRef = useRef<number | null>(null);
+
+  // Chuyển trang mượt mà tuyệt đối không bao giờ bị nhảy/giật lên đầu trang
+  const handlePageChange = useCallback((targetPage: number) => {
+    if (loading || isChangingPage || targetPage === page) return;
+    const scrollContainer = document.querySelector('main') || document.documentElement;
+    scrollPosRef.current = scrollContainer.scrollTop;
+    setPage(targetPage);
+  }, [loading, isChangingPage, page]);
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -225,8 +234,10 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         api.getCategories(forceRefresh),
         api.getBlocks(forceRefresh),
       ]);
-      setCategories(Array.isArray(cats) ? cats : []);
-      setBlocks(Array.isArray(blks) ? blks : []);
+      const validCats = Array.isArray(cats) ? cats : ((cats as any)?.data || (cats as any)?.value || []);
+      const validBlks = Array.isArray(blks) ? blks : ((blks as any)?.data || (blks as any)?.value || []);
+      setCategories(Array.isArray(validCats) ? validCats : []);
+      setBlocks(Array.isArray(validBlks) ? validBlks : []);
     } catch (err: any) {
       console.error('Failed to load metadata', err);
     }
@@ -414,6 +425,23 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
     }
     fetchAmenities(false, page);
   }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, limit, page]);
+
+  // Cố định vị trí cuộn khi đổi trang, không bao giờ để trình duyệt đẩy lên đầu trang
+  useEffect(() => {
+    if (scrollPosRef.current !== null) {
+      const scrollContainer = document.querySelector('main') || document.documentElement;
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollPosRef.current;
+      }
+      const raf = requestAnimationFrame(() => {
+        if (scrollContainer && scrollPosRef.current !== null) {
+          scrollContainer.scrollTop = scrollPosRef.current;
+          scrollPosRef.current = null;
+        }
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [amenities, page]);
 
   // Lắng nghe sự kiện đồng bộ đa tab toàn diện (Comprehensive Cross-Tab Synchronization)
   useEffect(() => {
@@ -804,7 +832,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         {/* Data Table Card */}
         <div className="bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           {/* Table Container - Duy trì chiều cao tối thiểu để không bao giờ bị giật khung cuộn (Scroll Jump) khi đổi trang */}
-          <div className="overflow-x-auto table-scrollbar min-h-[540px]">
+          <div className="overflow-x-auto table-scrollbar min-h-[640px]">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-neutral-200/80 bg-neutral-50/80 text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
@@ -893,10 +921,10 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                   (Array.isArray(amenities) ? amenities : []).map((item) => (
                     <tr
                       key={item.id}
-                      className="hover:bg-neutral-50/70 transition-colors group"
+                      className="hover:bg-neutral-50/70 transition-colors group h-[58px]"
                     >
                       {/* 1. Tên tiện ích */}
-                      <td className="py-3.5 px-4 font-bold text-neutral-900 min-w-[220px]">
+                      <td className="py-2 px-4 font-bold text-neutral-900 min-w-[220px]">
                         <div className="flex items-center gap-2.5">
                           {item.cover_image_url ? (
                             <img
@@ -910,7 +938,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="leading-snug text-neutral-950 font-semibold">{renderHighlightedText(item.amenity_name, debouncedSearch)}</div>
+                            <div className="leading-snug text-neutral-950 font-semibold truncate max-w-[200px]" title={item.amenity_name}>
+                              {renderHighlightedText(item.amenity_name, debouncedSearch)}
+                            </div>
                             <div className="text-[10px] font-normal text-neutral-400 mt-0.5 whitespace-nowrap">
                               {item.active_time_slots_count} slot đang mở
                             </div>
@@ -919,27 +949,27 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                       </td>
 
                       {/* 2. Mã tiện ích */}
-                      <td className="py-3.5 px-3 font-mono font-bold text-neutral-700 whitespace-nowrap">
+                      <td className="py-2 px-3 font-mono font-bold text-neutral-700 whitespace-nowrap">
                         <span className="px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-200/80">
                           {renderHighlightedText(item.amenity_code, debouncedSearch)}
                         </span>
                       </td>
 
                       {/* 3. Danh mục */}
-                      <td className="py-3.5 px-3 text-neutral-700 whitespace-nowrap">
+                      <td className="py-2 px-3 text-neutral-700 whitespace-nowrap">
                         {item.category_name || '-'}
                       </td>
 
                       {/* 4. Tòa nhà */}
-                      <td className="py-3.5 px-3 text-neutral-600 whitespace-nowrap">
+                      <td className="py-2 px-3 text-neutral-600 whitespace-nowrap">
                         {item.block_name || (
                           <span className="text-neutral-400 italic">Dùng chung</span>
                         )}
                       </td>
 
                       {/* 5. Vị trí */}
-                      <td className="py-3.5 px-3 text-neutral-600 min-w-[160px] leading-snug" title={item.location_detail}>
-                        {item.location_detail}
+                      <td className="py-2 px-3 text-neutral-600 min-w-[160px] max-w-[200px] leading-snug" title={item.location_detail}>
+                        <div className="truncate">{item.location_detail}</div>
                       </td>
 
                       {/* 6. Sức chứa / slot */}
@@ -1133,7 +1163,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page <= 1 || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage(1);
+                  handlePageChange(1);
                 }}
                 onMouseEnter={() => handlePrefetchPage(1)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
@@ -1148,7 +1178,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page <= 1 || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage((p) => Math.max(1, p - 1));
+                  handlePageChange(Math.max(1, page - 1));
                 }}
                 onMouseEnter={() => handlePrefetchPage(Math.max(1, page - 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
@@ -1176,7 +1206,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                       disabled={loading}
                       onClick={(e) => {
                         e.preventDefault();
-                        if (!loading && !isChangingPage && numVal !== page) setPage(numVal);
+                        handlePageChange(numVal);
                       }}
                       onMouseEnter={() => handlePrefetchPage(numVal)}
                       className={`min-w-[28px] h-[28px] px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
@@ -1197,7 +1227,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page >= totalPages || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage((p) => Math.min(totalPages, p + 1));
+                  handlePageChange(Math.min(totalPages, page + 1));
                 }}
                 onMouseEnter={() => handlePrefetchPage(Math.min(totalPages, page + 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
@@ -1212,7 +1242,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page >= totalPages || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage(totalPages);
+                  handlePageChange(totalPages);
                 }}
                 onMouseEnter={() => handlePrefetchPage(totalPages)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
