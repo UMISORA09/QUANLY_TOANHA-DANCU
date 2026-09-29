@@ -93,14 +93,16 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   const initialLookup = amenityCache.get<AmenityListResponse>(initialCacheKey);
 
   // Data states
-  const [amenities, setAmenities] = useState<Amenity[]>(() => initialLookup.data?.items || []);
+  const [amenities, setAmenities] = useState<Amenity[]>(() => {
+    return Array.isArray(initialLookup.data?.items) ? initialLookup.data.items : [];
+  });
   const [categories, setCategories] = useState<Category[]>(() => {
     const cached = amenityCache.get<Category[]>('amenities:categories');
-    return cached.data || [];
+    return Array.isArray(cached.data) ? cached.data : [];
   });
   const [blocks, setBlocks] = useState<BlockOption[]>(() => {
     const cached = amenityCache.get<BlockOption[]>('amenities:blocks');
-    return cached.data || [];
+    return Array.isArray(cached.data) ? cached.data : [];
   });
   const [total, setTotal] = useState<number>(() => initialLookup.data?.total || 0);
   const [totalPages, setTotalPages] = useState<number>(() => initialLookup.data?.total_pages || 1);
@@ -223,8 +225,8 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         api.getCategories(forceRefresh),
         api.getBlocks(forceRefresh),
       ]);
-      setCategories(cats);
-      setBlocks(blks);
+      setCategories(Array.isArray(cats) ? cats : []);
+      setBlocks(Array.isArray(blks) ? blks : []);
     } catch (err: any) {
       console.error('Failed to load metadata', err);
     }
@@ -278,9 +280,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           if (currentSeq !== searchSequenceRef.current) {
             return;
           }
-          setAmenities(data.items);
-          setTotal(data.total);
-          setTotalPages(data.total_pages);
+          setAmenities(Array.isArray(data?.items) ? data.items : []);
+          setTotal(data?.total || 0);
+          setTotalPages(data?.total_pages || 1);
           setCorrectedQuery(data.corrected_query || null);
           setLoading(false);
           setIsSearching(false);
@@ -735,7 +737,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
               >
                 <option value="">Tất cả danh mục</option>
-                {categories.map((c) => (
+                {(Array.isArray(categories) ? categories : []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.category_name}
                   </option>
@@ -754,7 +756,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
               >
                 <option value="">Tất cả tòa nhà</option>
-                {blocks.map((b) => (
+                {(Array.isArray(blocks) ? blocks : []).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.block_name}
                   </option>
@@ -888,7 +890,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                     </td>
                   </tr>
                 ) : (
-                  amenities.map((item) => (
+                  (Array.isArray(amenities) ? amenities : []).map((item) => (
                     <tr
                       key={item.id}
                       className="hover:bg-neutral-50/70 transition-colors group"
@@ -1288,7 +1290,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                     Bộ sưu tập hình ảnh ({detailAmenity.gallery_images.length}):
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {detailAmenity.gallery_images.map((imgUrl, idx) => (
+                    {(Array.isArray(detailAmenity.gallery_images) ? detailAmenity.gallery_images : []).map((imgUrl, idx) => (
                       <div
                         key={idx}
                         className="rounded-lg overflow-hidden border border-neutral-200 aspect-video bg-neutral-200"
