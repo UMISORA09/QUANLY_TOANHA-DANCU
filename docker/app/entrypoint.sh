@@ -39,6 +39,9 @@ elif [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     php artisan migrate --force
 fi
 
+# Làm mới cấu hình
+php artisan config:clear
+
 # Khởi động server
 echo "[Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:8000 ..."
 exec php artisan serve --host=0.0.0.0 --port=8000

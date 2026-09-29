@@ -133,9 +133,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path === '/quan-ly/khoi-nha' ||
       path.startsWith('/quan-ly/zones') ||
       path === '/manager/zones' ||
-      path === '/admin/zones'
+      path === '/admin/zones' ||
+      path === '/quan-ly/buildings' ||
+      path === '/manager/buildings'
     ) {
-      return 'zones';
+      return 'buildings';
     }
     if (path === '/admin/roles' || path === '/admin/rbac' || path === '/admin/phan-quyen' || path.startsWith('/admin/roles')) {
       return 'roles';
@@ -153,9 +155,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       return initialTab;
     }
 
-    // 4. Khi vào route quản trị gốc (/admin, /dashboard, /quan-ly, /manager) mà không có tab query:
-    // MẶC ĐỊNH LUÔN LUÔN LÀ 'overview' (Tổng quan) khi mới đăng nhập hoặc khởi động lại trang quản lý.
-    if (path === '/admin' || path === '/dashboard' || path === '/quan-ly' || path === '/manager') {
+    // 4. Khi vào route quản trị gốc (/quan-ly, /manager): mặc định mở ngay Khối / Tòa nhà & Căn hộ
+    if (path === '/quan-ly' || path === '/manager') {
+      return 'buildings';
+    }
+    if (path === '/admin' || path === '/dashboard') {
       return 'overview';
     }
 
@@ -174,7 +178,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
   // Navigation & Interactive states
   const [activeMenuId, setActiveMenuId] = useState<string>(resolveInitialTab);
+  const [buildingOptions, setBuildingOptions] = useState<Array<{ id: string; label: string }>>([
+    { id: 'all', label: 'Khu A - Tất cả tòa nhà' }
+  ]);
   const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
+  const [isBuildingsLoading, setIsBuildingsLoading] = useState<boolean>(false);
+  const [buildingsError, setBuildingsError] = useState<string | null>(null);
   const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
@@ -256,12 +265,38 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Tải danh sách tòa nhà/khối động từ Backend
+  const loadBuildings = async (force = false) => {
+    setIsBuildingsLoading(true);
+    setBuildingsError(null);
+    try {
+      const blocks = await api.getBlocks(force);
+      if (Array.isArray(blocks) && blocks.length > 0) {
+        const mapped = [
+          { id: 'all', label: 'Toàn bộ khu đô thị' },
+          ...blocks.map((b) => ({
+            id: b.id,
+            label: `${b.block_code} - ${b.block_name}`,
+          })),
+        ];
+        setBuildingOptions(mapped);
+      }
+    } catch {
+      setBuildingsError('Không thể tải danh sách tòa nhà');
+    } finally {
+      setIsBuildingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBuildings();
+  }, []);
+
   // Tự động tải trước (Prefetch) danh mục Tiện ích ở background SAU KHI trang chính đã render mượt mà
   useEffect(() => {
     const timer = setTimeout(() => {
       api.prefetchAmenities({ page: 1, limit: 10, sort: 'created_at_desc' });
       api.getCategories().catch(() => {});
-      api.getBlocks().catch(() => {});
     }, 3500);
     return () => clearTimeout(timer);
   }, []);
@@ -372,15 +407,13 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
       // 2. Phân hệ Ban Quản Lý (Manager): Trực tiếp quản lý Khối tòa nhà, cư dân, vận hành kỹ thuật
       return [
-        { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
-        { id: 'zones', label: 'Khối Tòa nhà (Block/Zone)', icon: Layers, badge: null, isNew: true },
-        { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: kpis.totalResidents },
-        { id: 'pricing', label: 'Đơn giá dịch vụ', icon: Tag, badge: null },
+        { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null },
+        { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
+        { id: 'residents', label: 'Cư dân', icon: Users, badge: '1.248' },
+        { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
-        { id: 'invoices', label: 'Hóa đơn & Thu phí', icon: Receipt, badge: String(kpis.unpaidInvoices) },
-        { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
-        { id: 'amenities', label: 'Quản lý & Danh mục tiện ích', icon: Sparkles, badge: String(kpis.amenityBookings) },
-        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${notifications.filter(n => !n.isRead).length || 2} mới` },
+        { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: '14' },
+        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: '3 mới' },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
         { id: 'ekyc', label: 'eKYC & Xác thực CCCD', icon: ShieldCheck, badge: 'AI' },
         { id: 'assets', label: 'Tài sản & Bảo trì thiết bị', icon: ShieldAlert, badge: null },
@@ -639,7 +672,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <button
               type="button"
               onClick={() => setIsBuildingDropdownOpen(!isBuildingDropdownOpen)}
-              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-neutral-800 border border-slate-200/80 shadow-xs hover:shadow-sm transition-all cursor-pointer"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-white/90 hover:bg-white text-xs font-medium text-slate-700 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
             >
               <Building className="w-3.5 h-3.5 text-sky-600 shrink-0" />
               <span className="max-w-[80px] sm:max-w-[140px] md:max-w-none truncate">{selectedBuilding}</span>
@@ -660,26 +693,48 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                   <div className="text-[10px] uppercase font-bold text-slate-400 px-3 py-1.5 font-mono">
                     Chọn phạm vi quản lý
                   </div>
-                  {['Khu A - Tất cả tòa nhà', 'Khu B - Tháp Ruby', 'Khu C - Tháp Sapphire', 'Toàn bộ khu đô thị'].map(
-                    (bldg) => (
+                  {isBuildingsLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-4 text-xs text-slate-400">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
+                      <span>Đang tải danh sách tòa...</span>
+                    </div>
+                  ) : buildingsError ? (
+                    <div className="py-2 px-3 text-center">
+                      <p className="text-xs text-rose-500 mb-1.5">{buildingsError}</p>
                       <button
-                        key={bldg}
+                        type="button"
+                        onClick={() => loadBuildings(true)}
+                        className="text-[11px] text-sky-600 hover:underline font-medium"
+                      >
+                        Thử lại
+                      </button>
+                    </div>
+                  ) : buildingOptions.length === 0 ? (
+                    <div className="py-3 px-3 text-center text-xs text-slate-400">
+                      Chưa có dữ liệu tòa nhà
+                    </div>
+                  ) : (
+                    buildingOptions.map((opt) => (
+                      <button
+                        key={opt.id}
                         type="button"
                         onClick={() => {
-                          setSelectedBuilding(bldg);
+                          setSelectedBuilding(opt.label);
                           setIsBuildingDropdownOpen(false);
-                          showToast(`Đã chuyển bộ lọc: ${bldg}`);
+                          showToast(`Đã chuyển bộ lọc: ${opt.label}`);
                         }}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                          selectedBuilding === bldg
+                          selectedBuilding === opt.label
                             ? 'bg-neutral-900 text-white'
                             : 'text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        <span>{bldg}</span>
-                        {selectedBuilding === bldg && <Check className="w-3.5 h-3.5 text-sky-400" />}
+                        <span className="truncate">{opt.label}</span>
+                        {selectedBuilding === opt.label && (
+                          <Check className="w-3.5 h-3.5 text-sky-400 shrink-0 ml-2" />
+                        )}
                       </button>
-                    )
+                    ))
                   )}
                 </div>
               </>
@@ -763,7 +818,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'buildings' ? (
             <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
-              <BuildingListManagement />
+              <BuildingListManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

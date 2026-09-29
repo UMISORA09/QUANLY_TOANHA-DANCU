@@ -3,75 +3,105 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ZoneRequest;
-use App\Models\Zone;
+use App\Models\Block;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Controller xử lý nghiệp vụ Quản lý Khối Tòa nhà / Khu vực (Block/Zone).
- * Đảm bảo các chuẩn RESTful, FormRequest Validation và Optimistic Locking (HTTP 409).
+ * Controller quản lý Khối Tòa nhà (Block/Zone).
+ * Tích hợp trực tiếp vào bảng `blocks` (Single Source of Truth).
+ * Hỗ trợ phân quyền RBAC, Optimistic Locking (Atomic CAS), tìm kiếm, phân trang và thống kê.
  */
 class ZoneController extends Controller
 {
     /**
-     * Lấy danh sách các khối tòa nhà (có hỗ trợ tìm kiếm, lọc trạng thái & thống kê).
+     * Lấy danh sách các khối tòa nhà (hỗ trợ tìm kiếm, lọc trạng thái, phân trang & thống kê).
      */
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Zone::query()
+            $query = Block::query()
                 ->searchKeyword($request->input('search'))
                 ->filterStatus($request->input('status'))
                 ->orderBy('created_at', 'desc');
 
-            $zones = $query->get();
+            if ($request->has('per_page')) {
+                $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
+                $zones = $query->paginate($perPage);
+            } else {
+                $zones = $query->get();
+            }
 
-            // Tính toán số liệu thống kê nhanh
+            // Số liệu thống kê chính xác lấy từ cơ sở dữ liệu thật
             $stats = [
-                'total_zones' => Zone::count(),
-                'active_zones' => Zone::where('status', 'ACTIVE')->count(),
-                'maintenance_zones' => Zone::where('status', 'MAINTENANCE')->count(),
-                'total_floors' => (int) Zone::sum('floor_count'),
-                'total_apartments' => (int) Zone::sum('total_apartments'),
+                'total_zones' => Block::count(),
+                'active_zones' => Block::where('status', 'ACTIVE')->count(),
+                'maintenance_zones' => Block::where('status', 'MAINTENANCE')->count(),
+                'total_floors' => (int) Block::sum('total_floors'),
+                'total_apartments' => (int) Block::sum('total_apartments'),
+                'actual_apartments_count' => (int) DB::table('apartments')->whereNull('deleted_at')->count(),
+                'actual_floors_count' => (int) DB::table('floors')->whereNull('deleted_at')->count(),
             ];
 
             return response()->json([
                 'success' => true,
-                'data' => $zones,
+                'data' => $zones instanceof LengthAwarePaginator ? $zones->items() : $zones,
+                'pagination' => $zones instanceof LengthAwarePaginator ? [
+                    'current_page' => $zones->currentPage(),
+                    'last_page' => $zones->lastPage(),
+                    'per_page' => $zones->perPage(),
+                    'total' => $zones->total(),
+                ] : null,
                 'stats' => $stats,
             ], 200);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@index] Lỗi lấy danh sách khối nhà: '.$e->getMessage(), [
-                'exception' => $e,
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Có lỗi xảy ra khi tải danh sách khối tòa nhà: '.$e->getMessage(),
+                'message' => 'Có lỗi xảy ra khi tải danh sách khối tòa nhà. Vui lòng thử lại sau.',
             ], 500);
         }
     }
 
     /**
-     * Thêm mới một khối tòa nhà.
+     * Thêm mới một khối tòa nhà vào bảng blocks.
      */
     public function store(ZoneRequest $request): JsonResponse
     {
         try {
             $validated = $request->validated();
 
-            // Chuẩn hóa mã khối (in hoa, bỏ khoảng trắng thừa)
-            $validated['zone_code'] = strtoupper(trim($validated['zone_code']));
-            $validated['status'] = $validated['status'] ?? 'ACTIVE';
+            $blockCode = strtoupper(trim((string) ($validated['zone_code'] ?? $validated['block_code'] ?? '')));
+            $blockName = (string) ($validated['zone_name'] ?? $validated['block_name'] ?? '');
+            $totalFloors = (int) ($validated['floor_count'] ?? $validated['total_floors'] ?? 1);
+            $totalBasements = (int) ($validated['basement_count'] ?? $validated['total_basements'] ?? 1);
+            $totalApartments = (int) ($validated['total_apartments'] ?? 0);
+            $status = strtoupper(trim((string) ($validated['status'] ?? 'ACTIVE')));
 
-            $zone = Zone::create($validated);
+            $block = Block::create([
+                'block_code' => $blockCode,
+                'block_name' => $blockName,
+                'total_floors' => $totalFloors,
+                'total_basements' => $totalBasements,
+                'total_apartments' => $totalApartments,
+                'status' => $status,
+                'address_line' => $validated['address_line'] ?? null,
+                'hotline_phone' => $validated['hotline_phone'] ?? null,
+                'description' => $validated['description'] ?? null,
+                'version' => 1,
+            ]);
 
             return response()->json([
                 'success' => true,
-                'message' => "Thêm mới khối tòa nhà '{$zone->zone_name}' thành công.",
-                'data' => $zone,
+                'message' => "Thêm mới khối tòa nhà '{$block->block_name}' thành công.",
+                'data' => $block,
             ], 201);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@store] Lỗi tạo khối nhà: '.$e->getMessage(), [
@@ -80,7 +110,7 @@ class ZoneController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Không thể tạo khối tòa nhà. Vui lòng thử lại sau.',
+                'message' => 'Không thể tạo khối tòa nhà. Vui lòng kiểm tra lại thông tin.',
             ], 500);
         }
     }
@@ -88,13 +118,13 @@ class ZoneController extends Controller
     /**
      * Lấy thông tin chi tiết một khối tòa nhà.
      *
-     * @param  int|string  $id
+     * @param  string|int  $id
      */
     public function show($id): JsonResponse
     {
-        $zone = Zone::find($id);
+        $block = Block::withCount(['floors', 'apartments'])->find($id);
 
-        if (! $zone) {
+        if (! $block) {
             return response()->json([
                 'success' => false,
                 'message' => 'Khối tòa nhà không tồn tại hoặc đã bị xóa khỏi hệ thống.',
@@ -103,70 +133,101 @@ class ZoneController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $zone,
+            'data' => $block,
         ], 200);
     }
 
     /**
-     * Cập nhật thông tin khối tòa nhà kèm cơ chế OPTIMISTIC LOCKING (Khóa lạc quan).
+     * Cập nhật thông tin khối tòa nhà kèm cơ chế OPTIMISTIC LOCKING (Atomic Compare-And-Swap).
      *
-     * Luồng hoạt động:
-     * 1. Tìm bản ghi theo ID. Nếu không có -> trả về HTTP 404 Not Found.
-     * 2. Nhận trường last_updated_at từ Request, parse và so sánh với updated_at trong Database.
-     * 3. Nếu lệch (khác timestamp) -> trả về HTTP 409 Conflict kèm dữ liệu hiện tại trong DB.
-     * 4. Nếu khớp -> cập nhật an toàn và trả về HTTP 200 OK.
-     *
-     * @param  int|string  $id
+     * @param  string|int  $id
      */
     public function update(ZoneRequest $request, $id): JsonResponse
     {
         try {
             // 1. Kiểm tra tồn tại bản ghi
-            $zone = Zone::find($id);
+            $block = Block::find($id);
 
-            if (! $zone) {
+            if (! $block) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Khối tòa nhà không tồn tại hoặc đã bị xóa.',
                 ], 404);
             }
 
-            // 2. Kiểm tra OPTIMISTIC LOCKING
+            // 2. Kiểm tra xung đột Optimistic Locking
+            $clientVersion = $request->input('version');
             $clientLastUpdated = $request->input('last_updated_at');
 
-            if ($clientLastUpdated) {
+            $isConflict = false;
+
+            if ($clientVersion !== null && $clientVersion !== '') {
+                // Kiểm tra trực tiếp bằng số version (chính xác tuyệt đối)
+                if ((int) $clientVersion !== (int) $block->version) {
+                    $isConflict = true;
+                }
+            } elseif ($clientLastUpdated) {
+                // Fallback nếu client cũ chỉ gửi timestamp last_updated_at
                 try {
                     $clientTime = Carbon::parse($clientLastUpdated)->timestamp;
-                    $serverTime = Carbon::parse($zone->updated_at)->timestamp;
-
-                    // Nếu thời điểm client giữ khác với thời điểm mới nhất trong DB -> Xung đột (Conflict)
+                    $serverTime = Carbon::parse($block->updated_at)->timestamp;
                     if ($clientTime !== $serverTime) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Dữ liệu đã bị thay đổi bởi người khác trong lúc bạn đang thao tác. Vui lòng tải lại dữ liệu mới nhất trước khi lưu.',
-                            'conflict' => true,
-                            'current_data' => $zone,
-                        ], 409);
+                        $isConflict = true;
                     }
-                } catch (\Exception $timeEx) {
-                    Log::warning('[ZoneController@update] Lỗi phân tích last_updated_at: '.$timeEx->getMessage());
+                } catch (\Throwable $timeEx) {
+                    Log::warning('[ZoneController@update] Lỗi parse last_updated_at: '.$timeEx->getMessage());
                 }
             }
 
-            // 3. Tiến hành cập nhật dữ liệu
-            $validated = $request->validated();
-            unset($validated['last_updated_at']); // Bỏ trường kiểm soát ra khỏi mảng update
-
-            if (isset($validated['zone_code'])) {
-                $validated['zone_code'] = strtoupper(trim($validated['zone_code']));
+            if ($isConflict) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dữ liệu đã bị thay đổi bởi người khác trong lúc bạn đang thao tác. Vui lòng tải lại dữ liệu mới nhất trước khi lưu.',
+                    'conflict' => true,
+                    'current_data' => $block->fresh(),
+                ], 409);
             }
 
-            $zone->update($validated);
+            // 3. Tiến hành Atomic Compare-And-Swap trong Database
+            $validated = $request->validated();
+            $targetVersion = (int) $block->version;
+
+            $updatePayload = [
+                'block_code' => strtoupper(trim((string) ($validated['zone_code'] ?? $validated['block_code'] ?? $block->block_code))),
+                'block_name' => (string) ($validated['zone_name'] ?? $validated['block_name'] ?? $block->block_name),
+                'total_floors' => (int) ($validated['floor_count'] ?? $validated['total_floors'] ?? $block->total_floors),
+                'total_basements' => (int) ($validated['basement_count'] ?? $validated['total_basements'] ?? $block->total_basements),
+                'total_apartments' => (int) ($validated['total_apartments'] ?? $block->total_apartments),
+                'status' => strtoupper(trim((string) ($validated['status'] ?? $block->status))),
+                'address_line' => $validated['address_line'] ?? $block->address_line,
+                'hotline_phone' => $validated['hotline_phone'] ?? $block->hotline_phone,
+                'description' => $validated['description'] ?? $block->description,
+                'version' => $targetVersion + 1,
+                'updated_at' => now(),
+            ];
+
+            $affected = DB::table('blocks')
+                ->where('id', $block->id)
+                ->whereNull('deleted_at')
+                ->where('version', $targetVersion)
+                ->update($updatePayload);
+
+            // Nếu affected === 0 tức là đã có request khác đồng thời ghi thành công trước
+            if ($affected === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dữ liệu đã bị thay đổi bởi người khác trong lúc bạn đang thao tác. Vui lòng tải lại dữ liệu mới nhất trước khi lưu.',
+                    'conflict' => true,
+                    'current_data' => Block::find($block->id),
+                ], 409);
+            }
+
+            $freshBlock = Block::find($block->id);
 
             return response()->json([
                 'success' => true,
-                'message' => "Cập nhật khối tòa nhà '{$zone->zone_name}' thành công.",
-                'data' => $zone->fresh(),
+                'message' => "Cập nhật khối tòa nhà '{$freshBlock->block_name}' thành công.",
+                'data' => $freshBlock,
             ], 200);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@update] Lỗi cập nhật khối nhà: '.$e->getMessage(), [
@@ -176,7 +237,7 @@ class ZoneController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Không thể cập nhật khối tòa nhà. Vui lòng thử lại sau: '.$e->getMessage(),
+                'message' => 'Không thể cập nhật khối tòa nhà. Vui lòng thử lại sau.',
             ], 500);
         }
     }
@@ -184,26 +245,26 @@ class ZoneController extends Controller
     /**
      * Xóa mềm một khối tòa nhà.
      *
-     * @param  int|string  $id
+     * @param  string|int  $id
      */
     public function destroy($id): JsonResponse
     {
         try {
-            $zone = Zone::find($id);
+            $block = Block::find($id);
 
-            if (! $zone) {
+            if (! $block) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Khối tòa nhà không tồn tại hoặc đã bị xóa.',
                 ], 404);
             }
 
-            $zoneName = $zone->zone_name;
-            $zone->delete();
+            $blockName = $block->block_name;
+            $block->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => "Đã xóa khối tòa nhà '{$zoneName}' thành công.",
+                'message' => "Đã xóa khối tòa nhà '{$blockName}' thành công.",
             ], 200);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@destroy] Lỗi xóa khối nhà: '.$e->getMessage(), [

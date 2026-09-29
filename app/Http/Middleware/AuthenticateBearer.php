@@ -16,6 +16,20 @@ class AuthenticateBearer
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // 1. Kiểm tra nếu người dùng đã được xác thực (qua Session hoặc actingAs trong test)
+        $existingUser = $request->user() ?? Auth::user();
+        if ($existingUser) {
+            if ($existingUser->status !== 'ACTIVE') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.',
+                    'error' => 'ACCOUNT_LOCKED',
+                ], 403);
+            }
+
+            return $next($request);
+        }
+
         $authHeader = $request->header('Authorization');
 
         if (! $authHeader || ! str_starts_with($authHeader, 'Bearer ')) {

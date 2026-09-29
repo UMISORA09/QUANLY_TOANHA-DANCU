@@ -58,6 +58,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
   const rawItems = customItems || config.items;
   const menuItems = rawItems.filter((item) => {
+    if (role === 'manager') {
+      return true;
+    }
     if (item.id === 'roles') {
       return can('ROLE:VIEW|USER:VIEW');
     }

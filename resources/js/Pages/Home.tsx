@@ -1855,6 +1855,18 @@ export const Home: React.FC<HomeProps> = ({
                 />
                 <span>{highAlertMode ? 'Radar Quét 24/7' : 'Quét An ninh'}</span>
               </button>
+
+              <button
+                onClick={() => {
+                  window.location.href = '/quan-ly?tab=buildings';
+                }}
+                className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Chuyển đến trang Quản lý Khối Tòa nhà & Căn hộ"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Quản Lý Khối Tòa Nhà</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>

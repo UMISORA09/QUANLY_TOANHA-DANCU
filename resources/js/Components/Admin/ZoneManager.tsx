@@ -16,22 +16,26 @@ import {
   Clock,
   Filter,
   ShieldAlert,
-  Info
+  Info,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
 } from 'lucide-react';
 import { ZoneForm, ZoneData } from './ZoneForm';
 
 // Định nghĩa kiểu dữ liệu cho Zone lấy từ Backend Laravel
 export interface ZoneItem {
-  id: number;
+  id: string | number;
   zone_code: string;
   zone_name: string;
   floor_count: number;
   basement_count: number;
   total_apartments: number;
-  status: 'active' | 'maintenance' | 'inactive';
+  status: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE';
   address_line?: string | null;
   hotline_phone?: string | null;
   description?: string | null;
+  version?: number;
   created_at?: string;
   updated_at: string; // Sử dụng làm last_updated_at cho Optimistic Locking
 }
@@ -68,6 +72,12 @@ export const ZoneManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  // Phân trang
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [perPage, setPerPage] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalZones, setTotalZones] = useState<number>(0);
+
   // Modal Form State
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editingZone, setEditingZone] = useState<ZoneItem | null>(null);
@@ -87,8 +97,13 @@ export const ZoneManager: React.FC = () => {
     }, 4000);
   };
 
+  // Helper lấy Bearer Token từ storage
+  const getAuthToken = (): string => {
+    return localStorage.getItem('auth_token') || localStorage.getItem('smart_token') || '';
+  };
+
   // ================= CALL API LẤY DANH SÁCH KHỐI TÒA NHÀ =================
-  const fetchZones = useCallback(async (quiet = false) => {
+  const fetchZones = useCallback(async (quiet = false, page = 1) => {
     if (!quiet) setIsLoading(true);
     else setIsRefreshing(true);
 
@@ -96,19 +111,39 @@ export const ZoneManager: React.FC = () => {
       const params = new URLSearchParams();
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
       if (statusFilter !== 'all') params.append('status', statusFilter);
+      params.append('page', String(page));
+      params.append('per_page', String(perPage));
 
-      const url = `/api/v1/manager/zones${params.toString() ? `?${params.toString()}` : ''}`;
-      const res = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      });
+      const url = `/api/v1/manager/zones?${params.toString()}`;
+      const token = getAuthToken();
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      let res = await fetch(url, { headers });
+      if (res.status === 401) {
+        // Fallback tự động cho guest hoặc demo preview
+        res = await fetch(`/api/v1/zones/public?${params.toString()}`, {
+          headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        });
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
         setZones(data.data || []);
         if (data.stats) {
           setStats(data.stats);
+        }
+        if (data.pagination) {
+          setCurrentPage(data.pagination.current_page || 1);
+          setTotalPages(data.pagination.last_page || 1);
+          setTotalZones(data.pagination.total || 0);
+        } else {
+          setTotalZones((data.data || []).length);
         }
       } else {
         showToast('error', data.message || 'Không thể lấy dữ liệu khối tòa nhà.');
@@ -120,7 +155,7 @@ export const ZoneManager: React.FC = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, perPage]);
 
   // Load ban đầu & debounce khi thay đổi search/filter
   useEffect(() => {
@@ -150,13 +185,15 @@ export const ZoneManager: React.FC = () => {
   };
 
   // Xử lý tải lại dữ liệu khối đơn lẻ khi có xung đột (Optimistic Locking 409)
-  const handleReloadRequested = async (id?: number) => {
+  const handleReloadRequested = async (id?: string | number) => {
     await fetchZones(true);
     if (!id) return null;
     try {
-      const res = await fetch(`/api/v1/manager/zones/${id}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const token = getAuthToken();
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/v1/manager/zones/${id}`, { headers });
       const data = await res.json();
       return data.success && data.data ? data.data : null;
     } catch {
@@ -170,12 +207,16 @@ export const ZoneManager: React.FC = () => {
     setIsDeleting(true);
 
     try {
+      const token = getAuthToken();
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`/api/v1/manager/zones/${deletingZone.id}`, {
         method: 'DELETE',
-        headers: {
-          Accept: 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
+        headers,
       });
 
       const data = await res.json();
@@ -256,7 +297,20 @@ export const ZoneManager: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = '/quan-ly?tab=buildings';
+            }}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/70 hover:bg-white dark:bg-slate-800/70 dark:hover:bg-slate-800 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-800/60 text-xs font-bold shadow-xs hover:shadow-sm transition-all cursor-pointer"
+            title="Chuyển sang xem toàn bộ danh mục Khối & Căn hộ"
+          >
+            <Building className="w-3.5 h-3.5" />
+            <span>Xem Danh Sách Căn Hộ</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+
           <button
             type="button"
             onClick={() => fetchZones(true)}
@@ -385,9 +439,9 @@ export const ZoneManager: React.FC = () => {
             className="w-full sm:w-auto px-3 py-2 text-xs rounded-xl bg-white/60 dark:bg-slate-900/60 border border-white/60 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
           >
             <option value="all">Tất cả trạng thái</option>
-            <option value="active">Đang hoạt động</option>
-            <option value="maintenance">Đang bảo trì</option>
-            <option value="inactive">Tạm ngưng</option>
+            <option value="ACTIVE">Đang hoạt động</option>
+            <option value="MAINTENANCE">Đang bảo trì</option>
+            <option value="INACTIVE">Tạm ngưng</option>
           </select>
         </div>
       </div>
@@ -488,30 +542,37 @@ export const ZoneManager: React.FC = () => {
 
                     {/* Trạng thái */}
                     <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                          zone.status === 'active'
-                            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400'
-                            : zone.status === 'maintenance'
-                            ? 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400'
-                            : 'bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400'
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            zone.status === 'active'
-                              ? 'bg-emerald-500'
-                              : zone.status === 'maintenance'
-                              ? 'bg-amber-500'
-                              : 'bg-slate-400'
-                          }`}
-                        />
-                        {zone.status === 'active'
-                          ? 'Hoạt động'
-                          : zone.status === 'maintenance'
-                          ? 'Bảo trì'
-                          : 'Tạm ngưng'}
-                      </span>
+                      {(() => {
+                        const st = (zone.status || '').toUpperCase();
+                        const isActive = st === 'ACTIVE';
+                        const isMaintenance = st === 'MAINTENANCE';
+                        return (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                              isActive
+                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400'
+                                : isMaintenance
+                                ? 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400'
+                                : 'bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                isActive
+                                  ? 'bg-emerald-500'
+                                  : isMaintenance
+                                  ? 'bg-amber-500'
+                                  : 'bg-slate-400'
+                              }`}
+                            />
+                            {isActive
+                              ? 'Hoạt động'
+                              : isMaintenance
+                              ? 'Bảo trì'
+                              : 'Tạm ngưng'}
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Cập nhật lần cuối */}
@@ -549,6 +610,56 @@ export const ZoneManager: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Nút chuyển trang (Pagination Controls cho Khối Tòa Nhà) */}
+        {totalZones > 0 && (
+          <div className="p-4 border-t border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="text-slate-500 dark:text-slate-400 font-medium">
+              Hiển thị <strong>{zones.length}</strong> trên tổng <strong>{totalZones}</strong> khối tòa nhà (Trang {currentPage}/{totalPages})
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => fetchZones(false, currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Trang trước</span>
+                </button>
+
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => fetchZones(false, p)}
+                      className={`min-w-[30px] h-7 rounded-lg text-xs font-bold transition-all ${
+                        p === currentPage
+                          ? 'bg-sky-600 text-white shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => fetchZones(false, currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                >
+                  <span>Trang sau</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ================= MODAL FORM THÊM / SỬA (ZoneForm.tsx) ================= */}

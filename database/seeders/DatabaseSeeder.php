@@ -21,15 +21,17 @@ class DatabaseSeeder extends Seeder
             ResidentPortalSeeder::class,
             ReceptionPortalSeeder::class,
             AmenitySeeder::class,
-            ZoneSeeder::class,
         ]);
 
-        // Bộ dữ liệu mẫu dùng chung cho toàn bộ nhóm (Shared Demo Data)
+        // Bộ dữ liệu mẫu dùng chung cho toàn bộ nhóm (Shared Demo Data & Zone Demo)
         if (
             ! app()->environment('production') &&
             filter_var(env('SEED_DEMO_DATA', true), FILTER_VALIDATE_BOOLEAN)
         ) {
-            $this->call(SharedDemoDataSeeder::class);
+            $this->call([
+                ZoneSeeder::class,
+                SharedDemoDataSeeder::class,
+            ]);
         }
     }
 }

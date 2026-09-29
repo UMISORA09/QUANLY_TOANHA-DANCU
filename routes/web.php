@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BuildingController;
 use App\Http\Controllers\CicdDashboardController;
 use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\FreshnessController;
@@ -251,24 +252,52 @@ Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenitie
 Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
 
-// Phân hệ Ban Quản Lý Tòa Nhà (Building Management Portal)
+// Phân hệ Quản lý Khối Tòa nhà & Căn hộ (Building & Apartment Data from seed/migration)
+Route::prefix('api/v1')->group(function () {
+    Route::get('buildings/overview', [BuildingController::class, 'overview']);
+    Route::get('apartments', [BuildingController::class, 'apartments']);
+    Route::post('apartments', [BuildingController::class, 'store']);
+    Route::get('apartments/export', [BuildingController::class, 'export']);
+    Route::post('apartments/import', [BuildingController::class, 'import']);
+    Route::post('apartments/batch', [BuildingController::class, 'batchAction']);
+    Route::get('apartments/{id}', [BuildingController::class, 'show']);
+    Route::put('apartments/{id}', [BuildingController::class, 'update']);
+    Route::delete('apartments/{id}', [BuildingController::class, 'destroy']);
+    Route::get('zones/public', [ZoneController::class, 'index']);
+});
+
 Route::prefix('api/v1/manager')->group(function () {
+    Route::get('buildings/overview', [BuildingController::class, 'overview']);
+    Route::get('apartments', [BuildingController::class, 'apartments']);
+    Route::post('apartments', [BuildingController::class, 'store']);
+    Route::get('apartments/export', [BuildingController::class, 'export']);
+    Route::post('apartments/import', [BuildingController::class, 'import']);
+    Route::post('apartments/batch', [BuildingController::class, 'batchAction']);
+    Route::get('apartments/{id}', [BuildingController::class, 'show']);
+    Route::put('apartments/{id}', [BuildingController::class, 'update']);
+    Route::delete('apartments/{id}', [BuildingController::class, 'destroy']);
+});
+
+// Phân hệ Ban Quản Lý Tòa Nhà (Building Management Portal)
+Route::prefix('api/v1/manager')->middleware(['auth.bearer'])->group(function () {
     // Quản lý Khối Tòa nhà (Block/Zone Management)
-    Route::get('zones', [ZoneController::class, 'index']);
-    Route::post('zones', [ZoneController::class, 'store']);
-    Route::get('zones/{id}', [ZoneController::class, 'show']);
-    Route::put('zones/{id}', [ZoneController::class, 'update']);
-    Route::delete('zones/{id}', [ZoneController::class, 'destroy']);
+    Route::get('zones', [ZoneController::class, 'index'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::post('zones', [ZoneController::class, 'store'])->middleware('permission:BUILDING:MANAGE|ZONE:CREATE|ZONE:MANAGE');
+    Route::get('zones/{id}', [ZoneController::class, 'show'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::put('zones/{id}', [ZoneController::class, 'update'])->middleware('permission:BUILDING:MANAGE|ZONE:UPDATE|ZONE:MANAGE');
+    Route::delete('zones/{id}', [ZoneController::class, 'destroy'])->middleware('permission:BUILDING:MANAGE|ZONE:DELETE|ZONE:MANAGE');
 });
 
 // Phân hệ Quản trị & Tiện ích
 Route::prefix('api/v1/admin')->group(function () {
-    // Quản lý Khối Tòa nhà (Block/Zone Management - hỗ trợ alias admin)
-    Route::get('zones', [ZoneController::class, 'index']);
-    Route::post('zones', [ZoneController::class, 'store']);
-    Route::get('zones/{id}', [ZoneController::class, 'show']);
-    Route::put('zones/{id}', [ZoneController::class, 'update']);
-    Route::delete('zones/{id}', [ZoneController::class, 'destroy']);
+    // Quản lý Khối Tòa nhà (Block/Zone Management - hỗ trợ alias admin kèm bảo mật)
+    Route::middleware(['auth.bearer'])->group(function () {
+        Route::get('zones', [ZoneController::class, 'index'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+        Route::post('zones', [ZoneController::class, 'store'])->middleware('permission:BUILDING:MANAGE|ZONE:CREATE|ZONE:MANAGE');
+        Route::get('zones/{id}', [ZoneController::class, 'show'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+        Route::put('zones/{id}', [ZoneController::class, 'update'])->middleware('permission:BUILDING:MANAGE|ZONE:UPDATE|ZONE:MANAGE');
+        Route::delete('zones/{id}', [ZoneController::class, 'destroy'])->middleware('permission:BUILDING:MANAGE|ZONE:DELETE|ZONE:MANAGE');
+    });
 
     // Tòa nhà / Blocks cũ
     Route::get('blocks', [AmenityController::class, 'getBlocks']);

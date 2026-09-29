@@ -1116,6 +1116,165 @@ class ApiService {
       data: ApartmentSummaryItem[];
     }>('/meta/apartments');
   }
+
+  // ================= QUẢN LÝ KHỐI TÒA NHÀ & CĂN HỘ (SEED & MIGRATION) =================
+  async getBuildingsOverview(options: RequestInit = {}) {
+    return this.request<{
+      success: boolean;
+      data: {
+        buildings: Array<{
+          id: string;
+          code: string;
+          name: string;
+          floors: number;
+          basements: number;
+          elevators: number;
+          totalUnits: number;
+          occupiedUnits: number;
+          vacantUnits: number;
+          renovatingUnits: number;
+          manager: string;
+          managerPhone: string;
+          fireSafetyStatus: 'safe' | 'warning';
+          powerStatus: 'stable' | 'alert';
+          waterStatus: 'stable' | 'alert';
+          status: string;
+          address: string;
+          description: string;
+        }>;
+        summary: {
+          totalUnitsAll: number;
+          occupiedUnitsAll: number;
+          vacantUnitsAll: number;
+          renovatingUnitsAll: number;
+          overallOccupancyRate: number;
+          totalBuildings: number;
+        };
+      };
+    }>('/buildings/overview', options);
+  }
+
+  async getApartments(params: {
+    search?: string;
+    building?: string;
+    status?: string;
+    page?: number;
+    per_page?: number | string;
+    all?: boolean;
+  } = {}, options: RequestInit = {}) {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.building && params.building !== 'all') q.append('building', params.building);
+    if (params.status && params.status !== 'all') q.append('status', params.status);
+    if (params.page) q.append('page', String(params.page));
+    if (params.per_page) q.append('per_page', String(params.per_page));
+    if (params.all) q.append('all', '1');
+
+    return this.request<{
+      success: boolean;
+      data: Array<{
+        id: string;
+        unitCode: string;
+        buildingCode: string;
+        buildingName: string;
+        floor: number;
+        type: string;
+        area: number;
+        ownerName: string;
+        ownerPhone: string;
+        status: 'occupied' | 'vacant' | 'renovating';
+        feeStatus: 'paid' | 'unpaid';
+      }>;
+      pagination: {
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+        from: number;
+        to: number;
+      };
+    }>(`/apartments?${q.toString()}`, options);
+  }
+
+  async createApartment(data: {
+    unitCode: string;
+    buildingCode?: string;
+    floor?: number;
+    type?: string;
+    area?: number;
+    ownerName?: string;
+    ownerPhone?: string;
+    status?: string;
+    feeStatus?: string;
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: any;
+    }>('/apartments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getApartmentDetail(id: string) {
+    return this.request<{
+      success: boolean;
+      data: any;
+    }>(`/apartments/${id}`);
+  }
+
+  async updateApartment(id: string, data: Partial<{
+    unitCode: string;
+    buildingCode: string;
+    floor: number;
+    type: string;
+    area: number;
+    ownerName: string;
+    ownerPhone: string;
+    status: string;
+    feeStatus: string;
+  }>) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: any;
+    }>(`/apartments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteApartment(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/apartments/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async batchApartmentsAction(action: 'update_status' | 'update_fee' | 'delete', ids: string[], payload: Record<string, any> = {}) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      affected?: number;
+    }>('/apartments/batch', {
+      method: 'POST',
+      body: JSON.stringify({ action, ids, ...payload }),
+    });
+  }
+
+  async importApartments(items: Array<Record<string, any>>) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      imported?: number;
+    }>('/apartments/import', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
 }
 
 export interface ResidentItem {

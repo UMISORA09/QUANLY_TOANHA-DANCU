@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export interface Zone {
-  id: number;
+  id: string | number;
   zone_code: string;
   zone_name: string;
   floor_count: number;
@@ -23,6 +23,7 @@ export interface Zone {
   address_line?: string | null;
   hotline_phone?: string | null;
   description?: string | null;
+  version?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -34,7 +35,7 @@ export interface ZoneFormProps {
   onClose: () => void;
   onSuccess: (message: string) => void;
   initialData: Zone | null;
-  onReloadRequested?: (id?: number) => Promise<Zone | null | void> | void;
+  onReloadRequested?: (id?: string | number) => Promise<Zone | null | void> | void;
 }
 
 export const ZoneForm: React.FC<ZoneFormProps> = ({
@@ -55,6 +56,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
     address_line: '',
     hotline_phone: '',
     description: '',
+    version: 1,
     last_updated_at: '',
   });
 
@@ -80,6 +82,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
         address_line: initialData.address_line || '',
         hotline_phone: initialData.hotline_phone || '',
         description: initialData.description || '',
+        version: initialData.version || 1,
         last_updated_at: initialData.updated_at || '',
       });
     } else {
@@ -93,6 +96,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
         address_line: '',
         hotline_phone: '',
         description: '',
+        version: 1,
         last_updated_at: '',
       });
     }
@@ -144,7 +148,11 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
       }
 
       if (!latest) {
-        const res = await fetch(`/api/v1/manager/zones/${initialData.id}`);
+        const token = localStorage.getItem('auth_token') || localStorage.getItem('smart_token') || '';
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/v1/manager/zones/${initialData.id}`, { headers });
         const data = await res.json();
         if (data.success && data.data) {
           latest = data.data;
@@ -162,6 +170,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
           address_line: latest.address_line || '',
           hotline_phone: latest.hotline_phone || '',
           description: latest.description || '',
+          version: latest.version || 1,
           last_updated_at: latest.updated_at || '',
         });
 
@@ -189,13 +198,19 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
     const method = isEditMode ? 'PUT' : 'POST';
 
     try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('smart_token') || '';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
+        headers,
         body: JSON.stringify(formData),
       });
 

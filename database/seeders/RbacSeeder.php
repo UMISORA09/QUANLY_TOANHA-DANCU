@@ -132,6 +132,14 @@ class RbacSeeder extends Seeder
             // REPORT MODULE
             ['module' => 'REPORT', 'permission_code' => 'REPORT:VIEW', 'permission_name' => 'Xem báo cáo thống kê', 'description' => 'Xem biểu đồ doanh thu và vận hành'],
             ['module' => 'REPORT', 'permission_code' => 'REPORT:EXPORT', 'permission_name' => 'Xuất file báo cáo', 'description' => 'Xuất dữ liệu ra Excel/PDF'],
+
+            // BUILDING & ZONE MODULE
+            ['module' => 'BUILDING', 'permission_code' => 'BUILDING:VIEW', 'permission_name' => 'Xem thông tin tòa nhà và tầng', 'description' => 'Xem danh sách khối tòa nhà và tầng'],
+            ['module' => 'BUILDING', 'permission_code' => 'BUILDING:MANAGE', 'permission_name' => 'Quản lý thông tin tòa nhà', 'description' => 'Toàn quyền thêm, sửa, xóa khối tòa nhà'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:VIEW', 'permission_name' => 'Xem danh sách khối tòa nhà', 'description' => 'Xem danh sách và chi tiết khối tòa nhà'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:CREATE', 'permission_name' => 'Tạo khối tòa nhà mới', 'description' => 'Thêm khối tòa nhà mới vào hệ thống'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:UPDATE', 'permission_name' => 'Cập nhật khối tòa nhà', 'description' => 'Chỉnh sửa thông tin khối tòa nhà'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:DELETE', 'permission_name' => 'Xóa khối tòa nhà', 'description' => 'Xóa hoặc ngừng hoạt động khối tòa nhà'],
         ];
 
         $permissionModelMap = [];
@@ -155,6 +163,8 @@ class RbacSeeder extends Seeder
                 'USER:VIEW', 'USER:CREATE', 'USER:UPDATE', 'USER:ASSIGN_ROLE',
                 'ROLE:VIEW',
                 'PERMISSION:VIEW',
+                'BUILDING:VIEW', 'BUILDING:MANAGE',
+                'ZONE:VIEW', 'ZONE:CREATE', 'ZONE:UPDATE', 'ZONE:DELETE',
                 'AMENITY:VIEW', 'AMENITY:CREATE', 'AMENITY:UPDATE', 'AMENITY:DELETE', 'AMENITY:CONFIG_SLOT', 'AMENITY:BOOK',
                 'INVOICE:VIEW', 'INVOICE:CREATE', 'INVOICE:UPDATE', 'INVOICE:APPROVE',
                 'TICKET:VIEW', 'TICKET:UPDATE', 'TICKET:RESOLVE',
