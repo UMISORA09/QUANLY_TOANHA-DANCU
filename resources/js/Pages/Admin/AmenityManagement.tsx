@@ -130,6 +130,15 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   const prevFilterSignatureRef = useRef<string>(
     `${debouncedSearch}|${selectedCategory}|${selectedBlock}|${selectedStatus}|${sortOrder}|10`
   );
+  const scrollPosRef = useRef<number | null>(null);
+
+  // Chuyển trang mượt mà tuyệt đối không bao giờ bị nhảy/giật lên đầu trang
+  const handlePageChange = useCallback((targetPage: number) => {
+    if (loading || isChangingPage || targetPage === page) return;
+    const scrollContainer = document.querySelector('main') || document.documentElement;
+    scrollPosRef.current = scrollContainer.scrollTop;
+    setPage(targetPage);
+  }, [loading, isChangingPage, page]);
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -414,6 +423,23 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
     }
     fetchAmenities(false, page);
   }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, limit, page]);
+
+  // Cố định vị trí cuộn khi đổi trang, không bao giờ để trình duyệt đẩy lên đầu trang
+  useEffect(() => {
+    if (scrollPosRef.current !== null) {
+      const scrollContainer = document.querySelector('main') || document.documentElement;
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollPosRef.current;
+      }
+      const raf = requestAnimationFrame(() => {
+        if (scrollContainer && scrollPosRef.current !== null) {
+          scrollContainer.scrollTop = scrollPosRef.current;
+          scrollPosRef.current = null;
+        }
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [amenities, page]);
 
   // Lắng nghe sự kiện đồng bộ đa tab toàn diện (Comprehensive Cross-Tab Synchronization)
   useEffect(() => {
@@ -1133,7 +1159,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page <= 1 || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage(1);
+                  handlePageChange(1);
                 }}
                 onMouseEnter={() => handlePrefetchPage(1)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
@@ -1148,7 +1174,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page <= 1 || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage((p) => Math.max(1, p - 1));
+                  handlePageChange(Math.max(1, page - 1));
                 }}
                 onMouseEnter={() => handlePrefetchPage(Math.max(1, page - 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
@@ -1176,7 +1202,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                       disabled={loading}
                       onClick={(e) => {
                         e.preventDefault();
-                        if (!loading && !isChangingPage && numVal !== page) setPage(numVal);
+                        handlePageChange(numVal);
                       }}
                       onMouseEnter={() => handlePrefetchPage(numVal)}
                       className={`min-w-[28px] h-[28px] px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
@@ -1197,7 +1223,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page >= totalPages || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage((p) => Math.min(totalPages, p + 1));
+                  handlePageChange(Math.min(totalPages, page + 1));
                 }}
                 onMouseEnter={() => handlePrefetchPage(Math.min(totalPages, page + 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
@@ -1212,7 +1238,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 disabled={page >= totalPages || loading}
                 onClick={(e) => {
                   e.preventDefault();
-                  if (!loading && !isChangingPage) setPage(totalPages);
+                  handlePageChange(totalPages);
                 }}
                 onMouseEnter={() => handlePrefetchPage(totalPages)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
