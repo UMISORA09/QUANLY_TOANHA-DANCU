@@ -264,7 +264,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
                 <span className="w-4 h-4 border-2 border-neutral-400 border-t-neutral-800 rounded-full animate-spin" />
                 <span>Đang tải danh mục...</span>
               </div>
-            ) : categories.length === 0 ? (
+            ) : !Array.isArray(categories) || categories.length === 0 ? (
               <div className="py-8 text-center text-neutral-400 text-xs border border-dashed border-neutral-200 rounded-xl">
                 Chưa có danh mục nào. Hãy tạo danh mục đầu tiên ở biểu mẫu phía trên!
               </div>
