@@ -40,9 +40,9 @@ class ManagementDashboardController extends Controller
                 ->where('sla_deadline', '<', Carbon::create(2026, 9, 15, 12, 0, 0))
                 ->count();
 
-            // Lịch tiện ích hôm nay
+            // Lịch tiện ích hôm nay (Sargable index seek trên booking_date)
             $amenityBookingsCount = DB::table('amenity_bookings')
-                ->whereDate('booking_date', $today)
+                ->where('booking_date', $today)
                 ->count();
 
             // 2. BIỂU ĐỒ DOANH THU & CHỈ SỐ TÀI CHÍNH TỪ DATABASE

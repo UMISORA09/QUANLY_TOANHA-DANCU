@@ -8,9 +8,6 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     volumes:
       - ./:/var/www/html
       - /var/www/html/node_modules
@@ -24,7 +21,8 @@ services:
       - DB_USERNAME=root
       - DB_PASSWORD=123567
       - SESSION_DRIVER=file
-      - CACHE_STORE=file
+      - CACHE_STORE=redis
+      - PHP_CLI_SERVER_WORKERS=8
       - QUEUE_CONNECTION=sync
       - REDIS_CLIENT=phpredis
       - REDIS_HOST=redis
@@ -45,7 +43,7 @@ services:
     image: mysql:8.0
     container_name: smart_cassavas_db
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-name-resolve
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-name-resolve --innodb-buffer-pool-size=256M --innodb-log-buffer-size=16M --innodb-flush-log-at-trx-commit=2
     ports:
       - "3306:3306"
     environment:
