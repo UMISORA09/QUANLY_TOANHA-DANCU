@@ -622,7 +622,7 @@ class ResidentManagementTest extends TestCase
             'id' => (string) Str::uuid(),
             'block_id' => $block->id ?? (string) Str::uuid(),
             'floor_id' => $floor->id ?? (string) Str::uuid(),
-            'apartment_number' => 'NEW-HEAD-'.rand(100, 999),
+            'apartment_number' => 'NEW-HEAD-'.Str::upper(Str::random(6)),
             'room_type' => '2_BEDROOM',
             'gross_floor_area_sqm' => 70.0,
             'net_usable_area_sqm' => 65.0,

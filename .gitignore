@@ -39,3 +39,5 @@ backend/**/__pycache__/
 
 .vercel
 .env*
+playwright-report/
+test-results/

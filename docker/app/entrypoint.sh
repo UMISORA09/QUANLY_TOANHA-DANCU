@@ -18,6 +18,12 @@ if ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then
     php artisan key:generate --force
 fi
 
+# Nếu có lệnh truyền vào từ docker-compose (ví dụ: php artisan schedule:work), thực thi lệnh đó ngay lập tức
+if [ $# -gt 0 ]; then
+    echo "[Docker] Thực thi lệnh tùy chỉnh: $@"
+    exec "$@"
+fi
+
 # Cài đặt NPM và build assets nếu chưa có
 if [ ! -d "node_modules/vite" ]; then
     echo "[Docker] Đang cài đặt thư viện frontend..."
@@ -39,6 +45,18 @@ elif [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     php artisan migrate --force
 fi
 
-# Khởi động server
-echo "[Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:8000 ..."
-exec php artisan serve --host=0.0.0.0 --port=8000
+# Khởi tạo thư mục opcache cục bộ container và làm ấm bootstrap cache
+mkdir -p /tmp/opcache 2>/dev/null && chmod 777 /tmp/opcache 2>/dev/null || true
+php artisan config:cache --quiet || true
+php artisan route:cache --quiet || true
+
+# Khởi động server với multi-workers và router script tương thích ngược
+echo "[Docker] Khởi động hệ thống Smart Cassavas tại http://0.0.0.0:8000 (Workers: ${PHP_CLI_SERVER_WORKERS:-8}) ..."
+if [ -f "server.php" ]; then
+    exec php -S 0.0.0.0:8000 -t public server.php
+elif [ -f "vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php" ]; then
+    exec php -S 0.0.0.0:8000 -t public vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+else
+    exec php artisan serve --host=0.0.0.0 --port=8000
+fi
+

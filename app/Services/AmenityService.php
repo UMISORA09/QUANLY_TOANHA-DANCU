@@ -137,16 +137,7 @@ class AmenityService
             $correctedQuery = $searchResult->metadata['corrected_query'] ?? null;
         } else {
             $query = DB::table('amenities')
-                ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
-                ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
-                ->whereNull('amenities.deleted_at')
-                ->select(
-                    'amenities.*',
-                    'amenity_categories.category_name',
-                    'amenity_categories.category_code',
-                    'blocks.block_name',
-                    'blocks.block_code'
-                );
+                ->whereNull('amenities.deleted_at');
 
             if (! empty($categoryId)) {
                 $query->where('amenities.category_id', $categoryId);
@@ -167,19 +158,33 @@ class AmenityService
                 }
             }
 
+            // Đếm tổng số bản ghi trực tiếp trên bảng amenities (tận dụng idx_amenities_perf, tránh join thừa)
+            $total = (clone $query)->count();
+            $totalPages = $total > 0 ? (int) ceil($total / $limit) : 1;
+
+            // Chỉ join bảng liên kết cho lát cắt dữ liệu phân trang thực tế
+            $itemsQuery = $query
+                ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
+                ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
+                ->select(
+                    'amenities.*',
+                    'amenity_categories.category_name',
+                    'amenity_categories.category_code',
+                    'blocks.block_name',
+                    'blocks.block_code'
+                );
+
             // Sắp xếp
             match ($sort) {
-                'name_asc' => $query->orderBy('amenities.amenity_name', 'asc'),
-                'name_desc' => $query->orderBy('amenities.amenity_name', 'desc'),
-                'price_asc' => $query->orderBy('amenities.hourly_rate', 'asc'),
-                'price_desc' => $query->orderBy('amenities.hourly_rate', 'desc'),
-                'created_at_asc' => $query->orderBy('amenities.created_at', 'asc'),
-                default => $query->orderBy('amenities.created_at', 'desc'),
+                'name_asc' => $itemsQuery->orderBy('amenities.amenity_name', 'asc'),
+                'name_desc' => $itemsQuery->orderBy('amenities.amenity_name', 'desc'),
+                'price_asc' => $itemsQuery->orderBy('amenities.hourly_rate', 'asc'),
+                'price_desc' => $itemsQuery->orderBy('amenities.hourly_rate', 'desc'),
+                'created_at_asc' => $itemsQuery->orderBy('amenities.created_at', 'asc'),
+                default => $itemsQuery->orderBy('amenities.created_at', 'desc'),
             };
 
-            $total = $query->count();
-            $totalPages = $total > 0 ? (int) ceil($total / $limit) : 1;
-            $items = $query->skip(($page - 1) * $limit)->take($limit)->get();
+            $items = $itemsQuery->skip(($page - 1) * $limit)->take($limit)->get();
         }
 
         // Batch aggregate slot counts & booking counts để tránh N+1 queries

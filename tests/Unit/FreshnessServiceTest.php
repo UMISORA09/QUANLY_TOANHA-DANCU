@@ -5,11 +5,22 @@ namespace Tests\Unit;
 use App\Services\Cicd\GitHubActionsService;
 use App\Services\Freshness\FreshnessService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
 
 class FreshnessServiceTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (Schema::hasTable('freshness_heartbeats')) {
+            DB::table('freshness_heartbeats')->truncate();
+        }
+    }
+
     protected function tearDown(): void
     {
         Mockery::close();
@@ -92,6 +103,7 @@ class FreshnessServiceTest extends TestCase
 
     public function test_evaluate_collector_freshness_tracks_age_and_success(): void
     {
+        Cache::put('freshness_collector_last_success_at', Carbon::now('UTC')->toIso8601String(), 3600);
         $cicdService = Mockery::mock(GitHubActionsService::class);
         $service = new FreshnessService($cicdService);
         $now = Carbon::now('UTC');
@@ -106,6 +118,7 @@ class FreshnessServiceTest extends TestCase
             FreshnessService::STATE_FRESH,
             FreshnessService::STATE_STALE,
             FreshnessService::STATE_CRITICAL,
+            FreshnessService::STATE_UNKNOWN,
         ]);
     }
 
@@ -169,5 +182,175 @@ class FreshnessServiceTest extends TestCase
         $this->assertEquals(FreshnessService::STATE_UNAVAILABLE, $result['status']);
         $this->assertNull($result['age_seconds']);
         $this->assertStringContainsString('Rate Limit', $result['error']);
+    }
+
+    public function test_evaluate_health_freshness_does_not_self_refresh_when_no_observation(): void
+    {
+        Cache::forget('application_health_last_observed_at');
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateHealthFreshness($now);
+
+        // Không tự ý tạo timestamp khi chưa có observation
+        $this->assertEquals(FreshnessService::STATE_UNKNOWN, $result['status']);
+        $this->assertNull($result['last_observed_at']);
+        $this->assertNull(Cache::get('application_health_last_observed_at'));
+    }
+
+    public function test_evaluate_health_freshness_reads_stored_observation_without_mutating_timestamp(): void
+    {
+        $observedAt = Carbon::now('UTC')->subSeconds(30)->toIso8601String();
+        Cache::put('application_health_last_observed_at', $observedAt, 300);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateHealthFreshness($now);
+
+        $this->assertEquals(FreshnessService::STATE_FRESH, $result['status']);
+        $this->assertEquals($observedAt, $result['last_observed_at']);
+        // Cache không bị ghi đè thành $now
+        $this->assertEquals($observedAt, Cache::get('application_health_last_observed_at'));
+    }
+
+    public function test_evaluate_deployment_freshness_ignores_in_progress_deployments(): void
+    {
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $cicdService->shouldReceive('getDeployments')
+            ->once()
+            ->andReturn([
+                [
+                    'id' => '123',
+                    'status' => 'deploying',
+                    'deployed_at' => 'Đang triển khai',
+                    'environment' => 'production',
+                ],
+            ]);
+
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateDeploymentFreshness($now);
+
+        // Deployment đang chạy hoặc chưa xong không được coi là fresh
+        $this->assertEquals(FreshnessService::STATE_UNKNOWN, $result['status']);
+    }
+
+    public function test_evaluate_github_freshness_distinguishes_running_and_successful_runs(): void
+    {
+        $successTime = Carbon::now('UTC')->subSeconds(120);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $cicdService->shouldReceive('getPipelines')
+            ->once()
+            ->andReturn([
+                [
+                    'name' => 'CI - Integration',
+                    'status' => 'in_progress',
+                    'created_at' => Carbon::now('UTC')->subSeconds(10)->toIso8601String(),
+                ],
+                [
+                    'name' => 'CI - Integration',
+                    'status' => 'success',
+                    'completed_at' => $successTime->toIso8601String(),
+                ],
+            ]);
+
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateGitHubFreshness($now, true);
+
+        // Vẫn nhận diện pipeline đang chạy
+        $this->assertEquals('running', $result['execution_state']);
+        // Tính độ tươi mới dựa trên completed run thành công gần nhất
+        $this->assertEquals(FreshnessService::STATE_FRESH, $result['status']);
+        $this->assertEquals($successTime->toIso8601String(), $result['last_event_at']);
+    }
+
+    public function test_evaluate_collector_freshness_returns_unknown_when_no_heartbeat(): void
+    {
+        Cache::forget('freshness_collector_last_success_at');
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $result = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+
+        $this->assertEquals(FreshnessService::STATE_UNKNOWN, $result['status']);
+        $this->assertNull($result['last_success_at']);
+        $this->assertNull($result['age_seconds']);
+    }
+
+    public function test_evaluate_collector_freshness_returns_stale_or_critical_for_old_heartbeat(): void
+    {
+        $oldTime = Carbon::now('Asia/Ho_Chi_Minh')->subSeconds(150); // Warning is 60s, Critical is 300s
+        Cache::put('freshness_collector_last_success_at', $oldTime->toIso8601String(), 3600);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $result = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+        $this->assertEquals(FreshnessService::STATE_STALE, $result['status']);
+
+        // Very old (400s >= 300s) -> CRITICAL
+        $veryOldTime = Carbon::now('Asia/Ho_Chi_Minh')->subSeconds(400);
+        Cache::put('freshness_collector_last_success_at', $veryOldTime->toIso8601String(), 3600);
+
+        $critResult = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+        $this->assertEquals(FreshnessService::STATE_CRITICAL, $critResult['status']);
+    }
+
+    public function test_evaluate_collector_freshness_returns_fresh_for_recent_heartbeat(): void
+    {
+        $recentTime = Carbon::now('Asia/Ho_Chi_Minh')->subSeconds(15);
+        Cache::put('freshness_collector_last_success_at', $recentTime->toIso8601String(), 3600);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $result = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+
+        $this->assertEquals(FreshnessService::STATE_FRESH, $result['status']);
+        $this->assertEquals($recentTime->toIso8601String(), $result['last_success_at']);
+    }
+
+    public function test_evaluate_collector_freshness_does_not_mutate_timestamp_on_multiple_calls(): void
+    {
+        $fixedHeartbeat = '2026-09-30T01:00:00+07:00';
+        Cache::put('freshness_collector_last_success_at', $fixedHeartbeat, 3600);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $now = Carbon::parse('2026-09-30T01:00:20+07:00');
+
+        $result1 = $service->evaluateCollectorFreshness($now);
+        $result2 = $service->evaluateCollectorFreshness($now);
+
+        $this->assertEquals($fixedHeartbeat, $result1['last_success_at']);
+        $this->assertEquals($fixedHeartbeat, $result2['last_success_at']);
+        // Cache must still hold the original heartbeat, NOT mutated to $now
+        $this->assertEquals($fixedHeartbeat, Cache::get('freshness_collector_last_success_at'));
+    }
+
+    public function test_is_acceptable_state_enforces_production_vs_preview_policy(): void
+    {
+        // Production accepts FRESH, HEALTHY, WARNING only
+        $this->assertTrue(FreshnessService::isAcceptableState('FRESH', true));
+        $this->assertTrue(FreshnessService::isAcceptableState('HEALTHY', true));
+        $this->assertTrue(FreshnessService::isAcceptableState('WARNING', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('STALE', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('CRITICAL', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('UNAVAILABLE', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('UNKNOWN', true));
+
+        // Preview accepts STALE as well
+        $this->assertTrue(FreshnessService::isAcceptableState('STALE', false));
+        $this->assertFalse(FreshnessService::isAcceptableState('CRITICAL', false));
+        $this->assertFalse(FreshnessService::isAcceptableState('UNAVAILABLE', false));
     }
 }

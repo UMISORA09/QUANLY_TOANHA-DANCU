@@ -19,11 +19,14 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    'acceptable_production_states' => ['FRESH', 'HEALTHY', 'WARNING'],
+    'acceptable_preview_states' => ['FRESH', 'HEALTHY', 'WARNING', 'STALE'],
+
     'cache' => [
         // Cache duration for business data max timestamps to avoid heavy DB queries (in seconds)
         'data_cache_seconds' => (int) env('FRESHNESS_DATA_CACHE_SECONDS', 30),
         // Cache duration for monitoring observation states (in seconds)
-        'monitoring_cache_seconds' => (int) env('FRESHNESS_MONITORING_CACHE_SECONDS', 5),
+        'monitoring_cache_seconds' => (int) env('FRESHNESS_MONITORING_CACHE_SECONDS', 15),
     ],
 
     // Collector Health Thresholds (Monitoring of Monitoring)

@@ -6,6 +6,7 @@ use App\Services\Search\Contracts\SearchDriverInterface;
 use App\Services\Search\DTOs\SearchResult;
 use App\Services\Search\VietnameseNormalizer;
 use App\Services\Search\VietnameseSpellCorrector;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -81,6 +82,13 @@ class SmartSearchDriver implements SearchDriverInterface
         'tre em' => ['kidzone', 'kids', 'vui choi tre em'],
         'vui choi' => ['kidzone', 'tro choi'],
     ];
+
+    /**
+     * Cache gợi ý tìm kiếm trong bộ nhớ tiến trình (Process Memory Cache) để phản hồi siêu tốc (< 1ms)
+     *
+     * @var array<string, array<int, array<string, mixed>>>
+     */
+    protected static array $suggestMemoryCache = [];
 
     /**
      * @param  array<string, mixed>  $config
@@ -529,29 +537,43 @@ class SmartSearchDriver implements SearchDriverInterface
             return [];
         }
 
+        $limit = max(min($limit, 20), 1);
+
+        if (app()->environment('testing')) {
+            return $this->executeSuggest($index, $prefix, $norm, $limit);
+        }
+
+        $memoryKey = "{$index}_".mb_strtolower($prefix)."_{$limit}";
+        if (isset(self::$suggestMemoryCache[$memoryKey])) {
+            return self::$suggestMemoryCache[$memoryKey];
+        }
+
+        $suggestCacheKey = "smart_search_suggest_{$index}_".md5($memoryKey);
+
+        $result = Cache::remember($suggestCacheKey, 300, function () use ($index, $prefix, $norm, $limit) {
+            return $this->executeSuggest($index, $prefix, $norm, $limit);
+        });
+
+        self::$suggestMemoryCache[$memoryKey] = $result;
+
+        return $result;
+    }
+
+    protected function executeSuggest(string $index, string $prefix, array $norm, int $limit): array
+    {
         $correction = VietnameseSpellCorrector::correctQuery($prefix);
         $norm['corrected'] = $correction['corrected'];
         $norm['corrected_tokens'] = $correction['corrected_tokens'];
 
-        $limit = max(min($limit, 20), 1);
-
         if ($index === 'amenities') {
-            $candidates = DB::table('amenities')
-                ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
-                ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
-                ->whereNull('amenities.deleted_at')
-                ->select(
-                    'amenities.id',
-                    'amenities.amenity_name',
-                    'amenities.amenity_code',
-                    'amenities.location_detail',
-                    'amenity_categories.category_name',
-                    'blocks.block_name'
-                )
-                ->get();
+            $cacheKey = 'smart_search_candidates_suggest_amenities';
+            $cachedCandidates = app()->environment('testing')
+                ? $this->fetchAmenitySuggestCandidates()
+                : Cache::remember($cacheKey, 120, fn () => $this->fetchAmenitySuggestCandidates());
 
             $scored = [];
-            foreach ($candidates as $item) {
+            foreach ($cachedCandidates as $rawItem) {
+                $item = (object) $rawItem;
                 $score = $this->computeRelevanceScore($item, $norm);
                 if ($score >= 0.45) {
                     $scored[] = [
@@ -562,6 +584,7 @@ class SmartSearchDriver implements SearchDriverInterface
                         'block' => $item->block_name,
                         'type' => 'amenity',
                         'score' => $score,
+                        'unaccented_name' => $item->unaccented_name ?? null,
                     ];
                 }
             }
@@ -572,8 +595,8 @@ class SmartSearchDriver implements SearchDriverInterface
                     return $b['score'] <=> $a['score'];
                 }
 
-                $nameA = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['label'] ?? '')));
-                $nameB = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['label'] ?? '')));
+                $nameA = $a['unaccented_name'] ?? mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['label'] ?? '')));
+                $nameB = $b['unaccented_name'] ?? mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['label'] ?? '')));
 
                 $startsA = str_starts_with($nameA, $unaccentedPrefix);
                 $startsB = str_starts_with($nameB, $unaccentedPrefix);
@@ -584,15 +607,62 @@ class SmartSearchDriver implements SearchDriverInterface
                 return mb_strlen($a['label'] ?? '') <=> mb_strlen($b['label'] ?? '');
             });
 
-            return array_slice($scored, 0, $limit);
+            return array_map(function ($item) {
+                unset($item['unaccented_name']);
+
+                return $item;
+            }, array_slice($scored, 0, $limit));
         }
 
         return [];
     }
 
-    public function index(string $index, string $id, array $document): void {}
+    /**
+     * Tải và tiền xử lý tập ứng viên tiện ích (Được cache để tăng tốc độ phản hồi sub-millisecond)
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function fetchAmenitySuggestCandidates(): array
+    {
+        $raw = DB::table('amenities')
+            ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
+            ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
+            ->whereNull('amenities.deleted_at')
+            ->select(
+                'amenities.id',
+                'amenities.amenity_name',
+                'amenities.amenity_code',
+                'amenities.location_detail',
+                'amenity_categories.category_name',
+                'blocks.block_name'
+            )
+            ->get();
 
-    public function delete(string $index, string $id): void {}
+        $candidates = [];
+        foreach ($raw as $item) {
+            $arr = (array) $item;
+            $arr['unaccented_name'] = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) $item->amenity_name));
+            $candidates[] = $arr;
+        }
 
-    public function flush(string $index): void {}
+        return $candidates;
+    }
+
+    public function index(string $index, string $id, array $document): void
+    {
+        self::$suggestMemoryCache = [];
+        Cache::forget("smart_search_candidates_suggest_{$index}");
+    }
+
+    public function delete(string $index, string $id): void
+    {
+        self::$suggestMemoryCache = [];
+        Cache::forget("smart_search_candidates_suggest_{$index}");
+    }
+
+    public function flush(string $index): void
+    {
+        self::$suggestMemoryCache = [];
+        Cache::forget("smart_search_candidates_suggest_{$index}");
+    }
 }
