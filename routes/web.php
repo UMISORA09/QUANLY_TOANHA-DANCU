@@ -267,10 +267,20 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
 Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('account-provisioning', [AccountProvisioningController::class, 'index']);
     Route::post('account-provisioning', [AccountProvisioningController::class, 'store']);
+    Route::post('account-provisioning/import', [AccountProvisioningController::class, 'import']);
+    Route::post('account-provisioning/batch-resend', [AccountProvisioningController::class, 'batchResend']);
+    Route::get('account-provisioning/{id}', [AccountProvisioningController::class, 'show']);
+    Route::put('account-provisioning/{id}', [AccountProvisioningController::class, 'update']);
+    Route::delete('account-provisioning/{id}', [AccountProvisioningController::class, 'destroy']);
     Route::post('account-provisioning/{id}/resend-activation', [AccountProvisioningController::class, 'resendActivation']);
+    Route::post('account-provisioning/{id}/toggle-lock', [AccountProvisioningController::class, 'toggleLock']);
 });
+Route::get('/api/v1/account-provisioning/status', [AccountProvisioningController::class, 'checkStatus']);
 Route::post('/api/v1/account-provisioning/activate', [AccountProvisioningController::class, 'activate']);
 Route::get('/kich-hoat-tai-khoan', function () {
+    return view('welcome');
+});
+Route::get('/activate-account', function () {
     return view('welcome');
 });
 

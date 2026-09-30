@@ -42,7 +42,8 @@ import {
   Activity,
   Send,
   Compass,
-  Terminal
+  Terminal,
+  UserPlus
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
@@ -51,6 +52,7 @@ import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
 import { RbacManagement } from './Admin/RbacManagement';
 import { ResidentManagement } from './Admin/ResidentManagement';
 import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
+import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -130,6 +132,17 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     }
     if (path === '/admin/roles' || path === '/admin/rbac' || path === '/admin/phan-quyen' || path.startsWith('/admin/roles')) {
       return 'roles';
+    }
+    if (
+      path === '/quan-ly/account-provisioning' ||
+      path === '/quan-ly/cap-phat-tai-khoan' ||
+      path.startsWith('/quan-ly/account-provisioning') ||
+      path.startsWith('/quan-ly/cap-phat-tai-khoan') ||
+      path === '/admin/account-provisioning' ||
+      path === '/admin/cap-phat-tai-khoan' ||
+      path.startsWith('/admin/account-provisioning')
+    ) {
+      return 'account_provisioning';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -353,6 +366,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
         { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
         { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto' },
         { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
@@ -587,14 +601,17 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     }
 
     // Cập nhật URL trên thanh địa chỉ (Deep Linking & History API)
+    const basePath = userRole === 'admin' ? '/admin' : '/quan-ly';
     if (id === 'cicd') {
-      window.history.pushState({ tab: id }, '', '/admin/cicd');
+      window.history.pushState({ tab: id }, '', `${basePath}/cicd`);
     } else if (id === 'amenities') {
-      window.history.pushState({ tab: id }, '', '/admin/amenities');
+      window.history.pushState({ tab: id }, '', `${basePath}/amenities`);
+    } else if (id === 'account_provisioning') {
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=account_provisioning`);
     } else if (id === 'overview') {
-      window.history.pushState({ tab: id }, '', '/admin');
+      window.history.pushState({ tab: id }, '', basePath);
     } else {
-      window.history.pushState({ tab: id }, '', `/admin?tab=${id}`);
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=${id}`);
     }
     if (id === 'buildings') {
       setIs3DModelOpen(true);
@@ -768,6 +785,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'temporary_registrations' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <TemporaryRegistrationManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'account_provisioning' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <AccountProvisioningManagement embedded={true} />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

@@ -276,19 +276,28 @@ class AccountProvisioningService
      *
      * @return array<string, mixed>
      */
-    public function activateAccount(string $email, string $token, string $newPassword): array
+    public function activateAccount(string $email, string $token, string $newPassword, ?string $userId = null): array
     {
         $email = strtolower(trim($email));
-        $user = User::where('email', $email)->first();
+        $query = User::where('email', $email);
+        if ($userId) {
+            $query->where('id', $userId);
+        }
+        $user = $query->first();
 
         if (! $user) {
             throw new AccountProvisioningNotFoundException('Không tìm thấy tài khoản người dùng tương ứng.');
         }
 
-        // Kiểm tra bản ghi token trong bảng password_reset_tokens
+        // Kiểm tra bản ghi token trong bảng password_reset_tokens (nếu đã kích hoạt, token đã bị xóa)
         $record = DB::table('password_reset_tokens')->where('email', $email)->first();
         if (! $record) {
             throw new AccountProvisioningInvalidTokenException('Mã kích hoạt không hợp lệ hoặc đã được sử dụng.');
+        }
+
+        // Đảm bảo liên kết chỉ áp dụng cho tài khoản duy nhất chưa kích hoạt
+        if ($user->status === 'ACTIVE') {
+            throw new AccountProvisioningAlreadyActiveException('Tài khoản này đã được kích hoạt thành công trước đó. Liên kết kích hoạt chỉ có hiệu lực duy nhất một lần.');
         }
 
         // Kiểm tra thời hạn hiệu lực của token (48 giờ)
@@ -317,7 +326,7 @@ class AccountProvisioningService
 
         $user->save();
 
-        // Xóa token đã kích hoạt để không thể sử dụng lại
+        // Xóa token đã kích hoạt để không thể sử dụng lại lần thứ hai
         DB::table('password_reset_tokens')->where('email', $email)->delete();
 
         return [
@@ -419,5 +428,171 @@ class AccountProvisioningService
             );
             $isFirst = false;
         }
+    }
+
+    /**
+     * Cập nhật thông tin tài khoản đã cấp phát
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function updateAccount(string $userId, array $data, ?User $actor = null): User
+    {
+        $user = User::findOrFail($userId);
+
+        if (! empty($data['full_name'])) {
+            $user->full_name = trim($data['full_name']);
+        }
+        if (! empty($data['phone_number'])) {
+            $phoneNumber = trim($data['phone_number']);
+            $exists = User::where('phone_number', $phoneNumber)->where('id', '!=', $user->id)->exists();
+            if ($exists) {
+                throw new AccountProvisioningDuplicateException("Số điện thoại '{$phoneNumber}' đã được sử dụng bởi tài khoản khác.");
+            }
+            $user->phone_number = $phoneNumber;
+        }
+        if (array_key_exists('national_id_number', $data)) {
+            $nationalId = trim((string) $data['national_id_number']) ?: null;
+            if ($nationalId) {
+                $exists = User::where('national_id_number', $nationalId)->where('id', '!=', $user->id)->exists();
+                if ($exists) {
+                    throw new AccountProvisioningDuplicateException("Số CCCD/Passport '{$nationalId}' đã được sử dụng bởi tài khoản khác.");
+                }
+            }
+            $user->national_id_number = $nationalId;
+        }
+        if (! empty($data['gender'])) {
+            $user->gender = $data['gender'];
+        }
+
+        $user->save();
+
+        if (isset($data['roles']) && is_array($data['roles']) && count($data['roles']) > 0) {
+            DB::table('user_roles')->where('user_id', $user->id)->delete();
+            $this->assignRoles($user, $data['roles'], $actor);
+        }
+
+        $user->load('roles:id,role_code,role_name');
+
+        return $user;
+    }
+
+    /**
+     * Xóa tài khoản người dùng
+     */
+    public function deleteAccount(string $userId, ?User $actor = null): bool
+    {
+        $user = User::findOrFail($userId);
+
+        // Xóa token kích hoạt liên quan
+        DB::table('password_reset_tokens')->where('email', $user->email)->delete();
+
+        // Thu hồi các phiên đăng nhập đang hoạt động
+        DB::table('user_sessions')->where('user_id', $user->id)->update(['is_revoked' => 1]);
+
+        return (bool) $user->delete();
+    }
+
+    /**
+     * Khóa hoặc mở khóa tài khoản
+     */
+    public function toggleLockAccount(string $userId, ?User $actor = null): User
+    {
+        $user = User::findOrFail($userId);
+
+        $extra = $user->extra_preferences ?? [];
+        $provisioning = $extra['provisioning'] ?? [];
+
+        if ($user->status === 'LOCKED') {
+            $prevStatus = $provisioning['prev_status'] ?? 'ACTIVE';
+            $user->status = $prevStatus;
+            unset($provisioning['prev_status']);
+        } else {
+            $provisioning['prev_status'] = $user->status;
+            $user->status = 'LOCKED';
+        }
+
+        $extra['provisioning'] = $provisioning;
+        $user->extra_preferences = $extra;
+        $user->save();
+        $user->load('roles:id,role_code,role_name');
+
+        return $user;
+    }
+
+    /**
+     * Gửi lại email kích hoạt hàng loạt cho các tài khoản đang chờ
+     *
+     * @return array<string, mixed>
+     */
+    public function batchResendActivation(?User $actor = null): array
+    {
+        $pendingUsers = User::where('status', 'PENDING_ACTIVATION')->get();
+        $sentCount = 0;
+        $skippedCount = 0;
+        $errors = [];
+
+        foreach ($pendingUsers as $user) {
+            try {
+                $this->resendActivation($user->id, $actor);
+                $sentCount++;
+            } catch (AccountProvisioningRateLimitException $e) {
+                $skippedCount++;
+            } catch (\Throwable $e) {
+                $errors[] = "Tài khoản {$user->email}: ".$e->getMessage();
+            }
+        }
+
+        return [
+            'sent_count' => $sentCount,
+            'skipped_count' => $skippedCount,
+            'errors' => $errors,
+            'total_pending' => $pendingUsers->count(),
+        ];
+    }
+
+    /**
+     * Nhập hàng loạt tài khoản từ danh sách mảng (Excel / CSV)
+     *
+     * @param  array<array<string, mixed>>  $records
+     * @return array<string, mixed>
+     */
+    public function importAccounts(array $records, ?User $actor = null): array
+    {
+        $results = [];
+        $successCount = 0;
+        $failedCount = 0;
+        $errors = [];
+
+        foreach ($records as $index => $row) {
+            $rowNum = $index + 1;
+            try {
+                if (empty($row['full_name']) || empty($row['email']) || empty($row['phone_number'])) {
+                    throw new \InvalidArgumentException("Dòng {$rowNum}: Thiếu Họ tên, Email hoặc Số điện thoại.");
+                }
+
+                $res = $this->provisionAccount([
+                    'full_name' => trim((string) $row['full_name']),
+                    'email' => strtolower(trim((string) $row['email'])),
+                    'phone_number' => trim((string) $row['phone_number']),
+                    'national_id_number' => ! empty($row['national_id_number']) ? trim((string) $row['national_id_number']) : null,
+                    'gender' => ! empty($row['gender']) ? $row['gender'] : 'MALE',
+                    'roles' => ! empty($row['roles']) ? (is_array($row['roles']) ? $row['roles'] : [trim((string) $row['roles'])]) : ['RECEPTIONIST'],
+                ], $actor);
+
+                $results[] = $res['user'];
+                $successCount++;
+            } catch (\Throwable $e) {
+                $failedCount++;
+                $errors[] = "Dòng {$rowNum} (".($row['email'] ?? 'N/A').'): '.$e->getMessage();
+            }
+        }
+
+        return [
+            'success_count' => $successCount,
+            'failed_count' => $failedCount,
+            'total' => count($records),
+            'results' => $results,
+            'errors' => $errors,
+        ];
     }
 }

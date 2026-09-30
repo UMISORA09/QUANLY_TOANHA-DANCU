@@ -151,8 +151,9 @@
             <div class="note">
                 <p><strong>Lưu ý bảo mật:</strong></p>
                 <ul>
-                    <li>Liên kết kích hoạt này có hiệu lực trong vòng <strong>{{ $expiresInHours }} giờ</strong> kể từ thời điểm gửi email.</li>
-                    <li>Vì lý do an toàn, Ban Quản Lý không bao giờ gửi mật khẩu thô qua email. Quý vị sẽ tự đặt mật khẩu cá nhân tại trang kích hoạt.</li>
+                    <li>Liên kết kích hoạt này được cấp riêng cho <strong>tài khoản duy nhất ({{ $username }})</strong> và chỉ có hiệu lực sử dụng <strong>1 lần duy nhất</strong>.</li>
+                    <li>Liên kết có thời hạn trong vòng <strong>{{ $expiresInHours }} giờ</strong> kể từ thời điểm gửi email.</li>
+                    <li>Vì lý do an toàn, Ban Quản Lý không gửi mật khẩu qua email. Quý vị sẽ tự thiết lập mật khẩu cá nhân tại trang kích hoạt.</li>
                     <li>Tuyệt đối không chia sẻ liên kết này cho bất kỳ ai khác.</li>
                 </ul>
             </div>

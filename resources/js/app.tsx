@@ -169,7 +169,12 @@ const App: React.FC = () => {
   }
 
   // 0.2 Phân hệ Kích hoạt tài khoản cư dân (Public Activation Token Page)
-  if (currentPath === '/kich-hoat-tai-khoan' || currentPath.startsWith('/kich-hoat-tai-khoan')) {
+  if (
+    currentPath === '/kich-hoat-tai-khoan' ||
+    currentPath.startsWith('/kich-hoat-tai-khoan') ||
+    currentPath === '/activate-account' ||
+    currentPath.startsWith('/activate-account')
+  ) {
     return <AccountActivationPage />;
   }
 
@@ -216,11 +221,6 @@ const App: React.FC = () => {
     currentPath === '/admin/tam-tru' ||
     currentPath.startsWith('/admin/temporary-registrations');
 
-  const isAccountProvisioningAdminPath =
-    currentPath === '/admin/account-provisioning' ||
-    currentPath === '/admin/cap-phat-tai-khoan' ||
-    currentPath.startsWith('/admin/account-provisioning');
-
   const isUnifiedAdminDevPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
@@ -232,8 +232,7 @@ const App: React.FC = () => {
     isCicdAdminPath ||
     isRoleAdminPath ||
     isResidentAdminPath ||
-    isTemporaryRegistrationAdminPath ||
-    isAccountProvisioningAdminPath;
+    isTemporaryRegistrationAdminPath;
 
   if (isUnifiedAdminDevPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
@@ -263,8 +262,6 @@ const App: React.FC = () => {
       ? 'residents'
       : isTemporaryRegistrationAdminPath
       ? 'temporary_registrations'
-      : isAccountProvisioningAdminPath
-      ? 'account_provisioning'
       : (urlTab || 'overview');
 
     return (
@@ -283,12 +280,22 @@ const App: React.FC = () => {
   }
 
   // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà)
+  const isAccountProvisioningPath =
+    currentPath === '/quan-ly/account-provisioning' ||
+    currentPath === '/quan-ly/cap-phat-tai-khoan' ||
+    currentPath.startsWith('/quan-ly/account-provisioning') ||
+    currentPath.startsWith('/quan-ly/cap-phat-tai-khoan') ||
+    currentPath === '/admin/account-provisioning' ||
+    currentPath === '/admin/cap-phat-tai-khoan' ||
+    currentPath.startsWith('/admin/account-provisioning');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
     currentPath === '/manager' ||
     currentPath.startsWith('/manager/') ||
-    currentPath === '/dashboard';
+    currentPath === '/dashboard' ||
+    isAccountProvisioningPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -304,6 +311,8 @@ const App: React.FC = () => {
     }
 
     const isUserAdmin = currentUser?.role === 'admin';
+    const managerUrlTab = new URLSearchParams(window.location.search).get('tab');
+    const initialManagerTab = isAccountProvisioningPath ? 'account_provisioning' : (managerUrlTab || undefined);
     return (
       <ManagementHome
         onLogout={handleLogout}
@@ -311,6 +320,7 @@ const App: React.FC = () => {
         userRole="manager"
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
+        initialTab={initialManagerTab}
       />
     );
   }
