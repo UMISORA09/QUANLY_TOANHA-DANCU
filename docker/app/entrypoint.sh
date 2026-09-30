@@ -18,6 +18,12 @@ if ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then
     php artisan key:generate --force
 fi
 
+# Nếu có lệnh truyền vào từ docker-compose (ví dụ: php artisan schedule:work), thực thi lệnh đó ngay lập tức
+if [ $# -gt 0 ]; then
+    echo "[Docker] Thực thi lệnh tùy chỉnh: $@"
+    exec "$@"
+fi
+
 # Cài đặt NPM và build assets nếu chưa có
 if [ ! -d "node_modules/vite" ]; then
     echo "[Docker] Đang cài đặt thư viện frontend..."

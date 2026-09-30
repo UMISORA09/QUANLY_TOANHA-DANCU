@@ -1227,12 +1227,19 @@ class GitHubActionsService
             $commitMessage = $firstLineMsg;
         }
 
+        $rawStatus = $run['status'] ?? '';
+        $conclusion = $run['conclusion'] ?? null;
+        $updatedAt = $run['updated_at'] ?? null;
+        $completedAt = ($rawStatus === 'completed') ? $updatedAt : null;
+
         return [
             'id' => (string) $run['id'],
             'run_number' => $run['run_number'] ?? 0,
             'name' => $run['name'] ?? 'Pipeline',
             'workflow_file' => basename($run['path'] ?? 'ci.yml'),
-            'status' => $this->normalizeStatus($run['status'] ?? '', $run['conclusion'] ?? null),
+            'status' => $this->normalizeStatus($rawStatus, $conclusion),
+            'raw_status' => $rawStatus,
+            'conclusion' => $conclusion,
             'branch' => $branch,
             'commit_sha' => $commitSha,
             'commit_message' => $commitMessage,
@@ -1243,6 +1250,8 @@ class GitHubActionsService
             'trigger' => $trigger,
             'duration' => $this->calculateDuration($run['run_started_at'] ?? $run['created_at'], $run['updated_at']),
             'created_at' => $run['created_at'],
+            'updated_at' => $updatedAt,
+            'completed_at' => $completedAt,
             'url' => $run['html_url'] ?? null,
         ];
     }

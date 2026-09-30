@@ -90,7 +90,19 @@ class HealthCheckController extends Controller
         // Ghi nhận thời điểm probe quan sát sức khỏe ứng dụng (Health Probe Observation)
         // Để FreshnessService chỉ đọc chứ không tự tạo timestamp
         if ($overallStatus === 'healthy') {
-            Cache::put('application_health_last_observed_at', now('Asia/Ho_Chi_Minh')->toIso8601String(), 3600);
+            Cache::put('application_health_last_observed_at', now('Asia/Ho_Chi_Minh')->toIso8601String(), 86400);
+            Cache::put('application_health_last_status', 'healthy', 86400);
+            Cache::put('application_health_last_details', [
+                'database' => $databaseStatus,
+                'cache' => $cacheStatus,
+                'database_latency_ms' => $databaseLatencyMs,
+                'uptime_seconds' => $uptime,
+            ], 86400);
+            Cache::forget('application_health_failure_reason');
+        } else {
+            Cache::put('application_health_last_status', $overallStatus, 86400);
+            Cache::put('application_health_failure_reason', "Database: {$databaseStatus}, Cache: {$cacheStatus}", 86400);
+            // Quan trọng: Không cập nhật application_health_last_observed_at khi probe thất bại
         }
 
         $data = [
