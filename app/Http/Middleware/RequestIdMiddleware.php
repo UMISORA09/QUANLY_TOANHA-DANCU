@@ -22,6 +22,7 @@ class RequestIdMiddleware
 
         // Gắn vào request header để các Controller và Service dễ dàng truy xuất
         $request->headers->set('X-Request-ID', $requestId);
+        $request->attributes->set('request_start_time', microtime(true));
 
         // Đưa Request ID vào ngữ cảnh Logging của Laravel để mọi log sinh ra đều chứa request_id
         Log::withContext([
