@@ -274,8 +274,9 @@ jobs:
           APP_ENV: testing
           APP_DEBUG: true
         run: |
-          php artisan serve --host=127.0.0.1 --port=8000 &
-          echo "Waiting for Laravel web server to start..."
+          php artisan serve --host=127.0.0.1 --port=8000 > /tmp/artisan-serve.log 2>&1 &
+          SERVER_PID=$!
+          echo "Waiting for Laravel web server to start (PID: $SERVER_PID)..."
           for i in {1..40}; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up 2>/dev/null || echo "000")
             if [ "$STATUS" = "200" ]; then
@@ -286,8 +287,16 @@ jobs:
             sleep 2
           done
           echo "❌ Failed to start Laravel server within 80 seconds"
-          echo "--- Last artisan serve output ---"
-          cat /tmp/artisan-serve.log 2>/dev/null || true
+          echo "=== DIAGNOSTICS: Process Status ==="
+          ps aux | grep "artisan serve" || true
+          kill -0 $SERVER_PID 2>/dev/null && echo "Process $SERVER_PID is still running" || echo "Process $SERVER_PID terminated unexpectedly"
+          echo "=== DIAGNOSTICS: Server Log (/tmp/artisan-serve.log) ==="
+          cat /tmp/artisan-serve.log 2>/dev/null || echo "No server log found"
+          echo "=== DIAGNOSTICS: Laravel Application Log (storage/logs/laravel.log) ==="
+          tail -n 50 storage/logs/laravel.log 2>/dev/null || echo "No Laravel application log found"
+          echo "=== DIAGNOSTICS: Environment Info ==="
+          php -v
+          php artisan --version
           exit 1
 
       - name: Run Playwright E2E Tests
@@ -374,29 +383,55 @@ jobs:
 
             if [ "$UP_STATUS" = "200" ] && [ "$HEALTH_CODE" = "200" ]; then
               if echo "$HEALTH_RESP" | grep -Eq '"status"\s*:\s*"(healthy|ok)"'; then
-                echo "✅ Container Core Smoke Test Passed!"
-                echo "  /up       : HTTP $UP_STATUS"
-                echo "  /health   : HTTP $HEALTH_CODE ($HEALTH_RESP)"
+                echo "✅ Container Core Endpoints Operational (/up, /health)"
 
-                echo "Probing optional telemetry endpoints..."
+                # 1. Mandatory Freshness Endpoint & Payload Verification
+                echo "Evaluating Mandatory Freshness Observability..."
+                FRESH_RESP=$(curl -s http://127.0.0.1:8000/api/monitoring/freshness || echo "")
                 FRESHNESS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/monitoring/freshness || echo "000")
+
+                if [ "$FRESHNESS_CODE" != "200" ]; then
+                  echo "❌ Mandatory Gate Failed: /api/monitoring/freshness returned HTTP $FRESHNESS_CODE"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+
+                FRESH_STATE=$(echo "$FRESH_RESP" | jq -r '.overall_state // empty')
+                if [ -z "$FRESH_STATE" ]; then
+                  echo "❌ Mandatory Gate Failed: Missing overall_state in freshness response: $FRESH_RESP"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+                if [ "$FRESH_STATE" = "CRITICAL" ] || [ "$FRESH_STATE" = "UNAVAILABLE" ]; then
+                  echo "❌ Mandatory Gate Failed: overall_state is unacceptable: $FRESH_STATE"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+                echo "  ✅ /api/monitoring/freshness: HTTP 200 (State: $FRESH_STATE)"
+
+                # 2. Mandatory Prometheus Metrics Verification
+                echo "Evaluating Mandatory Prometheus Metrics Exporter..."
                 METRICS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/metrics || echo "000")
                 METRICS_BODY=$(curl -s http://127.0.0.1:8000/metrics || echo "")
 
-                echo "  /api/monitoring/freshness : HTTP $FRESHNESS_CODE"
-                echo "  /metrics                  : HTTP $METRICS_CODE"
-
-                if [ "$FRESHNESS_CODE" = "200" ] && [ "$METRICS_CODE" = "200" ]; then
-                  if echo "$METRICS_BODY" | grep -q "freshness_age_seconds"; then
-                    echo "✅ Telemetry Observability Verified!"
-                  else
-                    echo "⚠️ /metrics is up but missing freshness_age_seconds metric (non-blocking)"
-                  fi
-                else
-                  echo "⚠️ Telemetry endpoints not fully ready ($FRESHNESS_CODE/$METRICS_CODE) — non-blocking"
+                if [ "$METRICS_CODE" != "200" ]; then
+                  echo "❌ Mandatory Gate Failed: /metrics returned HTTP $METRICS_CODE"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
                 fi
+                if ! echo "$METRICS_BODY" | grep -q "freshness_age_seconds"; then
+                  echo "❌ Mandatory Gate Failed: /metrics missing required gauge 'freshness_age_seconds'"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+                echo "  ✅ /metrics: HTTP 200 (freshness_age_seconds gauge verified)"
+
+                # Optional Telemetry Diagnostics
+                DB_LATENCY=$(echo "$HEALTH_RESP" | jq -r '.database_latency_ms // "N/A"')
+                echo "  Optional telemetry: DB Latency = ${DB_LATENCY}ms"
 
                 docker stop smoke_app && docker rm smoke_app
+                echo "✅ All Container Core & Observability Gates Passed Successfully!"
                 exit 0
               else
                 echo "⚠️ /health HTTP 200 but status not healthy yet: $HEALTH_RESP"

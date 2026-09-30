@@ -87,6 +87,12 @@ class HealthCheckController extends Controller
 
         $httpStatus = ($overallStatus === 'unhealthy') ? 503 : 200;
 
+        // Ghi nhận thời điểm probe quan sát sức khỏe ứng dụng (Health Probe Observation)
+        // Để FreshnessService chỉ đọc chứ không tự tạo timestamp
+        if ($overallStatus === 'healthy') {
+            Cache::put('application_health_last_observed_at', now('Asia/Ho_Chi_Minh')->toIso8601String(), 3600);
+        }
+
         $data = [
             'status' => $overallStatus,
             'system' => $overallStatus,

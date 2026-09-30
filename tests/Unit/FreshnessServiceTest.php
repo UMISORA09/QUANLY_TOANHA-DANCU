@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\Cicd\GitHubActionsService;
 use App\Services\Freshness\FreshnessService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Mockery;
 use Tests\TestCase;
 
@@ -169,5 +170,93 @@ class FreshnessServiceTest extends TestCase
         $this->assertEquals(FreshnessService::STATE_UNAVAILABLE, $result['status']);
         $this->assertNull($result['age_seconds']);
         $this->assertStringContainsString('Rate Limit', $result['error']);
+    }
+
+    public function test_evaluate_health_freshness_does_not_self_refresh_when_no_observation(): void
+    {
+        Cache::forget('application_health_last_observed_at');
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateHealthFreshness($now);
+
+        // Không tự ý tạo timestamp khi chưa có observation
+        $this->assertEquals(FreshnessService::STATE_UNKNOWN, $result['status']);
+        $this->assertNull($result['last_observed_at']);
+        $this->assertNull(Cache::get('application_health_last_observed_at'));
+    }
+
+    public function test_evaluate_health_freshness_reads_stored_observation_without_mutating_timestamp(): void
+    {
+        $observedAt = Carbon::now('UTC')->subSeconds(30)->toIso8601String();
+        Cache::put('application_health_last_observed_at', $observedAt, 300);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateHealthFreshness($now);
+
+        $this->assertEquals(FreshnessService::STATE_FRESH, $result['status']);
+        $this->assertEquals($observedAt, $result['last_observed_at']);
+        // Cache không bị ghi đè thành $now
+        $this->assertEquals($observedAt, Cache::get('application_health_last_observed_at'));
+    }
+
+    public function test_evaluate_deployment_freshness_ignores_in_progress_deployments(): void
+    {
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $cicdService->shouldReceive('getDeployments')
+            ->once()
+            ->andReturn([
+                [
+                    'id' => '123',
+                    'status' => 'deploying',
+                    'deployed_at' => 'Đang triển khai',
+                    'environment' => 'production',
+                ],
+            ]);
+
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateDeploymentFreshness($now);
+
+        // Deployment đang chạy hoặc chưa xong không được coi là fresh
+        $this->assertEquals(FreshnessService::STATE_UNKNOWN, $result['status']);
+    }
+
+    public function test_evaluate_github_freshness_distinguishes_running_and_successful_runs(): void
+    {
+        $successTime = Carbon::now('UTC')->subSeconds(120);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $cicdService->shouldReceive('getPipelines')
+            ->once()
+            ->andReturn([
+                [
+                    'name' => 'CI - Integration',
+                    'status' => 'in_progress',
+                    'created_at' => Carbon::now('UTC')->subSeconds(10)->toIso8601String(),
+                ],
+                [
+                    'name' => 'CI - Integration',
+                    'status' => 'success',
+                    'completed_at' => $successTime->toIso8601String(),
+                ],
+            ]);
+
+        $service = new FreshnessService($cicdService);
+        $now = Carbon::now('UTC');
+
+        $result = $service->evaluateGitHubFreshness($now, true);
+
+        // Vẫn nhận diện pipeline đang chạy
+        $this->assertEquals('running', $result['execution_state']);
+        // Tính độ tươi mới dựa trên completed run thành công gần nhất
+        $this->assertEquals(FreshnessService::STATE_FRESH, $result['status']);
+        $this->assertEquals($successTime->toIso8601String(), $result['last_event_at']);
     }
 }

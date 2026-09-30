@@ -33,19 +33,27 @@ for ((i=1; i<=MAX_RETRIES; i++)); do
 
         # Tiêu chuẩn nghiệm thu Freshness:
         # 1. Collector không được UNAVAILABLE
-        # 2. Overall không được UNAVAILABLE nếu DB online
-        if [ "$COLLECTOR_STATUS" != "UNAVAILABLE" ]; then
-            echo "========================================================================"
-            echo "✅ XÁC MINH FRESHNESS OBSERVABILITY THÀNH CÔNG!"
-            echo "Overall State:    $OVERALL_STATUS"
-            echo "Collector State:  $COLLECTOR_STATUS"
-            echo "Database State:   $DB_STATUS"
-            echo "Checked At:       $(echo "$BODY" | grep -o '"checked_at":"[^"]*' | cut -d'"' -f4)"
-            echo "========================================================================"
-            exit 0
-        else
-            echo "⚠️ Collector đang báo trạng thái UNAVAILABLE. Đang thử lại..."
-        fi
+        # 2. Overall state phải nằm trong nhóm acceptable: FRESH, HEALTHY, WARNING, STALE
+        # Bắt buộc từ chối: CRITICAL, UNAVAILABLE, UNKNOWN
+        case "$OVERALL_STATUS" in
+            FRESH|HEALTHY|WARNING|STALE)
+                if [ "$COLLECTOR_STATUS" != "UNAVAILABLE" ]; then
+                    echo "========================================================================"
+                    echo "✅ XÁC MINH FRESHNESS OBSERVABILITY THÀNH CÔNG!"
+                    echo "Overall State:    $OVERALL_STATUS"
+                    echo "Collector State:  $COLLECTOR_STATUS"
+                    echo "Database State:   $DB_STATUS"
+                    echo "Checked At:       $(echo "$BODY" | grep -o '"checked_at":"[^"]*' | cut -d'"' -f4 || echo "N/A")"
+                    echo "========================================================================"
+                    exit 0
+                else
+                    echo "⚠️ Collector đang báo trạng thái UNAVAILABLE. Đang thử lại..."
+                fi
+                ;;
+            CRITICAL|UNAVAILABLE|UNKNOWN|*)
+                echo "⚠️ Trạng thái overall_state không đạt chuẩn nghiệm thu ($OVERALL_STATUS). Đang thử lại..."
+                ;;
+        esac
     else
         echo "CHƯA SẴN SÀNG (HTTP Code: $HTTP_CODE)"
     fi
