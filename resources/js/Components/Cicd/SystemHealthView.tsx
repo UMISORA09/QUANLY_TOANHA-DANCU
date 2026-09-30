@@ -193,10 +193,29 @@ export const SystemHealthView: React.FC<SystemHealthViewProps> = ({
           </button>
 
           {/* System Overall Status */}
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="capitalize">{activeHealth.status}</span>
-          </span>
+          {(() => {
+            const st = (activeHealth.status || '').toLowerCase();
+            const isOk = st === 'healthy' || st === 'operational';
+            const isDegraded = st === 'degraded';
+            const isDown = st === 'unhealthy' || st === 'down';
+
+            const badgeBg = isOk
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : (isDegraded
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : (isDown ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-100 text-slate-700 border-slate-300'));
+
+            const dotBg = isOk
+              ? 'bg-emerald-500'
+              : (isDegraded ? 'bg-amber-500' : (isDown ? 'bg-rose-500' : 'bg-slate-400'));
+
+            return (
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${badgeBg}`}>
+                <span className={`w-2 h-2 rounded-full ${dotBg}`} />
+                <span className="capitalize">{activeHealth.status}</span>
+              </span>
+            );
+          })()}
 
           {/* Refresh Action */}
           <button

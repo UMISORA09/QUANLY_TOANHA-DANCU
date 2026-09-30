@@ -1,0 +1,198 @@
+name: Rollback - Automated Safe Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Môi trường thực thi Rollback (production, staging hoặc vercel)'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - vercel
+      target_version:
+        description: 'Phiên bản đích cần khôi phục (hoặc để "previous" để khôi phục image ổn định trước đó)'
+        required: false
+        default: 'previous'
+        type: string
+      reason:
+        description: 'Lý do thực hiện Rollback khẩn cấp'
+        required: false
+        default: 'Yêu cầu phục hồi khẩn cấp từ DevOps Dashboard'
+        type: string
+
+concurrency:
+  group: rollback-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback-ssh:
+    name: Execute SSH Rollback (Docker Container)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'production' || github.event.inputs.environment == 'staging'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Evaluate Server Configuration & Target
+        id: server-eval
+        env:
+          ENV_TARGET: ${{ github.event.inputs.environment }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          echo "Bắt đầu đánh giá thông tin máy chủ cho môi trường: $ENV_TARGET"
+          if [ "$ENV_TARGET" = "production" ]; then
+            if [ -z "$PROD_HOST" ] || [ "$PROD_HOST" = "not_configured" ] || [ -z "$PROD_USER" ] || [ "$PROD_USER" = "not_configured" ] || [ -z "$PROD_SSH_KEY" ] || [ "$PROD_SSH_KEY" = "not_configured" ]; then
+              echo "configured=false" >> $GITHUB_OUTPUT
+              echo "::notice ::PRODUCTION SSH CREDENTIALS NOT CONFIGURED: Awaiting PROD_HOST, PROD_USER, PROD_SSH_KEY in GitHub Secrets."
+            else
+              echo "configured=true" >> $GITHUB_OUTPUT
+              echo "host=$PROD_HOST" >> $GITHUB_OUTPUT
+              echo "user=$PROD_USER" >> $GITHUB_OUTPUT
+              echo "key<<EOF" >> $GITHUB_OUTPUT
+              echo "$PROD_SSH_KEY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "app_path=${{ secrets.PROD_APP_PATH || '/var/www/smart-cassavas' }}" >> $GITHUB_OUTPUT
+              echo "port=${{ secrets.PROD_PORT || 22 }}" >> $GITHUB_OUTPUT
+            fi
+          else
+            if [ -z "$STAGING_HOST" ] || [ "$STAGING_HOST" = "not_configured" ] || [ -z "$STAGING_USER" ] || [ "$STAGING_USER" = "not_configured" ] || [ -z "$STAGING_SSH_KEY" ] || [ "$STAGING_SSH_KEY" = "not_configured" ]; then
+              echo "configured=false" >> $GITHUB_OUTPUT
+              echo "::notice ::STAGING SSH CREDENTIALS NOT CONFIGURED: Awaiting STAGING_HOST, STAGING_USER, STAGING_SSH_KEY in GitHub Secrets."
+            else
+              echo "configured=true" >> $GITHUB_OUTPUT
+              echo "host=$STAGING_HOST" >> $GITHUB_OUTPUT
+              echo "user=$STAGING_USER" >> $GITHUB_OUTPUT
+              echo "key<<EOF" >> $GITHUB_OUTPUT
+              echo "$STAGING_SSH_KEY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "app_path=${{ secrets.STAGING_APP_PATH || '/var/www/smart-cassavas' }}" >> $GITHUB_OUTPUT
+              echo "port=${{ secrets.STAGING_PORT || 22 }}" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Execute Automated Rollback Script via SSH
+        id: ssh-rollback
+        if: steps.server-eval.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ROLLBACK_ENV: ${{ github.event.inputs.environment }}
+          TARGET_VERSION: ${{ github.event.inputs.target_version }}
+        with:
+          host: ${{ steps.server-eval.outputs.host }}
+          username: ${{ steps.server-eval.outputs.user }}
+          key: ${{ steps.server-eval.outputs.key }}
+          port: ${{ steps.server-eval.outputs.port }}
+          envs: ROLLBACK_ENV,TARGET_VERSION
+          script: |
+            set -e
+            cd "${{ steps.server-eval.outputs.app_path }}"
+            chmod +x scripts/*.sh || true
+            echo "Thực thi rollback an toàn trên máy chủ..."
+            ./scripts/rollback.sh "$ROLLBACK_ENV"
+
+      - name: SSH Rollback Execution Status
+        if: always()
+        run: |
+          CONFIGURED="${{ steps.server-eval.outputs.configured }}"
+          OUTCOME="${{ steps.ssh-rollback.outcome }}"
+
+          echo "========================================================================"
+          echo "ROLLBACK ACTION SUMMARY (SSH Target: ${{ github.event.inputs.environment }}):"
+          echo "Target Version: ${{ github.event.inputs.target_version }}"
+          echo "Reason:         ${{ github.event.inputs.reason }}"
+
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "Status:         SKIPPED (Server credentials missing)"
+            echo "Result:         ROLLBACK_SKIPPED"
+            exit 0
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "Status:         COMPLETED & VERIFIED (Health, Smoke & Freshness Passed)"
+            echo "Result:         ROLLBACK_SUCCESS"
+            exit 0
+          else
+            echo "Status:         FAILED (Rollback execution or verification failed: $OUTCOME)"
+            echo "Result:         ROLLBACK_FAILED"
+            exit 1
+          fi
+          echo "========================================================================"
+
+  rollback-vercel:
+    name: Execute Vercel Deployment Rollback
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'vercel'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Validate Vercel Authentication Secrets
+        id: check-vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ "$VERCEL_TOKEN" = "not_configured" ] || [ -z "$VERCEL_ORG_ID" ] || [ "$VERCEL_ORG_ID" = "not_configured" ] || [ -z "$VERCEL_PROJECT_ID" ] || [ "$VERCEL_PROJECT_ID" = "not_configured" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::notice ::VERCEL CREDENTIALS NOT CONFIGURED: Awaiting VERCEL_TOKEN in GitHub Secrets."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js for Vercel CLI
+        if: steps.check-vercel.outputs.configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Vercel CLI
+        if: steps.check-vercel.outputs.configured == 'true'
+        run: npm install --global vercel@39.3.0
+
+      - name: Execute Vercel Rollback / Alias Shift
+        id: vercel-rollback
+        if: steps.check-vercel.outputs.configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          TARGET_VERSION: ${{ github.event.inputs.target_version }}
+        run: |
+          echo "Thực thi rollback trên nền tảng Vercel..."
+          if [ "$TARGET_VERSION" != "previous" ] && [ -n "$TARGET_VERSION" ]; then
+            vercel rollback "$TARGET_VERSION" --yes --token="$VERCEL_TOKEN" || vercel alias set "$TARGET_VERSION" smart-cassavas.vercel.app --token="$VERCEL_TOKEN"
+          else
+            vercel rollback --yes --token="$VERCEL_TOKEN"
+          fi
+          echo "✅ Vercel Rollback hoàn tất."
+
+  rollback-report:
+    name: Rollback Audit & Final Report
+    runs-on: ubuntu-latest
+    needs: [rollback-ssh, rollback-vercel]
+    if: always()
+    steps:
+      - name: Record Audit Log
+        run: |
+          echo "========================================================================"
+          echo "EMERGENCY ROLLBACK AUDIT TRAIL"
+          echo "Timestamp:    $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "Actor:        ${{ github.actor }}"
+          echo "Environment:  ${{ github.event.inputs.environment }}"
+          echo "Target Ref:   ${{ github.event.inputs.target_version }}"
+          echo "Reason:       ${{ github.event.inputs.reason }}"
+          echo "SSH Job:      ${{ needs.rollback-ssh.result || 'skipped' }}"
+          echo "Vercel Job:   ${{ needs.rollback-vercel.result || 'skipped' }}"
+          echo "========================================================================"

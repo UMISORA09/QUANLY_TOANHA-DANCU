@@ -1,0 +1,58 @@
+groups:
+  - name: freshness_recording_rules
+    rules:
+      - record: job:freshness_stale:count
+        expr: count(freshness_status_binary{state="stale"} == 1) or vector(0)
+
+      - record: job:freshness_critical:count
+        expr: count(freshness_status_binary{state="critical"} == 1) or vector(0)
+
+      - record: job:freshness_unavailable:count
+        expr: count(freshness_status_binary{state="unavailable"} == 1) or vector(0)
+
+  - name: freshness_alerts
+    rules:
+      - alert: FreshnessWarning
+        expr: freshness_status_binary{state="stale"} == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dữ liệu hoặc giám sát [{{ $labels.source }}] đang bị trễ (STALE)"
+          description: "Nguồn {{ $labels.source }} (nhóm: {{ $labels.type }}) đã vượt ngưỡng cảnh báo (Warning threshold) liên tục trong 1 phút."
+
+      - alert: FreshnessCritical
+        expr: freshness_status_binary{state="critical"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dữ liệu hoặc giám sát [{{ $labels.source }}] quá cũ nghiêm trọng (CRITICAL)"
+          description: "Nguồn {{ $labels.source }} (nhóm: {{ $labels.type }}) đã vượt ngưỡng giới hạn nghiêm trọng (Critical threshold) liên tục trong 1 phút."
+
+      - alert: FreshnessUnavailable
+        expr: freshness_status_binary{state="unavailable"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nguồn dữ liệu [{{ $labels.source }}] không thể truy cập (UNAVAILABLE)"
+          description: "Không thể kết nối hoặc truy vấn dữ liệu từ nguồn {{ $labels.source }} (nhóm: {{ $labels.type }})."
+
+      - alert: CollectorStale
+        expr: collector_data_age_seconds > 120
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tiến trình Freshness Collector chạy chậm (Collector Stale)"
+          description: "Freshness Collector chưa hoàn thành thu thập dữ liệu mới trong hơn 120 giây."
+
+      - alert: CollectorDown
+        expr: collector_data_age_seconds > 300
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tiến trình Freshness Collector đã dừng hoạt động (Collector Down)"
+          description: "Freshness Collector không có tín hiệu thành công trong hơn 300 giây. Hệ thống giám sát có nguy cơ mất đồng bộ."

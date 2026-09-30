@@ -1,6 +1,9 @@
 name: CD - Staging Deployment
 
 on:
+  push:
+    branches:
+      - develop
   workflow_dispatch:
     inputs:
       image_tag:
@@ -17,19 +20,121 @@ permissions:
   packages: write
 
 jobs:
-  build-and-push-staging:
-    name: Build & Push Staging Image (GHCR)
+  ci-gate:
+    name: Staging CI Gate (Lint, Build & Unit Tests)
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.tag.outputs.image_tag }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: quanly_toanha_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -prootpassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Determine Image Tag
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo, pdo_mysql, pdo_sqlite, mbstring, xml, ctype, iconv, intl, bcmath, gd, zip
+          coverage: none
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run Laravel Pint Check
+        run: vendor/bin/pint --test
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: TypeScript Type-Check
+        run: npm run typecheck
+
+      - name: Build Frontend Assets
+        run: npm run build
+
+      - name: Configure Test Environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Wait for MySQL Service
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h 127.0.0.1 -u root -prootpassword --silent; then
+              echo "MySQL is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL service failed to start."
+          exit 1
+
+      - name: Run Migrations & Seed
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: quanly_toanha_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpassword
+        run: |
+          php artisan migrate --force --no-interaction
+          php artisan db:seed --force --no-interaction
+
+      - name: Run PHPUnit Test Suite
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: quanly_toanha_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpassword
+          APP_ENV: testing
+        run: vendor/bin/phpunit --colors=always
+
+  build-and-push-staging:
+    name: Build & Push Staging Image (GHCR)
+    runs-on: ubuntu-latest
+    needs: [ci-gate]
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+      build_time: ${{ steps.tag.outputs.build_time }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Determine Image Tag and Metadata
         id: tag
         run: |
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+
           if [ -n "${{ github.event.inputs.image_tag }}" ]; then
             echo "image_tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
           else
@@ -54,6 +159,10 @@ jobs:
           file: docker/app/Dockerfile
           target: production
           push: true
+          build-args: |
+            APP_VERSION=${{ steps.tag.outputs.image_tag }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.tag.outputs.build_time }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.image_tag }}
             ghcr.io/${{ github.repository }}:staging
@@ -65,7 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-and-push-staging]
     environment:
-      name: staging
+      name: Preview
 
     steps:
       - name: Checkout Code
@@ -78,14 +187,16 @@ jobs:
           STAGING_USER: ${{ secrets.STAGING_USER }}
           STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
         run: |
-          if [ -z "$STAGING_HOST" ] || [ -z "$STAGING_USER" ] || [ -z "$STAGING_SSH_KEY" ]; then
+          if [ -z "$STAGING_HOST" ] || [ "$STAGING_HOST" = "not_configured" ] || [ -z "$STAGING_USER" ] || [ "$STAGING_USER" = "not_configured" ] || [ -z "$STAGING_SSH_KEY" ] || [ "$STAGING_SSH_KEY" = "not_configured" ]; then
             echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::notice ::STAGING DEPLOYMENT NOT CONFIGURED: Awaiting STAGING_HOST, STAGING_USER, STAGING_SSH_KEY secrets."
+            echo "::notice ::DEPLOYMENT STATUS: NOT CONFIGURED. Staging server credentials (STAGING_HOST, STAGING_USER, STAGING_SSH_KEY) are awaiting setup in GitHub Secrets."
+            echo "Final Status: NOT_CONFIGURED"
           else
             echo "configured=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy to Staging Server via SSH
+        id: ssh-deploy
         if: steps.check-secrets.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -105,16 +216,30 @@ jobs:
             APP_PATH="${{ secrets.STAGING_APP_PATH || '/var/www/smart-cassavas' }}"
             cd "$APP_PATH"
             chmod +x scripts/*.sh || true
-            ./scripts/deploy.sh "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+            ./scripts/deploy.sh "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" staging
 
       - name: Staging Deployment Status Report
+        if: always()
         run: |
+          CONFIGURED="${{ steps.check-secrets.outputs.configured }}"
+          SSH_OUTCOME="${{ steps.ssh-deploy.outcome }}"
+
           echo "========================================================================"
-          if [ "${{ steps.check-secrets.outputs.configured }}" = "true" ]; then
-            echo "✅ STAGING PIPELINE COMPLETED"
-            echo "Target Image: ghcr.io/${{ github.repository }}:${{ needs.build-and-push-staging.outputs.image_tag }}"
+          echo "DEPLOYMENT STAGE OUTCOME EVALUATION:"
+          echo "1. BUILD_STATUS:     SUCCESS (ghcr.io/${{ github.repository }}:${{ needs.build-and-push-staging.outputs.image_tag }})"
+
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "2. DEPLOY_STATUS:    SKIPPED (Staging server credentials not configured)"
+            echo "ℹ️ OVERALL RESULT: BUILD VERIFIED & DEPLOYMENT SKIPPED (Awaiting server credentials)"
+            exit 0
+          elif [ "$SSH_OUTCOME" = "success" ]; then
+            echo "2. DEPLOY_STATUS:    SUCCESS (SSH executed deploy.sh with staging image)"
+            echo "3. VERIFY_STATUS:    PASSED (Health, Smoke & Freshness verified)"
+            echo "✅ OVERALL RESULT: STAGING DEPLOYMENT COMPLETED & VERIFIED"
+            exit 0
           else
-            echo "⚠️ STAGING DEPLOYMENT SKIPPED: Server credentials (STAGING_HOST/STAGING_USER/STAGING_SSH_KEY) are not configured."
-            echo "Image has been built and pushed to GHCR: ghcr.io/${{ github.repository }}:${{ needs.build-and-push-staging.outputs.image_tag }}"
+            echo "2. DEPLOY_STATUS:    FAILED (SSH deployment failed with outcome: $SSH_OUTCOME)"
+            echo "🚨 OVERALL RESULT: STAGING DEPLOYMENT FAILED"
+            exit 1
           fi
           echo "========================================================================"

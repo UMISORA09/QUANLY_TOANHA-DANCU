@@ -223,6 +223,7 @@
     );
     background-size: 250% 100%;
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: text-light-sweep 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
@@ -240,6 +241,7 @@
     );
     background-size: 250% 100%;
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: text-light-sweep 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
@@ -257,6 +259,7 @@
     );
     background-size: 250% 100%;
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: text-light-sweep 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
@@ -649,6 +652,27 @@
 }
 .no-scrollbar::-webkit-scrollbar {
     display: none;
+}
+
+/* Subtle clean horizontal scrollbar for dashboard and flow tables */
+.scrollbar-subtle {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(203, 213, 225, 0.5) transparent;
+}
+.scrollbar-subtle::-webkit-scrollbar {
+    height: 4px;
+    width: 4px;
+}
+.scrollbar-subtle::-webkit-scrollbar-track {
+    background: transparent;
+}
+.scrollbar-subtle::-webkit-scrollbar-thumb {
+    background: rgba(203, 213, 225, 0.5);
+    border-radius: 9999px;
+    transition: background 0.2s ease;
+}
+.scrollbar-subtle:hover::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.7);
 }
 
 /* Smooth Bottom & Vertical Fade Masks */
