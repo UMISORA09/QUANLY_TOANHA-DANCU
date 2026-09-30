@@ -733,8 +733,12 @@ class GitHubActionsService
             $diskUsed = $diskTotal - $diskFree;
             $diskPercent = round(($diskUsed / $diskTotal) * 100, 1);
 
-            // Đo thời gian khởi tạo request thực tế
-            $phpResponseTime = defined('LARAVEL_START') ? round((microtime(true) - LARAVEL_START) * 1000) : 0;
+            // Đo độ trễ vi xử lý tính toán và bộ nhớ thực tế của PHP Application Runtime
+            $phpBenchStart = microtime(true);
+            for ($i = 0; $i < 50; $i++) {
+                hash('xxh128', (string) $i);
+            }
+            $phpResponseTime = round((microtime(true) - $phpBenchStart) * 1000, 2);
 
             // Kiểm tra thực tế Docker CLI và Docker Daemon (Không coi docker --version là Engine operational)
             $dockerStatus = 'not_available';
@@ -858,6 +862,7 @@ class GitHubActionsService
                     'php_version' => PHP_VERSION,
                     'disk_usage_percent' => $diskPercent,
                     'db_ping_ms' => $dbLatency,
+                    'php_latency_ms' => $phpResponseTime,
                 ],
             ];
         });
