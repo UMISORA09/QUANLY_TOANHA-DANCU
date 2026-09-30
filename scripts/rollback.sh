@@ -101,7 +101,7 @@ if ! "$SCRIPT_DIR/smoke-test.sh" "http://localhost:8000"; then
 fi
 
 echo "Phase 3: Freshness Verification..."
-if ! "$SCRIPT_DIR/freshness-verify.sh" "http://localhost:8000/api/monitoring/freshness" 15 2; then
+if ! "$SCRIPT_DIR/freshness-verify.sh" "http://localhost:8000/api/monitoring/freshness" 15 2 "$DEPLOY_ENV"; then
     echo "========================================================================"
     echo "🚨 CẢNH BÁO NGUY CẤP: Phiên bản khôi phục ($PREVIOUS_IMAGE) không vượt qua freshness check!"
     echo "========================================================================"
@@ -118,9 +118,8 @@ echo "Hệ thống Smart Cassavas đã khôi phục ổn định về: $PREVIOUS
 echo "Health Check:    PASSED"
 echo "Smoke Test:      PASSED"
 echo "Freshness Check: PASSED"
-echo "Giới hạn kiến trúc: Application Image đã được phục hồi."
-echo "Cơ sở dữ liệu tuân thủ nguyên tắc backward-compatible (Expand-Contract),"
-echo "không thực hiện migrate:rollback tự động để phòng tránh rủi ro mất dữ liệu."
+echo "Application image restored."
+echo "Database schema remains according to backward-compatible migration strategy."
 echo "Thời gian ghi nhận: $(cat "$TIME_FILE")"
 echo "========================================================================"
 exit 0

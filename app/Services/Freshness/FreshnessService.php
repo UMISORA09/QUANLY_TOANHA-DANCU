@@ -23,6 +23,17 @@ class FreshnessService
 
     public const STATE_UNAVAILABLE = 'UNAVAILABLE';
 
+    public const ACCEPTABLE_PRODUCTION_STATES = ['FRESH', 'HEALTHY', 'WARNING'];
+
+    public const ACCEPTABLE_PREVIEW_STATES = ['FRESH', 'HEALTHY', 'WARNING', 'STALE'];
+
+    public static function isAcceptableState(string $state, bool $isProduction = true): bool
+    {
+        $allowed = $isProduction ? self::ACCEPTABLE_PRODUCTION_STATES : self::ACCEPTABLE_PREVIEW_STATES;
+
+        return in_array(strtoupper($state), $allowed, true);
+    }
+
     protected array $config;
 
     public function __construct(
@@ -81,16 +92,14 @@ class FreshnessService
         $critThreshold = (int) ($this->config['collector']['critical_seconds'] ?? 300);
 
         if (! $lastSuccess) {
-            // Lần chạy đầu tiên: đánh dấu thành công
-            Cache::put('freshness_collector_last_success_at', $now->toIso8601String(), 3600);
-
             return [
-                'status' => self::STATE_FRESH,
-                'last_success_at' => $now->toIso8601String(),
-                'age_seconds' => 0,
+                'status' => self::STATE_UNKNOWN,
+                'last_success_at' => null,
+                'age_seconds' => null,
                 'warning_threshold' => $warnThreshold,
                 'critical_threshold' => $critThreshold,
                 'errors_count' => $errorsCount,
+                'message' => 'Chưa có quan sát nào từ Freshness Collector được ghi nhận trong bộ nhớ đệm.',
             ];
         }
 
@@ -99,17 +108,23 @@ class FreshnessService
 
         $state = $this->classifyState($ageSeconds, $warnThreshold, $critThreshold);
 
-        // Cập nhật timestamp lần kiểm tra thành công hiện tại
-        Cache::put('freshness_collector_last_success_at', $now->toIso8601String(), 3600);
-
         return [
             'status' => $state,
-            'last_success_at' => $lastSuccess,
+            'last_success_at' => $lastSuccessCarbon->toIso8601String(),
             'age_seconds' => $ageSeconds,
             'warning_threshold' => $warnThreshold,
             'critical_threshold' => $critThreshold,
             'errors_count' => $errorsCount,
         ];
+    }
+
+    /**
+     * Ghi nhận heartbeat từ Scheduler / Collector nền (Writer)
+     */
+    public function recordCollectorHeartbeat(?Carbon $timestamp = null): void
+    {
+        $time = ($timestamp ?: Carbon::now('Asia/Ho_Chi_Minh'))->toIso8601String();
+        Cache::put('freshness_collector_last_success_at', $time, 3600);
     }
 
     /**

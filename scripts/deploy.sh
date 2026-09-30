@@ -82,7 +82,34 @@ if ! docker compose -f docker-compose.prod.yml up -d --remove-orphans; then
     exit 1
 fi
 
-# 4. Thực thi Database Migration an toàn (Expand-Contract principle)
+# 4. Kiểm tra container ứng dụng đã thực sự online và sẵn sàng nhận lệnh (Readiness Probe)
+echo "Đang kiểm tra tính sẵn sàng của container ứng dụng trước khi migrate..."
+CONTAINER_READY=false
+for attempt in $(seq 1 20); do
+    if docker compose -f docker-compose.prod.yml ps app --status running | grep -q "app" 2>/dev/null; then
+        if docker compose -f docker-compose.prod.yml exec -T app php -v >/dev/null 2>&1; then
+            CONTAINER_READY=true
+            echo "Container ứng dụng đã sẵn sàng sau ${attempt}s."
+            break
+        fi
+    fi
+    sleep 1
+done
+
+if [ "$CONTAINER_READY" != "true" ]; then
+    echo "========================================================================"
+    echo "❌ LỖI NGHIÊM TRỌNG: Container ứng dụng không đạt trạng thái sẵn sàng!"
+    echo "========================================================================"
+    if [ -n "$PREVIOUS_IMAGE" ]; then
+        echo "Kích hoạt Rollback về phiên bản trước: $PREVIOUS_IMAGE ..."
+        "$SCRIPT_DIR/rollback.sh" "$DEPLOY_ENV"
+    else
+        echo "ROLLBACK_UNAVAILABLE: Không có phiên bản trước để rollback."
+    fi
+    exit 1
+fi
+
+# 5. Thực thi Database Migration an toàn (Expand-Contract principle)
 # Migration chạy sau khi app container mới đã online, không phá vỡ tính tương thích ngược
 echo "Đang kiểm tra và thực thi Database Migrations an toàn..."
 if ! docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force --no-interaction; then
@@ -102,7 +129,7 @@ if ! docker compose -f docker-compose.prod.yml exec -T app php artisan migrate -
 fi
 echo "✅ Database Migrations hoàn tất an toàn."
 
-# 5. Giai đoạn 1: Kiểm tra sức khỏe hệ thống (Phase 1: Health Check)
+# 6. Giai đoạn 1: Kiểm tra sức khỏe hệ thống (Phase 1: Health Check)
 echo "Đang xác minh sức khỏe hệ thống sau triển khai (Phase 1: Health Check)..."
 if ! "$SCRIPT_DIR/health-check.sh" "http://localhost:8000/health" 20 3; then
     echo "========================================================================"
@@ -112,7 +139,7 @@ if ! "$SCRIPT_DIR/health-check.sh" "http://localhost:8000/health" 20 3; then
     exit 1
 fi
 
-# 6. Giai đoạn 2: Kiểm thử luồng nghiệp vụ sau triển khai (Phase 2: Smoke Test)
+# 7. Giai đoạn 2: Kiểm thử luồng nghiệp vụ sau triển khai (Phase 2: Smoke Test)
 echo "Đang chạy bộ kiểm thử Smoke Test (Phase 2: Smoke Test)..."
 if ! "$SCRIPT_DIR/smoke-test.sh" "http://localhost:8000"; then
     echo "========================================================================"
@@ -122,9 +149,9 @@ if ! "$SCRIPT_DIR/smoke-test.sh" "http://localhost:8000"; then
     exit 1
 fi
 
-# 7. Giai đoạn 3: Xác minh độ tươi mới của dữ liệu quan sát (Phase 3: Freshness Verification)
+# 8. Giai đoạn 3: Xác minh độ tươi mới của dữ liệu quan sát (Phase 3: Freshness Verification)
 echo "Đang kiểm tra Freshness Observability (Phase 3: Freshness Verification)..."
-if ! "$SCRIPT_DIR/freshness-verify.sh" "http://localhost:8000/api/monitoring/freshness" 15 3; then
+if ! "$SCRIPT_DIR/freshness-verify.sh" "http://localhost:8000/api/monitoring/freshness" 15 3 "$DEPLOY_ENV"; then
     echo "========================================================================"
     echo "❌ CẢNH BÁO: Freshness Verification thất bại! Đang tự động kích hoạt Rollback..."
     echo "========================================================================"

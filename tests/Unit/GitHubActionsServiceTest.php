@@ -15,19 +15,24 @@ class GitHubActionsServiceTest extends TestCase
         Cache::flush();
     }
 
+    protected function tearDown(): void
+    {
+        config(['services.github.deploy_branch' => null]);
+        parent::tearDown();
+    }
+
     public function test_get_default_branch_respects_explicit_env_configuration(): void
     {
-        putenv('GIT_DEPLOY_BRANCH=release-2026');
+        config(['services.github.deploy_branch' => 'release-2026']);
 
         $service = new GitHubActionsService;
         $this->assertEquals('release-2026', $service->getDefaultBranch());
 
-        putenv('GIT_DEPLOY_BRANCH'); // unset
+        config(['services.github.deploy_branch' => null]);
     }
 
     public function test_get_default_branch_falls_back_to_master_not_main(): void
     {
-        putenv('GIT_DEPLOY_BRANCH');
         config(['services.github.deploy_branch' => null]);
         config(['services.github.token' => null]);
 
@@ -60,6 +65,12 @@ class GitHubActionsServiceTest extends TestCase
                     'created_at' => '2026-09-30T01:22:00Z',
                 ],
             ], 200),
+            'https://api.github.com/repos/test-owner/test-repo/deployments/104/statuses*' => Http::response([
+                [
+                    'state' => 'unknown_state',
+                    'created_at' => '2026-09-30T01:30:00Z',
+                ],
+            ], 200),
             'https://api.github.com/repos/test-owner/test-repo/deployments*' => Http::response([
                 [
                     'id' => 101,
@@ -88,25 +99,53 @@ class GitHubActionsServiceTest extends TestCase
                     'creator' => ['login' => 'octocat'],
                     'statuses_url' => 'https://api.github.com/repos/test-owner/test-repo/deployments/103/statuses',
                 ],
+                [
+                    'id' => 104,
+                    'environment' => 'staging',
+                    'sha' => '8888888890abcdef',
+                    'created_at' => '2026-09-30T01:25:00Z',
+                    'updated_at' => '2026-09-30T01:30:00Z',
+                    'creator' => ['login' => 'octocat'],
+                    'statuses_url' => 'https://api.github.com/repos/test-owner/test-repo/deployments/104/statuses',
+                ],
             ], 200),
         ]);
 
         $service = new GitHubActionsService;
         $deployments = $service->getDeployments();
 
-        $this->assertCount(3, $deployments);
+        $this->assertCount(4, $deployments);
 
         // Deployment 101: success -> healthy, deployed_at = 2026-09-30T01:05:00Z
         $this->assertEquals('healthy', $deployments[0]['status']);
         $this->assertEquals('2026-09-30T01:05:00Z', $deployments[0]['deployed_at']);
 
-        // Deployment 102: in_progress -> deploying, NOT healthy!
+        // Deployment 102: in_progress -> deploying, deployed_at = null
         $this->assertEquals('deploying', $deployments[1]['status']);
-        $this->assertEquals('Đang triển khai', $deployments[1]['deployed_at']);
+        $this->assertNull($deployments[1]['deployed_at']);
 
-        // Deployment 103: failure -> failed, NOT healthy!
+        // Deployment 103: failure -> failed, deployed_at = null
         $this->assertEquals('failed', $deployments[2]['status']);
-        $this->assertEquals('Chưa hoàn tất', $deployments[2]['deployed_at']);
+        $this->assertNull($deployments[2]['deployed_at']);
+
+        // Deployment 104: unknown state -> unknown, deployed_at = null
+        $this->assertEquals('unknown', $deployments[3]['status']);
+        $this->assertNull($deployments[3]['deployed_at']);
+    }
+
+    public function test_get_deployments_fallback_does_not_fake_healthy_without_evidence(): void
+    {
+        config(['services.github.token' => null]); // Disable GitHub live API
+
+        $service = new GitHubActionsService;
+        $deployments = $service->getDeployments();
+
+        $this->assertCount(2, $deployments);
+        foreach ($deployments as $dep) {
+            // When live health probe is not verified, status cannot be fake healthy
+            $this->assertNotEquals('healthy', $dep['status']);
+            $this->assertNull($dep['deployed_at']);
+        }
     }
 
     public function test_get_system_health_checks_search_engine_and_docker(): void

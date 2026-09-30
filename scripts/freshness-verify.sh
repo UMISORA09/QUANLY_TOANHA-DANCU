@@ -9,9 +9,11 @@ set -eo pipefail
 FRESHNESS_URL="${1:-http://localhost:8000/api/monitoring/freshness}"
 MAX_RETRIES="${2:-15}"
 RETRY_INTERVAL="${3:-3}"
+ENVIRONMENT="${4:-production}"
 
 echo "========================================================================"
 echo "BẮT ĐẦU XÁC MINH DATA FRESHNESS & OBSERVABILITY: $FRESHNESS_URL"
+echo "Môi trường: $ENVIRONMENT"
 echo "Thời gian: $(TZ='Asia/Ho_Chi_Minh' date +'%Y-%m-%dT%H:%M:%S+07:00')"
 echo "Số lần thử tối đa: $MAX_RETRIES (Chu kỳ: ${RETRY_INTERVAL}s)"
 echo "========================================================================"
@@ -31,29 +33,41 @@ for ((i=1; i<=MAX_RETRIES; i++)); do
 
         echo "HTTP 200 (Overall: $OVERALL_STATUS, Collector: $COLLECTOR_STATUS, DB: $DB_STATUS)"
 
-        # Tiêu chuẩn nghiệm thu Freshness:
-        # 1. Collector không được UNAVAILABLE
-        # 2. Overall state phải nằm trong nhóm acceptable: FRESH, HEALTHY, WARNING, STALE
-        # Bắt buộc từ chối: CRITICAL, UNAVAILABLE, UNKNOWN
-        case "$OVERALL_STATUS" in
-            FRESH|HEALTHY|WARNING|STALE)
-                if [ "$COLLECTOR_STATUS" != "UNAVAILABLE" ]; then
-                    echo "========================================================================"
-                    echo "✅ XÁC MINH FRESHNESS OBSERVABILITY THÀNH CÔNG!"
-                    echo "Overall State:    $OVERALL_STATUS"
-                    echo "Collector State:  $COLLECTOR_STATUS"
-                    echo "Database State:   $DB_STATUS"
-                    echo "Checked At:       $(echo "$BODY" | grep -o '"checked_at":"[^"]*' | cut -d'"' -f4 || echo "N/A")"
-                    echo "========================================================================"
-                    exit 0
-                else
-                    echo "⚠️ Collector đang báo trạng thái UNAVAILABLE. Đang thử lại..."
-                fi
-                ;;
-            CRITICAL|UNAVAILABLE|UNKNOWN|*)
-                echo "⚠️ Trạng thái overall_state không đạt chuẩn nghiệm thu ($OVERALL_STATUS). Đang thử lại..."
-                ;;
-        esac
+        # Policy nghiệm thu Freshness thống nhất toàn hệ thống (config/freshness.php):
+        # Production: FRESH, HEALTHY, WARNING -> ACCEPT; STALE, CRITICAL, UNAVAILABLE, UNKNOWN -> FAIL
+        # Preview / Staging: FRESH, HEALTHY, WARNING, STALE -> ACCEPT; CRITICAL, UNAVAILABLE, UNKNOWN -> FAIL
+        IS_ACCEPTABLE=false
+        if [ "$ENVIRONMENT" = "production" ]; then
+            case "$OVERALL_STATUS" in
+                FRESH|HEALTHY|WARNING)
+                    IS_ACCEPTABLE=true
+                    ;;
+            esac
+        else
+            case "$OVERALL_STATUS" in
+                FRESH|HEALTHY|WARNING|STALE)
+                    IS_ACCEPTABLE=true
+                    ;;
+            esac
+        fi
+
+        if [ "$IS_ACCEPTABLE" = "true" ]; then
+            if [ "$COLLECTOR_STATUS" != "UNAVAILABLE" ]; then
+                echo "========================================================================"
+                echo "✅ XÁC MINH FRESHNESS OBSERVABILITY THÀNH CÔNG!"
+                echo "Environment:      $ENVIRONMENT"
+                echo "Overall State:    $OVERALL_STATUS"
+                echo "Collector State:  $COLLECTOR_STATUS"
+                echo "Database State:   $DB_STATUS"
+                echo "Checked At:       $(echo "$BODY" | grep -o '"checked_at":"[^"]*' | cut -d'"' -f4 || echo "N/A")"
+                echo "========================================================================"
+                exit 0
+            else
+                echo "⚠️ Collector đang báo trạng thái UNAVAILABLE. Đang thử lại..."
+            fi
+        else
+            echo "⚠️ Trạng thái overall_state '$OVERALL_STATUS' không đạt chuẩn nghiệm thu môi trường '$ENVIRONMENT'. Đang thử lại..."
+        fi
     else
         echo "CHƯA SẴN SÀNG (HTTP Code: $HTTP_CODE)"
     fi

@@ -402,12 +402,16 @@ jobs:
                   docker stop smoke_app && docker rm smoke_app
                   exit 1
                 fi
-                if [ "$FRESH_STATE" = "CRITICAL" ] || [ "$FRESH_STATE" = "UNAVAILABLE" ]; then
-                  echo "❌ Mandatory Gate Failed: overall_state is unacceptable: $FRESH_STATE"
-                  docker stop smoke_app && docker rm smoke_app
-                  exit 1
-                fi
-                echo "  ✅ /api/monitoring/freshness: HTTP 200 (State: $FRESH_STATE)"
+                case "$FRESH_STATE" in
+                  FRESH|HEALTHY|WARNING)
+                    echo "  ✅ /api/monitoring/freshness: HTTP 200 (State: $FRESH_STATE)"
+                    ;;
+                  *)
+                    echo "❌ Mandatory Gate Failed: overall_state '$FRESH_STATE' is unacceptable for production/container verification"
+                    docker stop smoke_app && docker rm smoke_app
+                    exit 1
+                    ;;
+                esac
 
                 # 2. Mandatory Prometheus Metrics Verification
                 echo "Evaluating Mandatory Prometheus Metrics Exporter..."

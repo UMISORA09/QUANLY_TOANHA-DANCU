@@ -125,10 +125,16 @@ class GitHubActionsService
         $lastDeployedProd = $this->getLastDeployedImageRef('production');
         $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
 
-        $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
+        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : env('APP_URL'));
+        $stagingUrl = env('STAGING_URL');
+
+        $prodHealthy = $prodConfigured && $this->probeLiveUrlHealth($prodUrl);
+        $stagingHealthy = $stagingConfigured && $this->probeLiveUrlHealth($stagingUrl);
+
+        $prodStatus = $prodConfigured ? ($prodHealthy ? 'healthy' : ($lastDeployedProd ? 'unknown' : 'not_deployed')) : 'not_configured';
         $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
-        $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
+        $stagingStatus = $stagingConfigured ? ($stagingHealthy ? 'healthy' : ($lastDeployedStaging ? 'unknown' : 'not_deployed')) : 'not_configured';
         $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
         return [
@@ -402,7 +408,7 @@ class GitHubActionsService
                                 'commit_sha' => $shortSha,
                                 'status' => $status,
                                 'deployed_by' => $creator,
-                                'deployed_at' => $deployedAt ?: ($status === 'deploying' ? 'Đang triển khai' : 'Chưa hoàn tất'),
+                                'deployed_at' => ($status === 'healthy') ? $deployedAt : null,
                                 'response_time_ms' => 0,
                                 'release_notes' => "Triển khai {$rawEnv} (commit {$shortSha}) thực hiện bởi {$creator}.",
                             ];
@@ -418,14 +424,21 @@ class GitHubActionsService
 
         $prodImage = $this->getLastDeployedImageRef('production');
         $stagingImage = $this->getLastDeployedImageRef('staging');
-        $prodDeployedAt = $this->getDeploymentTimestamp('production');
-        $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
 
         $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || ! empty(env('VERCEL_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
         $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
 
-        $prodStatus = $prodConfigured ? ($prodImage ? 'healthy' : 'not_deployed') : 'not_configured';
-        $stagingStatus = $stagingConfigured ? ($stagingImage ? 'healthy' : 'not_deployed') : 'not_configured';
+        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : env('APP_URL'));
+        $stagingUrl = env('STAGING_URL');
+
+        $prodHealthy = $prodConfigured && $this->probeLiveUrlHealth($prodUrl);
+        $stagingHealthy = $stagingConfigured && $this->probeLiveUrlHealth($stagingUrl);
+
+        $prodStatus = $prodConfigured ? ($prodHealthy ? 'healthy' : ($prodImage ? 'unknown' : 'not_deployed')) : 'not_configured';
+        $stagingStatus = $stagingConfigured ? ($stagingHealthy ? 'healthy' : ($stagingImage ? 'unknown' : 'not_deployed')) : 'not_configured';
+
+        $prodDeployedAt = $prodHealthy ? $this->getDeploymentTimestamp('production') : null;
+        $stagingDeployedAt = $stagingHealthy ? $this->getDeploymentTimestamp('staging') : null;
 
         return [
             [
@@ -436,7 +449,7 @@ class GitHubActionsService
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $prodStatus,
                 'deployed_by' => $prodImage ? 'GitHub Actions CD' : 'Chưa có',
-                'deployed_at' => $prodDeployedAt ?: 'Chưa kích hoạt',
+                'deployed_at' => $prodDeployedAt,
                 'response_time_ms' => 0,
                 'release_notes' => $prodConfigured
                     ? ($prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Tự động kích hoạt khi push vào master.')
@@ -450,7 +463,7 @@ class GitHubActionsService
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $stagingStatus,
                 'deployed_by' => $stagingImage ? 'GitHub Actions CD' : 'Chưa có',
-                'deployed_at' => $stagingDeployedAt ?: 'Chưa kích hoạt',
+                'deployed_at' => $stagingDeployedAt,
                 'response_time_ms' => 0,
                 'release_notes' => $stagingConfigured
                     ? ($stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào develop hoặc tạo PR.')
@@ -1377,6 +1390,21 @@ class GitHubActionsService
         }
 
         return null;
+    }
+
+    protected function probeLiveUrlHealth(?string $url): bool
+    {
+        if (empty($url)) {
+            return false;
+        }
+
+        try {
+            $resp = Http::timeout(2)->get(rtrim($url, '/').'/health');
+
+            return $resp->successful() && in_array(strtolower((string) $resp->json('status')), ['healthy', 'ok', 'up'], true);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     protected function measureDatabaseLatency(): int

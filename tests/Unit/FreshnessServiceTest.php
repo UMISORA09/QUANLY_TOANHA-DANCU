@@ -93,6 +93,7 @@ class FreshnessServiceTest extends TestCase
 
     public function test_evaluate_collector_freshness_tracks_age_and_success(): void
     {
+        Cache::put('freshness_collector_last_success_at', Carbon::now('UTC')->toIso8601String(), 3600);
         $cicdService = Mockery::mock(GitHubActionsService::class);
         $service = new FreshnessService($cicdService);
         $now = Carbon::now('UTC');
@@ -107,6 +108,7 @@ class FreshnessServiceTest extends TestCase
             FreshnessService::STATE_FRESH,
             FreshnessService::STATE_STALE,
             FreshnessService::STATE_CRITICAL,
+            FreshnessService::STATE_UNKNOWN,
         ]);
     }
 
@@ -258,5 +260,87 @@ class FreshnessServiceTest extends TestCase
         // Tính độ tươi mới dựa trên completed run thành công gần nhất
         $this->assertEquals(FreshnessService::STATE_FRESH, $result['status']);
         $this->assertEquals($successTime->toIso8601String(), $result['last_event_at']);
+    }
+
+    public function test_evaluate_collector_freshness_returns_unknown_when_no_heartbeat(): void
+    {
+        Cache::forget('freshness_collector_last_success_at');
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $result = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+
+        $this->assertEquals(FreshnessService::STATE_UNKNOWN, $result['status']);
+        $this->assertNull($result['last_success_at']);
+        $this->assertNull($result['age_seconds']);
+    }
+
+    public function test_evaluate_collector_freshness_returns_stale_or_critical_for_old_heartbeat(): void
+    {
+        $oldTime = Carbon::now('Asia/Ho_Chi_Minh')->subSeconds(150); // Warning is 60s, Critical is 300s
+        Cache::put('freshness_collector_last_success_at', $oldTime->toIso8601String(), 3600);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $result = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+        $this->assertEquals(FreshnessService::STATE_STALE, $result['status']);
+
+        // Very old (400s >= 300s) -> CRITICAL
+        $veryOldTime = Carbon::now('Asia/Ho_Chi_Minh')->subSeconds(400);
+        Cache::put('freshness_collector_last_success_at', $veryOldTime->toIso8601String(), 3600);
+
+        $critResult = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+        $this->assertEquals(FreshnessService::STATE_CRITICAL, $critResult['status']);
+    }
+
+    public function test_evaluate_collector_freshness_returns_fresh_for_recent_heartbeat(): void
+    {
+        $recentTime = Carbon::now('Asia/Ho_Chi_Minh')->subSeconds(15);
+        Cache::put('freshness_collector_last_success_at', $recentTime->toIso8601String(), 3600);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $result = $service->evaluateCollectorFreshness(Carbon::now('Asia/Ho_Chi_Minh'));
+
+        $this->assertEquals(FreshnessService::STATE_FRESH, $result['status']);
+        $this->assertEquals($recentTime->toIso8601String(), $result['last_success_at']);
+    }
+
+    public function test_evaluate_collector_freshness_does_not_mutate_timestamp_on_multiple_calls(): void
+    {
+        $fixedHeartbeat = '2026-09-30T01:00:00+07:00';
+        Cache::put('freshness_collector_last_success_at', $fixedHeartbeat, 3600);
+
+        $cicdService = Mockery::mock(GitHubActionsService::class);
+        $service = new FreshnessService($cicdService);
+
+        $now = Carbon::parse('2026-09-30T01:00:20+07:00');
+
+        $result1 = $service->evaluateCollectorFreshness($now);
+        $result2 = $service->evaluateCollectorFreshness($now);
+
+        $this->assertEquals($fixedHeartbeat, $result1['last_success_at']);
+        $this->assertEquals($fixedHeartbeat, $result2['last_success_at']);
+        // Cache must still hold the original heartbeat, NOT mutated to $now
+        $this->assertEquals($fixedHeartbeat, Cache::get('freshness_collector_last_success_at'));
+    }
+
+    public function test_is_acceptable_state_enforces_production_vs_preview_policy(): void
+    {
+        // Production accepts FRESH, HEALTHY, WARNING only
+        $this->assertTrue(FreshnessService::isAcceptableState('FRESH', true));
+        $this->assertTrue(FreshnessService::isAcceptableState('HEALTHY', true));
+        $this->assertTrue(FreshnessService::isAcceptableState('WARNING', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('STALE', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('CRITICAL', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('UNAVAILABLE', true));
+        $this->assertFalse(FreshnessService::isAcceptableState('UNKNOWN', true));
+
+        // Preview accepts STALE as well
+        $this->assertTrue(FreshnessService::isAcceptableState('STALE', false));
+        $this->assertFalse(FreshnessService::isAcceptableState('CRITICAL', false));
+        $this->assertFalse(FreshnessService::isAcceptableState('UNAVAILABLE', false));
     }
 }

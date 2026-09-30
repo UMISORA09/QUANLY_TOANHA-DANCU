@@ -147,12 +147,12 @@ jobs:
             echo "configured=true" >> $GITHUB_OUTPUT
             echo "✅ Production database secrets configured."
           else
-            echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::notice ::Production database is not configured. Configure production database secrets before running production migration."
+            echo "❌ LỖI NGHIÊM TRỌNG: Production database secrets chưa được cấu hình hoặc không đầy đủ!"
+            echo "Triển khai Production bắt buộc phải thực thi Database Migration thành công trước khi deploy."
+            exit 1
           fi
 
       - name: Setup PHP for Migration
-        if: steps.check-db-config.outputs.configured == 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -160,11 +160,9 @@ jobs:
           coverage: none
 
       - name: Install Composer Dependencies
-        if: steps.check-db-config.outputs.configured == 'true'
         run: composer install --no-dev --prefer-dist --no-interaction --no-progress
 
       - name: Execute Incremental Migrations
-        if: steps.check-db-config.outputs.configured == 'true'
         env:
           APP_ENV: production
           DB_CONNECTION: mysql
