@@ -11,6 +11,7 @@ const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
 const DevConsolePage = lazy(() => import('./Pages/Dev/DevConsolePage'));
 const PublicStatusPage = lazy(() => import('./Pages/PublicStatusPage'));
 const IncidentHistoryPage = lazy(() => import('./Pages/IncidentHistoryPage'));
+const AccountActivationPage = lazy(() => import('./Pages/Auth/AccountActivationPage'));
 const NotFound = lazy(() => import('./Pages/NotFound'));
 
 interface UserSession {
@@ -167,6 +168,11 @@ const App: React.FC = () => {
     );
   }
 
+  // 0.2 Phân hệ Kích hoạt tài khoản cư dân (Public Activation Token Page)
+  if (currentPath === '/kich-hoat-tai-khoan' || currentPath.startsWith('/kich-hoat-tai-khoan')) {
+    return <AccountActivationPage />;
+  }
+
   // 0.1 Nếu truy cập các URL đăng nhập dev cũ, tự động chuyển về trang /login chung
   const isDevLoginPath =
     currentPath === '/dev/login' ||
@@ -210,6 +216,11 @@ const App: React.FC = () => {
     currentPath === '/admin/tam-tru' ||
     currentPath.startsWith('/admin/temporary-registrations');
 
+  const isAccountProvisioningAdminPath =
+    currentPath === '/admin/account-provisioning' ||
+    currentPath === '/admin/cap-phat-tai-khoan' ||
+    currentPath.startsWith('/admin/account-provisioning');
+
   const isUnifiedAdminDevPath =
     currentPath === '/admin' ||
     currentPath.startsWith('/admin/') ||
@@ -221,7 +232,8 @@ const App: React.FC = () => {
     isCicdAdminPath ||
     isRoleAdminPath ||
     isResidentAdminPath ||
-    isTemporaryRegistrationAdminPath;
+    isTemporaryRegistrationAdminPath ||
+    isAccountProvisioningAdminPath;
 
   if (isUnifiedAdminDevPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
@@ -251,6 +263,8 @@ const App: React.FC = () => {
       ? 'residents'
       : isTemporaryRegistrationAdminPath
       ? 'temporary_registrations'
+      : isAccountProvisioningAdminPath
+      ? 'account_provisioning'
       : (urlTab || 'overview');
 
     return (

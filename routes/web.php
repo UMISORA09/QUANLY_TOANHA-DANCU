@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CicdDashboardController;
@@ -258,6 +259,19 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::post('temporary-registrations/upload-cccd', [TemporaryRegistrationController::class, 'uploadCccd']);
     Route::get('temporary-registrations/{id}/export', [TemporaryRegistrationController::class, 'exportForm']);
     Route::get('temporary-registrations/{id}/download', [TemporaryRegistrationController::class, 'downloadForm']);
+});
+
+// ==========================================
+// CẤP PHÁT TÀI KHOẢN TỰ ĐỘNG (ACCOUNT PROVISIONING)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('account-provisioning', [AccountProvisioningController::class, 'index']);
+    Route::post('account-provisioning', [AccountProvisioningController::class, 'store']);
+    Route::post('account-provisioning/{id}/resend-activation', [AccountProvisioningController::class, 'resendActivation']);
+});
+Route::post('/api/v1/account-provisioning/activate', [AccountProvisioningController::class, 'activate']);
+Route::get('/kich-hoat-tai-khoan', function () {
+    return view('welcome');
 });
 
 // ==========================================

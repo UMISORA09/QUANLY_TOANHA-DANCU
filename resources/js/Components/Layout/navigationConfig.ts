@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   CreditCard,
   Sparkles,
   Wrench,
@@ -72,6 +73,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
       { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
       { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'amenities', label: 'Tiện ích tòa nhà', icon: Sparkles },
@@ -141,6 +143,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền tài khoản (RBAC)', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
       { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'account_provisioning', label: 'Cấp phát Tài khoản tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
       { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage Ticket', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
@@ -163,6 +166,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền tài khoản (RBAC)', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
       { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'account_provisioning', label: 'Cấp phát Tài khoản tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
       { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage Ticket', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
