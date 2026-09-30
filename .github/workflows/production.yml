@@ -202,6 +202,7 @@ jobs:
           fi
 
       - name: Deploy to Production Server via SSH
+        id: ssh-deploy
         if: steps.check-secrets.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -226,15 +227,25 @@ jobs:
       - name: Production Deployment Status Report
         if: always()
         run: |
+          CONFIGURED="${{ steps.check-secrets.outputs.configured }}"
+          SSH_OUTCOME="${{ steps.ssh-deploy.outcome }}"
+
           echo "========================================================================"
           echo "DEPLOYMENT STAGE OUTCOME EVALUATION:"
-          echo "1. BUILD_SUCCESS:    ghcr.io/${{ github.repository }}:${{ needs.build-and-push-production.outputs.image_tag }}"
-          if [ "${{ steps.check-secrets.outputs.configured }}" = "true" ]; then
-            echo "2. DEPLOY_SUCCESS:   SSH Dispatch Executed"
-            echo "3. DEPLOY_VERIFIED:  Health, Smoke & Freshness Passed via deploy.sh"
+          echo "1. BUILD_STATUS:     SUCCESS (ghcr.io/${{ github.repository }}:${{ needs.build-and-push-production.outputs.image_tag }})"
+
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "2. DEPLOY_STATUS:    SKIPPED (Production server credentials not configured)"
+            echo "ℹ️ OVERALL RESULT: BUILD VERIFIED & DEPLOYMENT SKIPPED (Awaiting server credentials)"
+            exit 0
+          elif [ "$SSH_OUTCOME" = "success" ]; then
+            echo "2. DEPLOY_STATUS:    SUCCESS (SSH executed deploy.sh with target image)"
+            echo "3. VERIFY_STATUS:    PASSED (Health, Smoke & Freshness verified)"
             echo "🚀 OVERALL RESULT: PRODUCTION DEPLOYMENT COMPLETED & VERIFIED"
+            exit 0
           else
-            echo "2. DEPLOY_STATUS:    NOT_CONFIGURED (Missing Server Credentials)"
-            echo "ℹ️ OVERALL RESULT: BUILD VERIFIED & AWAITING SERVER CREDENTIALS"
+            echo "2. DEPLOY_STATUS:    FAILED (SSH deployment failed with outcome: $SSH_OUTCOME)"
+            echo "🚨 OVERALL RESULT: PRODUCTION DEPLOYMENT FAILED"
+            exit 1
           fi
           echo "========================================================================"

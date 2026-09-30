@@ -26,7 +26,6 @@ concurrency:
 permissions:
   contents: read
   deployments: write
-  pull-requests: write
 
 jobs:
   ci-gate:
@@ -148,12 +147,12 @@ jobs:
             echo "configured=true" >> $GITHUB_OUTPUT
             echo "✅ Production database secrets configured."
           else
-            echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::notice ::Production database is not configured. Configure production database secrets before running production migration."
+            echo "❌ LỖI NGHIÊM TRỌNG: Production database secrets chưa được cấu hình hoặc không đầy đủ!"
+            echo "Triển khai Production bắt buộc phải thực thi Database Migration thành công trước khi deploy."
+            exit 1
           fi
 
       - name: Setup PHP for Migration
-        if: steps.check-db-config.outputs.configured == 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -161,11 +160,9 @@ jobs:
           coverage: none
 
       - name: Install Composer Dependencies
-        if: steps.check-db-config.outputs.configured == 'true'
         run: composer install --no-dev --prefer-dist --no-interaction --no-progress
 
       - name: Execute Incremental Migrations
-        if: steps.check-db-config.outputs.configured == 'true'
         env:
           APP_ENV: production
           DB_CONNECTION: mysql
@@ -183,8 +180,14 @@ jobs:
   deploy-vercel:
     name: Deploy to Vercel (Runtime & Platform)
     runs-on: ubuntu-latest
-    needs: [ci-gate]
-    if: always() && needs.ci-gate.result == 'success'
+    needs: [ci-gate, production-migration]
+    if: |
+      always() &&
+      needs.ci-gate.result == 'success' &&
+      (
+        (needs.production-migration.result == 'success') ||
+        (needs.production-migration.result == 'skipped' && github.ref != 'refs/heads/master' && (github.event_name != 'workflow_dispatch' || github.event.inputs.target_env != 'production'))
+      )
     outputs:
       deploy_url: ${{ steps.deploy.outputs.url }}
       is_production: ${{ steps.target.outputs.is_production }}
@@ -227,7 +230,7 @@ jobs:
 
       - name: Install Vercel CLI
         if: steps.check-secrets.outputs.is_configured == 'true'
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@39.3.0
 
       - name: Pull Vercel Environment Information
         if: steps.check-secrets.outputs.is_configured == 'true'
@@ -268,9 +271,11 @@ jobs:
       - name: Verify Live Endpoints
         env:
           TARGET_URL: ${{ needs.deploy-vercel.outputs.deploy_url }}
+          IS_PRODUCTION: ${{ needs.deploy-vercel.outputs.is_production }}
         run: |
           echo "============================================================"
           echo "Probing Live Deployment: ${TARGET_URL}"
+          echo "Target Environment: $([ "$IS_PRODUCTION" = "true" ] && echo "Production" || echo "Preview")"
           echo "============================================================"
 
           echo "1. Probing HTTP Root (/)"
@@ -295,10 +300,40 @@ jobs:
           FRESH_STATE=$(echo "$FRESH_JSON" | jq -r '.overall_state // "UNKNOWN"')
           echo "   Freshness overall state: ${FRESH_STATE}"
 
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            case "$FRESH_STATE" in
+              FRESH|HEALTHY|WARNING)
+                echo "   ✅ Production Freshness state acceptable: ${FRESH_STATE}"
+                ;;
+              CRITICAL|STALE|UNAVAILABLE|UNKNOWN|*)
+                echo "❌ Production Freshness verification failed: overall_state is '${FRESH_STATE}' on endpoint '${TARGET_URL}/api/monitoring/freshness'"
+                echo "   Full response: ${FRESH_JSON}"
+                echo "   Reason: State '${FRESH_STATE}' is not acceptable for production release."
+                exit 1
+                ;;
+            esac
+          else
+            case "$FRESH_STATE" in
+              FRESH|HEALTHY|WARNING|STALE)
+                echo "   ✅ Preview Freshness state acceptable: ${FRESH_STATE}"
+                ;;
+              CRITICAL|UNAVAILABLE|*)
+                echo "❌ Preview Freshness verification failed: overall_state is '${FRESH_STATE}' on endpoint '${TARGET_URL}/api/monitoring/freshness'"
+                echo "   Full response: ${FRESH_JSON}"
+                exit 1
+                ;;
+            esac
+          fi
+
           echo "4. Probing /metrics (Prometheus)"
           METRICS_BODY=$(curl -s -L "${TARGET_URL}/metrics" || echo "")
           if ! echo "$METRICS_BODY" | grep -q "freshness_age_seconds"; then
-            echo "⚠️ Warning: Metrics endpoint returned, but missing freshness_age_seconds"
+            if [ "$IS_PRODUCTION" = "true" ]; then
+              echo "❌ Production Metrics Verification Failed: Missing required metric 'freshness_age_seconds' in ${TARGET_URL}/metrics"
+              exit 1
+            else
+              echo "⚠️ Warning: Preview metrics endpoint returned, but missing freshness_age_seconds"
+            fi
           else
             echo "   ✅ Prometheus metrics verified successfully."
           fi

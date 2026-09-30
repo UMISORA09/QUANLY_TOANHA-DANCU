@@ -6,7 +6,7 @@
 #   HEALTH -> SMOKE -> FRESHNESS -> MARK_STABLE
 # ==============================================================================
 
-set -eo pipefail
+set -Eeuo pipefail
 
 TARGET_IMAGE="$1"
 DEPLOY_ENV="${2:-production}"
@@ -28,7 +28,7 @@ echo "Thời gian: $(TZ='Asia/Ho_Chi_Minh' date +'%Y-%m-%dT%H:%M:%S+07:00')"
 echo "========================================================================"
 
 # Đăng nhập GHCR nếu có thông tin xác thực
-if [ -n "$GITHUB_ACTOR" ] && [ -n "$GITHUB_TOKEN" ]; then
+if [ -n "${GITHUB_ACTOR:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
     echo "Đang xác thực với GitHub Container Registry..."
     echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 fi
@@ -44,7 +44,7 @@ else
     TIME_FILE=".last_deployed_time"
 fi
 
-# 1. Xác định và lưu trữ PREVIOUS_IMAGE trước khi chạm vào bất kỳ container nào
+# 1. Xác định và lưu trữ PREVIOUS_IMAGE trước khi thay đổi container
 CURRENT_RUNNING_IMAGE=$(docker inspect --format='{{.Config.Image}}' smart_cassavas_app 2>/dev/null || true)
 
 if [ -n "$CURRENT_RUNNING_IMAGE" ] && [ "$CURRENT_RUNNING_IMAGE" != "<no value>" ]; then
@@ -65,13 +65,59 @@ fi
 echo "Đang kéo Docker image mới: $TARGET_IMAGE ..."
 docker pull "$TARGET_IMAGE"
 
-# 3. Thực thi Database Migration kiểm soát trước khi khởi động ứng dụng mới
-# Đảm bảo schema được cập nhật an toàn, không race condition
-echo "Đang kiểm tra và thực thi Database Migrations an toàn..."
+# 3. Khởi chạy container với image mới trước (Expand phase)
+# Đảm bảo container chạy được mã nguồn mới tương thích với schema hiện tại/mới
+echo "Đang kích hoạt container ứng dụng mới với target: $TARGET_IMAGE ..."
 export DEPLOY_IMAGE="$TARGET_IMAGE"
-if ! docker compose -f docker-compose.prod.yml run --rm --no-deps app php artisan migrate --force --no-interaction; then
+if ! docker compose -f docker-compose.prod.yml up -d --remove-orphans; then
     echo "========================================================================"
-    echo "❌ LỖI NGHIÊM TRỌNG: Database Migration thất bại trước khi khởi động ứng dụng!"
+    echo "❌ LỖI NGHIÊM TRỌNG: Khởi chạy container ứng dụng mới thất bại!"
+    echo "========================================================================"
+    if [ -n "$PREVIOUS_IMAGE" ]; then
+        echo "Kích hoạt Rollback về phiên bản trước: $PREVIOUS_IMAGE ..."
+        "$SCRIPT_DIR/rollback.sh" "$DEPLOY_ENV"
+    else
+        echo "ROLLBACK_UNAVAILABLE: Không có phiên bản trước để rollback."
+    fi
+    exit 1
+fi
+
+# 4. Kiểm tra container ứng dụng đã thực sự online và sẵn sàng nhận lệnh (Readiness Probe)
+echo "Đang kiểm tra tính sẵn sàng của container ứng dụng trước khi migrate..."
+CONTAINER_READY=false
+for attempt in $(seq 1 20); do
+    if docker compose -f docker-compose.prod.yml ps app --status running | grep -q "app" 2>/dev/null; then
+        if docker compose -f docker-compose.prod.yml exec -T app php -v >/dev/null 2>&1; then
+            CONTAINER_READY=true
+            echo "Container ứng dụng đã sẵn sàng sau ${attempt}s."
+            break
+        fi
+    fi
+    sleep 1
+done
+
+if [ "$CONTAINER_READY" != "true" ]; then
+    echo "========================================================================"
+    echo "❌ LỖI NGHIÊM TRỌNG: Container ứng dụng không đạt trạng thái sẵn sàng!"
+    echo "========================================================================"
+    if [ -n "$PREVIOUS_IMAGE" ]; then
+        echo "Kích hoạt Rollback về phiên bản trước: $PREVIOUS_IMAGE ..."
+        "$SCRIPT_DIR/rollback.sh" "$DEPLOY_ENV"
+    else
+        echo "ROLLBACK_UNAVAILABLE: Không có phiên bản trước để rollback."
+    fi
+    exit 1
+fi
+
+# 5. Thực thi Database Migration an toàn (Expand-Contract principle)
+# Migration chạy sau khi app container mới đã online, không phá vỡ tính tương thích ngược
+echo "Đang kiểm tra và thực thi Database Migrations an toàn..."
+if ! docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force --no-interaction; then
+    echo "========================================================================"
+    echo "❌ LỖI NGHIÊM TRỌNG: Database Migration thất bại!"
+    echo "Giới hạn kiến trúc: Rollback phục hồi Application Image."
+    echo "Database schema được bảo toàn theo nguyên tắc tương thích ngược (Expand-Contract)."
+    echo "Không tự động chạy DB rollback nguy hiểm để tránh mất dữ liệu sản xuất."
     echo "========================================================================"
     if [ -n "$PREVIOUS_IMAGE" ]; then
         echo "Kích hoạt Rollback về phiên bản trước: $PREVIOUS_IMAGE ..."
@@ -83,11 +129,7 @@ if ! docker compose -f docker-compose.prod.yml run --rm --no-deps app php artisa
 fi
 echo "✅ Database Migrations hoàn tất an toàn."
 
-# 4. Cập nhật và khởi chạy container với image mới
-echo "Đang kích hoạt container ứng dụng mới với target: $TARGET_IMAGE ..."
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-# 5. Giai đoạn 1: Kiểm tra sức khỏe hệ thống (Phase 1: Health Check)
+# 6. Giai đoạn 1: Kiểm tra sức khỏe hệ thống (Phase 1: Health Check)
 echo "Đang xác minh sức khỏe hệ thống sau triển khai (Phase 1: Health Check)..."
 if ! "$SCRIPT_DIR/health-check.sh" "http://localhost:8000/health" 20 3; then
     echo "========================================================================"
@@ -97,7 +139,7 @@ if ! "$SCRIPT_DIR/health-check.sh" "http://localhost:8000/health" 20 3; then
     exit 1
 fi
 
-# 6. Giai đoạn 2: Kiểm thử luồng nghiệp vụ sau triển khai (Phase 2: Smoke Test)
+# 7. Giai đoạn 2: Kiểm thử luồng nghiệp vụ sau triển khai (Phase 2: Smoke Test)
 echo "Đang chạy bộ kiểm thử Smoke Test (Phase 2: Smoke Test)..."
 if ! "$SCRIPT_DIR/smoke-test.sh" "http://localhost:8000"; then
     echo "========================================================================"
@@ -107,9 +149,9 @@ if ! "$SCRIPT_DIR/smoke-test.sh" "http://localhost:8000"; then
     exit 1
 fi
 
-# 7. Giai đoạn 3: Xác minh độ tươi mới của dữ liệu quan sát (Phase 3: Freshness Verification)
+# 8. Giai đoạn 3: Xác minh độ tươi mới của dữ liệu quan sát (Phase 3: Freshness Verification)
 echo "Đang kiểm tra Freshness Observability (Phase 3: Freshness Verification)..."
-if ! "$SCRIPT_DIR/freshness-verify.sh" "http://localhost:8000/api/monitoring/freshness" 15 3; then
+if ! "$SCRIPT_DIR/freshness-verify.sh" "http://localhost:8000/api/monitoring/freshness" 15 3 "$DEPLOY_ENV"; then
     echo "========================================================================"
     echo "❌ CẢNH BÁO: Freshness Verification thất bại! Đang tự động kích hoạt Rollback..."
     echo "========================================================================"
