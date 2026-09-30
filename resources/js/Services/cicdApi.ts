@@ -135,16 +135,21 @@ export interface FreshnessSourceItem {
   last_update_at?: string | null;
   last_event_at?: string | null;
   last_observed_at?: string | null;
+  source_timestamp?: string | null;
   age_seconds: number | null;
   warning_threshold: number;
   critical_threshold: number;
   error?: string;
   message?: string;
+  reason?: string;
   workflow?: string;
   commit_sha?: string;
   environment?: string;
   version?: string;
   timestamp_field?: string;
+  execution_state?: string;
+  conclusion?: string;
+  details?: any;
 }
 
 export interface FreshnessIncidentItem {
@@ -160,17 +165,37 @@ export interface FreshnessIncidentItem {
   details?: string;
 }
 
+export interface FreshnessWorstSource {
+  source: string;
+  name: string;
+  status: FreshnessState;
+  reason: string;
+}
+
 export interface FreshnessOverviewData {
   status: 'fresh' | 'stale' | 'critical' | 'unknown' | 'unavailable';
   overall_state: FreshnessState;
+  overall_reason?: string;
   checked_at: string;
+  worst_source?: FreshnessWorstSource | null;
+  newest_data_age_seconds?: number | null;
+  oldest_data_age_seconds?: number | null;
+  metrics?: {
+    newest_data_age_seconds: number | null;
+    oldest_data_age_seconds: number | null;
+    worst_source: FreshnessWorstSource | null;
+    overall_state: FreshnessState;
+    overall_reason: string;
+  };
   collector: {
     status: FreshnessState;
     last_success_at: string | null;
-    age_seconds: number;
+    source_timestamp?: string | null;
+    age_seconds: number | null;
     warning_threshold: number;
     critical_threshold: number;
-    errors_count: number;
+    errors_count?: number;
+    reason?: string;
   };
   github_actions: FreshnessSourceItem;
   deployment: FreshnessSourceItem;
@@ -179,6 +204,8 @@ export interface FreshnessOverviewData {
     status: FreshnessState;
     last_data_update_at: string | null;
     age_seconds: number | null;
+    newest_data_age_seconds?: number | null;
+    oldest_data_age_seconds?: number | null;
     sources: FreshnessSourceItem[];
   };
   incidents: FreshnessIncidentItem[];
