@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CicdDashboardController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\UserController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -225,6 +227,61 @@ Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
     Route::put('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
     Route::patch('permissions/{id}', [PermissionController::class, 'update'])->middleware('permission:PERMISSION:UPDATE');
     Route::delete('permissions/{id}', [PermissionController::class, 'destroy'])->middleware('permission:PERMISSION:DELETE');
+});
+
+// ==========================================
+// ĐĂNG KÝ VÀ DUYỆT TẠM TRÚ / TẠM VẮNG (ADMIN)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('residents/temporary-registrations', [TemporaryRegistrationController::class, 'index']);
+    Route::post('residents/temporary-registrations', [TemporaryRegistrationController::class, 'store']);
+    Route::get('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'show']);
+    Route::put('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::patch('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::delete('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'destroy']);
+    Route::post('residents/temporary-registrations/{id}/approve', [TemporaryRegistrationController::class, 'approve']);
+    Route::post('residents/temporary-registrations/{id}/reject', [TemporaryRegistrationController::class, 'reject']);
+    Route::post('residents/temporary-registrations/{id}/submit-police', [TemporaryRegistrationController::class, 'submitToPolice']);
+    Route::post('residents/temporary-registrations/upload-cccd', [TemporaryRegistrationController::class, 'uploadCccd']);
+    Route::get('residents/temporary-registrations/{id}/export', [TemporaryRegistrationController::class, 'exportForm']);
+    Route::get('residents/temporary-registrations/{id}/download', [TemporaryRegistrationController::class, 'downloadForm']);
+
+    // Direct / Alias routes
+    Route::get('temporary-registrations', [TemporaryRegistrationController::class, 'index']);
+    Route::post('temporary-registrations', [TemporaryRegistrationController::class, 'store']);
+    Route::get('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'show']);
+    Route::put('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::patch('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
+    Route::delete('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'destroy']);
+    Route::post('temporary-registrations/{id}/approve', [TemporaryRegistrationController::class, 'approve']);
+    Route::post('temporary-registrations/{id}/reject', [TemporaryRegistrationController::class, 'reject']);
+    Route::post('temporary-registrations/{id}/submit-police', [TemporaryRegistrationController::class, 'submitToPolice']);
+    Route::post('temporary-registrations/upload-cccd', [TemporaryRegistrationController::class, 'uploadCccd']);
+    Route::get('temporary-registrations/{id}/export', [TemporaryRegistrationController::class, 'exportForm']);
+    Route::get('temporary-registrations/{id}/download', [TemporaryRegistrationController::class, 'downloadForm']);
+});
+
+// ==========================================
+// CẤP PHÁT TÀI KHOẢN TỰ ĐỘNG (ACCOUNT PROVISIONING)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('account-provisioning', [AccountProvisioningController::class, 'index']);
+    Route::post('account-provisioning', [AccountProvisioningController::class, 'store']);
+    Route::post('account-provisioning/import', [AccountProvisioningController::class, 'import']);
+    Route::post('account-provisioning/batch-resend', [AccountProvisioningController::class, 'batchResend']);
+    Route::get('account-provisioning/{id}', [AccountProvisioningController::class, 'show']);
+    Route::put('account-provisioning/{id}', [AccountProvisioningController::class, 'update']);
+    Route::delete('account-provisioning/{id}', [AccountProvisioningController::class, 'destroy']);
+    Route::post('account-provisioning/{id}/resend-activation', [AccountProvisioningController::class, 'resendActivation']);
+    Route::post('account-provisioning/{id}/toggle-lock', [AccountProvisioningController::class, 'toggleLock']);
+});
+Route::get('/api/v1/account-provisioning/status', [AccountProvisioningController::class, 'checkStatus']);
+Route::post('/api/v1/account-provisioning/activate', [AccountProvisioningController::class, 'activate']);
+Route::get('/kich-hoat-tai-khoan', function () {
+    return view('welcome');
+});
+Route::get('/activate-account', function () {
+    return view('welcome');
 });
 
 // ==========================================
