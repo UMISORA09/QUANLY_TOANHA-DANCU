@@ -58,8 +58,8 @@ class GitHubActionsService
         }
 
         return Cache::remember($cacheKey, 30, function () use ($filters, $force) {
-            $branches = $this->getGitBranches();
             $health = $this->getSystemHealth();
+            $branches = $this->getGitBranches();
             $pipelines = $this->getPipelines($filters, $force);
             $deployments = $this->getDeployments($force);
             $environments = $this->getEnvironments();
@@ -720,6 +720,12 @@ class GitHubActionsService
         }
 
         return Cache::remember($cacheKey, 10, function () {
+            // Đo độ trễ xử lý thực tế của Laravel Framework từ lúc tiếp nhận HTTP Request đến Controller
+            $reqStart = request()->attributes->get('request_start_time');
+            $phpResponseTime = $reqStart
+                ? max(1.0, round((microtime(true) - $reqStart) * 1000, 1))
+                : (defined('LARAVEL_START') ? max(1.0, round((microtime(true) - LARAVEL_START) * 1000, 1)) : 15.0);
+
             $dbStatus = 'operational';
             $dbLatency = $this->measureDatabaseLatency();
             if ($dbLatency === -1) {
@@ -732,13 +738,6 @@ class GitHubActionsService
             $diskFree = @disk_free_space($base) ?: (50 * 1024 * 1024 * 1024);
             $diskUsed = $diskTotal - $diskFree;
             $diskPercent = round(($diskUsed / $diskTotal) * 100, 1);
-
-            // Đo độ trễ vi xử lý tính toán và bộ nhớ thực tế của PHP Application Runtime
-            $phpBenchStart = microtime(true);
-            for ($i = 0; $i < 50; $i++) {
-                hash('xxh128', (string) $i);
-            }
-            $phpResponseTime = round((microtime(true) - $phpBenchStart) * 1000, 2);
 
             // Kiểm tra thực tế Docker CLI và Docker Daemon (Không coi docker --version là Engine operational)
             $dockerStatus = 'not_available';
