@@ -86,6 +86,8 @@ interface HomeProps {
   onNavigateManager?: () => void;
   onNavigateResident?: () => void;
   onNavigateReception?: () => void;
+  onNavigateLogin?: (role?: UserRole) => void;
+  onNavigateRegister?: (type?: 'owner' | 'tenant') => void;
   currentUserRole?: string;
 }
 
@@ -96,6 +98,8 @@ export const Home: React.FC<HomeProps> = ({
   onNavigateManager,
   onNavigateResident,
   onNavigateReception,
+  onNavigateLogin,
+  onNavigateRegister,
   currentUserRole,
 }) => {
   // Navigation & Interactive states
@@ -147,10 +151,28 @@ export const Home: React.FC<HomeProps> = ({
     setTimeout(() => setLoginFeedback(null), 3000);
   };
 
-  const openAuth = (mode: 'login' | 'register', role?: UserRole) => {
+  const openAuth = (mode: 'login' | 'register', role?: UserRole, registerType?: 'owner' | 'tenant') => {
+    if (mode === 'login') {
+      if (onNavigateLogin) {
+        onNavigateLogin(role);
+      } else {
+        window.history.pushState({}, '', role ? `/login?role=${role}` : '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
+    if (mode === 'register') {
+      const targetUrl = registerType ? `/register?type=${registerType}` : '/register';
+      if (onNavigateRegister) {
+        onNavigateRegister(registerType);
+      } else {
+        window.history.pushState({}, '', targetUrl);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
     setAuthModal(mode);
     setAuthModalRole(role || null);
-    window.history.pushState({}, '', mode === 'login' ? '/login' : '/register');
   };
 
   const closeAuth = () => {
@@ -2045,7 +2067,7 @@ export const Home: React.FC<HomeProps> = ({
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 z-10">
             <button
-              onClick={() => setAuthModal('register')}
+              onClick={() => openAuth('register')}
               className="bg-white hover:bg-neutral-100 text-neutral-950 text-sm font-semibold px-7 py-3.5 rounded-sm transition-all shadow-md hover:shadow-lg active:scale-95"
             >
               Trải nghiệm miễn phí
@@ -2106,7 +2128,7 @@ export const Home: React.FC<HomeProps> = ({
                 </li>
                 <li>
                   <button
-                    onClick={() => setAuthModal('register')}
+                    onClick={() => openAuth('register')}
                     className="hover:text-neutral-950 transition-colors text-left"
                   >
                     Tạo tài khoản

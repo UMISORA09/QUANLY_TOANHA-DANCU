@@ -47,6 +47,22 @@ Route::get('/dang-ky', function () {
     return view('welcome');
 });
 
+Route::get('/forgot-password', function () {
+    return view('welcome');
+});
+
+Route::get('/quen-mat-khau', function () {
+    return view('welcome');
+});
+
+Route::get('/verify-otp', function () {
+    return view('welcome');
+});
+
+Route::get('/reset-password', function () {
+    return view('welcome');
+});
+
 Route::get('/admin', function () {
     return view('welcome');
 });
@@ -131,6 +147,24 @@ Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::cla
 // API Auth (Có Throttle Rate Limiting chống Brute-Force)
 Route::post('/api/v1/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/api/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/api/v1/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
+Route::post('/api/auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
+Route::post('/api/v1/auth/send-register-otp', [AuthController::class, 'sendRegisterOtp'])->middleware('throttle:10,1');
+Route::post('/api/auth/send-register-otp', [AuthController::class, 'sendRegisterOtp'])->middleware('throttle:10,1');
+Route::post('/api/v1/auth/verify-register-otp', [AuthController::class, 'verifyRegisterOtp'])->middleware('throttle:20,1');
+Route::post('/api/auth/verify-register-otp', [AuthController::class, 'verifyRegisterOtp'])->middleware('throttle:20,1');
+Route::post('/api/v1/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
+Route::post('/api/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
+Route::post('/api/v1/auth/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:20,1');
+Route::post('/api/auth/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:20,1');
+Route::post('/api/v1/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
+Route::post('/api/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
+Route::get('/api/v1/auth/public-apartments', [AuthController::class, 'publicApartments']);
+Route::get('/api/auth/public-apartments', [AuthController::class, 'publicApartments']);
+Route::get('/api/v1/auth/rental-listings', [AuthController::class, 'rentalListings']);
+Route::get('/api/auth/rental-listings', [AuthController::class, 'rentalListings']);
+Route::get('/api/v1/rentals/listings', [AuthController::class, 'rentalListings']);
+Route::get('/api/rentals/listings', [AuthController::class, 'rentalListings']);
 Route::get('/api/v1/auth/me', [AuthController::class, 'me']);
 Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
 
