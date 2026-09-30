@@ -1548,6 +1548,8 @@ class GitHubActionsService
     protected function measureDatabaseLatency(): int
     {
         try {
+            DB::connection()->getPdo();
+
             $start = microtime(true);
             DB::select('SELECT 1');
 
