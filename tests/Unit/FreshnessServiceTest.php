@@ -6,11 +6,21 @@ use App\Services\Cicd\GitHubActionsService;
 use App\Services\Freshness\FreshnessService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
 
 class FreshnessServiceTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (Schema::hasTable('freshness_heartbeats')) {
+            DB::table('freshness_heartbeats')->truncate();
+        }
+    }
+
     protected function tearDown(): void
     {
         Mockery::close();

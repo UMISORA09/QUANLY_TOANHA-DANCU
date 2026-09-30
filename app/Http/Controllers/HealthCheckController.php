@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FreshnessHeartbeat;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -69,7 +70,7 @@ class HealthCheckController extends Controller
         try {
             $cacheKey = 'health_ping_'.uniqid();
             Cache::put($cacheKey, 1, 5);
-            if (Cache::get($cacheKey) !== 1) {
+            if ((int) Cache::get($cacheKey) !== 1) {
                 $cacheStatus = 'degraded';
             }
             Cache::forget($cacheKey);
@@ -88,9 +89,61 @@ class HealthCheckController extends Controller
         $httpStatus = ($overallStatus === 'unhealthy') ? 503 : 200;
 
         // Ghi nhận thời điểm probe quan sát sức khỏe ứng dụng (Health Probe Observation)
-        // Để FreshnessService chỉ đọc chứ không tự tạo timestamp
+        // DB là Source of Truth bền vững, Cache dùng để tăng tốc đọc
+        $obsTime = now('Asia/Ho_Chi_Minh');
+        $details = [
+            'database' => $databaseStatus,
+            'cache' => $cacheStatus,
+            'database_latency_ms' => $databaseLatencyMs,
+            'uptime_seconds' => $uptime,
+        ];
+
         if ($overallStatus === 'healthy') {
-            Cache::put('application_health_last_observed_at', now('Asia/Ho_Chi_Minh')->toIso8601String(), 3600);
+            Cache::put('application_health_last_observed_at', $obsTime->toIso8601String(), 86400);
+            Cache::put('application_health_last_status', 'healthy', 86400);
+            Cache::put('application_health_last_details', $details, 86400);
+            Cache::forget('application_health_failure_reason');
+
+            $lastHeartbeatSync = Cache::get('application_health_last_db_heartbeat_at');
+            $shouldSyncDb = app()->environment('testing')
+                || ! $lastHeartbeatSync
+                || now()->diffInSeconds($lastHeartbeatSync) >= 15;
+
+            if ($shouldSyncDb) {
+                try {
+                    FreshnessHeartbeat::updateOrCreate(
+                        ['channel' => 'application_health'],
+                        [
+                            'last_success_at' => $obsTime,
+                            'status' => 'healthy',
+                            'details' => "DB: {$databaseStatus} ({$databaseLatencyMs}ms), Cache: {$cacheStatus}, Uptime: {$uptime}s",
+                            'metadata' => $details,
+                        ]
+                    );
+                    Cache::put('application_health_last_db_heartbeat_at', $obsTime->toIso8601String(), 86400);
+                } catch (\Throwable) {
+                    // Graceful fallback nếu bảng chưa sẵn sàng
+                }
+            }
+        } else {
+            Cache::put('application_health_last_status', $overallStatus, 86400);
+            Cache::put('application_health_failure_reason', "Database: {$databaseStatus}, Cache: {$cacheStatus}", 86400);
+            Cache::put('application_health_last_failed_at', $obsTime->toIso8601String(), 86400);
+            // Quan trọng: Không cập nhật last_success_at khi probe thất bại
+
+            try {
+                FreshnessHeartbeat::updateOrCreate(
+                    ['channel' => 'application_health'],
+                    [
+                        'status' => $overallStatus,
+                        'details' => "Database: {$databaseStatus}, Cache: {$cacheStatus}",
+                        'metadata' => $details,
+                    ]
+                );
+                Cache::put('application_health_last_db_heartbeat_at', $obsTime->toIso8601String(), 86400);
+            } catch (\Throwable) {
+                // Graceful fallback
+            }
         }
 
         $data = [

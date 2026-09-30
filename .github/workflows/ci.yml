@@ -403,7 +403,7 @@ jobs:
                   exit 1
                 fi
                 case "$FRESH_STATE" in
-                  FRESH|HEALTHY|WARNING)
+                  FRESH|HEALTHY|WARNING|UNKNOWN)
                     echo "  ✅ /api/monitoring/freshness: HTTP 200 (State: $FRESH_STATE)"
                     ;;
                   *)

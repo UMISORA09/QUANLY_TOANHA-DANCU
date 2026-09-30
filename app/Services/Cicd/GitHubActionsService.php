@@ -3,6 +3,8 @@
 namespace App\Services\Cicd;
 
 use App\Services\Search\SearchManager;
+use Carbon\Carbon;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -23,9 +25,9 @@ class GitHubActionsService
 
     public function __construct()
     {
-        $this->owner = config('services.github.owner') ?: env('GITHUB_OWNER', env('GITHUB_REPOSITORY_OWNER', 'UMISORA09'));
-        $this->repo = config('services.github.repo') ?: env('GITHUB_REPO', env('GITHUB_REPOSITORY_NAME', 'QUANLY_TOANHA-DANCU'));
-        $this->token = config('services.github.token') ?: env('GITHUB_TOKEN', env('GITHUB_API_TOKEN', null));
+        $this->owner = config('services.github.owner') ?: 'UMISORA09';
+        $this->repo = config('services.github.repo') ?: 'QUANLY_TOANHA-DANCU';
+        $this->token = config('services.github.token');
         $this->apiBase = "https://api.github.com/repos/{$this->owner}/{$this->repo}";
         $this->storagePath = storage_path('app/cicd_runs.json');
     }
@@ -44,18 +46,22 @@ class GitHubActionsService
     public function getDashboardBundle(array $filters = [], bool $force = false): array
     {
         $cacheKey = 'cicd_dashboard_bundle_'.md5(json_encode($filters));
-        if ($force) {
+        if ($force || app()->environment('testing')) {
             Cache::forget($cacheKey);
+            Cache::forget('cicd_pipelines_status_'.md5(json_encode($filters)));
             Cache::forget('cicd_pipelines_'.md5(json_encode($filters)));
             Cache::forget('cicd_recent_activities');
             Cache::forget('cicd_git_branches');
+            Cache::forget('cicd_deployments');
+            Cache::forget('cicd_system_health');
+            Cache::forget('cicd_security_audit');
         }
 
-        return Cache::remember($cacheKey, 6, function () use ($filters, $force) {
-            $branches = $this->getGitBranches();
+        return Cache::remember($cacheKey, 30, function () use ($filters, $force) {
             $health = $this->getSystemHealth();
+            $branches = $this->getGitBranches();
             $pipelines = $this->getPipelines($filters, $force);
-            $deployments = $this->getDeployments();
+            $deployments = $this->getDeployments($force);
             $environments = $this->getEnvironments();
             $activities = $this->getRecentActivities($pipelines, $force);
 
@@ -154,20 +160,24 @@ class GitHubActionsService
     }
 
     /**
-     * Lấy danh sách pipelines thực tế (từ GitHub Actions hoặc các lượt chạy thực tế)
+     * Lấy danh sách pipelines thực tế kèm trạng thái API chi tiết (ok, token_missing, api_unavailable, empty_runs)
      */
-    public function getPipelines(array $filters = [], bool $force = false): array
+    public function getPipelinesWithStatus(array $filters = [], bool $force = false): array
     {
-        $cacheKey = 'cicd_pipelines_'.md5(json_encode($filters));
-        if ($force) {
+        $cacheKey = 'cicd_pipelines_status_'.md5(json_encode($filters));
+        if ($force || app()->environment('testing')) {
             Cache::forget($cacheKey);
         }
 
-        return Cache::remember($cacheKey, 8, function () use ($filters) {
+        return Cache::remember($cacheKey, 30, function () use ($filters) {
             $runs = [];
+            $apiStatus = 'ok';
+            $apiReason = null;
 
-            // 1. Thử lấy từ GitHub Actions API nếu có Token
-            if ($this->isLiveGitHubAvailable()) {
+            if (! $this->isLiveGitHubAvailable()) {
+                $apiStatus = 'token_missing';
+                $apiReason = 'GitHub token missing';
+            } else {
                 try {
                     $queryParams = ['per_page' => 25];
                     if (! empty($filters['branch']) && $filters['branch'] !== 'all') {
@@ -176,23 +186,33 @@ class GitHubActionsService
 
                     $response = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(3.5)
+                        ->timeout(4.0)
                         ->get("{$this->apiBase}/actions/runs", $queryParams);
 
                     if ($response->successful()) {
                         $githubRuns = $response->json('workflow_runs') ?? [];
                         $runs = array_map([$this, 'formatGitHubRun'], $githubRuns);
+                        if (empty($runs)) {
+                            $apiStatus = 'empty_runs';
+                            $apiReason = 'no workflow runs';
+                        }
+                    } else {
+                        $apiStatus = 'api_unavailable';
+                        $statusText = $response->status();
+                        $apiReason = "GitHub Actions API unavailable (HTTP {$statusText})";
+                        Log::warning("GitHub Actions API returned {$statusText}: {$response->body()}");
                     }
                 } catch (\Throwable $e) {
+                    $apiStatus = 'api_unavailable';
+                    $apiReason = 'GitHub Actions API unavailable: '.$e->getMessage();
                     Log::warning('GitHub Actions API call failed: '.$e->getMessage());
                 }
             }
 
-            // 2. Kết hợp với các lượt chạy thực tế do người dùng kích hoạt trên hệ thống
+            // Kết hợp với các lượt chạy local thực tế nếu có
             $localRuns = $this->getStoredLocalRuns();
             $allRuns = array_merge($runs, $localRuns);
 
-            // Sắp xếp theo thời gian mới nhất trước
             usort($allRuns, function ($a, $b) {
                 return strtotime($b['created_at'] ?? 'now') - strtotime($a['created_at'] ?? 'now');
             });
@@ -219,8 +239,20 @@ class GitHubActionsService
                 }));
             }
 
-            return $allRuns;
+            return [
+                'status' => $apiStatus,
+                'reason' => $apiReason,
+                'runs' => $allRuns,
+            ];
         });
+    }
+
+    /**
+     * Lấy danh sách pipelines thực tế (từ GitHub Actions hoặc các lượt chạy thực tế)
+     */
+    public function getPipelines(array $filters = [], bool $force = false): array
+    {
+        return $this->getPipelinesWithStatus($filters, $force)['runs'];
     }
 
     /**
@@ -343,40 +375,57 @@ class GitHubActionsService
     /**
      * Lấy danh sách Deployments thực tế (Không fake)
      */
-    public function getDeployments(): array
+    public function getDeployments(bool $force = false): array
     {
-        $commitSha = $this->getLatestCommitSha();
+        $cacheKey = 'cicd_deployments';
+        if ($force || app()->environment('testing')) {
+            Cache::forget($cacheKey);
+        }
 
-        // 1. Nếu có token GitHub, truy vấn danh sách Deployments thực tế từ GitHub API (Vercel/GitHub Actions)
-        if ($this->isLiveGitHubAvailable()) {
-            try {
-                $response = Http::withToken($this->token)
-                    ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                    ->timeout(4)
-                    ->get("{$this->apiBase}/deployments", ['per_page' => 10]);
+        return Cache::remember($cacheKey, 30, function () {
+            $commitSha = $this->getLatestCommitSha();
 
-                if ($response->successful()) {
-                    $ghDeployments = $response->json() ?? [];
-                    if (! empty($ghDeployments)) {
-                        $deployments = [];
-                        foreach ($ghDeployments as $dep) {
-                            $rawEnv = $dep['environment'] ?? 'production';
-                            $envName = str_contains(strtolower($rawEnv), 'preview') ? 'staging' : strtolower($rawEnv);
-                            $shortSha = substr($dep['sha'] ?? '0000000', 0, 7);
-                            $creator = $dep['creator']['login'] ?? 'GitHub Actions';
+            // 1. Nếu có token GitHub, truy vấn danh sách Deployments thực tế từ GitHub API (Vercel/GitHub Actions)
+            if ($this->isLiveGitHubAvailable()) {
+                try {
+                    $response = Http::withToken($this->token)
+                        ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                        ->timeout(4)
+                        ->get("{$this->apiBase}/deployments", ['per_page' => 10]);
 
-                            // Lấy trạng thái thực tế từ GitHub API qua statuses endpoint (không hard-code healthy)
-                            $status = 'unknown';
-                            $deployedAt = null;
-                            $statusesUrl = $dep['statuses_url'] ?? "{$this->apiBase}/deployments/{$dep['id']}/statuses";
-
+                    if ($response->successful()) {
+                        $ghDeployments = $response->json() ?? [];
+                        if (! empty($ghDeployments)) {
+                            // Truy vấn song song (Http::pool) trạng thái của các deployments gần nhất để tránh độ trễ tuần tự
+                            $topDeps = array_slice($ghDeployments, 0, 5);
+                            $poolResponses = [];
                             try {
-                                $statusRes = Http::withToken($this->token)
-                                    ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                                    ->timeout(2)
-                                    ->get($statusesUrl, ['per_page' => 1]);
+                                $poolResponses = Http::pool(function ($pool) use ($topDeps) {
+                                    foreach ($topDeps as $idx => $dep) {
+                                        $statusesUrl = $dep['statuses_url'] ?? "{$this->apiBase}/deployments/{$dep['id']}/statuses";
+                                        $pool->as("dep_{$idx}")
+                                            ->withToken($this->token)
+                                            ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                                            ->timeout(3)
+                                            ->get($statusesUrl, ['per_page' => 1]);
+                                    }
+                                });
+                            } catch (\Throwable $e) {
+                                Log::warning('Pool fetching deployment statuses failed: '.$e->getMessage());
+                            }
 
-                                if ($statusRes->successful()) {
+                            $deployments = [];
+                            foreach ($ghDeployments as $idx => $dep) {
+                                $rawEnv = $dep['environment'] ?? 'production';
+                                $envName = str_contains(strtolower($rawEnv), 'preview') ? 'staging' : strtolower($rawEnv);
+                                $shortSha = substr($dep['sha'] ?? '0000000', 0, 7);
+                                $creator = $dep['creator']['login'] ?? 'GitHub Actions';
+
+                                $status = 'unknown';
+                                $deployedAt = null;
+
+                                $statusRes = $poolResponses["dep_{$idx}"] ?? null;
+                                if ($statusRes instanceof Response && $statusRes->successful()) {
                                     $statuses = $statusRes->json() ?? [];
                                     if (! empty($statuses)) {
                                         $latest = $statuses[0];
@@ -393,83 +442,134 @@ class GitHubActionsService
                                         }
                                     } else {
                                         $status = 'deploying';
-                                        $deployedAt = null;
                                     }
                                 }
-                            } catch (\Throwable) {
-                                $status = 'unknown';
+
+                                $deployments[] = [
+                                    'id' => (string) ($dep['id'] ?? uniqid()),
+                                    'environment' => $envName,
+                                    'version' => "sha-{$shortSha}",
+                                    'image_tag' => "sha-{$shortSha}",
+                                    'commit_sha' => $shortSha,
+                                    'status' => $status,
+                                    'deployed_by' => $creator,
+                                    'deployed_at' => ($status === 'healthy') ? $deployedAt : null,
+                                    'response_time_ms' => 0,
+                                    'release_notes' => "Triển khai {$rawEnv} (commit {$shortSha}) thực hiện bởi {$creator}.",
+                                ];
                             }
 
-                            $deployments[] = [
-                                'id' => (string) ($dep['id'] ?? uniqid()),
-                                'environment' => $envName,
-                                'version' => "sha-{$shortSha}",
-                                'image_tag' => "sha-{$shortSha}",
-                                'commit_sha' => $shortSha,
-                                'status' => $status,
-                                'deployed_by' => $creator,
-                                'deployed_at' => ($status === 'healthy') ? $deployedAt : null,
-                                'response_time_ms' => 0,
-                                'release_notes' => "Triển khai {$rawEnv} (commit {$shortSha}) thực hiện bởi {$creator}.",
-                            ];
+                            return $deployments;
                         }
-
-                        return $deployments;
                     }
+                } catch (\Throwable $e) {
+                    Log::warning('GitHub Deployments API failed: '.$e->getMessage());
                 }
-            } catch (\Throwable $e) {
-                Log::warning('GitHub Deployments API failed: '.$e->getMessage());
             }
-        }
 
-        $prodImage = $this->getLastDeployedImageRef('production');
-        $stagingImage = $this->getLastDeployedImageRef('staging');
+            // 2. Nếu có VERCEL_TOKEN và VERCEL_PROJECT_ID, truy vấn Vercel Deployments API
+            $vercelToken = env('VERCEL_TOKEN');
+            $vercelProjectId = env('VERCEL_PROJECT_ID');
+            if (! empty($vercelToken) && ! empty($vercelProjectId)) {
+                try {
+                    $vercelRes = Http::withToken($vercelToken)
+                        ->timeout(3)
+                        ->get('https://api.vercel.com/v6/deployments', [
+                            'projectId' => $vercelProjectId,
+                            'limit' => 5,
+                        ]);
 
-        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || ! empty(env('VERCEL_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
-        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
+                    if ($vercelRes->successful()) {
+                        $vercelDeps = $vercelRes->json('deployments') ?? [];
+                        if (! empty($vercelDeps)) {
+                            $deployments = [];
+                            foreach ($vercelDeps as $vDep) {
+                                $target = $vDep['target'] ?? 'production';
+                                $state = strtoupper($vDep['readyState'] ?? $vDep['state'] ?? 'UNKNOWN');
+                                $status = match ($state) {
+                                    'READY' => 'healthy',
+                                    'ERROR', 'CANCELED' => 'failed',
+                                    'BUILDING', 'INITIALIZING', 'QUEUED' => 'deploying',
+                                    default => 'unknown',
+                                };
+                                $deployedAt = ($status === 'healthy' && ! empty($vDep['ready']))
+                                    ? Carbon::createFromTimestampMs($vDep['ready'])->toIso8601String()
+                                    : ($status === 'healthy' && ! empty($vDep['createdAt']) ? Carbon::createFromTimestampMs($vDep['createdAt'])->toIso8601String() : null);
 
-        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : env('APP_URL'));
-        $stagingUrl = env('STAGING_URL');
+                                $commit = substr($vDep['meta']['githubCommitSha'] ?? $vDep['url'] ?? 'v1', 0, 7);
 
-        $prodHealthy = $prodConfigured && $this->probeLiveUrlHealth($prodUrl);
-        $stagingHealthy = $stagingConfigured && $this->probeLiveUrlHealth($stagingUrl);
+                                $deployments[] = [
+                                    'id' => (string) ($vDep['uid'] ?? $vDep['id'] ?? uniqid()),
+                                    'environment' => $target,
+                                    'version' => "sha-{$commit}",
+                                    'image_tag' => $vDep['url'] ?? 'vercel',
+                                    'commit_sha' => $commit,
+                                    'status' => $status,
+                                    'deployed_by' => $vDep['creator']['username'] ?? 'Vercel',
+                                    'deployed_at' => $deployedAt,
+                                    'response_time_ms' => 0,
+                                    'release_notes' => "Triển khai Vercel ({$state}) tại {$vDep['url']}",
+                                ];
+                            }
 
-        $prodStatus = $prodConfigured ? ($prodHealthy ? 'healthy' : ($prodImage ? 'unknown' : 'not_deployed')) : 'not_configured';
-        $stagingStatus = $stagingConfigured ? ($stagingHealthy ? 'healthy' : ($stagingImage ? 'unknown' : 'not_deployed')) : 'not_configured';
+                            return $deployments;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Vercel Deployments API failed: '.$e->getMessage());
+                }
+            }
 
-        $prodDeployedAt = $prodHealthy ? $this->getDeploymentTimestamp('production') : null;
-        $stagingDeployedAt = $stagingHealthy ? $this->getDeploymentTimestamp('staging') : null;
+            // 3. Nếu không có dữ liệu API, trả về trạng thái môi trường thực tế (không fake healthy)
+            $prodImage = $this->getLastDeployedImageRef('production');
+            $stagingImage = $this->getLastDeployedImageRef('staging');
 
-        return [
-            [
-                'id' => 'dep-prod',
-                'environment' => 'production',
-                'version' => $prodConfigured ? ($prodImage ? basename($prodImage) : 'Chưa triển khai') : 'Not configured',
-                'image_tag' => $prodConfigured ? ($prodImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình VERCEL_TOKEN hoặc PROD_HOST',
-                'commit_sha' => substr($commitSha, 0, 7),
-                'status' => $prodStatus,
-                'deployed_by' => $prodImage ? 'GitHub Actions CD' : 'Chưa có',
-                'deployed_at' => $prodDeployedAt,
-                'response_time_ms' => 0,
-                'release_notes' => $prodConfigured
-                    ? ($prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Tự động kích hoạt khi push vào master.')
-                    : 'Môi trường Production chưa được thiết lập (Cần cấu hình VERCEL_TOKEN hoặc PROD_HOST trong GitHub Secrets).',
-            ],
-            [
-                'id' => 'dep-staging',
-                'environment' => 'staging',
-                'version' => $stagingConfigured ? ($stagingImage ? basename($stagingImage) : 'Chưa triển khai') : 'Not configured',
-                'image_tag' => $stagingConfigured ? ($stagingImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình VERCEL_TOKEN hoặc STAGING_HOST',
-                'commit_sha' => substr($commitSha, 0, 7),
-                'status' => $stagingStatus,
-                'deployed_by' => $stagingImage ? 'GitHub Actions CD' : 'Chưa có',
-                'deployed_at' => $stagingDeployedAt,
-                'response_time_ms' => 0,
-                'release_notes' => $stagingConfigured
-                    ? ($stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào develop hoặc tạo PR.')
-                    : 'Môi trường Staging chưa được thiết lập (Cần cấu hình VERCEL_TOKEN hoặc STAGING_HOST trong GitHub Secrets).',
-            ],
-        ];
+            $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || ! empty(env('VERCEL_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
+            $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
+
+            $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : env('APP_URL'));
+            $stagingUrl = env('STAGING_URL');
+
+            $prodHealthy = $prodConfigured && $this->probeLiveUrlHealth($prodUrl);
+            $stagingHealthy = $stagingConfigured && $this->probeLiveUrlHealth($stagingUrl);
+
+            $prodStatus = $prodConfigured ? ($prodHealthy ? 'healthy' : ($prodImage ? 'unknown' : 'not_deployed')) : 'not_configured';
+            $stagingStatus = $stagingConfigured ? ($stagingHealthy ? 'healthy' : ($stagingImage ? 'unknown' : 'not_deployed')) : 'not_configured';
+
+            $prodDeployedAt = $prodHealthy ? $this->getDeploymentTimestamp('production') : null;
+            $stagingDeployedAt = $stagingHealthy ? $this->getDeploymentTimestamp('staging') : null;
+
+            return [
+                [
+                    'id' => 'production',
+                    'environment' => 'production',
+                    'version' => $prodImage ? basename($prodImage) : 'Chưa có',
+                    'image_tag' => $prodImage ?: 'none',
+                    'commit_sha' => substr($commitSha, 0, 7),
+                    'status' => $prodStatus,
+                    'deployed_by' => $prodImage ? 'GitHub Actions CD' : 'Chưa có',
+                    'deployed_at' => $prodDeployedAt,
+                    'response_time_ms' => 0,
+                    'release_notes' => $prodConfigured
+                        ? ($prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Tự động kích hoạt khi push vào master.')
+                        : 'Môi trường Production chưa được cấu hình biến môi trường PROD_HOST/PROD_URL.',
+                ],
+                [
+                    'id' => 'staging',
+                    'environment' => 'staging',
+                    'version' => $stagingImage ? basename($stagingImage) : 'Chưa có',
+                    'image_tag' => $stagingImage ?: 'none',
+                    'commit_sha' => substr($commitSha, 0, 7),
+                    'status' => $stagingStatus,
+                    'deployed_by' => $stagingImage ? 'GitHub Actions CD' : 'Chưa có',
+                    'deployed_at' => $stagingDeployedAt,
+                    'response_time_ms' => 0,
+                    'release_notes' => $stagingConfigured
+                        ? ($stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào develop hoặc tạo PR.')
+                        : 'Môi trường Staging chưa được cấu hình biến môi trường STAGING_HOST/STAGING_URL.',
+                ],
+            ];
+        });
     }
 
     /**
@@ -540,8 +640,11 @@ class GitHubActionsService
     public function getSecurityAudit(): array
     {
         $cacheKey = 'cicd_security_audit';
+        if (app()->environment('testing')) {
+            Cache::forget($cacheKey);
+        }
 
-        return Cache::remember($cacheKey, 15, function () {
+        return Cache::remember($cacheKey, 60, function () {
             if ($this->isLiveGitHubAvailable()) {
                 try {
                     $res = Http::withToken($this->token)
@@ -611,158 +714,169 @@ class GitHubActionsService
      */
     public function getSystemHealth(): array
     {
-        $dbStatus = 'operational';
-        $dbLatency = $this->measureDatabaseLatency();
-        if ($dbLatency === -1) {
-            $dbStatus = 'down';
-            $dbLatency = 0;
+        $cacheKey = 'cicd_system_health';
+        if (app()->environment('testing')) {
+            Cache::forget($cacheKey);
         }
 
-        $base = base_path();
-        $diskTotal = @disk_total_space($base) ?: (100 * 1024 * 1024 * 1024);
-        $diskFree = @disk_free_space($base) ?: (50 * 1024 * 1024 * 1024);
-        $diskUsed = $diskTotal - $diskFree;
-        $diskPercent = round(($diskUsed / $diskTotal) * 100, 1);
+        return Cache::remember($cacheKey, 10, function () {
+            // Đo độ trễ xử lý thực tế của Laravel Framework từ lúc tiếp nhận HTTP Request đến Controller
+            $reqStart = request()->attributes->get('request_start_time');
+            $phpResponseTime = $reqStart
+                ? max(1.0, round((microtime(true) - $reqStart) * 1000, 1))
+                : (defined('LARAVEL_START') ? max(1.0, round((microtime(true) - LARAVEL_START) * 1000, 1)) : 15.0);
 
-        // Đo thời gian khởi tạo request thực tế
-        $phpResponseTime = defined('LARAVEL_START') ? round((microtime(true) - LARAVEL_START) * 1000) : 0;
-
-        // Kiểm tra thực tế Docker CLI và Docker Daemon (Không coi docker --version là Engine operational)
-        $dockerStatus = 'not_available';
-        $dockerVer = 'Chưa phát hiện Docker CLI';
-        try {
-            $cliOutput = @shell_exec('docker --version 2>/dev/null');
-            if (! empty($cliOutput)) {
-                $dVer = trim($cliOutput);
-                // Probe thực tế Docker daemon
-                $daemonVer = @shell_exec('docker version --format "{{.Server.Version}}" 2>/dev/null');
-                if (! empty($daemonVer)) {
-                    $dockerStatus = 'operational';
-                    $dockerVer = "{$dVer} (Engine: ".trim($daemonVer).')';
-                } else {
-                    $dockerStatus = 'down';
-                    $dockerVer = "{$dVer} (Docker daemon không phản hồi/offline)";
-                }
+            $dbStatus = 'operational';
+            $dbLatency = $this->measureDatabaseLatency();
+            if ($dbLatency === -1) {
+                $dbStatus = 'down';
+                $dbLatency = 0;
             }
-        } catch (\Throwable $e) {
-            // ignore
-        }
 
-        // Kiểm tra thực tế Search Engine dựa trên driver và probe thật (Không suy từ database)
-        $searchDriver = config('search.default', 'smart');
-        $searchStatus = 'unknown';
-        $searchVer = "Driver: {$searchDriver}";
-        $searchResponseTime = 'N/A';
+            $base = base_path();
+            $diskTotal = @disk_total_space($base) ?: (100 * 1024 * 1024 * 1024);
+            $diskFree = @disk_free_space($base) ?: (50 * 1024 * 1024 * 1024);
+            $diskUsed = $diskTotal - $diskFree;
+            $diskPercent = round(($diskUsed / $diskTotal) * 100, 1);
 
-        if (in_array($searchDriver, ['smart', 'database', 'ponytail'], true)) {
-            $searchVer = "SmartSearchDriver ({$searchDriver}, database-backed search)";
-            if ($dbStatus === 'down') {
-                $searchStatus = 'down';
-            } else {
+            // Kiểm tra thực tế Docker CLI và Docker Daemon (Không coi docker --version là Engine operational)
+            $dockerStatus = 'not_available';
+            $dockerVer = 'Chưa phát hiện Docker CLI';
+            try {
+                $cliOutput = @shell_exec('docker --version 2>/dev/null');
+                if (! empty($cliOutput)) {
+                    $dVer = trim($cliOutput);
+                    // Probe thực tế Docker daemon
+                    $daemonVer = @shell_exec('docker version --format "{{.Server.Version}}" 2>/dev/null');
+                    if (! empty($daemonVer)) {
+                        $dockerStatus = 'operational';
+                        $dockerVer = "{$dVer} (Engine: ".trim($daemonVer).')';
+                    } else {
+                        $dockerStatus = 'down';
+                        $dockerVer = "{$dVer} (Docker daemon không phản hồi/offline)";
+                    }
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
+            // Kiểm tra thực tế Search Engine dựa trên driver và probe thật (Không suy từ database)
+            $searchDriver = config('search.default', 'smart');
+            $searchStatus = 'unknown';
+            $searchVer = "Driver: {$searchDriver}";
+            $searchResponseTime = 'N/A';
+
+            if (in_array($searchDriver, ['smart', 'database', 'ponytail'], true)) {
+                $searchVer = "SmartSearchDriver ({$searchDriver}, database-backed search)";
+                if ($dbStatus === 'down') {
+                    $searchStatus = 'down';
+                } else {
+                    try {
+                        $start = microtime(true);
+                        $manager = app(SearchManager::class);
+                        $manager->suggest('amenities', 'gym', 1);
+                        $searchResponseTime = round((microtime(true) - $start) * 1000, 2).'ms';
+                        $searchStatus = 'operational';
+                    } catch (\Throwable $e) {
+                        $searchStatus = 'degraded';
+                        $searchVer .= ' [Error: '.$e->getMessage().']';
+                    }
+                }
+            } elseif ($searchDriver === 'meilisearch') {
+                $host = config('search.drivers.meilisearch.host', 'http://127.0.0.1:7700');
+                $searchVer = "Meilisearch ({$host})";
                 try {
                     $start = microtime(true);
-                    $manager = app(SearchManager::class);
-                    $manager->suggest('amenities', 'gym', 1);
+                    $res = Http::timeout(2)->get("{$host}/health");
                     $searchResponseTime = round((microtime(true) - $start) * 1000, 2).'ms';
-                    $searchStatus = 'operational';
-                } catch (\Throwable $e) {
-                    $searchStatus = 'degraded';
-                    $searchVer .= ' [Error: '.$e->getMessage().']';
+                    $searchStatus = ($res->successful() && ($res->json('status') === 'available' || $res->status() === 200)) ? 'operational' : 'degraded';
+                } catch (\Throwable) {
+                    $searchStatus = 'down';
+                    $searchVer .= ' (Unreachable)';
                 }
+            } elseif ($searchDriver === 'elasticsearch') {
+                $hosts = config('search.drivers.elasticsearch.hosts', ['http://127.0.0.1:9200']);
+                $host = $hosts[0] ?? 'http://127.0.0.1:9200';
+                $searchVer = "Elasticsearch ({$host})";
+                try {
+                    $start = microtime(true);
+                    $res = Http::timeout(2)->get("{$host}/_cluster/health");
+                    $searchResponseTime = round((microtime(true) - $start) * 1000, 2).'ms';
+                    $searchStatus = $res->successful() ? 'operational' : 'degraded';
+                } catch (\Throwable) {
+                    $searchStatus = 'down';
+                    $searchVer .= ' (Unreachable)';
+                }
+            } else {
+                $searchStatus = 'not_configured';
+                $searchVer = "Search driver '{$searchDriver}' chưa được cấu hình";
             }
-        } elseif ($searchDriver === 'meilisearch') {
-            $host = config('search.drivers.meilisearch.host', 'http://127.0.0.1:7700');
-            $searchVer = "Meilisearch ({$host})";
-            try {
-                $start = microtime(true);
-                $res = Http::timeout(2)->get("{$host}/health");
-                $searchResponseTime = round((microtime(true) - $start) * 1000, 2).'ms';
-                $searchStatus = ($res->successful() && ($res->json('status') === 'available' || $res->status() === 200)) ? 'operational' : 'degraded';
-            } catch (\Throwable) {
-                $searchStatus = 'down';
-                $searchVer .= ' (Unreachable)';
+
+            $components = [
+                [
+                    'name' => 'PHP Application Runtime',
+                    'status' => 'operational',
+                    'version' => 'PHP '.PHP_VERSION.' (Laravel '.app()->version().')',
+                    'response_time' => "{$phpResponseTime}ms",
+                ],
+                [
+                    'name' => 'MySQL 8.0 Database Server',
+                    'status' => $dbStatus,
+                    'version' => 'MySQL 8.0',
+                    'response_time' => "{$dbLatency}ms",
+                ],
+                [
+                    'name' => 'Vietnamese Smart Search Engine',
+                    'status' => $searchStatus,
+                    'version' => $searchVer,
+                    'response_time' => $searchResponseTime,
+                ],
+                [
+                    'name' => 'Storage & File System',
+                    'status' => $diskPercent > 92 ? 'degraded' : 'operational',
+                    'version' => "{$diskPercent}% đã dùng (".round($diskUsed / (1024 * 1024 * 1024), 1).'GB / '.round($diskTotal / (1024 * 1024 * 1024), 1).'GB)',
+                    'response_time' => 'N/A',
+                ],
+                [
+                    'name' => 'Docker Engine',
+                    'status' => $dockerStatus,
+                    'version' => $dockerVer,
+                    'response_time' => 'N/A',
+                ],
+            ];
+
+            $overallStatus = 'healthy';
+            if ($dbStatus === 'down' || $searchStatus === 'down') {
+                $overallStatus = 'unhealthy';
+            } elseif ($diskPercent > 92 || $dockerStatus === 'not_available' || $dockerStatus === 'down' || $searchStatus === 'degraded') {
+                $overallStatus = 'degraded';
             }
-        } elseif ($searchDriver === 'elasticsearch') {
-            $hosts = config('search.drivers.elasticsearch.hosts', ['http://127.0.0.1:9200']);
-            $host = $hosts[0] ?? 'http://127.0.0.1:9200';
-            $searchVer = "Elasticsearch ({$host})";
-            try {
-                $start = microtime(true);
-                $res = Http::timeout(2)->get("{$host}/_cluster/health");
-                $searchResponseTime = round((microtime(true) - $start) * 1000, 2).'ms';
-                $searchStatus = $res->successful() ? 'operational' : 'degraded';
-            } catch (\Throwable) {
-                $searchStatus = 'down';
-                $searchVer .= ' (Unreachable)';
-            }
-        } else {
-            $searchStatus = 'not_configured';
-            $searchVer = "Search driver '{$searchDriver}' chưa được cấu hình";
-        }
 
-        $components = [
-            [
-                'name' => 'PHP Application Runtime',
-                'status' => 'operational',
-                'version' => 'PHP '.PHP_VERSION.' (Laravel '.app()->version().')',
-                'response_time' => "{$phpResponseTime}ms",
-            ],
-            [
-                'name' => 'MySQL 8.0 Database Server',
-                'status' => $dbStatus,
-                'version' => 'MySQL 8.0',
-                'response_time' => "{$dbLatency}ms",
-            ],
-            [
-                'name' => 'Vietnamese Smart Search Engine',
-                'status' => $searchStatus,
-                'version' => $searchVer,
-                'response_time' => $searchResponseTime,
-            ],
-            [
-                'name' => 'Storage & File System',
-                'status' => $diskPercent > 92 ? 'degraded' : 'operational',
-                'version' => "{$diskPercent}% đã dùng (".round($diskUsed / (1024 * 1024 * 1024), 1).'GB / '.round($diskTotal / (1024 * 1024 * 1024), 1).'GB)',
-                'response_time' => 'N/A',
-            ],
-            [
-                'name' => 'Docker Engine',
-                'status' => $dockerStatus,
-                'version' => $dockerVer,
-                'response_time' => 'N/A',
-            ],
-        ];
-
-        $overallStatus = 'healthy';
-        if ($dbStatus === 'down' || $searchStatus === 'down') {
-            $overallStatus = 'unhealthy';
-        } elseif ($diskPercent > 92 || $dockerStatus === 'not_available' || $dockerStatus === 'down' || $searchStatus === 'degraded') {
-            $overallStatus = 'degraded';
-        }
-
-        return [
-            'status' => $overallStatus,
-            'services' => $components,
-            'components' => $components,
-            'metrics' => [
-                'memory_usage_mb' => round(memory_get_usage(true) / (1024 * 1024), 2),
-                'php_version' => PHP_VERSION,
-                'disk_usage_percent' => $diskPercent,
-                'db_ping_ms' => $dbLatency,
-            ],
-        ];
+            return [
+                'status' => $overallStatus,
+                'services' => $components,
+                'components' => $components,
+                'metrics' => [
+                    'memory_usage_mb' => round(memory_get_usage(true) / (1024 * 1024), 2),
+                    'php_version' => PHP_VERSION,
+                    'disk_usage_percent' => $diskPercent,
+                    'db_ping_ms' => $dbLatency,
+                    'php_latency_ms' => $phpResponseTime,
+                ],
+            ];
+        });
     }
 
     /**
-     * Lấy nhật ký hoạt động thực tế từ GitHub API và Git Commits (Tự động cập nhật hoạt động mới nhất)
+     * Lấy nhật ký hoạt động thực tế từ Git Commits và Pipelines (Tự động cập nhật hoạt động mới nhất)
      */
     public function getRecentActivities(?array $pipelines = null, bool $force = false): array
     {
-        if ($force) {
+        if ($force || app()->environment('testing')) {
             Cache::forget('cicd_recent_activities');
         }
 
-        return Cache::remember('cicd_recent_activities', 10, function () use ($pipelines) {
+        return Cache::remember('cicd_recent_activities', 30, function () use ($pipelines) {
             $activities = [];
 
             // 1. Chuyển đổi các lượt chạy pipeline thực tế (Build / Test / Deploy) thành hoạt động
@@ -801,9 +915,45 @@ class GitHubActionsService
                 ];
             }
 
-            // 2. Lấy các commits mới nhất thực tế từ GitHub API
-            $githubCommitsFound = false;
-            if ($this->isLiveGitHubAvailable()) {
+            // 2. Đọc git log nội bộ trước (nhanh <5ms, 100% dữ liệu thực tế)
+            $localCommitsFound = false;
+            try {
+                $output = shell_exec('git log -n 15 --pretty=format:"%H|%h|%an|%ae|%cI|%s" 2>/dev/null');
+                if ($output) {
+                    $lines = explode("\n", trim($output));
+                    foreach ($lines as $line) {
+                        $parts = explode('|', $line, 6);
+                        if (count($parts) === 6) {
+                            [$fullSha, $shortSha, $author, $email, $date, $message] = $parts;
+                            $lowerMsg = mb_strtolower($message);
+                            $type = 'build';
+                            if (str_starts_with($lowerMsg, 'test')) {
+                                $type = 'test';
+                            } elseif (str_starts_with($lowerMsg, 'deploy')) {
+                                $type = 'deploy';
+                            }
+
+                            $authorName = $this->resolveMemberName(null, $author);
+
+                            $activities[] = [
+                                'id' => "act-local-{$shortSha}",
+                                'type' => $type,
+                                'title' => $message,
+                                'description' => "Commit {$shortSha} bởi {$authorName}",
+                                'status' => 'success',
+                                'actor' => $authorName,
+                                'timestamp' => $date,
+                            ];
+                        }
+                    }
+                    $localCommitsFound = ! empty($lines);
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+
+            // 3. Fallback đọc từ GitHub API nếu môi trường không có git log nội bộ
+            if (! $localCommitsFound && $this->isLiveGitHubAvailable()) {
                 try {
                     $response = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
@@ -845,45 +995,9 @@ class GitHubActionsService
                                 'timestamp' => $date,
                             ];
                         }
-                        $githubCommitsFound = true;
                     }
                 } catch (\Throwable $e) {
                     Log::warning('GitHub Commits API failed: '.$e->getMessage());
-                }
-            }
-
-            // 3. Fallback đọc git log nội bộ nếu GitHub API không khả dụng
-            if (! $githubCommitsFound) {
-                try {
-                    $output = shell_exec('git log -n 15 --pretty=format:"%H|%h|%an|%ae|%cI|%s" 2>/dev/null');
-                    if ($output) {
-                        $lines = explode("\n", trim($output));
-                        foreach ($lines as $line) {
-                            $parts = explode('|', $line, 6);
-                            if (count($parts) === 6) {
-                                [$fullSha, $shortSha, $author, $email, $date, $message] = $parts;
-                                $lowerMsg = mb_strtolower($message);
-                                $type = 'build';
-                                if (str_starts_with($lowerMsg, 'test')) {
-                                    $type = 'test';
-                                } elseif (str_starts_with($lowerMsg, 'deploy')) {
-                                    $type = 'deploy';
-                                }
-
-                                $activities[] = [
-                                    'id' => "act-local-{$shortSha}",
-                                    'type' => $type,
-                                    'title' => $message,
-                                    'description' => "Commit {$shortSha} bởi {$author}",
-                                    'status' => 'success',
-                                    'actor' => $author,
-                                    'timestamp' => $date,
-                                ];
-                            }
-                        }
-                    }
-                } catch (\Throwable) {
-                    // ignore
                 }
             }
 
@@ -902,25 +1016,8 @@ class GitHubActionsService
      */
     public function getGitBranches(): array
     {
-        return Cache::remember('cicd_git_branches', 30, function () {
-            if ($this->isLiveGitHubAvailable()) {
-                try {
-                    $response = Http::withToken($this->token)
-                        ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(4)
-                        ->get("{$this->apiBase}/branches");
-
-                    if ($response->successful()) {
-                        $branches = array_column($response->json(), 'name');
-                        if (! empty($branches)) {
-                            return $this->sortAndFormatBranches($branches);
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    // fallback to local git
-                }
-            }
-
+        return Cache::remember('cicd_git_branches', 60, function () {
+            // 1. Kiểm tra git cục bộ trước (chạy trong 5ms, 100% dữ liệu thực tế không cần gọi mạng quốc tế)
             try {
                 $output = shell_exec('git branch -a 2>/dev/null');
                 if ($output) {
@@ -943,8 +1040,27 @@ class GitHubActionsService
                         return $this->sortAndFormatBranches($branches);
                     }
                 }
-            } catch (\Throwable $e) {
-                // fallback
+            } catch (\Throwable) {
+                // fallback to GitHub API
+            }
+
+            // 2. Fallback sang GitHub API nếu không có git local
+            if ($this->isLiveGitHubAvailable()) {
+                try {
+                    $response = Http::withToken($this->token)
+                        ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+                        ->timeout(3)
+                        ->get("{$this->apiBase}/branches");
+
+                    if ($response->successful()) {
+                        $branches = array_column($response->json(), 'name');
+                        if (! empty($branches)) {
+                            return $this->sortAndFormatBranches($branches);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // fallback to local git
+                }
             }
 
             return [$this->getDefaultBranch()];
@@ -1227,12 +1343,19 @@ class GitHubActionsService
             $commitMessage = $firstLineMsg;
         }
 
+        $rawStatus = $run['status'] ?? '';
+        $conclusion = $run['conclusion'] ?? null;
+        $updatedAt = $run['updated_at'] ?? null;
+        $completedAt = ($rawStatus === 'completed') ? $updatedAt : null;
+
         return [
             'id' => (string) $run['id'],
             'run_number' => $run['run_number'] ?? 0,
             'name' => $run['name'] ?? 'Pipeline',
             'workflow_file' => basename($run['path'] ?? 'ci.yml'),
-            'status' => $this->normalizeStatus($run['status'] ?? '', $run['conclusion'] ?? null),
+            'status' => $this->normalizeStatus($rawStatus, $conclusion),
+            'raw_status' => $rawStatus,
+            'conclusion' => $conclusion,
             'branch' => $branch,
             'commit_sha' => $commitSha,
             'commit_message' => $commitMessage,
@@ -1243,6 +1366,8 @@ class GitHubActionsService
             'trigger' => $trigger,
             'duration' => $this->calculateDuration($run['run_started_at'] ?? $run['created_at'], $run['updated_at']),
             'created_at' => $run['created_at'],
+            'updated_at' => $updatedAt,
+            'completed_at' => $completedAt,
             'url' => $run['html_url'] ?? null,
         ];
     }
@@ -1398,18 +1523,33 @@ class GitHubActionsService
             return false;
         }
 
-        try {
-            $resp = Http::timeout(2)->get(rtrim($url, '/').'/health');
-
-            return $resp->successful() && in_array(strtolower((string) $resp->json('status')), ['healthy', 'ok', 'up'], true);
-        } catch (\Throwable) {
-            return false;
+        // Tránh tự deadlock khi gọi ngược lại chính PHP built-in web server local
+        $host = parse_url($url, PHP_URL_HOST);
+        if (in_array($host, ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'app'], true)) {
+            return $this->measureDatabaseLatency() !== -1;
         }
+
+        $cacheKey = 'cicd_probe_url_'.md5($url);
+        if (app()->environment('testing')) {
+            Cache::forget($cacheKey);
+        }
+
+        return Cache::remember($cacheKey, 30, function () use ($url) {
+            try {
+                $resp = Http::timeout(2)->get(rtrim($url, '/').'/health');
+
+                return $resp->successful() && in_array(strtolower((string) $resp->json('status')), ['healthy', 'ok', 'up'], true);
+            } catch (\Throwable) {
+                return false;
+            }
+        });
     }
 
     protected function measureDatabaseLatency(): int
     {
         try {
+            DB::connection()->getPdo();
+
             $start = microtime(true);
             DB::select('SELECT 1');
 
