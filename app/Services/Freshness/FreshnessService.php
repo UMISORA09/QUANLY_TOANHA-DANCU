@@ -53,7 +53,7 @@ class FreshnessService
 
         $collector = $this->evaluateCollectorFreshness($now);
         $github = $this->evaluateGitHubFreshness($now, $forceRefresh);
-        $deployment = $this->evaluateDeploymentFreshness($now);
+        $deployment = $this->evaluateDeploymentFreshness($now, $forceRefresh);
         $appHealth = $this->evaluateHealthFreshness($now);
         $database = $this->evaluateDatabaseFreshness($now, $forceRefresh);
 
@@ -437,14 +437,14 @@ class FreshnessService
      * Đo lường độ tươi mới của Triển khai & Bản phát hành (Deployment Freshness)
      * Phân biệt rõ: deployment success, deployment failed, deployment pending, no deployment data.
      */
-    public function evaluateDeploymentFreshness(Carbon $now): array
+    public function evaluateDeploymentFreshness(Carbon $now, bool $force = false): array
     {
         $cfg = $this->config['monitoring_sources']['deployment'] ?? [];
         $warn = (int) ($cfg['warning_seconds'] ?? 604800);
         $crit = (int) ($cfg['critical_seconds'] ?? 2592000);
 
         try {
-            $deployments = $this->cicdService->getDeployments();
+            $deployments = $this->cicdService->getDeployments($force);
             if (empty($deployments)) {
                 return [
                     'source' => 'deployment',

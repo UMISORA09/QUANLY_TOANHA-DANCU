@@ -104,18 +104,26 @@ class HealthCheckController extends Controller
             Cache::put('application_health_last_details', $details, 86400);
             Cache::forget('application_health_failure_reason');
 
-            try {
-                FreshnessHeartbeat::updateOrCreate(
-                    ['channel' => 'application_health'],
-                    [
-                        'last_success_at' => $obsTime,
-                        'status' => 'healthy',
-                        'details' => "DB: {$databaseStatus} ({$databaseLatencyMs}ms), Cache: {$cacheStatus}, Uptime: {$uptime}s",
-                        'metadata' => $details,
-                    ]
-                );
-            } catch (\Throwable) {
-                // Graceful fallback nếu bảng chưa sẵn sàng
+            $lastHeartbeatSync = Cache::get('application_health_last_db_heartbeat_at');
+            $shouldSyncDb = app()->environment('testing')
+                || ! $lastHeartbeatSync
+                || now()->diffInSeconds($lastHeartbeatSync) >= 15;
+
+            if ($shouldSyncDb) {
+                try {
+                    FreshnessHeartbeat::updateOrCreate(
+                        ['channel' => 'application_health'],
+                        [
+                            'last_success_at' => $obsTime,
+                            'status' => 'healthy',
+                            'details' => "DB: {$databaseStatus} ({$databaseLatencyMs}ms), Cache: {$cacheStatus}, Uptime: {$uptime}s",
+                            'metadata' => $details,
+                        ]
+                    );
+                    Cache::put('application_health_last_db_heartbeat_at', $obsTime->toIso8601String(), 86400);
+                } catch (\Throwable) {
+                    // Graceful fallback nếu bảng chưa sẵn sàng
+                }
             }
         } else {
             Cache::put('application_health_last_status', $overallStatus, 86400);
@@ -132,6 +140,7 @@ class HealthCheckController extends Controller
                         'metadata' => $details,
                     ]
                 );
+                Cache::put('application_health_last_db_heartbeat_at', $obsTime->toIso8601String(), 86400);
             } catch (\Throwable) {
                 // Graceful fallback
             }
