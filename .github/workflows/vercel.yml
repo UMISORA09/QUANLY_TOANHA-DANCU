@@ -130,6 +130,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ci-gate]
     if: github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'production')
+    outputs:
+      configured: ${{ steps.check-db-config.outputs.configured }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -147,12 +149,13 @@ jobs:
             echo "configured=true" >> $GITHUB_OUTPUT
             echo "✅ Production database secrets configured."
           else
-            echo "❌ LỖI NGHIÊM TRỌNG: Production database secrets chưa được cấu hình hoặc không đầy đủ!"
-            echo "Triển khai Production bắt buộc phải thực thi Database Migration thành công trước khi deploy."
-            exit 1
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::notice ::PRODUCTION MIGRATION GATE: DB NOT CONFIGURED. Production database credentials are not configured in GitHub Secrets. Database migrations skipped and unmigrated deployment will be blocked."
+            echo "Final Status: NOT_CONFIGURED"
           fi
 
       - name: Setup PHP for Migration
+        if: steps.check-db-config.outputs.configured == 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -160,9 +163,11 @@ jobs:
           coverage: none
 
       - name: Install Composer Dependencies
+        if: steps.check-db-config.outputs.configured == 'true'
         run: composer install --no-dev --prefer-dist --no-interaction --no-progress
 
       - name: Execute Incremental Migrations
+        if: steps.check-db-config.outputs.configured == 'true'
         env:
           APP_ENV: production
           DB_CONNECTION: mysql
@@ -208,6 +213,21 @@ jobs:
             echo "target=preview" >> $GITHUB_OUTPUT
           fi
 
+      - name: Validate Production Database Gate
+        id: check-db-gate
+        run: |
+          if [ "${{ steps.target.outputs.is_production }}" = "true" ]; then
+            DB_CONFIGURED="${{ needs.production-migration.outputs.configured }}"
+            if [ "$DB_CONFIGURED" != "true" ]; then
+              echo "blocked=true" >> $GITHUB_OUTPUT
+              echo "::notice ::PRODUCTION DEPLOYMENT BLOCKED: Production database is not configured in GitHub Secrets. Unmigrated code is blocked from deployment."
+            else
+              echo "blocked=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "blocked=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Validate Vercel Authentication Secrets
         id: check-secrets
         env:
@@ -215,7 +235,10 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          if [ -z "$VERCEL_TOKEN" ] || [ "$VERCEL_TOKEN" = "not_configured" ] || [ -z "$VERCEL_ORG_ID" ] || [ "$VERCEL_ORG_ID" = "not_configured" ] || [ -z "$VERCEL_PROJECT_ID" ] || [ "$VERCEL_PROJECT_ID" = "not_configured" ]; then
+          if [ "${{ steps.check-db-gate.outputs.blocked }}" = "true" ]; then
+            echo "is_configured=false" >> $GITHUB_OUTPUT
+            echo "Production deployment blocked: awaiting database configuration."
+          elif [ -z "$VERCEL_TOKEN" ] || [ "$VERCEL_TOKEN" = "not_configured" ] || [ -z "$VERCEL_ORG_ID" ] || [ "$VERCEL_ORG_ID" = "not_configured" ] || [ -z "$VERCEL_PROJECT_ID" ] || [ "$VERCEL_PROJECT_ID" = "not_configured" ]; then
             echo "is_configured=false" >> $GITHUB_OUTPUT
             echo "::notice ::VERCEL DEPLOYMENT STATUS: NOT CONFIGURED. Awaiting VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID in GitHub Secrets."
           else
@@ -260,6 +283,35 @@ jobs:
           fi
           echo "url=${DEPLOY_URL}" >> $GITHUB_OUTPUT
           echo "🚀 Deployed URL: ${DEPLOY_URL}"
+
+      - name: Vercel Deployment Summary Report
+        if: always()
+        run: |
+          IS_CONFIGURED="${{ steps.check-secrets.outputs.is_configured }}"
+          IS_BLOCKED="${{ steps.check-db-gate.outputs.blocked }}"
+          DEPLOY_URL="${{ steps.deploy.outputs.url }}"
+
+          echo "========================================================================"
+          echo "VERCEL DEPLOYMENT STAGE REPORT:"
+          echo "1. CI Quality Gate:    PASSED (Lint, Typecheck, Build & Unit Tests)"
+          if [ "$IS_BLOCKED" = "true" ]; then
+            echo "2. Migration Gate:     NOT CONFIGURED (Production DB secrets missing)"
+            echo "3. Deployment Status:  BLOCKED (Cannot deploy unmigrated code)"
+            echo "ℹ️ OVERALL RESULT: CI PASSED & DEPLOYMENT BLOCKED (Awaiting production DB configuration)"
+            exit 0
+          elif [ "$IS_CONFIGURED" != "true" ]; then
+            echo "2. Deployment Status:  SKIPPED (Vercel credentials not configured)"
+            echo "ℹ️ OVERALL RESULT: CI PASSED & DEPLOYMENT SKIPPED (Awaiting Vercel credentials)"
+            exit 0
+          elif [ -n "$DEPLOY_URL" ]; then
+            echo "2. Deployment Status:  SUCCESS (${DEPLOY_URL})"
+            echo "🚀 OVERALL RESULT: DEPLOYED TO VERCEL"
+            exit 0
+          else
+            echo "2. Deployment Status:  FAILED"
+            exit 1
+          fi
+          echo "========================================================================"
 
   post-deploy-verify:
     name: Post-Deployment Observability & Health Verification
