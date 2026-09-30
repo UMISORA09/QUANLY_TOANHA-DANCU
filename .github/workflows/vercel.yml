@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PHP 8.4
         uses: shivammathur/setup-php@v2
@@ -134,7 +134,7 @@ jobs:
       configured: ${{ steps.check-db-config.outputs.configured }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate Production Database Configuration
         id: check-db-config
@@ -200,7 +200,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Determine Deployment Target
         id: target
