@@ -24,9 +24,9 @@ class ReceptionPortalController extends Controller
                 $activeGuestsCount = 18;
             }
 
-            // 2. Bưu phẩm chờ nhận & quá hạn (> 5 ngày)
+            // 2. Bưu phẩm chờ nhận & quá hạn (> 5 ngày) - Sargable query dùng idx_parcels_status
             $pendingParcelsCount = DB::table('parcels')
-                ->where('status', 'like', '%RECEIVED%')
+                ->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
                 ->count();
 
             if ($pendingParcelsCount === 0) {
@@ -35,7 +35,7 @@ class ReceptionPortalController extends Controller
 
             $fiveDaysAgo = Carbon::now()->subDays(5);
             $overdueParcelsCount = DB::table('parcels')
-                ->where('status', 'like', '%RECEIVED%')
+                ->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
                 ->where('received_at', '<', $fiveDaysAgo)
                 ->count();
 

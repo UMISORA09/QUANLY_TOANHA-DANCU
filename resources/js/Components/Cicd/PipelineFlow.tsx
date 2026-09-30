@@ -204,7 +204,7 @@ export const PipelineFlow: React.FC<PipelineFlowProps> = ({ pipeline, onSelect }
       </div>
 
       {/* Visual Pipeline Flow */}
-      <div className="relative overflow-x-auto pb-2 scrollbar-thin">
+      <div className="relative overflow-x-auto pb-2 scrollbar-subtle">
         <div className="flex items-center min-w-[850px] justify-between gap-1 sm:gap-2">
           {stages.map((stage, idx) => {
             const badge = getStatusBadge(stage.status);

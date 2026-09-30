@@ -199,6 +199,120 @@ jobs:
           path: phpunit-report.xml
           retention-days: 7
 
+  e2e-test:
+    name: End-to-End Test (Playwright E2E)
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-ci]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo, pdo_sqlite, mbstring, xml, ctype, iconv
+          coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: Download Frontend Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build-artifacts
+          path: public/build
+
+      - name: Configure E2E Testing Environment
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ${{ github.workspace }}/database/database.sqlite
+        run: |
+          cp .env.example .env
+          # Override DB to SQLite (env.example defaults to mysql/docker)
+          sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env
+          sed -i 's|^DB_DATABASE=.*|DB_DATABASE=${{ github.workspace }}/database/database.sqlite|' .env
+          sed -i 's/^DB_HOST=.*/DB_HOST=127.0.0.1/' .env
+          touch database/database.sqlite
+          php artisan key:generate
+
+      - name: Run Database Migrations & Seeds for E2E
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ${{ github.workspace }}/database/database.sqlite
+        run: |
+          php artisan migrate --force --no-interaction
+          php artisan db:seed --force --no-interaction
+
+      - name: Install Playwright Browsers & OS Dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Start Laravel Local Server for E2E
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ${{ github.workspace }}/database/database.sqlite
+          APP_ENV: testing
+          APP_DEBUG: true
+        run: |
+          php artisan serve --host=127.0.0.1 --port=8000 > /tmp/artisan-serve.log 2>&1 &
+          SERVER_PID=$!
+          echo "Waiting for Laravel web server to start (PID: $SERVER_PID)..."
+          for i in {1..40}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Laravel server operational on http://127.0.0.1:8000 (HTTP $STATUS)"
+              exit 0
+            fi
+            echo "  Attempt $i/40: HTTP $STATUS — waiting..."
+            sleep 2
+          done
+          echo "❌ Failed to start Laravel server within 80 seconds"
+          echo "=== DIAGNOSTICS: Process Status ==="
+          ps aux | grep "artisan serve" || true
+          kill -0 $SERVER_PID 2>/dev/null && echo "Process $SERVER_PID is still running" || echo "Process $SERVER_PID terminated unexpectedly"
+          echo "=== DIAGNOSTICS: Server Log (/tmp/artisan-serve.log) ==="
+          cat /tmp/artisan-serve.log 2>/dev/null || echo "No server log found"
+          echo "=== DIAGNOSTICS: Laravel Application Log (storage/logs/laravel.log) ==="
+          tail -n 50 storage/logs/laravel.log 2>/dev/null || echo "No Laravel application log found"
+          echo "=== DIAGNOSTICS: Environment Info ==="
+          php -v
+          php artisan --version
+          exit 1
+
+      - name: Run Playwright E2E Tests
+        env:
+          APP_URL: http://127.0.0.1:8000
+          CI: true
+        run: npm run test:e2e
+
+      - name: Upload Playwright Test Report Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   security-scan:
     name: Security Vulnerability Scan
     runs-on: ubuntu-latest
@@ -256,24 +370,78 @@ jobs:
             -e DB_DATABASE=/var/www/html/database/database.sqlite \
             -e SESSION_DRIVER=file \
             -e CACHE_STORE=file \
-            -e RUN_MIGRATIONS=false \
+            -e RUN_MIGRATIONS=true \
             smart-cassavas:smoke-test
 
       - name: Run Container Health & Smoke Test
         run: |
           echo "Waiting for container startup and probing health endpoints..."
-          for i in {1..30}; do
+          for i in {1..40}; do
             UP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/up || echo "000")
+            HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/health || echo "000")
             HEALTH_RESP=$(curl -s http://127.0.0.1:8000/health || echo "")
 
-            if [ "$UP_STATUS" = "200" ] && echo "$HEALTH_RESP" | grep -q '"status"'; then
-              echo "✅ Container Smoke Test Passed!"
-              echo "Endpoint /up: HTTP $UP_STATUS"
-              echo "Endpoint /health: $HEALTH_RESP"
-              docker stop smoke_app && docker rm smoke_app
-              exit 0
+            if [ "$UP_STATUS" = "200" ] && [ "$HEALTH_CODE" = "200" ]; then
+              if echo "$HEALTH_RESP" | grep -Eq '"status"\s*:\s*"(healthy|ok)"'; then
+                echo "✅ Container Core Endpoints Operational (/up, /health)"
+
+                # 1. Mandatory Freshness Endpoint & Payload Verification
+                echo "Evaluating Mandatory Freshness Observability..."
+                FRESH_RESP=$(curl -s http://127.0.0.1:8000/api/monitoring/freshness || echo "")
+                FRESHNESS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/monitoring/freshness || echo "000")
+
+                if [ "$FRESHNESS_CODE" != "200" ]; then
+                  echo "❌ Mandatory Gate Failed: /api/monitoring/freshness returned HTTP $FRESHNESS_CODE"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+
+                FRESH_STATE=$(echo "$FRESH_RESP" | jq -r '.overall_state // empty')
+                if [ -z "$FRESH_STATE" ]; then
+                  echo "❌ Mandatory Gate Failed: Missing overall_state in freshness response: $FRESH_RESP"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+                case "$FRESH_STATE" in
+                  FRESH|HEALTHY|WARNING)
+                    echo "  ✅ /api/monitoring/freshness: HTTP 200 (State: $FRESH_STATE)"
+                    ;;
+                  *)
+                    echo "❌ Mandatory Gate Failed: overall_state '$FRESH_STATE' is unacceptable for production/container verification"
+                    docker stop smoke_app && docker rm smoke_app
+                    exit 1
+                    ;;
+                esac
+
+                # 2. Mandatory Prometheus Metrics Verification
+                echo "Evaluating Mandatory Prometheus Metrics Exporter..."
+                METRICS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/metrics || echo "000")
+                METRICS_BODY=$(curl -s http://127.0.0.1:8000/metrics || echo "")
+
+                if [ "$METRICS_CODE" != "200" ]; then
+                  echo "❌ Mandatory Gate Failed: /metrics returned HTTP $METRICS_CODE"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+                if ! echo "$METRICS_BODY" | grep -q "freshness_age_seconds"; then
+                  echo "❌ Mandatory Gate Failed: /metrics missing required gauge 'freshness_age_seconds'"
+                  docker stop smoke_app && docker rm smoke_app
+                  exit 1
+                fi
+                echo "  ✅ /metrics: HTTP 200 (freshness_age_seconds gauge verified)"
+
+                # Optional Telemetry Diagnostics
+                DB_LATENCY=$(echo "$HEALTH_RESP" | jq -r '.database_latency_ms // "N/A"')
+                echo "  Optional telemetry: DB Latency = ${DB_LATENCY}ms"
+
+                docker stop smoke_app && docker rm smoke_app
+                echo "✅ All Container Core & Observability Gates Passed Successfully!"
+                exit 0
+              else
+                echo "⚠️ /health HTTP 200 but status not healthy yet: $HEALTH_RESP"
+              fi
             fi
-            echo "Attempt $i: /up status=$UP_STATUS, /health response=$HEALTH_RESP. Retrying in 2s..."
+            echo "Attempt $i/40: /up=$UP_STATUS, /health=$HEALTH_CODE. Retrying in 2s..."
             sleep 2
           done
 
@@ -285,7 +453,7 @@ jobs:
   ci-status:
     name: CI Pipeline Status Check
     runs-on: ubuntu-latest
-    needs: [php-lint, frontend-ci, backend-test, security-scan, docker-verification]
+    needs: [php-lint, frontend-ci, backend-test, e2e-test, security-scan, docker-verification]
     if: always()
     steps:
       - name: Evaluate Core CI Stage Outcomes
@@ -293,6 +461,7 @@ jobs:
           LINT="${{ needs.php-lint.result }}"
           FRONTEND="${{ needs.frontend-ci.result }}"
           BACKEND="${{ needs.backend-test.result }}"
+          E2E="${{ needs.e2e-test.result }}"
           SECURITY="${{ needs.security-scan.result }}"
           DOCKER="${{ needs.docker-verification.result }}"
 
@@ -300,6 +469,7 @@ jobs:
           echo "PHP Lint (Pint):        $LINT"
           echo "Frontend CI:             $FRONTEND"
           echo "Backend Tests & DB:      $BACKEND"
+          echo "Playwright E2E Tests:    $E2E"
           echo "Security Vulnerabilities:$SECURITY"
           echo "Docker Verification:     $DOCKER"
           echo "==================================="
@@ -308,6 +478,7 @@ jobs:
           [ "$LINT" != "success" ] && FAILED_STAGES+=("PHP Lint ($LINT)")
           [ "$FRONTEND" != "success" ] && FAILED_STAGES+=("Frontend CI ($FRONTEND)")
           [ "$BACKEND" != "success" ] && FAILED_STAGES+=("Backend Tests & DB ($BACKEND)")
+          [ "$E2E" != "success" ] && FAILED_STAGES+=("Playwright E2E Tests ($E2E)")
           [ "$SECURITY" != "success" ] && FAILED_STAGES+=("Security Vulnerabilities ($SECURITY)")
           [ "$DOCKER" != "success" ] && FAILED_STAGES+=("Docker Verification ($DOCKER)")
 
@@ -319,4 +490,4 @@ jobs:
             exit 1
           fi
 
-          echo "✅ All Core CI Checks Passed: Lint ✓ Frontend ✓ Backend/DB ✓ Security ✓ Docker Verification ✓"
+          echo "✅ All Core CI Checks Passed: Lint ✓ Frontend ✓ Backend/DB ✓ Playwright E2E ✓ Security ✓ Docker Verification ✓"

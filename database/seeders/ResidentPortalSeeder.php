@@ -18,6 +18,8 @@ class ResidentPortalSeeder extends Seeder
         $driver = DB::getDriverName();
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 0;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF;');
         }
 
         $now = Carbon::create(2026, 9, 8, 9, 0, 0);
@@ -344,6 +346,8 @@ class ResidentPortalSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 1;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON;');
         }
 
         $this->command->info('✅ Đã nạp thành công dữ liệu ảo Cổng Cư Dân (Resident Portal - A1-05).');

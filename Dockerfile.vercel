@@ -33,8 +33,10 @@ RUN composer install \
 COPY . .
 COPY --from=frontend-builder /app/public/build ./public/build
 
-RUN mkdir -p database storage/app/public storage/app/private storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && \
+RUN rm -f bootstrap/cache/*.php && \
+    mkdir -p database storage/app/public storage/app/private storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && \
     composer dump-autoload --optimize --no-dev --classmap-authoritative && \
+    php artisan package:discover --ansi && \
     chown -R www-data:www-data storage bootstrap/cache
 
 FROM base AS runtime
@@ -49,8 +51,8 @@ ENV PORT=80 \
     APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr \
-    CACHE_STORE=database \
-    SESSION_DRIVER=database \
+    CACHE_STORE=file \
+    SESSION_DRIVER=file \
     SESSION_SECURE_COOKIE=true \
     QUEUE_CONNECTION=sync
 

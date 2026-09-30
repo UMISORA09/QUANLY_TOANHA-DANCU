@@ -170,6 +170,19 @@ class CicdDashboardController extends Controller
     }
 
     /**
+     * Kết quả kiểm tra bảo mật (Security Audit)
+     */
+    public function security(): JsonResponse
+    {
+        $security = $this->cicdService->getSecurityAudit();
+
+        return response()->json([
+            'success' => true,
+            'data' => $security,
+        ]);
+    }
+
+    /**
      * Lịch sử hoạt động gần đây
      */
     public function activities(Request $request): JsonResponse
@@ -201,12 +214,18 @@ class CicdDashboardController extends Controller
             'workflow' => 'required|string',
             'branch' => 'nullable|string',
             'environment' => 'nullable|string',
+            'inputs' => 'nullable|array',
         ]);
+
+        $inputs = array_merge(
+            ['environment' => $validated['environment'] ?? 'development'],
+            $validated['inputs'] ?? []
+        );
 
         $result = $this->cicdService->triggerWorkflow(
             $validated['workflow'],
             $validated['branch'] ?? 'main',
-            ['environment' => $validated['environment'] ?? 'development']
+            $inputs
         );
 
         return response()->json($result);
@@ -248,7 +267,7 @@ class CicdDashboardController extends Controller
         }
 
         $validated = $request->validate([
-            'environment' => 'required|string|in:staging,production,development',
+            'environment' => 'required|string|in:staging,production,development,vercel',
             'image_tag' => 'nullable|string',
         ]);
 
@@ -273,7 +292,7 @@ class CicdDashboardController extends Controller
         }
 
         $validated = $request->validate([
-            'environment' => 'required|string|in:staging,production',
+            'environment' => 'required|string|in:staging,production,vercel',
             'target_version' => 'required|string',
         ]);
 

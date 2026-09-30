@@ -39,7 +39,7 @@ RUN chmod +x /usr/local/bin/install-php-extensions && \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Cấu hình PHP & Opcache cơ bản cho container
-RUN echo "opcache.enable=1\nopcache.enable_cli=1\nopcache.memory_consumption=256\nopcache.max_accelerated_files=20000\nopcache.revalidate_freq=2\nopcache.validate_timestamps=1\nvariables_order=\"EGPCS\"" > /usr/local/etc/php/conf.d/custom.ini
+COPY docker/app/custom.ini /usr/local/etc/php/conf.d/custom.ini
 
 # ==============================================================================
 # Development Stage: Dành cho lập trình viên local (mount volume, Node.js, HMR)
@@ -95,10 +95,17 @@ RUN npm run build
 # ==============================================================================
 FROM base AS production
 
+ARG APP_VERSION=dev
+ARG COMMIT_SHA=unknown
+ARG BUILD_TIME=unknown
+
 ENV APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr \
-    RUN_MIGRATIONS=false
+    RUN_MIGRATIONS=false \
+    APP_VERSION=${APP_VERSION} \
+    COMMIT_SHA=${COMMIT_SHA} \
+    BUILD_TIME=${BUILD_TIME}
 
 WORKDIR /var/www/html
 

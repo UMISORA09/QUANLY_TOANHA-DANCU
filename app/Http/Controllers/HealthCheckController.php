@@ -9,14 +9,28 @@ use Illuminate\Support\Facades\DB;
 class HealthCheckController extends Controller
 {
     /**
-     * Lấy commit SHA ngắn gọn của bản phát hành hiện tại.
+     * Lấy version và commit SHA của bản phát hành hiện tại.
      */
     protected function getAppVersion(): string
     {
-        $version = env('APP_VERSION', env('COMMIT_SHA', ''));
-
+        $version = env('APP_VERSION', '');
         if (! empty($version)) {
-            return substr($version, 0, 7);
+            return $version;
+        }
+
+        $vercelRef = env('VERCEL_GIT_COMMIT_REF', '');
+        if (! empty($vercelRef)) {
+            return $vercelRef;
+        }
+
+        return $this->getCommitSha();
+    }
+
+    protected function getCommitSha(): string
+    {
+        $sha = env('COMMIT_SHA', env('VERCEL_GIT_COMMIT_SHA', ''));
+        if (! empty($sha)) {
+            return substr($sha, 0, 7);
         }
 
         $headFile = base_path('.git/HEAD');
@@ -73,16 +87,33 @@ class HealthCheckController extends Controller
 
         $httpStatus = ($overallStatus === 'unhealthy') ? 503 : 200;
 
-        return response()->json([
+        // Ghi nhận thời điểm probe quan sát sức khỏe ứng dụng (Health Probe Observation)
+        // Để FreshnessService chỉ đọc chứ không tự tạo timestamp
+        if ($overallStatus === 'healthy') {
+            Cache::put('application_health_last_observed_at', now('Asia/Ho_Chi_Minh')->toIso8601String(), 3600);
+        }
+
+        $data = [
             'status' => $overallStatus,
             'system' => $overallStatus,
             'database' => $databaseStatus,
             'cache' => $cacheStatus,
             'version' => $this->getAppVersion(),
+            'commit_sha' => $this->getCommitSha(),
+            'build_time' => env('BUILD_TIME', null),
             'timestamp' => now()->toIso8601String(),
             'uptime_seconds' => $uptime,
             'database_latency_ms' => $databaseLatencyMs,
-        ], $httpStatus);
+        ];
+
+        if (env('VERCEL_REGION')) {
+            $data['region'] = env('VERCEL_REGION');
+        }
+        if (env('VERCEL_ENV')) {
+            $data['vercel_env'] = env('VERCEL_ENV');
+        }
+
+        return response()->json($data, $httpStatus);
     }
 
     /**
