@@ -69,7 +69,7 @@ class HealthCheckController extends Controller
         try {
             $cacheKey = 'health_ping_'.uniqid();
             Cache::put($cacheKey, 1, 5);
-            if (Cache::get($cacheKey) !== 1) {
+            if ((int) Cache::get($cacheKey) !== 1) {
                 $cacheStatus = 'degraded';
             }
             Cache::forget($cacheKey);
