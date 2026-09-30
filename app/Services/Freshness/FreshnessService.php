@@ -108,15 +108,41 @@ class FreshnessService
 
     /**
      * Đo lường độ tươi mới của chính Collector (Monitoring of Monitoring)
-     * Chỉ kiểm tra timestamp được ghi nhận bởi Scheduler thật qua recordCollectorHeartbeat.
+     * DB table freshness_heartbeats là Source of Truth, Cache dùng để tối ưu đọc.
      */
     public function evaluateCollectorFreshness(Carbon $now): array
     {
-        $lastSuccess = Cache::get('freshness_collector_last_success_at');
-        $errorsCount = (int) Cache::get('freshness_collector_errors_count', 0);
-
         $warnThreshold = (int) ($this->config['collector']['warning_seconds'] ?? 60);
         $critThreshold = (int) ($this->config['collector']['critical_seconds'] ?? 300);
+        $errorsCount = (int) Cache::get('freshness_collector_errors_count', 0);
+
+        $lastSuccess = null;
+        try {
+            if (Schema::hasTable('freshness_heartbeats')) {
+                $dbRow = DB::table('freshness_heartbeats')->where('channel', 'collector')->first();
+                if ($dbRow && $dbRow->last_success_at) {
+                    $lastSuccess = Carbon::parse($dbRow->last_success_at)->toIso8601String();
+                }
+            }
+        } catch (Throwable $e) {
+            return [
+                'source' => 'collector',
+                'name' => 'Freshness Collector (Scheduler)',
+                'type' => 'monitoring',
+                'status' => self::STATE_UNAVAILABLE,
+                'last_success_at' => null,
+                'source_timestamp' => null,
+                'age_seconds' => null,
+                'warning_threshold' => $warnThreshold,
+                'critical_threshold' => $critThreshold,
+                'errors_count' => $errorsCount,
+                'reason' => 'Không thể kết nối cơ sở dữ liệu để kiểm tra collector heartbeat.',
+            ];
+        }
+
+        if (! $lastSuccess) {
+            $lastSuccess = Cache::get('freshness_collector_last_success_at');
+        }
 
         if (! $lastSuccess) {
             return [
@@ -131,7 +157,7 @@ class FreshnessService
                 'critical_threshold' => $critThreshold,
                 'errors_count' => $errorsCount,
                 'reason' => 'Chưa có heartbeat nào từ Collector Scheduler được ghi nhận.',
-                'message' => 'Chưa có heartbeat nào từ Collector Scheduler được ghi nhận trong bộ nhớ đệm.',
+                'message' => 'Chưa có heartbeat nào từ Collector Scheduler được ghi nhận.',
             ];
         }
 
@@ -162,17 +188,39 @@ class FreshnessService
 
     /**
      * Ghi nhận heartbeat từ Scheduler / Collector nền thực tế
+     * DB là Source of Truth, Cache dùng để tối ưu đọc.
      */
     public function recordCollectorHeartbeat(?Carbon $timestamp = null): void
     {
-        $time = ($timestamp ?: Carbon::now('Asia/Ho_Chi_Minh'))->toIso8601String();
-        Cache::put('freshness_collector_last_success_at', $time, 86400);
+        $time = $timestamp ?: Carbon::now('Asia/Ho_Chi_Minh');
+        $isoTime = $time->toIso8601String();
+
+        // 1. Cache
+        Cache::put('freshness_collector_last_success_at', $isoTime, 86400);
+
+        // 2. DB Persistence (Durable)
+        try {
+            if (Schema::hasTable('freshness_heartbeats')) {
+                DB::table('freshness_heartbeats')->updateOrInsert(
+                    ['channel' => 'collector'],
+                    [
+                        'last_success_at' => $time,
+                        'status' => 'healthy',
+                        'details' => "Scheduler heartbeat ghi nhận tại {$isoTime}",
+                        'updated_at' => $time,
+                    ]
+                );
+            }
+        } catch (Throwable $e) {
+            Log::warning('Failed to persist collector heartbeat to DB: '.$e->getMessage());
+        }
     }
 
     /**
      * Đo lường độ tươi mới của GitHub Actions CI/CD Runs
-     * Ưu tiên completed_at -> updated_at -> created_at.
-     * Khi thiếu GITHUB_TOKEN trả về UNKNOWN với lý do rõ ràng.
+     * - Xác định workflow run mới nhất dựa trên timestamp thực tế (completed_at -> updated_at -> created_at)
+     * - Tuyệt đối không chọn latestSuccessful trước latestFailed
+     * - Phân biệt rõ ràng: token missing (UNKNOWN), API unavailable (UNAVAILABLE), no runs (UNKNOWN)
      */
     public function evaluateGitHubFreshness(Carbon $now, bool $force = false): array
     {
@@ -187,16 +235,28 @@ class FreshnessService
             Cache::forget($cacheKey);
         }
 
-        return Cache::remember($cacheKey, $cacheTtl, function () use ($now, $warn, $crit) {
+        return Cache::remember($cacheKey, $cacheTtl, function () use ($now, $warn, $crit, $force) {
             try {
-                $isLive = true;
+                $statusResult = null;
                 try {
-                    $isLive = $this->cicdService->isLiveGitHubAvailable();
-                } catch (Throwable) {
-                    $isLive = true;
+                    if (method_exists($this->cicdService, 'getPipelinesWithStatus')) {
+                        $statusResult = $this->cicdService->getPipelinesWithStatus([], $force);
+                    }
+                } catch (\BadMethodCallException|\Mockery\Exception\BadMethodCallException) {
+                    $statusResult = null;
                 }
 
-                if (! $isLive) {
+                if ($statusResult !== null) {
+                    $apiStatus = $statusResult['status'] ?? 'ok';
+                    $apiReason = $statusResult['reason'] ?? null;
+                    $pipelines = $statusResult['runs'] ?? [];
+                } else {
+                    $pipelines = $this->cicdService->getPipelines([], $force);
+                    $apiStatus = empty($pipelines) ? 'empty_runs' : 'ok';
+                    $apiReason = null;
+                }
+
+                if ($apiStatus === 'token_missing') {
                     return [
                         'source' => 'github_actions',
                         'name' => 'GitHub Actions CI/CD Runs',
@@ -207,12 +267,27 @@ class FreshnessService
                         'age_seconds' => null,
                         'warning_threshold' => $warn,
                         'critical_threshold' => $crit,
-                        'reason' => 'GITHUB_TOKEN chưa được cấu hình để truy vấn GitHub Actions API.',
-                        'message' => 'GITHUB_TOKEN chưa được cấu hình để truy vấn GitHub Actions API.',
+                        'reason' => $apiReason ?: 'GitHub token missing',
+                        'message' => $apiReason ?: 'GitHub token missing',
                     ];
                 }
 
-                $pipelines = $this->cicdService->getPipelines();
+                if ($apiStatus === 'api_unavailable') {
+                    return [
+                        'source' => 'github_actions',
+                        'name' => 'GitHub Actions CI/CD Runs',
+                        'type' => 'monitoring',
+                        'status' => self::STATE_UNAVAILABLE,
+                        'last_event_at' => null,
+                        'source_timestamp' => null,
+                        'age_seconds' => null,
+                        'warning_threshold' => $warn,
+                        'critical_threshold' => $crit,
+                        'reason' => $apiReason ?: 'GitHub Actions API unavailable',
+                        'message' => $apiReason ?: 'GitHub Actions API unavailable',
+                    ];
+                }
+
                 if (empty($pipelines)) {
                     return [
                         'source' => 'github_actions',
@@ -224,32 +299,60 @@ class FreshnessService
                         'age_seconds' => null,
                         'warning_threshold' => $warn,
                         'critical_threshold' => $crit,
-                        'reason' => 'Chưa có dữ liệu workflow runs nào được ghi nhận trên repository.',
-                        'message' => 'Chưa có dữ liệu workflow runs nào được ghi nhận.',
+                        'reason' => 'no workflow runs',
+                        'message' => 'no workflow runs',
                     ];
                 }
 
-                // Tìm completed workflow runs có ý nghĩa, ưu tiên lần chạy thành công gần nhất
-                $latestSuccessful = null;
-                $latestCompleted = null;
-                $currentRunning = null;
-
-                foreach ($pipelines as $p) {
-                    $pStatus = strtolower($p['status'] ?? '');
-                    if (in_array($pStatus, ['running', 'in_progress', 'queued'], true) && ! $currentRunning) {
-                        $currentRunning = $p;
-                    } elseif (in_array($pStatus, ['success', 'healthy'], true) && ! $latestSuccessful) {
-                        $latestSuccessful = $p;
-                    } elseif (in_array($pStatus, ['failed', 'failure', 'cancelled'], true) && ! $latestCompleted) {
-                        $latestCompleted = $p;
+                // 1. Kiểm tra xem có workflow nào đang chạy
+                $hasRunning = false;
+                foreach ($pipelines as $pipe) {
+                    $st = strtolower((string) ($pipe['status'] ?? $pipe['raw_status'] ?? $pipe['conclusion'] ?? ''));
+                    if (in_array($st, ['running', 'in_progress', 'queued', 'pending'], true)) {
+                        $hasRunning = true;
+                        break;
                     }
                 }
 
-                $targetRun = $latestSuccessful ?: ($latestCompleted ?: ($currentRunning ?: $pipelines[0]));
-                // Ưu tiên: completed_at -> updated_at -> created_at
-                $rawTimestamp = $targetRun['completed_at'] ?? $targetRun['updated_at'] ?? $targetRun['created_at'] ?? null;
+                // 2. Xác định workflow run mới nhất DỰA TRÊN TIMESTAMP THỰC TẾ
+                // Ưu tiên latest completed run để đo lường độ tươi mới thực tế
+                $latestCompletedRun = null;
+                $latestCompletedTimestamp = null;
+                $latestAnyRun = null;
+                $latestAnyTimestamp = null;
 
-                if (! $rawTimestamp) {
+                foreach ($pipelines as $p) {
+                    $rawDate = $p['completed_at'] ?? $p['updated_at'] ?? $p['created_at'] ?? null;
+                    if ($rawDate) {
+                        try {
+                            $parsed = Carbon::parse($rawDate);
+                            if (! $latestAnyTimestamp || $parsed->isAfter($latestAnyTimestamp)) {
+                                $latestAnyTimestamp = $parsed;
+                                $latestAnyRun = $p;
+                            }
+
+                            $cStatus = strtolower((string) ($p['status'] ?? $p['raw_status'] ?? ''));
+                            $cConc = strtolower((string) ($p['conclusion'] ?? ''));
+                            $isCompleted = ! empty($p['completed_at'])
+                                || in_array($cStatus, ['completed', 'success', 'successful', 'failed', 'failure', 'cancelled', 'timed_out'], true)
+                                || in_array($cConc, ['success', 'failure', 'cancelled', 'timed_out', 'neutral'], true);
+
+                            if ($isCompleted) {
+                                if (! $latestCompletedTimestamp || $parsed->isAfter($latestCompletedTimestamp)) {
+                                    $latestCompletedTimestamp = $parsed;
+                                    $latestCompletedRun = $p;
+                                }
+                            }
+                        } catch (Throwable) {
+                            // Ignore date parse errors
+                        }
+                    }
+                }
+
+                $latestRun = $latestCompletedRun ?: ($latestAnyRun ?: $pipelines[0]);
+                $latestTimestamp = $latestCompletedTimestamp ?: ($latestAnyTimestamp ?: null);
+
+                if (! $latestRun || ! $latestTimestamp) {
                     return [
                         'source' => 'github_actions',
                         'name' => 'GitHub Actions CI/CD Runs',
@@ -261,46 +364,53 @@ class FreshnessService
                         'warning_threshold' => $warn,
                         'critical_threshold' => $crit,
                         'reason' => 'Không tìm thấy timestamp hợp lệ trên workflow runs.',
-                        'message' => 'Không tìm thấy timestamp hợp lệ trên workflow có ý nghĩa.',
                     ];
                 }
 
-                $sourceCarbon = Carbon::parse($rawTimestamp);
-                $ageSeconds = (int) round(max(0, $now->diffInSeconds($sourceCarbon, false) * -1));
+                $ageSeconds = (int) round(max(0, $now->diffInSeconds($latestTimestamp, false) * -1));
+                $runName = $latestRun['name'] ?? 'Pipeline';
+                $commitSha = $latestRun['commit_sha'] ?? null;
+                $conclusion = strtolower((string) ($latestRun['conclusion'] ?? ''));
+                $status = strtolower((string) ($latestRun['status'] ?? $latestRun['raw_status'] ?? ''));
 
-                $runStatus = strtolower($targetRun['status'] ?? 'unknown');
-                $isFailed = in_array($runStatus, ['failed', 'failure'], true);
+                $isFailed = in_array($conclusion, ['failure', 'failed', 'cancelled', 'timed_out'], true)
+                    || in_array($status, ['failed', 'failure', 'cancelled'], true);
+                $isRunning = in_array($status, ['running', 'in_progress', 'queued'], true)
+                    || in_array($conclusion, ['running', 'in_progress'], true);
 
-                $state = $isFailed ? self::STATE_CRITICAL : $this->classifyState($ageSeconds, $warn, $crit);
-                $runName = $targetRun['name'] ?? 'Pipeline';
-                $commitSha = $targetRun['commit_sha'] ?? null;
-
-                $reason = $isFailed
-                    ? "Workflow gần nhất [{$runName}] thất bại tại commit {$commitSha}"
-                    : match ($state) {
+                if ($isFailed) {
+                    $state = self::STATE_CRITICAL;
+                    $reason = "Workflow gần nhất [{$runName}] thất bại tại commit {$commitSha}";
+                } elseif ($isRunning) {
+                    $state = $this->classifyState($ageSeconds, $warn, $crit);
+                    $reason = "Workflow [{$runName}] đang chạy tại commit {$commitSha}";
+                } else {
+                    $state = $this->classifyState($ageSeconds, $warn, $crit);
+                    $reason = match ($state) {
                         self::STATE_FRESH => "Workflow [{$runName}] thành công, cách đây {$ageSeconds}s",
                         self::STATE_STALE => "Workflow [{$runName}] chạy cách đây {$ageSeconds}s (vượt warning {$warn}s)",
                         default => "Workflow [{$runName}] chạy cách đây {$ageSeconds}s (vượt critical {$crit}s)",
                     };
+                }
 
-                $pipelineExecutionState = $currentRunning
+                $executionState = $hasRunning
                     ? 'running'
-                    : (($latestSuccessful && $targetRun === $latestSuccessful) ? 'success' : ($targetRun['status'] ?? 'unknown'));
+                    : ($status ?: ($conclusion ?: 'unknown'));
 
                 return [
                     'source' => 'github_actions',
                     'name' => 'GitHub Actions CI/CD Runs',
                     'type' => 'monitoring',
                     'status' => $state,
-                    'last_event_at' => $sourceCarbon->toIso8601String(),
-                    'source_timestamp' => $sourceCarbon->toIso8601String(),
+                    'last_event_at' => $latestTimestamp->toIso8601String(),
+                    'source_timestamp' => $latestTimestamp->toIso8601String(),
                     'age_seconds' => $ageSeconds,
                     'warning_threshold' => $warn,
                     'critical_threshold' => $crit,
                     'workflow' => $runName,
                     'commit_sha' => $commitSha,
-                    'execution_state' => $pipelineExecutionState,
-                    'conclusion' => $targetRun['conclusion'] ?? null,
+                    'execution_state' => $executionState,
+                    'conclusion' => $conclusion ?: $status,
                     'reason' => $reason,
                 ];
             } catch (Throwable $e) {
@@ -317,7 +427,7 @@ class FreshnessService
                     'warning_threshold' => $warn,
                     'critical_threshold' => $crit,
                     'error' => $e->getMessage(),
-                    'reason' => 'Lỗi kết nối GitHub Actions API: '.$e->getMessage(),
+                    'reason' => 'GitHub Actions API unavailable: '.$e->getMessage(),
                 ];
             }
         });
@@ -325,7 +435,7 @@ class FreshnessService
 
     /**
      * Đo lường độ tươi mới của Triển khai & Bản phát hành (Deployment Freshness)
-     * Chỉ coi deployment hợp lệ khi exists, status healthy/success, và có deployed_at hợp lệ.
+     * Phân biệt rõ: deployment success, deployment failed, deployment pending, no deployment data.
      */
     public function evaluateDeploymentFreshness(Carbon $now): array
     {
@@ -335,21 +445,7 @@ class FreshnessService
 
         try {
             $deployments = $this->cicdService->getDeployments();
-            $latestDeploy = null;
-
-            foreach ($deployments as $dep) {
-                $depStatus = strtolower($dep['status'] ?? '');
-                // Chỉ ghi nhận deployment đã hoàn tất thành công (healthy/success), không lấy created_at bừa bãi
-                if (in_array($depStatus, ['healthy', 'success'], true)) {
-                    $rawDate = $dep['deployed_at'] ?? null;
-                    if (! empty($rawDate) && ! in_array($rawDate, ['Chưa kích hoạt', 'Chưa hoàn tất', 'Đang triển khai', 'N/A'], true)) {
-                        $latestDeploy = $dep;
-                        break;
-                    }
-                }
-            }
-
-            if (! $latestDeploy || empty($latestDeploy['deployed_at'])) {
+            if (empty($deployments)) {
                 return [
                     'source' => 'deployment',
                     'name' => 'Deployment & Releases',
@@ -360,17 +456,97 @@ class FreshnessService
                     'age_seconds' => null,
                     'warning_threshold' => $warn,
                     'critical_threshold' => $crit,
-                    'reason' => 'Chưa có bản phát hành/triển khai thành công nào được ghi nhận trên môi trường mục tiêu.',
-                    'message' => 'Chưa có bản phát hành/triển khai thành công nào được ghi nhận trên môi trường mục tiêu.',
+                    'reason' => 'Chưa có bản phát hành/triển khai nào được ghi nhận trên môi trường mục tiêu.',
+                    'message' => 'Chưa có bản phát hành/triển khai nào được ghi nhận.',
                 ];
             }
 
+            // Tìm deployment mới nhất theo timestamp
+            $latestDeploy = null;
+            $latestTimestamp = null;
+            foreach ($deployments as $dep) {
+                $rawDate = $dep['deployed_at'] ?? $dep['created_at'] ?? null;
+                if ($rawDate) {
+                    try {
+                        $c = Carbon::parse($rawDate);
+                        if (! $latestTimestamp || $c->isAfter($latestTimestamp)) {
+                            $latestTimestamp = $c;
+                            $latestDeploy = $dep;
+                        }
+                    } catch (Throwable) {
+                        // Ignore non-parseable date strings (e.g. 'Đang triển khai')
+                    }
+                }
+            }
+
+            if (! $latestDeploy) {
+                $latestDeploy = $deployments[0];
+            }
+
+            $depStatus = strtolower($latestDeploy['status'] ?? 'unknown');
+            $env = $latestDeploy['environment'] ?? 'production';
+            $version = $latestDeploy['version'] ?? 'unknown';
+
+            // 1. Deployment failed -> CRITICAL
+            if (in_array($depStatus, ['failed', 'failure', 'error'], true)) {
+                $ageSeconds = $latestTimestamp ? (int) round(max(0, $now->diffInSeconds($latestTimestamp, false) * -1)) : null;
+
+                return [
+                    'source' => 'deployment',
+                    'name' => 'Deployment & Releases',
+                    'type' => 'monitoring',
+                    'status' => self::STATE_CRITICAL,
+                    'last_event_at' => $latestTimestamp?->toIso8601String(),
+                    'source_timestamp' => $latestTimestamp?->toIso8601String(),
+                    'age_seconds' => $ageSeconds,
+                    'warning_threshold' => $warn,
+                    'critical_threshold' => $crit,
+                    'environment' => $env,
+                    'version' => $version,
+                    'reason' => "Bản triển khai gần nhất [{$env}: {$version}] thất bại.",
+                ];
+            }
+
+            // 2. Deployment pending / deploying -> UNKNOWN
+            if (in_array($depStatus, ['deploying', 'in_progress', 'queued', 'pending'], true)) {
+                return [
+                    'source' => 'deployment',
+                    'name' => 'Deployment & Releases',
+                    'type' => 'monitoring',
+                    'status' => self::STATE_UNKNOWN,
+                    'last_event_at' => $latestTimestamp?->toIso8601String(),
+                    'source_timestamp' => $latestTimestamp?->toIso8601String(),
+                    'age_seconds' => null,
+                    'warning_threshold' => $warn,
+                    'critical_threshold' => $crit,
+                    'environment' => $env,
+                    'version' => $version,
+                    'reason' => "Bản triển khai [{$env}: {$version}] đang được tiến hành.",
+                ];
+            }
+
+            // 3. Không có deployed_at hoặc không thành công -> UNKNOWN
+            if (! in_array($depStatus, ['healthy', 'success'], true) || empty($latestDeploy['deployed_at'])) {
+                return [
+                    'source' => 'deployment',
+                    'name' => 'Deployment & Releases',
+                    'type' => 'monitoring',
+                    'status' => self::STATE_UNKNOWN,
+                    'last_event_at' => null,
+                    'source_timestamp' => null,
+                    'age_seconds' => null,
+                    'warning_threshold' => $warn,
+                    'critical_threshold' => $crit,
+                    'environment' => $env,
+                    'version' => $version,
+                    'reason' => "Chưa có bản phát hành/triển khai thành công nào được ghi nhận trên môi trường {$env}.",
+                ];
+            }
+
+            // 4. Deployment thành công: đo lường theo tuổi thực tế
             $sourceCarbon = Carbon::parse($latestDeploy['deployed_at']);
             $ageSeconds = (int) round(max(0, $now->diffInSeconds($sourceCarbon, false) * -1));
             $state = $this->classifyState($ageSeconds, $warn, $crit);
-
-            $env = $latestDeploy['environment'] ?? 'production';
-            $version = $latestDeploy['version'] ?? 'unknown';
 
             $reason = match ($state) {
                 self::STATE_FRESH => "Bản phát hành [{$env}: {$version}] hoạt động bình thường, triển khai cách đây {$ageSeconds}s",
@@ -413,6 +589,7 @@ class FreshnessService
 
     /**
      * Đo lường độ tươi mới của quan sát Health Probe (Application Health Observation Freshness)
+     * DB table freshness_heartbeats là Source of Truth, Cache dùng để tối ưu đọc.
      * FreshnessService CHỈ ĐỌC observation, TUYỆT ĐỐI KHÔNG tự cập nhật timestamp đang đo.
      */
     public function evaluateHealthFreshness(Carbon $now): array
@@ -422,13 +599,68 @@ class FreshnessService
         $crit = (int) ($cfg['critical_seconds'] ?? 180);
 
         try {
-            $lastObserved = Cache::get('application_health_last_observed_at');
-            $lastStatus = Cache::get('application_health_last_status');
-            $failureReason = Cache::get('application_health_failure_reason');
-            $lastDetails = Cache::get('application_health_last_details');
+            $lastObserved = null;
+            $lastStatus = null;
+            $failureReason = null;
+            $lastDetails = null;
+
+            // 1. DB là Source of Truth bền vững
+            try {
+                if (Schema::hasTable('freshness_heartbeats')) {
+                    $dbRow = DB::table('freshness_heartbeats')->where('channel', 'application_health')->first();
+                    if ($dbRow) {
+                        $lastObserved = $dbRow->last_success_at
+                            ? Carbon::parse($dbRow->last_success_at)->toIso8601String()
+                            : ($dbRow->updated_at ? Carbon::parse($dbRow->updated_at)->toIso8601String() : null);
+                        $lastStatus = $dbRow->status;
+                        $failureReason = $dbRow->details;
+                        $lastDetails = $dbRow->metadata ? (is_array($dbRow->metadata) ? $dbRow->metadata : json_decode($dbRow->metadata, true)) : null;
+                    }
+                }
+            } catch (Throwable $e) {
+                return [
+                    'source' => 'application_health',
+                    'name' => 'Application Health Probes',
+                    'type' => 'monitoring',
+                    'status' => self::STATE_UNAVAILABLE,
+                    'last_observed_at' => null,
+                    'source_timestamp' => null,
+                    'age_seconds' => null,
+                    'warning_threshold' => $warn,
+                    'critical_threshold' => $crit,
+                    'reason' => 'Không thể kết nối cơ sở dữ liệu để kiểm tra health probe: '.$e->getMessage(),
+                ];
+            }
+
+            // 2. Fallback Cache nếu chưa có trong DB
+            if (! $lastObserved) {
+                $lastObserved = Cache::get('application_health_last_observed_at') ?: Cache::get('application_health_last_failed_at');
+                $lastStatus = $lastStatus ?: Cache::get('application_health_last_status');
+                $failureReason = $failureReason ?: Cache::get('application_health_failure_reason');
+                $lastDetails = $lastDetails ?: Cache::get('application_health_last_details');
+            }
+
+            // Nếu probe gần nhất báo lỗi không lành mạnh
+            if ($lastStatus === 'unhealthy') {
+                $sourceCarbon = $lastObserved ? Carbon::parse($lastObserved) : null;
+                $ageSeconds = $sourceCarbon ? (int) round(max(0, $now->diffInSeconds($sourceCarbon, false) * -1)) : null;
+
+                return [
+                    'source' => 'application_health',
+                    'name' => 'Application Health Probes',
+                    'type' => 'monitoring',
+                    'status' => self::STATE_CRITICAL,
+                    'last_observed_at' => $sourceCarbon?->toIso8601String(),
+                    'source_timestamp' => $sourceCarbon?->toIso8601String(),
+                    'age_seconds' => $ageSeconds,
+                    'warning_threshold' => $warn,
+                    'critical_threshold' => $crit,
+                    'reason' => 'Health probe báo cáo hệ thống không lành mạnh: '.($failureReason ?: 'Lỗi dịch vụ'),
+                    'details' => $lastDetails,
+                ];
+            }
 
             if (! $lastObserved) {
-                // CHỈ ĐỌC: Không tự Cache::put() để tránh hiện tượng self-observing / tự làm tươi
                 return [
                     'source' => 'application_health',
                     'name' => 'Application Health Probes',
@@ -439,30 +671,13 @@ class FreshnessService
                     'age_seconds' => null,
                     'warning_threshold' => $warn,
                     'critical_threshold' => $crit,
-                    'reason' => 'Chưa có quan sát nào từ Health Probe (/health) được ghi nhận trong bộ nhớ đệm.',
-                    'message' => 'Chưa có quan sát nào từ Health Probe được ghi nhận trong bộ nhớ đệm.',
+                    'reason' => 'Chưa có quan sát nào từ Health Probe (/health) được ghi nhận.',
+                    'message' => 'Chưa có quan sát nào từ Health Probe (/health) được ghi nhận.',
                 ];
             }
 
             $sourceCarbon = Carbon::parse($lastObserved);
             $ageSeconds = (int) round(max(0, $now->diffInSeconds($sourceCarbon, false) * -1));
-
-            // Nếu probe gần nhất báo lỗi không lành mạnh
-            if ($lastStatus === 'unhealthy') {
-                return [
-                    'source' => 'application_health',
-                    'name' => 'Application Health Probes',
-                    'type' => 'monitoring',
-                    'status' => self::STATE_CRITICAL,
-                    'last_observed_at' => $sourceCarbon->toIso8601String(),
-                    'source_timestamp' => $sourceCarbon->toIso8601String(),
-                    'age_seconds' => $ageSeconds,
-                    'warning_threshold' => $warn,
-                    'critical_threshold' => $crit,
-                    'reason' => 'Health probe báo cáo hệ thống không lành mạnh: '.($failureReason ?: 'Lỗi dịch vụ'),
-                    'details' => $lastDetails,
-                ];
-            }
 
             $state = $this->classifyState($ageSeconds, $warn, $crit);
             $reason = match ($state) {
@@ -485,6 +700,8 @@ class FreshnessService
                 'details' => $lastDetails,
             ];
         } catch (Throwable $e) {
+            Log::warning('Freshness evaluation failed for Health: '.$e->getMessage());
+
             return [
                 'source' => 'application_health',
                 'name' => 'Application Health Probes',
@@ -496,7 +713,7 @@ class FreshnessService
                 'warning_threshold' => $warn,
                 'critical_threshold' => $crit,
                 'error' => $e->getMessage(),
-                'reason' => 'Không thể đọc dữ liệu quan sát health probe: '.$e->getMessage(),
+                'reason' => 'Lỗi kiểm tra health freshness: '.$e->getMessage(),
             ];
         }
     }
@@ -827,71 +1044,84 @@ class FreshnessService
             $reason = $obs['reason'] ?? $obs['message'] ?? $obs['error'] ?? "Trạng thái: {$status}";
 
             try {
-                // DB LÀ SOURCE OF TRUTH DUY NHẤT: Truy vấn trực tiếp từ bảng freshness_incidents
-                $activeIncidents = FreshnessIncident::query()
-                    ->where('source', $srcName)
-                    ->whereNull('resolved_at')
-                    ->orderByDesc('detected_at')
-                    ->get();
-
-                // Tự động dọn dẹp các bản ghi trùng lặp từ trước (nếu có): Chỉ giữ lại 1 active duy nhất
-                if ($activeIncidents->count() > 1) {
-                    $activeIncidents->slice(1)->each(function ($dup) use ($now) {
-                        $dup->update([
-                            'resolved_at' => $now,
-                            'details' => ($dup->details ?: 'Sự cố cũ').' (Đóng tự động bản ghi trùng lặp)',
-                        ]);
-                    });
-                }
-
-                $activeIncident = $activeIncidents->first();
-
-                if (in_array($status, [self::STATE_STALE, self::STATE_CRITICAL, self::STATE_UNAVAILABLE], true)) {
-                    if ($activeIncident) {
-                        // Cùng 1 failure episode: Chỉ cập nhật lifecycle của incident hiện tại, KHÔNG tạo duplicate rows
-                        $activeIncident->update([
-                            'state' => $status,
-                            'age_seconds' => $ageSeconds,
-                            'threshold_seconds' => $threshold,
-                            'details' => $reason,
-                        ]);
-                    } else {
-                        // Bắt đầu sự cố mới: Tạo duy nhất 1 incident active
-                        FreshnessIncident::create([
-                            'source' => $srcName,
-                            'source_type' => $type,
-                            'state' => $status,
-                            'age_seconds' => $ageSeconds,
-                            'threshold_seconds' => $threshold,
-                            'source_timestamp' => $sourceTimestamp,
-                            'detected_at' => $now,
-                            'resolved_at' => null,
-                            'details' => $reason,
-                        ]);
-                    }
-                } elseif ($status === self::STATE_FRESH) {
-                    if ($activeIncident) {
-                        // Khắc phục sự cố: Resolve toàn bộ incident đang active của source này
-                        $previousState = $activeIncident->state;
-                        FreshnessIncident::where('source', $srcName)
+                $process = function () use ($srcName, $status, $type, $ageSeconds, $threshold, $sourceTimestamp, $reason, $now) {
+                    DB::transaction(function () use ($srcName, $status, $type, $ageSeconds, $threshold, $sourceTimestamp, $reason, $now) {
+                        // DB LÀ SOURCE OF TRUTH DUY NHẤT: Khóa bi quan (pessimistic lock) trên các bản ghi active của source này
+                        $activeIncidents = FreshnessIncident::query()
+                            ->where('source', $srcName)
                             ->whereNull('resolved_at')
-                            ->update([
-                                'resolved_at' => $now,
-                                'details' => DB::raw("CONCAT(COALESCE(details, ''), ' | Phục hồi tại {$now->toIso8601String()}')"),
-                            ]);
+                            ->lockForUpdate()
+                            ->orderByDesc('id')
+                            ->get();
 
-                        FreshnessIncident::create([
-                            'source' => $srcName,
-                            'source_type' => $type,
-                            'state' => 'RECOVERED',
-                            'age_seconds' => $ageSeconds,
-                            'threshold_seconds' => $threshold,
-                            'source_timestamp' => $sourceTimestamp,
-                            'detected_at' => $now,
-                            'resolved_at' => $now,
-                            'details' => "Phục hồi thành công về trạng thái FRESH từ {$previousState}",
-                        ]);
-                    }
+                        // Tự động dọn dẹp các bản ghi trùng lặp từ trước (nếu có): Chỉ giữ lại 1 active duy nhất
+                        if ($activeIncidents->count() > 1) {
+                            $activeIncidents->slice(1)->each(function ($dup) use ($now) {
+                                $dup->update([
+                                    'resolved_at' => $now,
+                                    'details' => ($dup->details ?: 'Sự cố cũ').' (Đóng tự động bản ghi trùng lặp)',
+                                ]);
+                            });
+                        }
+
+                        $activeIncident = $activeIncidents->first();
+
+                        if (in_array($status, [self::STATE_STALE, self::STATE_CRITICAL, self::STATE_UNAVAILABLE], true)) {
+                            if ($activeIncident) {
+                                // Cùng 1 failure episode: Chỉ cập nhật lifecycle của incident hiện tại, KHÔNG tạo duplicate rows
+                                $activeIncident->update([
+                                    'state' => $status,
+                                    'age_seconds' => $ageSeconds,
+                                    'threshold_seconds' => $threshold,
+                                    'details' => $reason,
+                                ]);
+                            } else {
+                                // Bắt đầu sự cố mới: Tạo duy nhất 1 incident active
+                                FreshnessIncident::create([
+                                    'source' => $srcName,
+                                    'source_type' => $type,
+                                    'state' => $status,
+                                    'age_seconds' => $ageSeconds,
+                                    'threshold_seconds' => $threshold,
+                                    'source_timestamp' => $sourceTimestamp,
+                                    'detected_at' => $now,
+                                    'resolved_at' => null,
+                                    'details' => $reason,
+                                ]);
+                            }
+                        } elseif ($status === self::STATE_FRESH) {
+                            if ($activeIncident) {
+                                // Khắc phục sự cố: Resolve toàn bộ incident đang active của source này
+                                $previousState = $activeIncident->state;
+                                FreshnessIncident::where('source', $srcName)
+                                    ->whereNull('resolved_at')
+                                    ->update([
+                                        'resolved_at' => $now,
+                                        'details' => DB::raw("CONCAT(COALESCE(details, ''), ' | Phục hồi tại {$now->toIso8601String()}')"),
+                                    ]);
+
+                                FreshnessIncident::create([
+                                    'source' => $srcName,
+                                    'source_type' => $type,
+                                    'state' => 'RECOVERED',
+                                    'age_seconds' => $ageSeconds,
+                                    'threshold_seconds' => $threshold,
+                                    'source_timestamp' => $sourceTimestamp,
+                                    'detected_at' => $now,
+                                    'resolved_at' => $now,
+                                    'details' => "Phục hồi thành công về trạng thái FRESH từ {$previousState}",
+                                ]);
+                            }
+                        }
+                    });
+                };
+
+                // Thử áp dụng atomic cache lock nếu driver hỗ trợ để serialize ở application level
+                try {
+                    $lock = Cache::lock("freshness_incident_lock_{$srcName}", 5);
+                    $lock->block(3, $process);
+                } catch (Throwable) {
+                    $process();
                 }
             } catch (Throwable $e) {
                 Log::error("Failed to process freshness incident for {$srcName}: ".$e->getMessage());

@@ -154,20 +154,24 @@ class GitHubActionsService
     }
 
     /**
-     * Lấy danh sách pipelines thực tế (từ GitHub Actions hoặc các lượt chạy thực tế)
+     * Lấy danh sách pipelines thực tế kèm trạng thái API chi tiết (ok, token_missing, api_unavailable, empty_runs)
      */
-    public function getPipelines(array $filters = [], bool $force = false): array
+    public function getPipelinesWithStatus(array $filters = [], bool $force = false): array
     {
-        $cacheKey = 'cicd_pipelines_'.md5(json_encode($filters));
+        $cacheKey = 'cicd_pipelines_status_'.md5(json_encode($filters));
         if ($force) {
             Cache::forget($cacheKey);
         }
 
         return Cache::remember($cacheKey, 8, function () use ($filters) {
             $runs = [];
+            $apiStatus = 'ok';
+            $apiReason = null;
 
-            // 1. Thử lấy từ GitHub Actions API nếu có Token
-            if ($this->isLiveGitHubAvailable()) {
+            if (! $this->isLiveGitHubAvailable()) {
+                $apiStatus = 'token_missing';
+                $apiReason = 'GitHub token missing';
+            } else {
                 try {
                     $queryParams = ['per_page' => 25];
                     if (! empty($filters['branch']) && $filters['branch'] !== 'all') {
@@ -176,23 +180,33 @@ class GitHubActionsService
 
                     $response = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(3.5)
+                        ->timeout(4.0)
                         ->get("{$this->apiBase}/actions/runs", $queryParams);
 
                     if ($response->successful()) {
                         $githubRuns = $response->json('workflow_runs') ?? [];
                         $runs = array_map([$this, 'formatGitHubRun'], $githubRuns);
+                        if (empty($runs)) {
+                            $apiStatus = 'empty_runs';
+                            $apiReason = 'no workflow runs';
+                        }
+                    } else {
+                        $apiStatus = 'api_unavailable';
+                        $statusText = $response->status();
+                        $apiReason = "GitHub Actions API unavailable (HTTP {$statusText})";
+                        Log::warning("GitHub Actions API returned {$statusText}: {$response->body()}");
                     }
                 } catch (\Throwable $e) {
+                    $apiStatus = 'api_unavailable';
+                    $apiReason = 'GitHub Actions API unavailable: '.$e->getMessage();
                     Log::warning('GitHub Actions API call failed: '.$e->getMessage());
                 }
             }
 
-            // 2. Kết hợp với các lượt chạy thực tế do người dùng kích hoạt trên hệ thống
+            // Kết hợp với các lượt chạy local thực tế nếu có
             $localRuns = $this->getStoredLocalRuns();
             $allRuns = array_merge($runs, $localRuns);
 
-            // Sắp xếp theo thời gian mới nhất trước
             usort($allRuns, function ($a, $b) {
                 return strtotime($b['created_at'] ?? 'now') - strtotime($a['created_at'] ?? 'now');
             });
@@ -219,8 +233,20 @@ class GitHubActionsService
                 }));
             }
 
-            return $allRuns;
+            return [
+                'status' => $apiStatus,
+                'reason' => $apiReason,
+                'runs' => $allRuns,
+            ];
         });
+    }
+
+    /**
+     * Lấy danh sách pipelines thực tế (từ GitHub Actions hoặc các lượt chạy thực tế)
+     */
+    public function getPipelines(array $filters = [], bool $force = false): array
+    {
+        return $this->getPipelinesWithStatus($filters, $force)['runs'];
     }
 
     /**
@@ -422,6 +448,60 @@ class GitHubActionsService
             }
         }
 
+        // 2. Nếu có VERCEL_TOKEN và VERCEL_PROJECT_ID, truy vấn Vercel Deployments API
+        $vercelToken = env('VERCEL_TOKEN');
+        $vercelProjectId = env('VERCEL_PROJECT_ID');
+        if (! empty($vercelToken) && ! empty($vercelProjectId)) {
+            try {
+                $vercelRes = Http::withToken($vercelToken)
+                    ->timeout(4)
+                    ->get('https://api.vercel.com/v6/deployments', [
+                        'projectId' => $vercelProjectId,
+                        'limit' => 5,
+                    ]);
+
+                if ($vercelRes->successful()) {
+                    $vercelDeps = $vercelRes->json('deployments') ?? [];
+                    if (! empty($vercelDeps)) {
+                        $deployments = [];
+                        foreach ($vercelDeps as $vDep) {
+                            $target = $vDep['target'] ?? 'production';
+                            $state = strtoupper($vDep['readyState'] ?? $vDep['state'] ?? 'UNKNOWN');
+                            $status = match ($state) {
+                                'READY' => 'healthy',
+                                'ERROR', 'CANCELED' => 'failed',
+                                'BUILDING', 'INITIALIZING', 'QUEUED' => 'deploying',
+                                default => 'unknown',
+                            };
+                            $deployedAt = ($status === 'healthy' && ! empty($vDep['ready']))
+                                ? Carbon::createFromTimestampMs($vDep['ready'])->toIso8601String()
+                                : ($status === 'healthy' && ! empty($vDep['createdAt']) ? Carbon::createFromTimestampMs($vDep['createdAt'])->toIso8601String() : null);
+
+                            $commit = substr($vDep['meta']['githubCommitSha'] ?? $vDep['url'] ?? 'v1', 0, 7);
+
+                            $deployments[] = [
+                                'id' => (string) ($vDep['uid'] ?? $vDep['id'] ?? uniqid()),
+                                'environment' => $target,
+                                'version' => "sha-{$commit}",
+                                'image_tag' => $vDep['url'] ?? 'vercel',
+                                'commit_sha' => $commit,
+                                'status' => $status,
+                                'deployed_by' => $vDep['creator']['username'] ?? 'Vercel',
+                                'deployed_at' => $deployedAt,
+                                'response_time_ms' => 0,
+                                'release_notes' => "Triển khai Vercel ({$state}) tại {$vDep['url']}",
+                            ];
+                        }
+
+                        return $deployments;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Vercel Deployments API failed: '.$e->getMessage());
+            }
+        }
+
+        // 3. Nếu không có dữ liệu API, trả về trạng thái môi trường thực tế (không fake healthy)
         $prodImage = $this->getLastDeployedImageRef('production');
         $stagingImage = $this->getLastDeployedImageRef('staging');
 
@@ -442,10 +522,10 @@ class GitHubActionsService
 
         return [
             [
-                'id' => 'dep-prod',
+                'id' => 'production',
                 'environment' => 'production',
-                'version' => $prodConfigured ? ($prodImage ? basename($prodImage) : 'Chưa triển khai') : 'Not configured',
-                'image_tag' => $prodConfigured ? ($prodImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình VERCEL_TOKEN hoặc PROD_HOST',
+                'version' => $prodImage ? basename($prodImage) : 'Chưa có',
+                'image_tag' => $prodImage ?: 'none',
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $prodStatus,
                 'deployed_by' => $prodImage ? 'GitHub Actions CD' : 'Chưa có',
@@ -453,13 +533,13 @@ class GitHubActionsService
                 'response_time_ms' => 0,
                 'release_notes' => $prodConfigured
                     ? ($prodImage ? 'Phiên bản production đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Production nào. Tự động kích hoạt khi push vào master.')
-                    : 'Môi trường Production chưa được thiết lập (Cần cấu hình VERCEL_TOKEN hoặc PROD_HOST trong GitHub Secrets).',
+                    : 'Môi trường Production chưa được cấu hình biến môi trường PROD_HOST/PROD_URL.',
             ],
             [
-                'id' => 'dep-staging',
+                'id' => 'staging',
                 'environment' => 'staging',
-                'version' => $stagingConfigured ? ($stagingImage ? basename($stagingImage) : 'Chưa triển khai') : 'Not configured',
-                'image_tag' => $stagingConfigured ? ($stagingImage ?: 'Chưa cấu hình image') : 'Chưa cấu hình VERCEL_TOKEN hoặc STAGING_HOST',
+                'version' => $stagingImage ? basename($stagingImage) : 'Chưa có',
+                'image_tag' => $stagingImage ?: 'none',
                 'commit_sha' => substr($commitSha, 0, 7),
                 'status' => $stagingStatus,
                 'deployed_by' => $stagingImage ? 'GitHub Actions CD' : 'Chưa có',
@@ -467,7 +547,7 @@ class GitHubActionsService
                 'response_time_ms' => 0,
                 'release_notes' => $stagingConfigured
                     ? ($stagingImage ? 'Phiên bản staging đã triển khai qua CD pipeline.' : 'Chưa có lượt triển khai Staging nào. Tự động kích hoạt khi push vào develop hoặc tạo PR.')
-                    : 'Môi trường Staging chưa được thiết lập (Cần cấu hình VERCEL_TOKEN hoặc STAGING_HOST trong GitHub Secrets).',
+                    : 'Môi trường Staging chưa được cấu hình biến môi trường STAGING_HOST/STAGING_URL.',
             ],
         ];
     }
