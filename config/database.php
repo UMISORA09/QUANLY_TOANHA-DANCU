@@ -58,7 +58,7 @@ return [
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) + [
                 PDO::ATTR_EMULATE_PREPARES => false,
-                PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
+                (defined('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY') ? Mysql::ATTR_USE_BUFFERED_QUERY : PDO::MYSQL_ATTR_USE_BUFFERED_QUERY) => true,
                 PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN),
             ]) : [],
         ],
