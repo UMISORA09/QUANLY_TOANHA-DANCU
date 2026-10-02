@@ -19,7 +19,6 @@ import {
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
-import { AmenityManagement } from '../Admin/AmenityManagement';
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -129,6 +128,10 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       onItemClick={(id) => {
         if (id === 'manager_portal') {
           onNavigateManager();
+          return;
+        }
+        if (id === 'amenities') {
+          window.location.href = '/quan-ly?tab=amenities';
           return;
         }
         setActiveTab(id);
@@ -495,10 +498,28 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
           </div>
         )}
 
-        {/* TAB 7: QUẢN LÝ TIỆN ÍCH */}
+        {/* TAB 7: QUẢN LÝ TIỆN ÍCH - ĐÃ CHUYỂN SANG CỔNG BAN QUẢN LÝ */}
         {activeTab === 'amenities' && (
-          <div className="space-y-6">
-            <AmenityManagement embedded={true} />
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-sky-500 text-white flex items-center justify-center mx-auto shadow-md">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">Phân hệ Quản Lý Tiện Ích Đã Chuyển Sang Cổng Ban Quản Lý</h3>
+            <p className="text-xs text-slate-600 max-w-lg mx-auto leading-relaxed">
+              Toàn bộ tính năng cấu hình danh mục, thiết lập khung giờ (Slot), ngày đóng cửa và theo dõi lịch đặt tiện ích đã được tích hợp tập trung vào Cổng Vận Hành của Ban Quản Lý.
+            </p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = '/quan-ly?tab=amenities';
+                }}
+                className="px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold inline-flex items-center gap-2 shadow-md cursor-pointer transition-all active:scale-95"
+              >
+                <span>Mở Quản lý Tiện ích tại Cổng Ban Quản Lý</span>
+                <ArrowRight className="w-4 h-4 text-sky-400" />
+              </button>
+            </div>
           </div>
         )}
       </div>
