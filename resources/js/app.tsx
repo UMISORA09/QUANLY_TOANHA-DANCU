@@ -12,10 +12,14 @@ const DevConsolePage = lazy(() => import('./Pages/Dev/DevConsolePage'));
 const PublicStatusPage = lazy(() => import('./Pages/PublicStatusPage'));
 const IncidentHistoryPage = lazy(() => import('./Pages/IncidentHistoryPage'));
 const AccountActivationPage = lazy(() => import('./Pages/Auth/AccountActivationPage'));
+const LoginPage = lazy(() => import('./Pages/Auth/LoginPage'));
+const RegisterPage = lazy(() => import('./Pages/Auth/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./Pages/Auth/ForgotPasswordPage'));
 const NotFound = lazy(() => import('./Pages/NotFound'));
 
 interface UserSession {
   role: string;
+  resident_type?: 'OWNER' | 'TENANT';
   email: string;
   name: string;
   isDev?: boolean;
@@ -46,10 +50,12 @@ const App: React.FC = () => {
 
   const navigateTo = (path: string) => {
     window.history.pushState({}, '', path);
-    setCurrentPath(path);
+    const clean = path.split('?')[0];
+    setCurrentPath(clean);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleLoginSuccess = (role: string, email: string) => {
+  const handleLoginSuccess = (role: string, email: string, residentType?: string) => {
     const isDev =
       email.toLowerCase().includes('dev') ||
       email === 'dev@cassavas.vn' ||
@@ -82,6 +88,7 @@ const App: React.FC = () => {
 
     const session: UserSession = {
       role: normalizedRole,
+      resident_type: (residentType === 'TENANT' ? 'TENANT' : 'OWNER') as any,
       isDev: isDev,
       email:
         email ||
@@ -103,7 +110,7 @@ const App: React.FC = () => {
           ? 'Ban Quản Lý'
           : isReceptionist
           ? 'Lễ Tân Sảnh Chính'
-          : 'Nguyễn Văn An',
+          : (residentType === 'TENANT' ? 'Khách Thuê Căn Hộ' : 'Nguyễn Văn An'),
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
@@ -130,7 +137,11 @@ const App: React.FC = () => {
       }, 350);
     } else {
       setTimeout(() => {
-        navigateTo('/cu-dan');
+        if (residentType === 'TENANT') {
+          navigateTo('/cu-dan?tab=rentals');
+        } else {
+          navigateTo('/cu-dan');
+        }
       }, 350);
     }
   };
@@ -360,6 +371,7 @@ const App: React.FC = () => {
         onNavigateHome={() => navigateTo('/home?landing=true')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
+        residentType={currentUser?.resident_type}
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Nguyễn Văn An')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'nguyenvanan@cassavas.vn')}
       />
@@ -418,42 +430,65 @@ const App: React.FC = () => {
     );
   }
 
-  // Valid paths for single-page application
-  const isAuthPath =
-    currentPath === '/login' ||
-    currentPath === '/register' ||
-    currentPath === '/dang-nhap' ||
-    currentPath === '/dang-ky';
+  // 5. Phân hệ Xác thực độc lập (Dedicated Auth Pages: Đăng nhập, Đăng ký, Quên mật khẩu & OTP)
+  const isLoginPage = currentPath === '/login' || currentPath === '/dang-nhap';
+  const isRegisterPage = currentPath === '/register' || currentPath === '/dang-ky';
+  const isForgotPasswordPage =
+    currentPath === '/forgot-password' ||
+    currentPath === '/quen-mat-khau' ||
+    currentPath === '/verify-otp' ||
+    currentPath === '/reset-password';
+
+  if (isLoginPage) {
+    return (
+      <LoginPage
+        onNavigate={navigateTo}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
+
+  if (isRegisterPage) {
+    return (
+      <RegisterPage
+        onNavigate={navigateTo}
+        onRegisterSuccess={handleLoginSuccess}
+      />
+    );
+  }
+
+  if (isForgotPasswordPage) {
+    return (
+      <ForgotPasswordPage
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  // 6. Trang chủ công khai (Home)
   const isHomePage =
     currentPath === '/' ||
     currentPath === '' ||
     currentPath === '/home' ||
-    currentPath.startsWith('/home') ||
-    isAuthPath;
+    currentPath.startsWith('/home');
 
   if (!isHomePage) {
     return <NotFound onBackHome={() => navigateTo('/home')} />;
   }
 
-  const initialAuthMode =
-    currentPath === '/register' || currentPath === '/dang-ky'
-      ? 'register'
-      : currentPath === '/login' || currentPath === '/dang-nhap'
-      ? 'login'
-      : null;
-
-    return (
-      <Home
-        initialAuthModal={initialAuthMode}
-        onLoginSuccess={handleLoginSuccess}
-        onNavigateAdmin={() => navigateTo('/admin')}
-        onNavigateManager={() => navigateTo('/quan-ly')}
-        onNavigateResident={() => navigateTo('/cu-dan')}
-        onNavigateReception={() => navigateTo('/le-tan')}
-        currentUserRole={currentUser?.role}
-      />
-    );
-  };
+  return (
+    <Home
+      onLoginSuccess={handleLoginSuccess}
+      onNavigateLogin={(role) => navigateTo(role ? `/login?role=${role}` : '/login')}
+      onNavigateRegister={(type) => navigateTo(type ? `/register?type=${type}` : '/register')}
+      onNavigateAdmin={() => navigateTo('/admin')}
+      onNavigateManager={() => navigateTo('/quan-ly')}
+      onNavigateResident={() => navigateTo('/cu-dan')}
+      onNavigateReception={() => navigateTo('/le-tan')}
+      currentUserRole={currentUser?.role}
+    />
+  );
+};
 
   return (
     <ChunkErrorBoundary>

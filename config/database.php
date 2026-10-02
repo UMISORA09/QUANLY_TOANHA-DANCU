@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Str;
-use Pdo\Mysql;
 
 return [
 
@@ -55,10 +54,10 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'options' => extension_loaded('pdo_mysql') ? (array_filter([
-                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                (defined('Pdo\Mysql::ATTR_SSL_CA') ? constant('Pdo\Mysql::ATTR_SSL_CA') : (defined('PDO::MYSQL_ATTR_SSL_CA') ? PDO::MYSQL_ATTR_SSL_CA : 1008)) => env('MYSQL_ATTR_SSL_CA'),
             ]) + [
                 PDO::ATTR_EMULATE_PREPARES => false,
-                PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
+                (defined('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY') ? constant('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY') : (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY') ? PDO::MYSQL_ATTR_USE_BUFFERED_QUERY : 1000)) => true,
                 PDO::ATTR_PERSISTENT => env('APP_ENV') !== 'testing' && filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN),
             ]) : [],
         ],

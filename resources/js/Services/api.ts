@@ -259,6 +259,140 @@ class ApiService {
     return this.request<any>('/auth/me');
   }
 
+  async register(payload: {
+    full_name: string;
+    email: string;
+    phone_number: string;
+    password: string;
+    apartment_id?: string;
+    apartment_number?: string;
+    resident_type?: 'OWNER' | 'TENANT';
+    otp?: string;
+    verification_token?: string;
+  }) {
+    const res = await this.request<{
+      success: boolean;
+      message: string;
+      access_token?: string;
+      token_type?: string;
+      user?: any;
+    }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.access_token) {
+      this.setToken(res.access_token);
+    }
+    if (res.user) {
+      this.setUser(res.user);
+    }
+    return res;
+  }
+
+  async sendRegisterOtp(email: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      email?: string;
+      debug_otp?: string | null;
+    }>('/auth/send-register-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async verifyRegisterOtp(email: string, otp: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      verification_token?: string;
+    }>('/auth/verify-register-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
+    });
+  }
+
+  async forgotPassword(email: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      email?: string;
+      debug_otp?: string | null;
+    }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async verifyOtp(email: string, otp: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      reset_token?: string;
+    }>('/auth/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
+    });
+  }
+
+  async resetPassword(payload: {
+    email: string;
+    reset_token: string;
+    password: string;
+    password_confirmation: string;
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getPublicApartments() {
+    return this.request<{
+      success: boolean;
+      data: Array<{ id: string; apartment_number: string; room_type: string }>;
+    }>('/auth/public-apartments');
+  }
+
+  async getRentalListings(blockCode?: string) {
+    const query = blockCode ? `?block_code=${encodeURIComponent(blockCode)}` : '';
+    return this.request<{
+      success: boolean;
+      data: {
+        blocks: Array<{
+          id: string;
+          block_code: string;
+          block_name: string;
+          total_floors: number;
+          total_apartments: number;
+          address_line?: string;
+          hotline_phone?: string;
+        }>;
+        listings: Array<{
+          id: string;
+          apartment_number: string;
+          block_code: string;
+          block_name: string;
+          room_type: string;
+          bedroom_count: number;
+          bathroom_count: number;
+          area_sqm: number;
+          has_balcony: boolean;
+          furnished_status: string;
+          furnished_text: string;
+          monthly_rent: number;
+          monthly_rent_formatted: string;
+          owner_name: string;
+          is_available: boolean;
+          view_direction: string;
+        }>;
+      };
+    }>(`/auth/rental-listings${query}`);
+  }
+
   // ================= CATEGORIES =================
   async getCategories(forceRefresh: boolean = false): Promise<Category[]> {
     const key = 'amenities:categories';

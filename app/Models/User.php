@@ -38,6 +38,9 @@ class User extends Authenticatable
         'lockout_until',
         'fcm_device_token',
         'extra_preferences',
+        'google_id',
+        'facebook_id',
+        'oauth_provider',
     ];
 
     protected $hidden = [
