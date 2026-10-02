@@ -16,6 +16,7 @@ import {
   ChevronsRight,
   Loader2,
   Eye,
+  Check,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -81,6 +82,103 @@ const getPageNumbers = (current: number, total: number): (number | string)[] => 
     pages.push(total);
   }
   return pages;
+};
+
+interface CustomSelectOption {
+  value: string;
+  label: string;
+}
+
+interface CustomSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: CustomSelectOption[];
+  placeholder?: string;
+  className?: string;
+}
+
+const CustomSelect: React.FC<CustomSelectProps> = ({
+  value,
+  onChange,
+  options,
+  placeholder = 'Chọn một mục...',
+  className = '',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedOption = options.find((opt) => opt.value === value);
+
+  useEffect(() => {
+    const handlePointerDownOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handlePointerDownOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDownOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3.5 py-2 text-xs border rounded-2xl bg-white transition-all flex items-center justify-between gap-2 shadow-2xs cursor-pointer text-left ${
+          isOpen
+            ? 'border-neutral-900 ring-2 ring-neutral-900/10'
+            : value && value !== 'all' && value !== ''
+            ? 'border-neutral-300 font-semibold text-neutral-950 bg-neutral-50/40 hover:bg-neutral-50'
+            : 'border-neutral-200 text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50/50'
+        }`}
+      >
+        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform duration-200 ${
+            isOpen ? 'rotate-180 text-neutral-900' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1.5 min-w-[200px] bg-white/95 backdrop-blur-2xl border border-neutral-200/90 rounded-2xl shadow-xl p-1.5 space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-150">
+          {options.map((opt) => {
+            const isSelected = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-xs rounded-xl flex items-center justify-between transition-colors text-left cursor-pointer ${
+                  isSelected
+                    ? 'bg-neutral-950 text-white font-semibold shadow-2xs'
+                    : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
+                }`}
+              >
+                <span className="truncate">{opt.label}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1.5" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
@@ -727,13 +825,13 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {/* Search Input, Clear button & Searching spinner */}
             <div className="lg:col-span-2 relative">
-              <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Tìm theo tên tiện ích hoặc mã tiện ích (VD: GYM, BƠI)..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all"
+                className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-2xl bg-white hover:bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all shadow-2xs"
               />
 
               {/* Right Indicators: Spinner & Clear Button */}
@@ -756,56 +854,57 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
             {/* Category Filter */}
             <div>
-              <select
+              <CustomSelect
                 value={selectedCategory}
-                onChange={(e) => {
-                  setSelectedCategory(e.target.value);
+                onChange={(val) => {
+                  setSelectedCategory(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="">Tất cả danh mục</option>
-                {(Array.isArray(categories) ? categories : []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.category_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Tất cả danh mục' },
+                  ...(Array.isArray(categories) ? categories : []).map((c) => ({
+                    value: c.id,
+                    label: c.category_name,
+                  })),
+                ]}
+                placeholder="Tất cả danh mục"
+              />
             </div>
 
             {/* Block Filter */}
             <div>
-              <select
+              <CustomSelect
                 value={selectedBlock}
-                onChange={(e) => {
-                  setSelectedBlock(e.target.value);
+                onChange={(val) => {
+                  setSelectedBlock(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="">Tất cả tòa nhà</option>
-                {(Array.isArray(blocks) ? blocks : []).map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.block_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Tất cả tòa nhà' },
+                  ...(Array.isArray(blocks) ? blocks : []).map((b) => ({
+                    value: b.id,
+                    label: b.block_name,
+                  })),
+                ]}
+                placeholder="Tất cả tòa nhà"
+              />
             </div>
 
             {/* Status Filter */}
             <div>
-              <select
+              <CustomSelect
                 value={selectedStatus}
-                onChange={(e) => {
-                  setSelectedStatus(e.target.value);
+                onChange={(val) => {
+                  setSelectedStatus(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="active">Đang hoạt động</option>
-                <option value="inactive">Tạm ngưng</option>
-              </select>
+                options={[
+                  { value: 'all', label: 'Tất cả trạng thái' },
+                  { value: 'active', label: 'Đang hoạt động' },
+                  { value: 'inactive', label: 'Tạm ngưng' },
+                ]}
+                placeholder="Tất cả trạng thái"
+              />
             </div>
           </div>
 
