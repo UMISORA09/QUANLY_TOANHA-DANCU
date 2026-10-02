@@ -1,0 +1,33 @@
+// ==============================================================================
+// SASS VARIABLES - Quản lý màu sắc, bán kính bo góc, bóng đổ và transition
+// ==============================================================================
+
+// Colors
+$color-sky-400: #38bdf8;
+$color-sky-500: #0ea5e9;
+$color-sky-600: #0284c7;
+$color-indigo-500: #6366f1;
+$color-neutral-900: #171717;
+$color-neutral-950: #0a0a0a;
+
+// Glassmorphism tokens
+$glass-bg-light: rgba(255, 255, 255, 0.72);
+$glass-bg-dark: rgba(11, 19, 43, 0.82);
+$glass-border-light: rgba(255, 255, 255, 0.6);
+$glass-border-dark: rgba(56, 189, 248, 0.2);
+$glass-blur-sm: 12px;
+$glass-blur-md: 16px;
+$glass-blur-lg: 24px;
+$glass-blur-xl: 32px;
+
+// Border Radiuses
+$radius-sm: 8px;
+$radius-md: 12px;
+$radius-lg: 16px;
+$radius-xl: 24px;
+$radius-full: 9999px;
+
+// Transitions & Durations
+$transition-fast: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+$transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-slow: 0.5s ease-in-out;
