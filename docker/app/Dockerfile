@@ -6,7 +6,7 @@ FROM php:8.4-fpm-bookworm AS base
 WORKDIR /var/www/html
 
 # Cài đặt các công cụ hệ thống tối thiểu
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     gnupg2 \
     apt-transport-https \

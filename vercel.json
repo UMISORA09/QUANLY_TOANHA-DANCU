@@ -26,6 +26,8 @@
     "VIEW_COMPILED_PATH": "/tmp/storage/framework/views",
     "CACHE_STORE": "array",
     "SESSION_DRIVER": "cookie",
-    "LOG_CHANNEL": "stderr"
+    "LOG_CHANNEL": "stderr",
+    "LARAVEL_STORAGE_PATH": "/tmp/storage",
+    "DB_DATABASE": "/tmp/storage/database.sqlite"
   }
 }
