@@ -178,7 +178,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Main Welcome Card */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs">
+            <div className="demo-card rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
