@@ -787,8 +787,8 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
       {/* MODAL 1: ĐĂNG KÝ PHƯƠNG TIỆN MỚI */}
       {isCreateModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80 shrink-0">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
                   <Car className="w-4 h-4" />
@@ -805,8 +805,8 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
             </div>
 
             <form onSubmit={handleCreateSubmit} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-5 space-y-4 text-xs overflow-y-auto custom-scrollbar flex-1 max-h-[calc(90vh-130px)]">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 sm:p-5 space-y-3.5 text-xs overflow-y-auto custom-scrollbar flex-1 max-h-[calc(90vh-125px)]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {/* Chọn căn hộ */}
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Căn hộ đăng ký (*)</label>
@@ -829,11 +829,15 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block font-bold text-slate-700">Chủ phương tiện (*)</label>
-                      {loadingResidents && (
+                      {formApartmentId && !loadingResidents && formResidents.length === 0 ? (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
+                          Chưa có cư dân (chọn từ DS)
+                        </span>
+                      ) : loadingResidents ? (
                         <span className="text-[10px] text-emerald-600 animate-pulse font-medium">
                           Đang tải...
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <select
                       value={formOwnerUserId}
@@ -890,13 +894,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                         </optgroup>
                       )}
                     </select>
-
-                    {/* Hướng dẫn khi căn hộ đã chọn chưa có cư dân */}
-                    {formApartmentId && !loadingResidents && formResidents.length === 0 && (
-                      <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 leading-relaxed">
-                        💡 Căn hộ này chưa có hồ sơ cư dân thường trú. Bạn có thể chọn chủ xe từ <strong>Danh sách cư dân tòa nhà</strong> trong menu trên để tiếp tục đăng ký.
-                      </p>
-                    )}
                   </div>
 
                   {/* Loại xe */}
@@ -978,18 +975,18 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                 </div>
 
                 {/* Thông tin biểu phí */}
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-slate-700 flex items-center gap-1.5">
                       <Tag className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Mức phí gửi xe áp dụng (Đơn giá hệ thống):</span>
+                      <span>Mức phí áp dụng (hệ thống):</span>
                     </div>
                     <div className="text-sm font-black text-emerald-700 font-mono">
                       {new Intl.NumberFormat('vi-VN').format(formFee)} đ / tháng
                     </div>
                   </div>
-                  <div className="text-[11px] text-slate-500">
-                    Khoản phí này sẽ tự động tích hợp vào hóa đơn của căn hộ chu kỳ hiện tại kèm thuế VAT 10% theo quy định.
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Tự động tích hợp vào hóa đơn căn hộ chu kỳ hiện tại kèm thuế VAT 10%.
                   </div>
                 </div>
 
