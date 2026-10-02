@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "vite build && node scripts/sync-index-html.js",
         "dev": "vite",
         "typecheck": "tsc --noEmit",
         "test:e2e": "playwright test"
