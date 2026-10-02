@@ -338,6 +338,19 @@ class VehicleApiService {
   }> {
     return this.request(`/vehicles/meta/apartments/${apartmentId}/residents`);
   }
+
+  /**
+   * Lấy danh sách toàn bộ cư dân tòa nhà (hỗ trợ chọn chủ xe linh hoạt)
+   */
+  async getAllResidents(apartmentId?: string): Promise<{
+    success: boolean;
+    data: (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[];
+  }> {
+    const endpoint = apartmentId
+      ? `/vehicles/meta/residents?apartment_id=${encodeURIComponent(apartmentId)}`
+      : '/vehicles/meta/residents';
+    return this.request(endpoint);
+  }
 }
 
 export const vehicleApi = new VehicleApiService();

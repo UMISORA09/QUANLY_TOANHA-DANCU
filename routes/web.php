@@ -364,6 +364,7 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::post('vehicles', [VehicleController::class, 'store']);
     Route::get('vehicles/pricing-config', [VehicleController::class, 'pricingConfig']);
     Route::get('vehicles/meta/apartments', [VehicleController::class, 'apartments']);
+    Route::get('vehicles/meta/residents', [VehicleController::class, 'allResidents']);
     Route::get('vehicles/meta/apartments/{apartmentId}/residents', [VehicleController::class, 'apartmentResidents']);
     Route::get('vehicles/{id}', [VehicleController::class, 'show']);
     Route::put('vehicles/{id}', [VehicleController::class, 'update']);

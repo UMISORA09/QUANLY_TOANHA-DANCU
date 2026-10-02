@@ -371,4 +371,41 @@ class VehicleController extends Controller
             'data' => $residents,
         ]);
     }
+
+    /**
+     * Danh sách tất cả cư dân phục vụ tra cứu và chọn chủ xe linh hoạt
+     */
+    public function allResidents(Request $request): JsonResponse
+    {
+        $apartmentId = $request->query('apartment_id');
+
+        $query = DB::table('residents')
+            ->join('users', 'residents.user_id', '=', 'users.id')
+            ->leftJoin('apartments', 'residents.apartment_id', '=', 'apartments.id')
+            ->where('residents.is_active', 1)
+            ->whereNull('residents.deleted_at')
+            ->select([
+                'users.id as user_id',
+                'users.full_name',
+                'users.phone_number',
+                'users.email',
+                'residents.resident_type',
+                'residents.is_head_of_household',
+                'residents.apartment_id',
+                'apartments.apartment_number',
+            ])
+            ->orderBy('apartments.apartment_number')
+            ->orderBy('users.full_name');
+
+        if (! empty($apartmentId)) {
+            $query->where('residents.apartment_id', $apartmentId);
+        }
+
+        $residents = $query->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $residents,
+        ]);
+    }
 }

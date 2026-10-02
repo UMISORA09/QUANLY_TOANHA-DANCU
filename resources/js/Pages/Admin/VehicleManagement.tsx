@@ -86,6 +86,9 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   const [formApartmentId, setFormApartmentId] = useState<string>('');
   const [formOwnerUserId, setFormOwnerUserId] = useState<string>('');
   const [formResidents, setFormResidents] = useState<VehicleResidentOption[]>([]);
+  const [buildingResidents, setBuildingResidents] = useState<
+    (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[]
+  >([]);
   const [loadingResidents, setLoadingResidents] = useState<boolean>(false);
   const [formCategory, setFormCategory] = useState<string>('MOTORBIKE');
   const [formLicensePlate, setFormLicensePlate] = useState<string>('');
@@ -123,16 +126,18 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
     }
   }, [currentPage, perPage, search, filterCategory, filterApartmentId, filterStatus, filterApproval]);
 
-  // 2. Load metadata (Căn hộ & Biểu phí)
+  // 2. Load metadata (Căn hộ, Biểu phí & Danh sách cư dân tòa nhà)
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [aptRes, pricingRes] = await Promise.all([
+        const [aptRes, pricingRes, residentsRes] = await Promise.all([
           vehicleApi.getApartments(),
           vehicleApi.getPricingConfigs(),
+          vehicleApi.getAllResidents(),
         ]);
         if (aptRes.success) setApartments(aptRes.data);
         if (pricingRes.success) setPricingConfigs(pricingRes.data as Record<string, VehiclePricingConfig>);
+        if (residentsRes.success) setBuildingResidents(residentsRes.data);
       } catch {
         // ignore fallback
       }
@@ -154,11 +159,15 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
       setLoadingResidents(true);
       try {
         const res = await vehicleApi.getApartmentResidents(formApartmentId);
-        if (res.success) {
+        if (res.success && res.data.length > 0) {
           setFormResidents(res.data);
-          if (res.data.length > 0 && !formOwnerUserId) {
-            setFormOwnerUserId(res.data[0].user_id);
-          }
+          // Ưu tiên chọn cư dân đầu tiên thuộc căn hộ nếu chưa có chủ xe hợp lệ
+          setFormOwnerUserId((prev) => {
+            const isPrevInApt = res.data.some((r) => r.user_id === prev);
+            return isPrevInApt ? prev : res.data[0].user_id;
+          });
+        } else {
+          setFormResidents([]);
         }
       } catch {
         setFormResidents([]);
@@ -210,6 +219,14 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   const handleOpenCreateModal = () => {
     resetForm();
     setIsCreateModalOpen(true);
+    if (buildingResidents.length === 0) {
+      vehicleApi
+        .getAllResidents()
+        .then((res) => {
+          if (res.success) setBuildingResidents(res.data);
+        })
+        .catch(() => {});
+    }
   };
 
   // Mở modal sửa
@@ -797,7 +814,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                       value={formApartmentId}
                       onChange={(e) => setFormApartmentId(e.target.value)}
                       required
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white font-medium"
                     >
                       <option value="">-- Chọn căn hộ --</option>
                       {apartments.map((a) => (
@@ -810,27 +827,76 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
 
                   {/* Chọn chủ xe */}
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Chủ phương tiện (*)</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-bold text-slate-700">Chủ phương tiện (*)</label>
+                      {loadingResidents && (
+                        <span className="text-[10px] text-emerald-600 animate-pulse font-medium">
+                          Đang tải...
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={formOwnerUserId}
-                      onChange={(e) => setFormOwnerUserId(e.target.value)}
+                      onChange={(e) => {
+                        const selectedUserId = e.target.value;
+                        setFormOwnerUserId(selectedUserId);
+                        // Tự động liên kết căn hộ nếu người dùng chọn cư dân trước
+                        const matched = buildingResidents.find((b) => b.user_id === selectedUserId);
+                        if (matched?.apartment_id && (!formApartmentId || formResidents.length === 0)) {
+                          setFormApartmentId(matched.apartment_id);
+                        }
+                      }}
                       required
-                      disabled={loadingResidents || formResidents.length === 0}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white disabled:bg-slate-100"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white font-medium cursor-pointer"
                     >
                       <option value="">
-                        {loadingResidents
-                          ? 'Đang tải cư dân...'
-                          : formResidents.length === 0
-                          ? '-- Chọn căn hộ trước --'
-                          : '-- Chọn cư dân sở hữu --'}
+                        {!formApartmentId
+                          ? '-- Chọn chủ xe (hệ thống tự chọn căn hộ) --'
+                          : formResidents.length > 0
+                          ? '-- Chọn cư dân sở hữu --'
+                          : '-- Chọn cư dân từ danh sách tòa nhà --'}
                       </option>
-                      {formResidents.map((r) => (
-                        <option key={r.user_id} value={r.user_id}>
-                          {r.full_name} ({r.resident_type})
-                        </option>
-                      ))}
+
+                      {/* Nhóm 1: Cư dân thuộc căn hộ đã chọn */}
+                      {formResidents.length > 0 && (
+                        <optgroup label="Cư dân thuộc căn hộ đã chọn">
+                          {formResidents.map((r) => (
+                            <option key={`apt-${r.user_id}`} value={r.user_id}>
+                              {r.full_name} ({r.resident_type === 'OWNER' ? 'Chủ hộ' : 'Khách thuê'}
+                              {r.phone_number ? ` - ${r.phone_number}` : ''})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {/* Nhóm 2: Cư dân trong toàn tòa nhà */}
+                      {buildingResidents.length > 0 && (
+                        <optgroup
+                          label={
+                            formResidents.length > 0
+                              ? 'Cư dân khác trong tòa nhà'
+                              : 'Danh sách cư dân tòa nhà'
+                          }
+                        >
+                          {buildingResidents
+                            .filter((br) => !formResidents.some((fr) => fr.user_id === br.user_id))
+                            .map((r) => (
+                              <option key={`bld-${r.user_id}`} value={r.user_id}>
+                                {r.full_name}
+                                {r.apartment_number ? ` (Căn ${r.apartment_number})` : ''}
+                                {r.phone_number ? ` - ${r.phone_number}` : ''}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
                     </select>
+
+                    {/* Hướng dẫn khi căn hộ đã chọn chưa có cư dân */}
+                    {formApartmentId && !loadingResidents && formResidents.length === 0 && (
+                      <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 leading-relaxed">
+                        💡 Căn hộ này chưa có hồ sơ cư dân thường trú. Bạn có thể chọn chủ xe từ <strong>Danh sách cư dân tòa nhà</strong> trong menu trên để tiếp tục đăng ký.
+                      </p>
+                    )}
                   </div>
 
                   {/* Loại xe */}
