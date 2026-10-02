@@ -384,6 +384,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           icon: Terminal,
           badge: 'Pipeline',
         });
+        const amenityIdx = baseItems.findIndex((item) => item.id === 'amenities');
+        if (amenityIdx !== -1) {
+          baseItems.splice(amenityIdx, 1);
+        }
       }
 
       return baseItems;

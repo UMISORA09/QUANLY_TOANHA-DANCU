@@ -13,7 +13,6 @@ import {
   Cpu,
   ArrowRight,
   Building2,
-  Sparkles,
   Zap,
 } from 'lucide-react';
 import { AppLayout } from '../../Components/Layout/AppLayout';
@@ -130,10 +129,6 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
           onNavigateManager();
           return;
         }
-        if (id === 'amenities') {
-          window.location.href = '/quan-ly?tab=amenities';
-          return;
-        }
         setActiveTab(id);
       }}
       userName={userName}
@@ -153,14 +148,13 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               {activeTab === 'overview' && 'Bàn Làm Việc Quản Trị & Kỹ Thuật (Admin / Dev)'}
               {activeTab === 'roles' && 'Phân Quyền Tài Khoản (RBAC Matrix)'}
-              {activeTab === 'amenities' && 'Quản Lý Tiện Ích & Cấu Hình Slot'}
               {activeTab === 'ai_triage' && 'AI Chatbot & Phân Loại Sự Cố Tự Động (Triage)'}
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
               {activeTab === 'cicd' && 'Hệ Thống Tự Động Hóa CI/CD & DevOps Pipeline'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Toàn quyền quản trị tài khoản, phân quyền, cấu hình tiện ích, CI/CD và hạ tầng kỹ thuật IoT.
+              Toàn quyền quản trị tài khoản, phân quyền, CI/CD và hạ tầng kỹ thuật IoT.
             </p>
           </div>
 
@@ -495,31 +489,6 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {activeTab === 'roles' && (
           <div className="space-y-6">
             <RbacManagement embedded={true} />
-          </div>
-        )}
-
-        {/* TAB 7: QUẢN LÝ TIỆN ÍCH - ĐÃ CHUYỂN SANG CỔNG BAN QUẢN LÝ */}
-        {activeTab === 'amenities' && (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-8 text-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-sky-500 text-white flex items-center justify-center mx-auto shadow-md">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900">Phân hệ Quản Lý Tiện Ích Đã Chuyển Sang Cổng Ban Quản Lý</h3>
-            <p className="text-xs text-slate-600 max-w-lg mx-auto leading-relaxed">
-              Toàn bộ tính năng cấu hình danh mục, thiết lập khung giờ (Slot), ngày đóng cửa và theo dõi lịch đặt tiện ích đã được tích hợp tập trung vào Cổng Vận Hành của Ban Quản Lý.
-            </p>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = '/quan-ly?tab=amenities';
-                }}
-                className="px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold inline-flex items-center gap-2 shadow-md cursor-pointer transition-all active:scale-95"
-              >
-                <span>Mở Quản lý Tiện ích tại Cổng Ban Quản Lý</span>
-                <ArrowRight className="w-4 h-4 text-sky-400" />
-              </button>
-            </div>
           </div>
         )}
       </div>

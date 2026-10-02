@@ -140,7 +140,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
-      { id: 'amenities', label: 'Quản lý tiện ích (Cổng Ban Quản Lý)', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
@@ -160,7 +159,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
-      { id: 'amenities', label: 'Quản lý tiện ích (Cổng Ban Quản Lý)', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
