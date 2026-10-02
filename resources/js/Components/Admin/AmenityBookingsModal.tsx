@@ -170,7 +170,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-5xl bg-white/95 backdrop-blur-2xl border border-white/90 rounded-3xl shadow-2xl p-6 flex flex-col max-h-[92vh] overflow-hidden text-neutral-900 animate-in zoom-in-95">
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-neutral-200/80 gap-3">
@@ -275,7 +275,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
         )}
 
         {/* Bookings Table Body */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar border border-neutral-200/80 rounded-2xl bg-white">
+        <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar border border-neutral-200/80 rounded-2xl bg-white">
           <table className="w-full text-left border-collapse text-xs">
             <thead className="sticky top-0 bg-neutral-50/95 backdrop-blur-xs border-b border-neutral-200/80 text-[11px] font-bold text-neutral-600 uppercase tracking-wider z-10">
               <tr>

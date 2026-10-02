@@ -674,16 +674,16 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-top-3 duration-200 border ${
+          className={`fixed bottom-6 right-6 z-[80] px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-bottom-3 duration-200 border ${
             toast.type === 'success'
-              ? 'bg-neutral-950 text-white border-white/20'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
+              ? 'bg-neutral-900/95 text-white border-white/10'
+              : 'bg-rose-950/95 text-rose-100 border-rose-500/30'
           }`}
         >
           {toast.type === 'success' ? (
             <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 animate-pulse" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           )}
           <span>{toast.message}</span>
         </div>
@@ -1356,9 +1356,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Amenity Detail Modal Drawer */}
       {detailAmenity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div onClick={() => setDetailAmenity(null)} className="fixed inset-0 bg-neutral-950/45 backdrop-blur-sm animate-in fade-in" />
-          <div className="relative w-full max-w-lg bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4">
+          <div onClick={() => setDetailAmenity(null)} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
+          <div className="relative w-full max-w-lg bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200/80">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-neutral-900" />
@@ -1539,7 +1539,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Admin Authentication Modal */}
       {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md">
           <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-neutral-100 animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
               <div className="flex items-center gap-2">

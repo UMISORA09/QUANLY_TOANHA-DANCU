@@ -191,7 +191,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       )}
 
       {/* ================= RIGHT MAIN CONTAINER ================= */}
-      <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden transition-all duration-300 ease-in-out relative z-10">
+      <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden transition-all duration-300 ease-in-out relative">
         {/* Topbar Header */}
         <AppTopbar
           isSidebarCollapsed={isSidebarCollapsed}
