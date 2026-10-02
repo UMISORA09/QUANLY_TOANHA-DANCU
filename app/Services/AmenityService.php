@@ -2,6 +2,10 @@
 
 namespace App\Services;
 
+use App\DTOs\AmenityFilterDTO;
+use App\Events\AmenityCreated;
+use App\Events\AmenityUpdated;
+use App\Repositories\Contracts\AmenityRepositoryInterface;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -80,11 +84,14 @@ class AmenityService
     }
 
     /**
-     * Khởi tạo AmenityService với SearchManager
+     * Khởi tạo AmenityService với SearchManager và AmenityRepository
      */
-    public function __construct(protected ?SearchManager $searchManager = null)
-    {
-        $this->searchManager = $searchManager ?: new SearchManager;
+    public function __construct(
+        protected ?SearchManager $searchManager = null,
+        protected ?AmenityRepositoryInterface $repository = null
+    ) {
+        $this->searchManager = $searchManager ?: app(SearchManager::class);
+        $this->repository = $repository ?: app(AmenityRepositoryInterface::class);
     }
 
     /**
@@ -136,55 +143,14 @@ class AmenityService
             $isFuzzy = $searchResult->isFuzzy;
             $correctedQuery = $searchResult->metadata['corrected_query'] ?? null;
         } else {
-            $query = DB::table('amenities')
-                ->whereNull('amenities.deleted_at');
+            $filterDto = AmenityFilterDTO::fromArray($filters);
+            $repoResult = $this->repository->getPaginated($filterDto);
 
-            if (! empty($categoryId)) {
-                $query->where('amenities.category_id', $categoryId);
-            }
-
-            if (! empty($blockId)) {
-                $query->where('amenities.block_id', $blockId);
-            }
-
-            if ($isActive !== null && $isActive !== '' && $isActive !== 'all') {
-                $boolVal = filter_var($isActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                if ($boolVal !== null) {
-                    $query->where('amenities.is_active', $boolVal ? 1 : 0);
-                } elseif ($isActive === 'active') {
-                    $query->where('amenities.is_active', 1);
-                } elseif ($isActive === 'inactive') {
-                    $query->where('amenities.is_active', 0);
-                }
-            }
-
-            // Đếm tổng số bản ghi trực tiếp trên bảng amenities (tận dụng idx_amenities_perf, tránh join thừa)
-            $total = (clone $query)->count();
-            $totalPages = $total > 0 ? (int) ceil($total / $limit) : 1;
-
-            // Chỉ join bảng liên kết cho lát cắt dữ liệu phân trang thực tế
-            $itemsQuery = $query
-                ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
-                ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
-                ->select(
-                    'amenities.*',
-                    'amenity_categories.category_name',
-                    'amenity_categories.category_code',
-                    'blocks.block_name',
-                    'blocks.block_code'
-                );
-
-            // Sắp xếp
-            match ($sort) {
-                'name_asc' => $itemsQuery->orderBy('amenities.amenity_name', 'asc'),
-                'name_desc' => $itemsQuery->orderBy('amenities.amenity_name', 'desc'),
-                'price_asc' => $itemsQuery->orderBy('amenities.hourly_rate', 'asc'),
-                'price_desc' => $itemsQuery->orderBy('amenities.hourly_rate', 'desc'),
-                'created_at_asc' => $itemsQuery->orderBy('amenities.created_at', 'asc'),
-                default => $itemsQuery->orderBy('amenities.created_at', 'desc'),
-            };
-
-            $items = $itemsQuery->skip(($page - 1) * $limit)->take($limit)->get();
+            return array_merge($repoResult, [
+                'search_time_ms' => 0.0,
+                'corrected_query' => null,
+                'is_fuzzy' => false,
+            ]);
         }
 
         // Batch aggregate slot counts & booking counts để tránh N+1 queries
@@ -294,7 +260,10 @@ class AmenityService
             'updated_at' => $now,
         ]);
 
-        return (array) $this->getAmenityById($id);
+        $created = (array) $this->getAmenityById($id);
+        AmenityCreated::dispatch($created);
+
+        return $created;
     }
 
     /**
@@ -404,7 +373,10 @@ class AmenityService
 
         DB::table('amenities')->where('id', $id)->update($update);
 
-        return (array) $this->getAmenityById($id);
+        $updated = (array) $this->getAmenityById($id);
+        AmenityUpdated::dispatch($id, $updated);
+
+        return $updated;
     }
 
     /**

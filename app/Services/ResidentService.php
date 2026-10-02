@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\DTOs\ResidentFilterDTO;
 use App\Models\Apartment;
 use App\Models\Resident;
+use App\Repositories\Contracts\ResidentRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
@@ -12,77 +14,22 @@ use Illuminate\Validation\ValidationException;
 
 class ResidentService
 {
+    public function __construct(
+        protected ?ResidentRepositoryInterface $repository = null
+    ) {
+        $this->repository = $this->repository ?: app(ResidentRepositoryInterface::class);
+    }
+
     /**
      * Danh sách nhân khẩu / cư dân với bộ lọc, tìm kiếm, sắp xếp và phân trang
      *
-     * @param  array<string, mixed>  $params
+     * @param  array<string, mixed>|ResidentFilterDTO  $params
      */
-    public function list(array $params = []): LengthAwarePaginator
+    public function list(array|ResidentFilterDTO $params = []): LengthAwarePaginator
     {
-        $search = trim((string) ($params['search'] ?? ''));
-        $apartmentId = trim((string) ($params['apartment_id'] ?? ''));
-        $residentType = trim((string) ($params['resident_type'] ?? ''));
-        $isActive = isset($params['is_active']) && $params['is_active'] !== '' ? filter_var($params['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : null;
-        $isHead = isset($params['is_head_of_household']) && $params['is_head_of_household'] !== '' ? filter_var($params['is_head_of_household'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : null;
-        $sortBy = (string) ($params['sort_by'] ?? 'stay_start_date');
-        $sortOrder = strtolower((string) ($params['sort_order'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        $perPage = min(max((int) ($params['limit'] ?? 15), 5), 100);
+        $filter = $params instanceof ResidentFilterDTO ? $params : ResidentFilterDTO::fromArray($params);
 
-        $query = Resident::query()->with([
-            'user:id,username,full_name,phone_number,email,national_id_number,avatar_url,status',
-            'apartment:id,apartment_number,block_id,floor_id,status',
-        ]);
-
-        // 1. Tìm kiếm theo Họ tên, Số điện thoại, CCCD/CMND, Email hoặc Số căn hộ
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->whereHas('user', function ($uq) use ($search) {
-                    $uq->where('full_name', 'like', "%{$search}%")
-                        ->orWhere('phone_number', 'like', "%{$search}%")
-                        ->orWhere('national_id_number', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
-                })->orWhereHas('apartment', function ($aq) use ($search) {
-                    $aq->where('apartment_number', 'like', "%{$search}%");
-                });
-            });
-        }
-
-        // 2. Lọc theo căn hộ
-        if ($apartmentId !== '') {
-            $query->where('apartment_id', $apartmentId);
-        }
-
-        // 3. Lọc theo loại cư dân (OWNER, TENANT, FAMILY_MEMBER)
-        if ($residentType !== '') {
-            $query->where('resident_type', strtoupper($residentType));
-        }
-
-        // 4. Lọc theo trạng thái hoạt động (Active/Inactive)
-        if ($isActive !== null) {
-            $query->where('is_active', $isActive ? 1 : 0);
-        }
-
-        // 5. Lọc theo vai trò chủ hộ
-        if ($isHead !== null) {
-            $query->where('is_head_of_household', $isHead ? 1 : 0);
-        }
-
-        // 6. Sắp xếp
-        if ($sortBy === 'full_name') {
-            $query->join('users', 'residents.user_id', '=', 'users.id')
-                ->orderBy('users.full_name', $sortOrder)
-                ->select('residents.*');
-        } elseif ($sortBy === 'apartment_number') {
-            $query->join('apartments', 'residents.apartment_id', '=', 'apartments.id')
-                ->orderBy('apartments.apartment_number', $sortOrder)
-                ->select('residents.*');
-        } elseif (in_array($sortBy, ['created_at', 'stay_start_date', 'stay_end_date', 'vehicle_count'], true)) {
-            $query->orderBy($sortBy, $sortOrder);
-        } else {
-            $query->orderBy('stay_start_date', 'desc');
-        }
-
-        return $query->paginate($perPage);
+        return $this->repository->list($filter);
     }
 
     /**
@@ -92,10 +39,7 @@ class ResidentService
      */
     public function getById(string $id): array
     {
-        $resident = Resident::with([
-            'user:id,username,full_name,phone_number,email,national_id_number,gender,date_of_birth,avatar_url,status',
-            'apartment:id,apartment_number,block_id,floor_id,room_type,status,gross_floor_area_sqm',
-        ])->find($id);
+        $resident = $this->repository->findById($id);
 
         if (! $resident) {
             throw new ResidentNotFoundException('Cư dân không tồn tại trong hệ thống.');
@@ -252,10 +196,15 @@ class ResidentService
             $currentUpdatedAt = $lockedResident->updated_at;
             unset($data['updated_at']);
 
+            $newUpdatedAt = Carbon::now();
+            if ($currentUpdatedAt && $newUpdatedAt->timestamp <= $currentUpdatedAt->timestamp) {
+                $newUpdatedAt = $currentUpdatedAt->copy()->addSecond();
+            }
+
             // Cập nhật an toàn với điều kiện WHERE id = ? AND updated_at = ?
             $affected = Resident::where('id', $lockedResident->id)
                 ->where('updated_at', $currentUpdatedAt)
-                ->update(array_merge($data, ['updated_at' => now()]));
+                ->update(array_merge($data, ['updated_at' => $newUpdatedAt]));
 
             if ($affected === 0) {
                 throw new ResidentConflictException('Thông tin cư dân đã được Admin khác cập nhật. Vui lòng tải lại dữ liệu mới nhất.', 409);

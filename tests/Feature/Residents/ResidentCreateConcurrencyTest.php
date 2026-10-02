@@ -85,7 +85,7 @@ class ResidentCreateConcurrencyTest extends TestCase
             'id' => (string) Str::uuid(),
             'block_id' => $block->id ?? (string) Str::uuid(),
             'floor_id' => $floor->id ?? (string) Str::uuid(),
-            'apartment_number' => $code.'-'.rand(1000, 9999),
+            'apartment_number' => $code.'-'.rand(1000, 9999).'-'.Str::random(4),
             'room_type' => '2_BEDROOM',
             'gross_floor_area_sqm' => 75.0,
             'net_usable_area_sqm' => 68.0,

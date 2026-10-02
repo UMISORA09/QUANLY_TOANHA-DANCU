@@ -3,11 +3,8 @@
 namespace App\Services\Search;
 
 use App\Services\Search\Contracts\SearchDriverInterface;
-use App\Services\Search\Drivers\ElasticsearchDriver;
-use App\Services\Search\Drivers\MeilisearchDriver;
-use App\Services\Search\Drivers\SmartSearchDriver;
 use App\Services\Search\DTOs\SearchResult;
-use InvalidArgumentException;
+use App\Services\Search\Factories\SearchDriverFactory;
 
 class SearchManager
 {
@@ -15,6 +12,12 @@ class SearchManager
      * @var array<string, SearchDriverInterface>
      */
     protected array $drivers = [];
+
+    public function __construct(
+        protected ?SearchDriverFactory $factory = null
+    ) {
+        $this->factory = $this->factory ?: new SearchDriverFactory;
+    }
 
     public function driver(?string $name = null): SearchDriverInterface
     {
@@ -31,12 +34,7 @@ class SearchManager
     {
         $config = config("search.drivers.{$name}", []);
 
-        return match ($name) {
-            'smart', 'database', 'ponytail' => new SmartSearchDriver($config),
-            'meilisearch' => new MeilisearchDriver($config),
-            'elasticsearch' => new ElasticsearchDriver($config),
-            default => throw new InvalidArgumentException("Search driver [{$name}] is not supported."),
-        };
+        return $this->factory->make($name, $config);
     }
 
     public function search(string $index, string $query, array $filters = [], array $options = []): SearchResult

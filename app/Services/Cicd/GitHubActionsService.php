@@ -2,6 +2,7 @@
 
 namespace App\Services\Cicd;
 
+use App\Services\Cicd\Contracts\GitHubApiClientInterface;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Response;
@@ -23,13 +24,16 @@ class GitHubActionsService
 
     protected string $storagePath;
 
-    public function __construct()
+    protected GitHubApiClientInterface $apiClient;
+
+    public function __construct(?GitHubApiClientInterface $apiClient = null)
     {
         $this->owner = config('services.github.owner') ?: 'UMISORA09';
         $this->repo = config('services.github.repo') ?: 'QUANLY_TOANHA-DANCU';
         $this->token = config('services.github.token');
         $this->apiBase = "https://api.github.com/repos/{$this->owner}/{$this->repo}";
         $this->storagePath = storage_path('app/cicd_runs.json');
+        $this->apiClient = $apiClient ?: app(GitHubApiClientInterface::class);
     }
 
     /**
