@@ -182,9 +182,9 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4">
       {/* Backdrop */}
-      <div onClick={onClose} className="fixed inset-0 bg-neutral-950/45 backdrop-blur-md animate-in fade-in" />
+      <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 
       {/* Modal */}
       <div className="relative w-full max-w-3xl bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 max-h-[92vh] flex flex-col">

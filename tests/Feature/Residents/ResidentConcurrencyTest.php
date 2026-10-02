@@ -19,6 +19,10 @@ class ResidentConcurrencyTest extends TestCase
     {
         parent::setUp();
 
+        if (! function_exists('curl_init')) {
+            $this->markTestSkipped('cURL extension is not installed or enabled.');
+        }
+
         $ch = curl_init('http://127.0.0.1:8000/up');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 1);

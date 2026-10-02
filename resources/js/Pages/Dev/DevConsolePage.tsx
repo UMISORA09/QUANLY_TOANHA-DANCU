@@ -13,13 +13,10 @@ import {
   Cpu,
   ArrowRight,
   Building2,
-  Sparkles,
   Zap,
 } from 'lucide-react';
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
-import { RbacManagement } from '../Admin/RbacManagement';
-import { AmenityManagement } from '../Admin/AmenityManagement';
 import { ResidentManagement } from '../Admin/ResidentManagement';
 import { TemporaryRegistrationManagement } from '../Admin/TemporaryRegistrationManagement';
 
@@ -152,7 +149,6 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               {activeTab === 'overview' && 'Bàn Làm Việc Quản Trị & Kỹ Thuật (Admin / Dev)'}
               {activeTab === 'roles' && 'Phân Quyền Tài Khoản (RBAC Matrix)'}
-              {activeTab === 'amenities' && 'Quản Lý Tiện Ích & Cấu Hình Slot'}
               {activeTab === 'ai_triage' && 'AI Chatbot & Phân Loại Sự Cố Tự Động (Triage)'}
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
@@ -160,7 +156,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
               {activeTab === 'cicd' && 'Hệ Thống Tự Động Hóa CI/CD & DevOps Pipeline'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Toàn quyền quản trị tài khoản, phân quyền, cấu hình tiện ích, CI/CD và hạ tầng kỹ thuật IoT.
+              Toàn quyền quản trị tài khoản, phân quyền, CI/CD và hạ tầng kỹ thuật IoT.
             </p>
           </div>
 
@@ -184,7 +180,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Main Welcome Card */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs">
+            <div className="demo-card rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
@@ -497,22 +493,14 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <RbacManagement embedded={true} />
           </div>
         )}
-
-        {/* TAB 7: QUẢN LÝ TIỆN ÍCH */}
-        {activeTab === 'amenities' && (
-          <div className="space-y-6">
-            <AmenityManagement embedded={true} />
-          </div>
-        )}
-
-        {/* TAB 8: QUẢN LÝ CƯ DÂN & CĂN HỘ */}
+        {/* TAB 7: QUẢN LÝ CƯ DÂN & CĂN HỘ */}
         {activeTab === 'residents' && (
           <div className="space-y-6">
             <ResidentManagement embedded={true} />
           </div>
         )}
 
-        {/* TAB 9: ĐĂNG KÝ & DUYỆT TẠM TRÚ / TẠM VẮNG (CÔNG AN) */}
+        {/* TAB 8: ĐĂNG KÝ & DUYỆT TẠM TRÚ / TẠM VẮNG (CÔNG AN) */}
         {activeTab === 'temporary_registrations' && (
           <div className="space-y-6">
             <TemporaryRegistrationManagement embedded={true} />

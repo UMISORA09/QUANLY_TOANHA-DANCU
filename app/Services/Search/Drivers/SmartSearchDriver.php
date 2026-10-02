@@ -452,14 +452,28 @@ class SmartSearchDriver implements SearchDriverInterface
             }
 
             // Sắp xếp
-            if ($sort === 'relevance') {
-                $unaccentedQuery = $normQuery['unaccented'];
-                usort($scored, function ($a, $b) use ($unaccentedQuery) {
+            $rawQueryLower = mb_strtolower(trim($normQuery['raw'] ?? ''));
+            $isExactCodeMatch = function (array $item) use ($rawQueryLower): bool {
+                $code = mb_strtolower(trim((string) ($item['amenity_code'] ?? '')));
+
+                return $code !== '' && $code === $rawQueryLower;
+            };
+
+            usort($scored, function ($a, $b) use ($isExactCodeMatch, $sort, $normQuery) {
+                // 0. Luôn ưu tiên tuyệt đối bản ghi khớp 100% mã tiện ích (Exact Code Match) đứng đầu danh sách
+                $aExact = $isExactCodeMatch($a);
+                $bExact = $isExactCodeMatch($b);
+                if ($aExact !== $bExact) {
+                    return $aExact ? -1 : 1;
+                }
+
+                if ($sort === 'relevance') {
                     // 1. So sánh điểm tương quan (Relevance Score)
                     if (abs($b['relevance_score'] - $a['relevance_score']) >= 0.005) {
                         return $b['relevance_score'] <=> $a['relevance_score'];
                     }
 
+                    $unaccentedQuery = $normQuery['unaccented'];
                     $nameA = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['amenity_name'] ?? '')));
                     $nameB = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['amenity_name'] ?? '')));
 
@@ -485,18 +499,18 @@ class SmartSearchDriver implements SearchDriverInterface
                     }
 
                     return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
-                });
-            } elseif ($sort === 'name_asc') {
-                usort($scored, fn ($a, $b) => strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? ''));
-            } elseif ($sort === 'name_desc') {
-                usort($scored, fn ($a, $b) => strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? ''));
-            } elseif ($sort === 'price_asc') {
-                usort($scored, fn ($a, $b) => ($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0));
-            } elseif ($sort === 'price_desc') {
-                usort($scored, fn ($a, $b) => ($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0));
-            } else {
-                usort($scored, fn ($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
-            }
+                } elseif ($sort === 'name_asc') {
+                    return strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? '');
+                } elseif ($sort === 'name_desc') {
+                    return strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? '');
+                } elseif ($sort === 'price_asc') {
+                    return ($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0);
+                } elseif ($sort === 'price_desc') {
+                    return ($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0);
+                } else {
+                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+                }
+            });
 
             $total = count($scored);
             $sliced = array_slice($scored, ($page - 1) * $perPage, $perPage);

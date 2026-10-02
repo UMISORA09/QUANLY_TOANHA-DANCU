@@ -273,73 +273,9 @@
 }
 
 /* ========================================================
-   GLASSMORPHISM DESIGN SYSTEM
+   GLASSMORPHISM DESIGN SYSTEM (Powered by Sass SCSS)
    ======================================================== */
-.cloud-glass {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-}
-
-.glass-panel {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 
-        0 12px 36px -10px rgba(0, 0, 0, 0.07),
-        0 4px 12px -2px rgba(0, 0, 0, 0.03),
-        inset 0 1px 1px 0 rgba(255, 255, 255, 0.8);
-}
-
-.glass-panel:hover {
-    box-shadow: 
-        0 20px 45px -10px rgba(0, 0, 0, 0.1),
-        0 6px 16px -2px rgba(0, 0, 0, 0.04),
-        inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-.glass-panel-dark {
-    background: rgba(11, 19, 43, 0.82);
-    backdrop-filter: blur(24px) saturate(190%);
-    -webkit-backdrop-filter: blur(24px) saturate(190%);
-    border: 1px solid rgba(56, 189, 248, 0.2);
-    box-shadow: 
-        0 16px 40px -10px rgba(2, 6, 23, 0.85),
-        0 0 30px -5px rgba(56, 189, 248, 0.12),
-        inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
-}
-
-.glass-pill {
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-.glass-pill-dark {
-    background: rgba(15, 23, 42, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(56, 189, 248, 0.25);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-.glass-specular-edge {
-    position: relative;
-}
-
-.glass-specular-edge::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
-    pointer-events: none;
-}
+/* Cac style kinh mo (glass-panel, glass-pill, specular-edge, ...) duoc quan ly tai resources/css/scss/custom.scss */
 
 /* ========================================================
    3D BUILDING MODEL ANIMATIONS & TRANSFORMS
@@ -419,70 +355,7 @@
 /* ========================================================
    ULTRA GLASSMORPHISM & AUTH MODAL ANIMATIONS
    ======================================================== */
-.glass-crystal {
-    background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.88) 0%,
-        rgba(255, 255, 255, 0.65) 50%,
-        rgba(255, 255, 255, 0.82) 100%
-    );
-    backdrop-filter: blur(28px) saturate(200%);
-    -webkit-backdrop-filter: blur(28px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.85);
-    box-shadow:
-        0 25px 50px -12px rgba(0, 0, 0, 0.08),
-        0 10px 20px -5px rgba(56, 189, 248, 0.06),
-        inset 0 1px 2px 0 rgba(255, 255, 255, 0.95),
-        inset 0 -1px 2px 0 rgba(0, 0, 0, 0.03);
-}
-
-.glass-crystal:hover {
-    box-shadow:
-        0 30px 60px -15px rgba(0, 0, 0, 0.12),
-        0 15px 25px -5px rgba(56, 189, 248, 0.12),
-        inset 0 1px 2px 0 rgba(255, 255, 255, 1);
-}
-
-.glass-auth-card {
-    background: linear-gradient(
-        145deg,
-        rgba(255, 255, 255, 0.94) 0%,
-        rgba(255, 255, 255, 0.86) 45%,
-        rgba(248, 250, 252, 0.92) 100%
-    );
-    backdrop-filter: blur(32px) saturate(210%);
-    -webkit-backdrop-filter: blur(32px) saturate(210%);
-    border: 1px solid rgba(255, 255, 255, 0.9);
-    box-shadow:
-        0 30px 70px -15px rgba(0, 0, 0, 0.16),
-        0 12px 28px -6px rgba(0, 0, 0, 0.08),
-        0 0 0 1px rgba(255, 255, 255, 0.6),
-        inset 0 1.5px 2px 0 rgba(255, 255, 255, 1);
-}
-
-.glass-role-card {
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(229, 231, 235, 0.9);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-role-card:hover {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(23, 23, 23, 0.4);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
-}
-
-.glass-role-card.active-role {
-    background: #171717;
-    color: #ffffff;
-    border-color: #171717;
-    box-shadow: 0 8px 20px -4px rgba(23, 23, 23, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px) scale(1.01);
-}
+/* Cac style glass-crystal, glass-auth-card, glass-role-card duoc quan ly tai resources/css/scss/custom.scss */
 
 .glass-input {
     background: rgba(255, 255, 255, 0.8);

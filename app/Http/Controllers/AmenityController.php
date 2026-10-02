@@ -175,7 +175,7 @@ class AmenityController extends Controller
             'category_name' => 'required|string|max:100',
             'category_code' => 'required|string|max:50',
             'icon_name' => 'nullable|string|max:50',
-            'description' => 'nullable|string',
+            'description' => 'nullable|string|max:255',
         ])->validate();
 
         $id = (string) Str::uuid();
@@ -213,7 +213,7 @@ class AmenityController extends Controller
             'category_name' => 'required|string|max:100',
             'category_code' => 'required|string|max:50',
             'icon_name' => 'nullable|string|max:50',
-            'description' => 'nullable|string',
+            'description' => 'nullable|string|max:255',
         ])->validate();
 
         $exists = DB::table('amenity_categories')->where('id', $id)->first();

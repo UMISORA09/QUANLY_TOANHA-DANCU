@@ -1,0 +1,54 @@
+// ==============================================================================
+// SASS MIXINS - Tái sử dụng logic giao diện kính (Glassmorphism) và hiệu ứng
+// ==============================================================================
+@use 'variables' as vars;
+
+// Mixin tạo hiệu ứng bề mặt kính siêu mờ (Glassmorphism Panel)
+@mixin glass-surface($bg: vars.$glass-bg-light, $blur: vars.$glass-blur-lg, $border: vars.$glass-border-light) {
+    background: $bg;
+    backdrop-filter: blur($blur) saturate(180%);
+    -webkit-backdrop-filter: blur($blur) saturate(180%);
+    border: 1px solid $border;
+}
+
+// Mixin viền phản chiếu ánh sáng Specular Edge
+@mixin specular-edge($highlight: rgba(255, 255, 255, 0.8)) {
+    position: relative;
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, $highlight, transparent);
+        pointer-events: none;
+    }
+}
+
+// Mixin hover nổi nhẹ với bóng mờ
+@mixin hover-lift($translate-y: -2px, $box-shadow: (0 12px 28px -6px rgba(0, 0, 0, 0.08))) {
+    transition: transform vars.$transition-fast, box-shadow vars.$transition-fast;
+
+    &:hover {
+        transform: translateY($translate-y);
+        box-shadow: $box-shadow;
+    }
+}
+
+// Mixin thanh cuộn mềm mại
+@mixin custom-scroll-track($thumb-color: rgba(209, 213, 219, 0.9), $track-color: rgba(243, 244, 246, 0.7), $size: 6px) {
+    &::-webkit-scrollbar {
+        width: $size;
+        height: $size;
+    }
+    &::-webkit-scrollbar-track {
+        background: $track-color;
+        border-radius: vars.$radius-full;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: $thumb-color;
+        border-radius: vars.$radius-full;
+    }
+}
