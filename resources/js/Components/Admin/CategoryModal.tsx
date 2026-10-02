@@ -75,8 +75,32 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !code.trim()) {
-      setErrorMessage('Vui lòng điền tên và mã danh mục.');
+    const trimmedCode = code.trim().toUpperCase();
+    const trimmedName = name.trim();
+    const trimmedDesc = description.trim();
+
+    if (!trimmedName || !trimmedCode) {
+      setErrorMessage('Vui lòng điền đầy đủ mã và tên danh mục.');
+      return;
+    }
+
+    if (trimmedCode.length < 2 || trimmedCode.length > 50) {
+      setErrorMessage('Mã danh mục phải từ 2 đến 50 ký tự.');
+      return;
+    }
+
+    if (!/^[A-Z0-9_]+$/.test(trimmedCode)) {
+      setErrorMessage('Mã danh mục chỉ được chứa chữ cái không dấu, số và dấu gạch dưới (_).');
+      return;
+    }
+
+    if (trimmedName.length < 2 || trimmedName.length > 100) {
+      setErrorMessage('Tên danh mục phải từ 2 đến 100 ký tự.');
+      return;
+    }
+
+    if (trimmedDesc.length > 255) {
+      setErrorMessage('Mô tả danh mục không được vượt quá 255 ký tự.');
       return;
     }
 
@@ -86,18 +110,18 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
     try {
       if (editingId) {
         await api.updateCategory(editingId, {
-          category_name: name.trim(),
-          category_code: code.trim().toUpperCase(),
+          category_name: trimmedName,
+          category_code: trimmedCode,
           icon_name: iconName,
-          description: description.trim() || null,
+          description: trimmedDesc || null,
         });
         setSuccessMessage('Đã cập nhật danh mục thành công!');
       } else {
         await api.createCategory({
-          category_name: name.trim(),
-          category_code: code.trim().toUpperCase(),
+          category_name: trimmedName,
+          category_code: trimmedCode,
           icon_name: iconName,
-          description: description.trim() || null,
+          description: trimmedDesc || null,
         });
         setSuccessMessage('Đã thêm danh mục mới thành công!');
       }
@@ -172,93 +196,116 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
           </div>
         )}
         {successMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+          <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
 
-        <div className="mt-4 flex-1 overflow-y-auto space-y-6 pr-1">
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-4 bg-neutral-50/80 border border-neutral-200/70 rounded-xl space-y-3">
-            <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
-              {editingId ? 'Chỉnh sửa danh mục' : 'Thêm mới danh mục'}
-            </div>
+        {/* Form - Cố định không cuộn */}
+        <form onSubmit={handleSubmit} className="mt-4 shrink-0 p-4 bg-neutral-50/80 border border-neutral-200/70 rounded-xl space-y-3">
+          <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
+            {editingId ? 'Chỉnh sửa danh mục' : 'Thêm mới danh mục'}
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-neutral-700">
                   Mã danh mục <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: BBQ, GYM, POOL"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white uppercase font-mono focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
+                <span className={`text-[10px] font-mono ${code.length >= 50 ? 'text-rose-600 font-bold' : 'text-neutral-400'}`}>
+                  {code.length}/50
+                </span>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Tên danh mục <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: Vườn nướng BBQ ngoài trời"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
-              </div>
+              <input
+                type="text"
+                required
+                minLength={2}
+                maxLength={50}
+                placeholder="VD: BBQ, GYM, POOL"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+                className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white uppercase font-mono focus:outline-none focus:ring-1 focus:ring-neutral-900"
+              />
+              <p className="mt-1 text-[10px] text-neutral-400">Tối đa 50 ký tự (chữ hoa, số, dấu gạch dưới)</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Mô tả danh mục</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-neutral-700">
+                  Tên danh mục <span className="text-rose-500">*</span>
+                </label>
+                <span className={`text-[10px] font-mono ${name.length >= 100 ? 'text-rose-600 font-bold' : 'text-neutral-400'}`}>
+                  {name.length}/100
+                </span>
+              </div>
               <input
                 type="text"
-                placeholder="Mô tả chi tiết danh mục..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                required
+                minLength={2}
+                maxLength={100}
+                placeholder="VD: Vườn nướng BBQ ngoài trời"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
+              <p className="mt-1 text-[10px] text-neutral-400">Tối đa 100 ký tự</p>
             </div>
+          </div>
 
-            <div className="flex items-center justify-end gap-2 pt-1">
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-200/70 rounded-lg transition-colors"
-                >
-                  Hủy sửa
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : editingId ? (
-                  <Check className="w-3.5 h-3.5" />
-                ) : (
-                  <Plus className="w-3.5 h-3.5" />
-                )}
-                <span>{editingId ? 'Cập nhật' : 'Thêm danh mục'}</span>
-              </button>
-            </div>
-          </form>
-
-          {/* Categories List */}
           <div>
-            <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider mb-2.5">
-              Danh sách hiện có ({categories.length})
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-neutral-700">Mô tả danh mục</label>
+              <span className={`text-[10px] font-mono ${description.length >= 255 ? 'text-rose-600 font-bold' : 'text-neutral-400'}`}>
+                {description.length}/255
+              </span>
             </div>
+            <input
+              type="text"
+              maxLength={255}
+              placeholder="Mô tả chi tiết danh mục..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
+            />
+            <p className="mt-1 text-[10px] text-neutral-400">Tùy chọn, tối đa 255 ký tự</p>
+          </div>
 
+          <div className="flex items-center justify-end gap-2 pt-1">
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-200/70 rounded-lg transition-colors cursor-pointer"
+              >
+                Hủy sửa
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            >
+              {isSubmitting ? (
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : editingId ? (
+                <Check className="w-3.5 h-3.5" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>{editingId ? 'Cập nhật' : 'Thêm danh mục'}</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Categories List Section - Chỉ cuộn riêng danh sách */}
+        <div className="mt-4 flex-1 flex flex-col min-h-0">
+          <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider mb-2.5 shrink-0">
+            Danh sách hiện có ({categories.length})
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-1 space-y-2">
             {loading ? (
               <div className="py-8 text-center text-neutral-400 text-xs flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-neutral-400 border-t-neutral-800 rounded-full animate-spin" />
@@ -269,57 +316,55 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
                 Chưa có danh mục nào. Hãy tạo danh mục đầu tiên ở biểu mẫu phía trên!
               </div>
             ) : (
-              <div className="space-y-2">
-                {categories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="p-3 bg-white border border-neutral-200/80 rounded-xl flex items-center justify-between hover:border-neutral-300 transition-colors shadow-2xs"
-                  >
-                    <div className="min-w-0 pr-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-neutral-950 truncate">{cat.category_name}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-neutral-100 text-neutral-700 font-semibold border border-neutral-200 whitespace-nowrap">
-                          {cat.category_code}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-50 text-sky-700 border border-sky-200 whitespace-nowrap">
-                          {cat.amenities_count} tiện ích
-                        </span>
-                      </div>
-                      {cat.description && (
-                        <p className="text-[11px] text-neutral-500 truncate mt-0.5">{cat.description}</p>
-                      )}
+              categories.map((cat) => (
+                <div
+                  key={cat.id}
+                  className="p-3 bg-white border border-neutral-200/80 rounded-xl flex items-center justify-between hover:border-neutral-300 transition-colors shadow-2xs"
+                >
+                  <div className="min-w-0 pr-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-neutral-950 truncate">{cat.category_name}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-neutral-100 text-neutral-700 font-semibold border border-neutral-200 whitespace-nowrap">
+                        {cat.category_code}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-50 text-sky-700 border border-sky-200 whitespace-nowrap">
+                        {cat.amenities_count} tiện ích
+                      </span>
                     </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(cat)}
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
-                        title="Chỉnh sửa"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(cat)}
-                        disabled={cat.amenities_count > 0}
-                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                          cat.amenities_count > 0
-                            ? 'text-neutral-300 cursor-not-allowed'
-                            : 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
-                        }`}
-                        title={
-                          cat.amenities_count > 0
-                            ? 'Không thể xóa danh mục đang có tiện ích'
-                            : 'Xóa danh mục'
-                        }
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {cat.description && (
+                      <p className="text-[11px] text-neutral-500 truncate mt-0.5">{cat.description}</p>
+                    )}
                   </div>
-                ))}
-              </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(cat)}
+                      className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
+                      title="Chỉnh sửa"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(cat)}
+                      disabled={cat.amenities_count > 0}
+                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                        cat.amenities_count > 0
+                          ? 'text-neutral-300 cursor-not-allowed'
+                          : 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
+                      }`}
+                      title={
+                        cat.amenities_count > 0
+                          ? 'Không thể xóa danh mục đang có tiện ích'
+                          : 'Xóa danh mục'
+                      }
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
