@@ -20,6 +20,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Loader2,
   Building2,
   User,
@@ -38,6 +39,228 @@ import vehicleApi, {
   VehiclePricingConfig,
   VehicleDetailResponse
 } from '../../Services/vehicleApi';
+
+interface ResidentComboboxProps {
+  value: string;
+  onChange: (userId: string) => void;
+  formApartmentId: string;
+  formResidents: VehicleResidentOption[];
+  buildingResidents: (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[];
+  loading?: boolean;
+}
+
+const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
+  value,
+  onChange,
+  formApartmentId,
+  formResidents,
+  buildingResidents,
+  loading = false,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedResident = useMemo(() => {
+    if (!value) return null;
+    return (
+      formResidents.find((r) => r.user_id === value) ||
+      buildingResidents.find((b) => b.user_id === value) ||
+      null
+    );
+  }, [value, formResidents, buildingResidents]);
+
+  const filteredApartmentResidents = useMemo(() => {
+    if (!searchQuery.trim()) return formResidents;
+    const q = searchQuery.toLowerCase().trim();
+    return formResidents.filter(
+      (r) =>
+        r.full_name?.toLowerCase().includes(q) ||
+        r.phone_number?.includes(q) ||
+        r.resident_type?.toLowerCase().includes(q)
+    );
+  }, [formResidents, searchQuery]);
+
+  const filteredBuildingResidents = useMemo(() => {
+    const list = buildingResidents.filter(
+      (br) => !formResidents.some((fr) => fr.user_id === br.user_id)
+    );
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(
+      (r) =>
+        r.full_name?.toLowerCase().includes(q) ||
+        r.phone_number?.includes(q) ||
+        r.apartment_number?.toLowerCase().includes(q)
+    );
+  }, [buildingResidents, formResidents, searchQuery]);
+
+  const handleSelect = (userId: string) => {
+    onChange(userId);
+    setIsOpen(false);
+    setSearchQuery('');
+  };
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
+          isOpen
+            ? 'border-emerald-500 ring-2 ring-emerald-500/20'
+            : 'border-slate-200 hover:border-slate-300'
+        }`}
+      >
+        <span className="truncate pr-2">
+          {selectedResident ? (
+            <span className="text-slate-900 font-semibold flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="truncate">{selectedResident.full_name}</span>
+              {selectedResident.apartment_number && (
+                <span className="text-[10px] text-slate-500 font-normal shrink-0">
+                  (Căn {selectedResident.apartment_number})
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-slate-400">
+              {!formApartmentId
+                ? '-- Chọn chủ xe (tự điền căn hộ) --'
+                : formResidents.length > 0
+                ? '-- Chọn cư dân sở hữu --'
+                : '-- Chọn cư dân từ DS tòa nhà --'}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
+            isOpen ? 'rotate-180 text-emerald-600' : ''
+          }`}
+        />
+      </button>
+
+      {/* Dropdown Menu - Căn chỉnh bo tròn và vừa khít khung cột */}
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+          {/* Ô tìm kiếm nhanh */}
+          <div className="p-2 border-b border-slate-100 bg-slate-50/90">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm tên, số căn, SĐT..."
+                className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+
+          {/* Danh sách cuộn gọn gàng */}
+          <div className="max-h-48 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
+            {/* 1. Cư dân thuộc căn hộ đã chọn */}
+            {filteredApartmentResidents.length > 0 && (
+              <div>
+                <div className="px-2 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50/70 rounded uppercase tracking-wider mb-0.5">
+                  Cư dân thuộc căn hộ
+                </div>
+                {filteredApartmentResidents.map((r) => {
+                  const isSelected = r.user_id === value;
+                  return (
+                    <button
+                      key={`apt-${r.user_id}`}
+                      type="button"
+                      onClick={() => handleSelect(r.user_id)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white font-bold'
+                          : 'hover:bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <div className="truncate pr-2">
+                        <div className="font-semibold truncate leading-tight">{r.full_name}</div>
+                        <div
+                          className={`text-[10px] leading-tight ${
+                            isSelected ? 'text-emerald-100' : 'text-slate-400'
+                          }`}
+                        >
+                          {r.resident_type === 'OWNER' ? 'Chủ hộ' : 'Khách thuê'}
+                          {r.phone_number ? ` • ${r.phone_number}` : ''}
+                        </div>
+                      </div>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 2. Cư dân toàn tòa nhà */}
+            {filteredBuildingResidents.length > 0 && (
+              <div className={filteredApartmentResidents.length > 0 ? 'pt-1 border-t border-slate-100' : ''}>
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-500 bg-slate-50 rounded uppercase tracking-wider mb-0.5">
+                  {filteredApartmentResidents.length > 0 ? 'Cư dân khác trong tòa nhà' : 'Danh sách cư dân tòa nhà'}
+                </div>
+                {filteredBuildingResidents.map((r) => {
+                  const isSelected = r.user_id === value;
+                  return (
+                    <button
+                      key={`bld-${r.user_id}`}
+                      type="button"
+                      onClick={() => handleSelect(r.user_id)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white font-bold'
+                          : 'hover:bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <div className="truncate pr-2">
+                        <div className="font-semibold truncate leading-tight">{r.full_name}</div>
+                        <div
+                          className={`text-[10px] leading-tight ${
+                            isSelected ? 'text-emerald-100' : 'text-slate-400'
+                          }`}
+                        >
+                          {r.apartment_number ? `Căn ${r.apartment_number}` : 'Cư dân'}
+                          {r.phone_number ? ` • ${r.phone_number}` : ''}
+                        </div>
+                      </div>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Không tìm thấy */}
+            {filteredApartmentResidents.length === 0 && filteredBuildingResidents.length === 0 && (
+              <div className="p-3 text-center text-slate-400 text-xs">
+                Không tìm thấy cư dân phù hợp
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface VehicleManagementProps {
   embedded?: boolean;
@@ -839,10 +1062,9 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                         </span>
                       ) : null}
                     </div>
-                    <select
+                    <ResidentCombobox
                       value={formOwnerUserId}
-                      onChange={(e) => {
-                        const selectedUserId = e.target.value;
+                      onChange={(selectedUserId) => {
                         setFormOwnerUserId(selectedUserId);
                         // Tự động liên kết căn hộ nếu người dùng chọn cư dân trước
                         const matched = buildingResidents.find((b) => b.user_id === selectedUserId);
@@ -850,50 +1072,11 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                           setFormApartmentId(matched.apartment_id);
                         }
                       }}
-                      required
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white font-medium cursor-pointer"
-                    >
-                      <option value="">
-                        {!formApartmentId
-                          ? '-- Chọn chủ xe (hệ thống tự chọn căn hộ) --'
-                          : formResidents.length > 0
-                          ? '-- Chọn cư dân sở hữu --'
-                          : '-- Chọn cư dân từ danh sách tòa nhà --'}
-                      </option>
-
-                      {/* Nhóm 1: Cư dân thuộc căn hộ đã chọn */}
-                      {formResidents.length > 0 && (
-                        <optgroup label="Cư dân thuộc căn hộ đã chọn">
-                          {formResidents.map((r) => (
-                            <option key={`apt-${r.user_id}`} value={r.user_id}>
-                              {r.full_name} ({r.resident_type === 'OWNER' ? 'Chủ hộ' : 'Khách thuê'}
-                              {r.phone_number ? ` - ${r.phone_number}` : ''})
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-
-                      {/* Nhóm 2: Cư dân trong toàn tòa nhà */}
-                      {buildingResidents.length > 0 && (
-                        <optgroup
-                          label={
-                            formResidents.length > 0
-                              ? 'Cư dân khác trong tòa nhà'
-                              : 'Danh sách cư dân tòa nhà'
-                          }
-                        >
-                          {buildingResidents
-                            .filter((br) => !formResidents.some((fr) => fr.user_id === br.user_id))
-                            .map((r) => (
-                              <option key={`bld-${r.user_id}`} value={r.user_id}>
-                                {r.full_name}
-                                {r.apartment_number ? ` (Căn ${r.apartment_number})` : ''}
-                                {r.phone_number ? ` - ${r.phone_number}` : ''}
-                              </option>
-                            ))}
-                        </optgroup>
-                      )}
-                    </select>
+                      formApartmentId={formApartmentId}
+                      formResidents={formResidents}
+                      buildingResidents={buildingResidents}
+                      loading={loadingResidents}
+                    />
                   </div>
 
                   {/* Loại xe */}
