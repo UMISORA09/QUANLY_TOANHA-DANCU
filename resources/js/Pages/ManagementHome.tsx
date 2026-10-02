@@ -43,7 +43,8 @@ import {
   Send,
   Compass,
   Terminal,
-  UserPlus
+  UserPlus,
+  Car
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
@@ -53,6 +54,7 @@ import { RbacManagement } from './Admin/RbacManagement';
 import { ResidentManagement } from './Admin/ResidentManagement';
 import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
 import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
+import { VehicleManagement } from './Admin/VehicleManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -366,6 +368,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
         { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
         { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'vehicles', label: 'Phương tiện (Xe)', icon: Car, badge: null },
         { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto' },
         { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
@@ -789,6 +792,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'account_provisioning' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <AccountProvisioningManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'vehicles' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <VehicleManagement embedded={true} />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

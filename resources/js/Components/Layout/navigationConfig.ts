@@ -122,9 +122,10 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'reception', label: 'Bàn trực Lễ tân', icon: LayoutDashboard },
       { id: 'visitors', label: 'Khách viếng thăm', icon: UserCheck, badge: '12 đang ở', badgeType: 'info' },
+      { id: 'vehicle_reg', label: 'Đăng ký xe & Phí HĐ', icon: CreditCard, badge: 'Tự động', badgeType: 'success', isNew: true },
+      { id: 'parking', label: 'Bãi đỗ xe & ANPR', icon: Car },
       { id: 'parcels', label: 'Giao nhận bưu phẩm', icon: Package, badge: '24 chờ lấy', badgeType: 'warning' },
       { id: 'keys', label: 'Chìa khóa & Thẻ từ', icon: Key },
-      { id: 'parking', label: 'An ninh bãi xe & Ra vào', icon: Car },
       { id: 'incidents', label: 'Sự cố khẩn cấp', icon: ShieldAlert, badge: '1 mới', badgeType: 'danger' },
       { id: 'handover', label: 'Sổ giao ca trực', icon: ClipboardList },
       { id: 'directory', label: 'Danh bạ nội bộ', icon: Contact },

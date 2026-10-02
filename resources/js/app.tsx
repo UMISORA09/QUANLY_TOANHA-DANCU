@@ -289,13 +289,22 @@ const App: React.FC = () => {
     currentPath === '/admin/cap-phat-tai-khoan' ||
     currentPath.startsWith('/admin/account-provisioning');
 
+  const isVehiclePath =
+    currentPath === '/quan-ly/vehicles' ||
+    currentPath === '/quan-ly/phuong-tien' ||
+    currentPath.startsWith('/quan-ly/vehicles') ||
+    currentPath === '/admin/vehicles' ||
+    currentPath === '/admin/phuong-tien' ||
+    currentPath.startsWith('/admin/vehicles');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
     currentPath === '/manager' ||
     currentPath.startsWith('/manager/') ||
     currentPath === '/dashboard' ||
-    isAccountProvisioningPath;
+    isAccountProvisioningPath ||
+    isVehiclePath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -312,7 +321,11 @@ const App: React.FC = () => {
 
     const isUserAdmin = currentUser?.role === 'admin';
     const managerUrlTab = new URLSearchParams(window.location.search).get('tab');
-    const initialManagerTab = isAccountProvisioningPath ? 'account_provisioning' : (managerUrlTab || undefined);
+    const initialManagerTab = isVehiclePath
+      ? 'vehicles'
+      : isAccountProvisioningPath
+      ? 'account_provisioning'
+      : (managerUrlTab || undefined);
     return (
       <ManagementHome
         onLogout={handleLogout}
@@ -359,24 +372,48 @@ const App: React.FC = () => {
     currentUser?.role?.toLowerCase().includes('receptionist') ||
     currentUser?.role?.toLowerCase().includes('letan');
 
+  const isSecurityPath =
+    currentPath === '/an-ninh' ||
+    currentPath.startsWith('/an-ninh') ||
+    currentPath === '/bao-ve' ||
+    currentPath.startsWith('/bao-ve') ||
+    currentPath === '/security' ||
+    currentPath.startsWith('/security');
+
+  const isReceptionistVehiclePath =
+    currentPath === '/le-tan/vehicles' ||
+    currentPath === '/le-tan/phuong-tien' ||
+    currentPath.startsWith('/le-tan/vehicles') ||
+    currentPath.startsWith('/le-tan/phuong-tien') ||
+    currentPath === '/an-ninh/vehicles' ||
+    currentPath === '/an-ninh/phuong-tien' ||
+    currentPath.startsWith('/an-ninh/vehicles');
+
   const isReceptionistPath =
     currentPath === '/le-tan' ||
     currentPath.startsWith('/le-tan') ||
     currentPath === '/receptionist' ||
     currentPath.startsWith('/receptionist') ||
+    isSecurityPath ||
+    isReceptionistVehiclePath ||
     (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
 
   if (isReceptionistPath) {
     const isUserAdmin = currentUser?.role === 'admin';
-    const effectiveRole = isUserAdmin ? 'admin' : 'receptionist';
+    const effectiveRole = isUserAdmin ? 'admin' : (isSecurityPath ? 'security' : 'receptionist');
+    const receptionUrlTab = new URLSearchParams(window.location.search).get('tab');
+    const initialReceptionTab = isReceptionistVehiclePath
+      ? 'vehicle_reg'
+      : (receptionUrlTab || undefined);
     return (
       <ReceptionHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home?landing=true')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
-        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Lễ Tân Sảnh Chính')}
-        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'letan@cassavas.vn')}
+        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : (isSecurityPath ? 'Đội Trực An Ninh' : 'Lễ Tân Sảnh Chính'))}
+        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : (isSecurityPath ? 'anninh@cassavas.vn' : 'letan@cassavas.vn'))}
+        initialTab={initialReceptionTab}
       />
     );
   }

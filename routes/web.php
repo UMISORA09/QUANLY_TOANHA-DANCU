@@ -17,6 +17,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\VehicleController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -114,6 +115,30 @@ Route::get('/receptionist', function () {
 });
 
 Route::get('/receptionist/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
+Route::get('/an-ninh', function () {
+    return view('welcome');
+});
+
+Route::get('/an-ninh/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
+Route::get('/bao-ve', function () {
+    return view('welcome');
+});
+
+Route::get('/bao-ve/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
+Route::get('/security', function () {
+    return view('welcome');
+});
+
+Route::get('/security/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
@@ -295,6 +320,40 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::patch('residents/{id}', [ResidentController::class, 'update']);
     Route::delete('residents/{id}', [ResidentController::class, 'destroy']);
     Route::get('meta/apartments', [ResidentController::class, 'apartments']);
+});
+
+// ==========================================
+// ĐĂNG KÝ PHƯƠNG TIỆN & TỰ ĐỘNG ĐẨY PHÍ HÓA ĐƠN (VEHICLES)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('vehicles', [VehicleController::class, 'index']);
+    Route::post('vehicles', [VehicleController::class, 'store']);
+    Route::get('vehicles/pricing-config', [VehicleController::class, 'pricingConfig']);
+    Route::get('vehicles/meta/apartments', [VehicleController::class, 'apartments']);
+    Route::get('vehicles/meta/apartments/{apartmentId}/residents', [VehicleController::class, 'apartmentResidents']);
+    Route::get('vehicles/{id}', [VehicleController::class, 'show']);
+    Route::put('vehicles/{id}', [VehicleController::class, 'update']);
+    Route::patch('vehicles/{id}', [VehicleController::class, 'update']);
+    Route::delete('vehicles/{id}', [VehicleController::class, 'destroy']);
+    Route::patch('vehicles/{id}/toggle-active', [VehicleController::class, 'toggleActive']);
+    Route::post('vehicles/{id}/approve', [VehicleController::class, 'approve']);
+    Route::post('vehicles/{id}/sync-invoice', [VehicleController::class, 'syncInvoice']);
+});
+Route::get('/api/v1/pricing-configs', [VehicleController::class, 'pricingConfig']);
+Route::get('/quan-ly/vehicles', function () {
+    return view('welcome');
+});
+Route::get('/admin/vehicles', function () {
+    return view('welcome');
+});
+Route::get('/le-tan/vehicles', function () {
+    return view('welcome');
+});
+Route::get('/le-tan/phuong-tien', function () {
+    return view('welcome');
+});
+Route::get('/an-ninh/vehicles', function () {
+    return view('welcome');
 });
 
 // Meta endpoints
