@@ -123,7 +123,15 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     if (path === '/admin/cicd' || path.startsWith('/admin/cicd')) {
       return 'cicd';
     }
-    if (path === '/admin/amenities' || path === '/admin/tien-ich' || path.startsWith('/admin/amenities')) {
+    if (
+      path === '/admin/amenities' ||
+      path === '/admin/tien-ich' ||
+      path === '/quan-ly/amenities' ||
+      path === '/quan-ly/tien-ich' ||
+      path === '/tien-ich' ||
+      path.startsWith('/admin/amenities') ||
+      path.startsWith('/quan-ly/amenities')
+    ) {
       return 'amenities';
     }
     if (path === '/admin/roles' || path === '/admin/rbac' || path === '/admin/phan-quyen' || path.startsWith('/admin/roles')) {
@@ -350,11 +358,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
         { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
         { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: String(kpis.amenityBookings) },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
         { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
-        { id: 'amenities', label: 'Quản lý & Danh mục tiện ích', icon: Sparkles, badge: String(kpis.amenityBookings) },
         { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${notifications.filter(n => !n.isRead).length || 2} mới` },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
         { id: 'ekyc', label: 'eKYC & Xác thực CCCD', icon: ShieldCheck, badge: 'AI' },
@@ -376,6 +384,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           icon: Terminal,
           badge: 'Pipeline',
         });
+        const amenityIdx = baseItems.findIndex((item) => item.id === 'amenities');
+        if (amenityIdx !== -1) {
+          baseItems.splice(amenityIdx, 1);
+        }
       }
 
       return baseItems;
@@ -583,14 +595,17 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     }
 
     // Cập nhật URL trên thanh địa chỉ (Deep Linking & History API)
+    const isManagerMode = userRole === 'manager' || window.location.pathname.startsWith('/quan-ly') || window.location.pathname.startsWith('/manager');
+    const basePath = isManagerMode ? '/quan-ly' : '/admin';
+
     if (id === 'cicd') {
-      window.history.pushState({ tab: id }, '', '/admin/cicd');
+      window.history.pushState({ tab: id }, '', `${basePath}/cicd`);
     } else if (id === 'amenities') {
-      window.history.pushState({ tab: id }, '', '/admin/amenities');
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=amenities`);
     } else if (id === 'overview') {
-      window.history.pushState({ tab: id }, '', '/admin');
+      window.history.pushState({ tab: id }, '', basePath);
     } else {
-      window.history.pushState({ tab: id }, '', `/admin?tab=${id}`);
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=${id}`);
     }
     if (id !== 'overview') {
       showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === id)?.label}`);
@@ -845,7 +860,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
 
             {/* Card 4: Lịch tiện ích hôm nay */}
-            <div className="bg-white/70 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-lg shadow-slate-200/40 hover:shadow-2xl hover:border-sky-300/40 hover:-translate-y-1 transition-all duration-300 relative group overflow-hidden glass-specular-edge">
+            <div
+              onClick={() => handleMenuClick('amenities')}
+              className="bg-white/70 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-lg shadow-slate-200/40 hover:shadow-2xl hover:border-sky-300/40 hover:-translate-y-1 transition-all duration-300 relative group overflow-hidden glass-specular-edge cursor-pointer"
+              title="Bấm để mở Quản lý Tiện ích & Cấu hình Slot"
+            >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500">Lịch tiện ích hôm nay</span>
                 <div className="w-8 h-8 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 group-hover:scale-110 transition-transform">
@@ -855,9 +874,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
               <div className="mt-3">
                 <span className="text-3xl font-extrabold text-neutral-900 tracking-tight font-mono">{kpis.amenityBookings}</span>
               </div>
-              <div className="mt-3 flex items-center gap-1.5 text-xs text-sky-600 font-medium">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>{kpis.amenityFreeSlots}</span>
+              <div className="mt-3 flex items-center justify-between text-xs text-sky-600 font-medium">
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>{kpis.amenityFreeSlots}</span>
+                </div>
+                <span className="text-[11px] underline opacity-0 group-hover:opacity-100 transition-opacity">Quản lý &rarr;</span>
               </div>
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-sky-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
@@ -1240,7 +1262,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           MODAL: XUẤT BÁO CÁO (EXPORT REPORT)
           ======================================================== */}
       {isExportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-3xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl p-6 relative">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -1326,7 +1348,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           MODAL: CHI TIẾT TICKET POPUP
           ======================================================== */}
       {selectedTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-3xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl p-6 relative">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">

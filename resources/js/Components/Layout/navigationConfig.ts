@@ -73,8 +73,8 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
       { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: 'Live', badgeType: 'success' },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
-      { id: 'amenities', label: 'Tiện ích tòa nhà', icon: Sparkles },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
       { id: 'tickets', label: 'Phản ánh & Sự cố', icon: AlertCircle, badge: '12 mới', badgeType: 'danger' },
       { id: 'security', label: 'An ninh & Ra vào', icon: Shield },
@@ -140,7 +140,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
-      { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
@@ -160,7 +159,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
-      { id: 'amenities', label: 'Tiện ích & Cấu hình Slot', icon: Sparkles },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
