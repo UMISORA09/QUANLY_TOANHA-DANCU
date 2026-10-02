@@ -116,7 +116,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
   };
 
   return (
-    <div className="relative w-full" ref={dropdownRef}>
+    <div className={`relative w-full ${isOpen ? 'z-30' : ''}`} ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -256,6 +256,284 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface ApartmentComboboxProps {
+  value: string;
+  onChange: (apartmentId: string) => void;
+  apartments: VehicleApartmentOption[];
+  placeholder?: string;
+}
+
+const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
+  value,
+  onChange,
+  apartments,
+  placeholder = '-- Chọn căn hộ --',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedApartment = useMemo(() => {
+    if (!value) return null;
+    return apartments.find((a) => a.id === value) || null;
+  }, [value, apartments]);
+
+  const filteredApartments = useMemo(() => {
+    if (!searchQuery.trim()) return apartments;
+    const q = searchQuery.toLowerCase().trim();
+    return apartments.filter((a) =>
+      a.apartment_number.toLowerCase().includes(q)
+    );
+  }, [apartments, searchQuery]);
+
+  const handleSelect = (apartmentId: string) => {
+    onChange(apartmentId);
+    setIsOpen(false);
+    setSearchQuery('');
+  };
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-30' : ''}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
+          isOpen
+            ? 'border-emerald-500 ring-2 ring-emerald-500/20'
+            : 'border-slate-200 hover:border-slate-300'
+        }`}
+      >
+        <span className="truncate pr-2">
+          {selectedApartment ? (
+            <span className="text-slate-900 font-bold flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Căn {selectedApartment.apartment_number}</span>
+            </span>
+          ) : (
+            <span className="text-slate-400">{placeholder}</span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
+            isOpen ? 'rotate-180 text-emerald-600' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+          {/* Ô tìm kiếm nhanh */}
+          <div className="p-2 border-b border-slate-100 bg-slate-50/90">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm số căn hộ (VD: A-1204)..."
+                className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+
+          {/* Danh sách căn hộ */}
+          <div className="max-h-48 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
+            {filteredApartments.length === 0 ? (
+              <div className="p-3 text-center text-slate-400 text-xs">
+                Không tìm thấy căn hộ
+              </div>
+            ) : (
+              filteredApartments.map((a) => {
+                const isSelected = a.id === value;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => handleSelect(a.id)}
+                    className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                      isSelected
+                        ? 'bg-emerald-600 text-white font-bold'
+                        : 'hover:bg-slate-100 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <Building2
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isSelected ? 'text-white' : 'text-slate-400'
+                        }`}
+                      />
+                      <span className="truncate">Căn {a.apartment_number}</span>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface CategoryComboboxProps {
+  value: string;
+  onChange: (category: string) => void;
+  accentColor?: 'emerald' | 'blue';
+}
+
+const VEHICLE_CATEGORIES = [
+  {
+    value: 'MOTORBIKE',
+    label: 'Xe máy (Motorbike)',
+    icon: Bike,
+    description: 'Xe máy 2 bánh các loại',
+  },
+  {
+    value: 'CAR',
+    label: 'Ô tô (Car)',
+    icon: Car,
+    description: 'Ô tô 4-7 chỗ gửi hầm',
+  },
+  {
+    value: 'E_SCOOTER',
+    label: 'Xe máy điện / Scooter',
+    icon: Zap,
+    description: 'Xe máy điện, xe đạp điện',
+  },
+  {
+    value: 'BICYCLE',
+    label: 'Xe đạp',
+    icon: Bike,
+    description: 'Xe đạp thông thường / thể thao',
+  },
+];
+
+const CategoryCombobox: React.FC<CategoryComboboxProps> = ({
+  value,
+  onChange,
+  accentColor = 'emerald',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedCategory = useMemo(() => {
+    return VEHICLE_CATEGORIES.find((c) => c.value === value) || VEHICLE_CATEGORIES[0];
+  }, [value]);
+
+  const SelectedIcon = selectedCategory.icon;
+  const isBlue = accentColor === 'blue';
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-30' : ''}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
+          isOpen
+            ? isBlue
+              ? 'border-blue-500 ring-2 ring-blue-500/20'
+              : 'border-emerald-500 ring-2 ring-emerald-500/20'
+            : 'border-slate-200 hover:border-slate-300'
+        }`}
+      >
+        <span className="truncate pr-2">
+          <span className="text-slate-900 font-bold flex items-center gap-1.5">
+            <SelectedIcon
+              className={`w-3.5 h-3.5 shrink-0 ${isBlue ? 'text-blue-600' : 'text-emerald-600'}`}
+            />
+            <span className="truncate">{selectedCategory.label}</span>
+          </span>
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
+            isOpen ? (isBlue ? 'rotate-180 text-blue-600' : 'rotate-180 text-emerald-600') : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
+          {VEHICLE_CATEGORIES.map((cat) => {
+            const isSelected = cat.value === value;
+            const CatIcon = cat.icon;
+            return (
+              <button
+                key={cat.value}
+                type="button"
+                onClick={() => {
+                  onChange(cat.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                  isSelected
+                    ? isBlue
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'bg-emerald-600 text-white font-bold'
+                    : 'hover:bg-slate-100 text-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <CatIcon
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isSelected
+                        ? 'text-white'
+                        : isBlue
+                        ? 'text-blue-600'
+                        : 'text-emerald-600'
+                    }`}
+                  />
+                  <div className="truncate">
+                    <div className="font-semibold leading-tight">{cat.label}</div>
+                    <div
+                      className={`text-[10px] leading-tight ${
+                        isSelected ? 'opacity-85' : 'text-slate-400'
+                      }`}
+                    >
+                      {cat.description}
+                    </div>
+                  </div>
+                </div>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1033,19 +1311,11 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   {/* Chọn căn hộ */}
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Căn hộ đăng ký (*)</label>
-                    <select
+                    <ApartmentCombobox
                       value={formApartmentId}
-                      onChange={(e) => setFormApartmentId(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white font-medium"
-                    >
-                      <option value="">-- Chọn căn hộ --</option>
-                      {apartments.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.apartment_number}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(aptId) => setFormApartmentId(aptId)}
+                      apartments={apartments}
+                    />
                   </div>
 
                   {/* Chọn chủ xe */}
@@ -1082,17 +1352,11 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   {/* Loại xe */}
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Loại phương tiện (*)</label>
-                    <select
+                    <CategoryCombobox
                       value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white"
-                    >
-                      <option value="MOTORBIKE">Xe máy (Motorbike)</option>
-                      <option value="CAR">Ô tô (Car)</option>
-                      <option value="E_SCOOTER">Xe máy điện / Scooter</option>
-                      <option value="BICYCLE">Xe đạp</option>
-                    </select>
+                      onChange={(cat) => setFormCategory(cat)}
+                      accentColor="emerald"
+                    />
                   </div>
 
                   {/* Biển số xe */}
@@ -1249,17 +1513,11 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   {/* Loại xe */}
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Loại phương tiện (*)</label>
-                    <select
+                    <CategoryCombobox
                       value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                    >
-                      <option value="MOTORBIKE">Xe máy (Motorbike)</option>
-                      <option value="CAR">Ô tô (Car)</option>
-                      <option value="E_SCOOTER">Xe máy điện / Scooter</option>
-                      <option value="BICYCLE">Xe đạp</option>
-                    </select>
+                      onChange={(cat) => setFormCategory(cat)}
+                      accentColor="blue"
+                    />
                   </div>
 
                   {/* Hãng xe */}
