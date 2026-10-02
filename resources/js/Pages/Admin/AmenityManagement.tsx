@@ -16,6 +16,7 @@ import {
   ChevronsRight,
   Loader2,
   Eye,
+  Check,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -81,6 +82,103 @@ const getPageNumbers = (current: number, total: number): (number | string)[] => 
     pages.push(total);
   }
   return pages;
+};
+
+interface CustomSelectOption {
+  value: string;
+  label: string;
+}
+
+interface CustomSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: CustomSelectOption[];
+  placeholder?: string;
+  className?: string;
+}
+
+const CustomSelect: React.FC<CustomSelectProps> = ({
+  value,
+  onChange,
+  options,
+  placeholder = 'Chọn một mục...',
+  className = '',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedOption = options.find((opt) => opt.value === value);
+
+  useEffect(() => {
+    const handlePointerDownOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handlePointerDownOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDownOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${isOpen ? 'z-50' : 'z-10'} ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3.5 py-2 text-xs border rounded-2xl bg-white transition-all flex items-center justify-between gap-2 shadow-2xs cursor-pointer text-left ${
+          isOpen
+            ? 'border-neutral-900 ring-2 ring-neutral-900/10'
+            : value && value !== 'all' && value !== ''
+            ? 'border-neutral-300 font-semibold text-neutral-950 bg-neutral-50/40 hover:bg-neutral-50'
+            : 'border-neutral-200 text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50/50'
+        }`}
+      >
+        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform duration-200 ${
+            isOpen ? 'rotate-180 text-neutral-900' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1.5 min-w-[200px] bg-white/95 backdrop-blur-2xl border border-neutral-200/90 rounded-2xl shadow-xl p-1.5 space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-150">
+          {options.map((opt) => {
+            const isSelected = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-xs rounded-xl flex items-center justify-between transition-colors text-left cursor-pointer ${
+                  isSelected
+                    ? 'bg-neutral-950 text-white font-semibold shadow-2xs'
+                    : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
+                }`}
+              >
+                <span className="truncate">{opt.label}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1.5" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
@@ -576,16 +674,16 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-top-3 duration-200 border ${
+          className={`fixed bottom-6 right-6 z-[80] px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-bottom-3 duration-200 border ${
             toast.type === 'success'
-              ? 'bg-neutral-950 text-white border-white/20'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
+              ? 'bg-neutral-900/95 text-white border-white/10'
+              : 'bg-rose-950/95 text-rose-100 border-rose-500/30'
           }`}
         >
           {toast.type === 'success' ? (
             <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 animate-pulse" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           )}
           <span>{toast.message}</span>
         </div>
@@ -723,17 +821,17 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       {/* Main Container */}
       <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} space-y-4`}>
         {/* Filters Bar Card */}
-        <div className="bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {/* Search Input, Clear button & Searching spinner */}
             <div className="lg:col-span-2 relative">
-              <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Tìm theo tên tiện ích hoặc mã tiện ích (VD: GYM, BƠI)..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all"
+                className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-2xl bg-white hover:bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all shadow-2xs"
               />
 
               {/* Right Indicators: Spinner & Clear Button */}
@@ -756,56 +854,57 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
             {/* Category Filter */}
             <div>
-              <select
+              <CustomSelect
                 value={selectedCategory}
-                onChange={(e) => {
-                  setSelectedCategory(e.target.value);
+                onChange={(val) => {
+                  setSelectedCategory(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="">Tất cả danh mục</option>
-                {(Array.isArray(categories) ? categories : []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.category_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Tất cả danh mục' },
+                  ...(Array.isArray(categories) ? categories : []).map((c) => ({
+                    value: c.id,
+                    label: c.category_name,
+                  })),
+                ]}
+                placeholder="Tất cả danh mục"
+              />
             </div>
 
             {/* Block Filter */}
             <div>
-              <select
+              <CustomSelect
                 value={selectedBlock}
-                onChange={(e) => {
-                  setSelectedBlock(e.target.value);
+                onChange={(val) => {
+                  setSelectedBlock(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="">Tất cả tòa nhà</option>
-                {(Array.isArray(blocks) ? blocks : []).map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.block_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Tất cả tòa nhà' },
+                  ...(Array.isArray(blocks) ? blocks : []).map((b) => ({
+                    value: b.id,
+                    label: b.block_name,
+                  })),
+                ]}
+                placeholder="Tất cả tòa nhà"
+              />
             </div>
 
             {/* Status Filter */}
             <div>
-              <select
+              <CustomSelect
                 value={selectedStatus}
-                onChange={(e) => {
-                  setSelectedStatus(e.target.value);
+                onChange={(val) => {
+                  setSelectedStatus(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="active">Đang hoạt động</option>
-                <option value="inactive">Tạm ngưng</option>
-              </select>
+                options={[
+                  { value: 'all', label: 'Tất cả trạng thái' },
+                  { value: 'active', label: 'Đang hoạt động' },
+                  { value: 'inactive', label: 'Tạm ngưng' },
+                ]}
+                placeholder="Tất cả trạng thái"
+              />
             </div>
           </div>
 
@@ -830,7 +929,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         </div>
 
         {/* Data Table Card */}
-        <div className="bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+        <div className="relative z-10 bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           {/* Table Container - Duy trì chiều cao tối thiểu để không bao giờ bị giật khung cuộn (Scroll Jump) khi đổi trang */}
           <div className="overflow-x-auto table-scrollbar min-h-[640px]">
             <table className="w-full text-left border-collapse text-xs">
@@ -1257,9 +1356,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Amenity Detail Modal Drawer */}
       {detailAmenity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div onClick={() => setDetailAmenity(null)} className="fixed inset-0 bg-neutral-950/45 backdrop-blur-sm animate-in fade-in" />
-          <div className="relative w-full max-w-lg bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4">
+          <div onClick={() => setDetailAmenity(null)} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
+          <div className="relative w-full max-w-lg bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200/80">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-neutral-900" />
@@ -1440,7 +1539,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Admin Authentication Modal */}
       {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md">
           <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-neutral-100 animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
               <div className="flex items-center gap-2">

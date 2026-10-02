@@ -1,5 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
+import '../css/scss/custom.scss';
 import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
 import PageLoadingFallback from './Components/Common/PageLoadingFallback';
 
@@ -190,12 +191,17 @@ const App: React.FC = () => {
     return null;
   }
 
-  // 1. Phân hệ Quản Trị Viên & Kỹ Thuật (Admin & Dev Console HỢP NHẤT LÀ 1)
-  const isAmenityAdminPath =
+  // 1. Tuyến đường Quản Lý Tiện Ích: Đã chuyển toàn bộ sang Cổng Ban Quản Lý (/quan-ly?tab=amenities)
+  const isAmenityPath =
     currentPath === '/admin/amenities' ||
     currentPath === '/admin/tien-ich' ||
-    currentPath.startsWith('/admin/amenities');
+    currentPath.startsWith('/admin/amenities') ||
+    currentPath === '/quan-ly/amenities' ||
+    currentPath === '/quan-ly/tien-ich' ||
+    currentPath.startsWith('/quan-ly/amenities') ||
+    currentPath === '/tien-ich';
 
+  // 1.1 Phân hệ Quản Trị Viên & Kỹ Thuật (Admin & Dev Console HỢP NHẤT LÀ 1)
   const isCicdAdminPath =
     currentPath === '/admin/cicd' ||
     currentPath.startsWith('/admin/cicd') ||
@@ -212,15 +218,15 @@ const App: React.FC = () => {
     currentPath.startsWith('/admin/rbac');
 
   const isUnifiedAdminDevPath =
-    currentPath === '/admin' ||
-    currentPath.startsWith('/admin/') ||
-    currentPath === '/dev' ||
-    currentPath.startsWith('/dev/') ||
-    currentPath === '/developer' ||
-    currentPath.startsWith('/developer/') ||
-    isAmenityAdminPath ||
-    isCicdAdminPath ||
-    isRoleAdminPath;
+    !isAmenityPath &&
+    (currentPath === '/admin' ||
+      currentPath.startsWith('/admin/') ||
+      currentPath === '/dev' ||
+      currentPath.startsWith('/dev/') ||
+      currentPath === '/developer' ||
+      currentPath.startsWith('/developer/') ||
+      isCicdAdminPath ||
+      isRoleAdminPath);
 
   if (isUnifiedAdminDevPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
@@ -242,8 +248,6 @@ const App: React.FC = () => {
     const urlTab = new URLSearchParams(window.location.search).get('tab');
     const tabToUse = isCicdAdminPath
       ? 'cicd'
-      : isAmenityAdminPath
-      ? 'amenities'
       : isRoleAdminPath
       ? 'roles'
       : (urlTab || 'overview');
@@ -263,13 +267,14 @@ const App: React.FC = () => {
     );
   }
 
-  // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà)
+  // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà & Quản lý tiện ích)
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
     currentPath === '/manager' ||
     currentPath.startsWith('/manager/') ||
-    currentPath === '/dashboard';
+    currentPath === '/dashboard' ||
+    isAmenityPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -285,6 +290,9 @@ const App: React.FC = () => {
     }
 
     const isUserAdmin = currentUser?.role === 'admin';
+    const managerUrlTab = new URLSearchParams(window.location.search).get('tab');
+    const tabForManager = isAmenityPath ? 'amenities' : (managerUrlTab || undefined);
+
     return (
       <ManagementHome
         onLogout={handleLogout}
@@ -292,6 +300,7 @@ const App: React.FC = () => {
         userRole="manager"
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
+        initialTab={tabForManager}
       />
     );
   }

@@ -1,0 +1,80 @@
+// ==============================================================================
+// CUSTOM APPLICATION SCSS STYLES
+// ==============================================================================
+@use 'variables' as vars;
+@use 'mixins' as mix;
+@use 'animations';
+
+// Demo card requested by specification
+.demo-card {
+    border-radius: vars.$radius-lg;
+    transition: transform vars.$transition-fast, box-shadow vars.$transition-fast;
+
+    &:hover {
+        transform: translateY(-2px);
+    }
+}
+
+// Glassmorphism classes using Sass Mixins & Variables
+.cloud-glass {
+    @include mix.glass-surface(rgba(255, 255, 255, 0.85), vars.$glass-blur-md, transparent);
+}
+
+.glass-panel {
+    @include mix.glass-surface(vars.$glass-bg-light, vars.$glass-blur-lg, vars.$glass-border-light);
+    box-shadow: 
+        0 12px 36px -10px rgba(0, 0, 0, 0.07),
+        0 4px 12px -2px rgba(0, 0, 0, 0.03),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.8);
+    transition: box-shadow vars.$transition-normal;
+
+    &:hover {
+        box-shadow: 
+            0 20px 45px -10px rgba(0, 0, 0, 0.1),
+            0 6px 16px -2px rgba(0, 0, 0, 0.04),
+            inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+    }
+}
+
+.glass-panel-dark {
+    @include mix.glass-surface(vars.$glass-bg-dark, vars.$glass-blur-lg, vars.$glass-border-dark);
+    box-shadow: 
+        0 16px 40px -10px rgba(2, 6, 23, 0.85),
+        0 0 30px -5px rgba(56, 189, 248, 0.12),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.glass-pill {
+    @include mix.glass-surface(rgba(255, 255, 255, 0.7), vars.$glass-blur-sm, rgba(255, 255, 255, 0.5));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.glass-pill-dark {
+    @include mix.glass-surface(rgba(15, 23, 42, 0.7), vars.$glass-blur-sm, rgba(56, 189, 248, 0.25));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-specular-edge {
+    @include mix.specular-edge;
+}
+
+.glass-role-card {
+    @include mix.glass-surface(rgba(255, 255, 255, 0.7), 14px, rgba(229, 231, 235, 0.9));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transition: all vars.$transition-fast;
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: rgba(23, 23, 23, 0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
+    }
+
+    &.active-role {
+        background: vars.$color-neutral-900;
+        color: #ffffff;
+        border-color: vars.$color-neutral-900;
+        box-shadow: 0 8px 20px -4px rgba(23, 23, 23, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px) scale(1.01);
+    }
+}
