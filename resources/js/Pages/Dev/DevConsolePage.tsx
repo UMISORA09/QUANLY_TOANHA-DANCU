@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
-import { RbacManagement } from '../Admin/RbacManagement';
+import { ResidentManagement } from '../Admin/ResidentManagement';
+import { TemporaryRegistrationManagement } from '../Admin/TemporaryRegistrationManagement';
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -151,6 +152,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
               {activeTab === 'ai_triage' && 'AI Chatbot & Phân Loại Sự Cố Tự Động (Triage)'}
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
+              {activeTab === 'temporary_registrations' && 'Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)'}
               {activeTab === 'cicd' && 'Hệ Thống Tự Động Hóa CI/CD & DevOps Pipeline'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -489,6 +491,19 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {activeTab === 'roles' && (
           <div className="space-y-6">
             <RbacManagement embedded={true} />
+          </div>
+        )}
+        {/* TAB 7: QUẢN LÝ CƯ DÂN & CĂN HỘ */}
+        {activeTab === 'residents' && (
+          <div className="space-y-6">
+            <ResidentManagement embedded={true} />
+          </div>
+        )}
+
+        {/* TAB 8: ĐĂNG KÝ & DUYỆT TẠM TRÚ / TẠM VẮNG (CÔNG AN) */}
+        {activeTab === 'temporary_registrations' && (
+          <div className="space-y-6">
+            <TemporaryRegistrationManagement embedded={true} />
           </div>
         )}
       </div>

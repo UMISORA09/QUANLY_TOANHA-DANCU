@@ -39,7 +39,6 @@ $sqlitePath = $storagePath.'/database.sqlite';
 if (! file_exists($sqlitePath)) {
     @touch($sqlitePath);
 }
-
 // Maintenance check
 if (file_exists($maintenance = $storagePath.'/framework/maintenance.php')) {
     require $maintenance;
