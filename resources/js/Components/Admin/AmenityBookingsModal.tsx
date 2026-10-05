@@ -35,6 +35,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -62,6 +63,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen && amenity) {
+      setSuccessMessage(null);
       fetchBookings(true);
     } else {
       setBookings([]);
@@ -94,7 +96,10 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
     if (!amenity) return;
     try {
       setUpdatingId(bookingId);
+      setError(null);
+      setSuccessMessage(null);
       await api.patchAmenityBookingStatus(amenity.id, bookingId, status, reason);
+      setSuccessMessage(status === 'APPROVED' ? 'Đã duyệt đăng ký tiện ích thành công.' : status === 'REJECTED' ? 'Đã từ chối đăng ký tiện ích.' : status === 'CANCELLED' ? 'Đã hủy đăng ký tiện ích thành công.' : 'Đã cập nhật trạng thái đăng ký thành công.');
       if (status === 'REJECTED') setRejectingId(null);
       await fetchBookings(true);
     } catch (err: any) {
@@ -247,6 +252,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
           </div>
         </div>
 
+        {successMessage && <p role="status" className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{successMessage}</p>}
         {/* Filter Toolbar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-3">
           <div className="relative w-full sm:w-72">
@@ -278,7 +284,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
+          <div role="alert" className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>

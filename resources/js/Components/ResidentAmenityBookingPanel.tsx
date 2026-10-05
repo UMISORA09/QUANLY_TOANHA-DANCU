@@ -60,6 +60,7 @@ export function ResidentAmenityBookingPanel() {
   const [detail, setDetail] = useState<ResidentAmenityBooking | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [modalError, setModalError] = useState<ApiError | null>(null);
+  const [modalSuccess, setModalSuccess] = useState<string | null>(null);
   const [cancelMode, setCancelMode] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
@@ -176,6 +177,7 @@ export function ResidentAmenityBookingPanel() {
   };
 
   const openDetail = async (booking: ResidentAmenityBooking, cancel: boolean) => {
+    setModalSuccess(null);
     detailRequest.current?.abort();
     const controller = new AbortController();
     detailRequest.current = controller;
@@ -196,8 +198,10 @@ export function ResidentAmenityBookingPanel() {
     if (!detail || cancelling) return;
     setCancelling(true);
     setModalError(null);
+    setModalSuccess(null);
     try {
       const result = await api.cancelResidentBooking(detail, reason);
+      setModalSuccess(`Đã hủy đăng ký ${result.booking.booking_code} thành công.`);
       setDetail(result.booking);
       setCancelMode(false);
       refresh();
@@ -257,6 +261,7 @@ export function ResidentAmenityBookingPanel() {
       </>}
     </div>}
     <dialog ref={dialog} aria-labelledby="resident-booking-dialog-title" onCancel={(event) => { event.preventDefault(); closeDetail(); }} onClose={() => setDetail(null)} className="m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 text-neutral-900 shadow-2xl backdrop:bg-neutral-950/50 backdrop:backdrop-blur-sm">
+      {modalSuccess && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{modalSuccess}</p>}
       {detail && <div className="space-y-4"><div className="flex justify-between gap-3"><h2 id="resident-booking-dialog-title" className="text-lg font-bold">{cancelMode ? 'Hủy đăng ký tiện ích' : 'Chi tiết đăng ký'}</h2><button type="button" aria-label="Đóng chi tiết" disabled={cancelling} onClick={closeDetail}><X className="h-5 w-5" /></button></div><p className="text-sm font-semibold">{detail.amenity_name} · {detail.booking_code}</p><BookingStatus booking={detail} /><dl className="space-y-2 text-sm"><div><dt className="text-neutral-400">Ngày giờ</dt><dd>{dateLabel(detail.booking_date)} · {detail.start_time} – {detail.end_time}</dd></div><div><dt className="text-neutral-400">Căn hộ · Số người</dt><dd>{detail.apartment_number} · {detail.attendee_count} người</dd></div><div><dt className="text-neutral-400">Phí sử dụng · Tiền cọc</dt><dd>{money(detail.total_amount)} · {money(detail.deposit_amount)}</dd></div>{detail.resident_notes && <div><dt className="text-neutral-400">Ghi chú</dt><dd className="whitespace-pre-wrap">{detail.resident_notes}</dd></div>}{detail.rejection_reason && <div><dt className="text-neutral-400">Lý do từ chối</dt><dd>{detail.rejection_reason}</dd></div>}<div><dt className="text-neutral-400">Hạn hủy</dt><dd>{new Date(detail.cancel_deadline).toLocaleString('vi-VN', { timeZone: catalog?.timezone || 'Asia/Ho_Chi_Minh' })}</dd></div></dl>{detailLoading && <p role="status" className="text-sm text-neutral-500">Đang cập nhật thông tin…</p>}<ErrorNotice error={modalError} retry={() => openDetail(detail, cancelMode)} />{cancelMode && detail.can_cancel && <label className="block space-y-2 text-sm">Lý do hủy (không bắt buộc)<textarea className={inputClass} rows={3} maxLength={500} disabled={cancelling} value={reason} onChange={(event) => setReason(event.target.value)} /></label>}{cancelMode && !detail.can_cancel && <p className="text-sm text-amber-800">Lượt đăng ký không còn được phép hủy.</p>}<div className="flex justify-end gap-2"><button type="button" className="rounded-xl border px-4 py-2 text-sm" disabled={cancelling} onClick={closeDetail}>Đóng</button>{detail.can_cancel && (cancelMode ? <button type="button" className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={detailLoading || cancelling || Boolean(modalError)} onClick={cancelBooking}>{cancelling ? 'Đang hủy…' : 'Xác nhận hủy'}</button> : <button type="button" className={primaryClass} disabled={detailLoading || Boolean(modalError)} onClick={() => setCancelMode(true)}>Hủy đăng ký</button>)}</div></div>}
     </dialog>
   </section>;

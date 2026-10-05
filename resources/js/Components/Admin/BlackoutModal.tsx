@@ -79,6 +79,7 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSuccessMessage(null);
     if (!amenity) return;
 
     if (!blackoutDate) {
@@ -121,6 +122,8 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
   const handleDelete = async (blackoutId: string) => {
     if (!amenity) return;
     if (!confirm('Bạn có chắc muốn xóa lịch bảo trì này?')) return;
+    setErrorMessage(null);
+    setSuccessMessage(null);
 
     try {
       await api.deleteBlackout(amenity.id, blackoutId);
@@ -167,13 +170,13 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
 
         {/* Alerts */}
         {errorMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shrink-0">
+          <div role="alert" className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shrink-0">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
         {successMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
+          <div role="status" className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
           </div>

@@ -72,6 +72,7 @@ test('quản lý từ chối đăng ký với lý do bắt buộc', async ({ pag
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/bookings/booking-test/status')) {
       const payload = route.request().postDataJSON();
+      if (payload.status === 'APPROVED') return route.fulfill({ status: 409, json: { message: 'Đăng ký vừa thay đổi. Vui lòng tải lại.' } });
       expect(payload).toMatchObject({ status: 'REJECTED', rejection_reason: 'Bảo trì đột xuất' });
       current = { ...current, status: 'REJECTED', rejection_reason: payload.rejection_reason };
       return route.fulfill({ json: current });
@@ -82,6 +83,9 @@ test('quản lý từ chối đăng ký với lý do bắt buộc', async ({ pag
   });
   await page.goto('/quan-ly?tab=amenities');
   await page.getByTitle('Xem thông tin đặt chỗ của cư dân', { exact: true }).click();
+  await page.getByRole('button', { name: 'Duyệt', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Đăng ký vừa thay đổi');
+  await expect(page.getByRole('status').filter({ hasText: 'Đã duyệt đăng ký' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Từ chối', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Từ chối đăng ký tiện ích' });
   await expect(dialog).toBeVisible();
@@ -90,6 +94,7 @@ test('quản lý từ chối đăng ký với lý do bắt buộc', async ({ pag
   await dialog.getByRole('button', { name: 'Xác nhận từ chối' }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText('Bị từ chối', { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Đã từ chối đăng ký tiện ích.' })).toBeVisible();
 });
 
 for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 }]) {
@@ -106,6 +111,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await page.getByLabel('Lý do hủy (không bắt buộc)').fill('Đổi kế hoạch');
     await page.getByRole('button', { name: 'Xác nhận hủy', exact: true }).click();
     await expect(page.getByRole('dialog').getByText('Đã hủy', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('Đã hủy đăng ký BK-TEST thành công.');
     await page.getByRole('button', { name: 'Đóng', exact: true }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await page.reload();

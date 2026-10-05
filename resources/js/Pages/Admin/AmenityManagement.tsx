@@ -674,6 +674,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       {/* Toast Notification */}
       {toast && (
         <div
+          role={toast.type === 'error' ? 'alert' : 'status'}
           className={`fixed bottom-6 right-6 z-[80] px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-bottom-3 duration-200 border ${
             toast.type === 'success'
               ? 'bg-neutral-900/95 text-white border-white/10'
