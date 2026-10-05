@@ -55,7 +55,9 @@ async function fixture(page: Page, options: { conflict?: boolean; unauthorized?:
 }
 
 async function chooseSlot(page: Page) {
+  await expect(page.getByRole('dialog', { name: /Đăng ký tiện ích/ })).not.toBeVisible();
   await page.getByRole('button', { name: /Vườn BBQ/ }).click();
+  await expect(page.getByRole('dialog', { name: /Đăng ký tiện ích/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Đặt tiện ích', exact: true, includeHidden: true }).first()).toBeAttached();
   await page.getByRole('button', { name: /10:00.*11:30/ }).click();
   await page.getByLabel('Số người', { exact: true }).fill('2');
@@ -113,16 +115,23 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await expect(page.getByRole('dialog').getByText('Đã hủy', { exact: true })).toBeVisible();
     await expect(page.getByRole('dialog').getByRole('status')).toContainText('Đã hủy đăng ký BK-TEST thành công.');
     await page.getByRole('button', { name: 'Đóng', exact: true }).click();
+    await page.getByRole('button', { name: 'Đăng ký tiện ích', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Đăng ký sử dụng tiện ích' })).toBeVisible();
   });
 }
 
-test('đăng ký bằng bàn phím và đóng chi tiết bằng Escape', async ({ page }) => {
+test('đăng ký bằng bàn phím và đóng form, chi tiết bằng Escape', async ({ page }) => {
   await fixture(page);
   const amenity = page.getByRole('button', { name: /Vườn BBQ/ });
   await amenity.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: /Đăng ký tiện ích/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(amenity).toBeFocused();
   await page.keyboard.press('Enter');
   const slot = page.getByRole('button', { name: /10:00.*11:30/ });
   await slot.focus();
@@ -184,9 +193,48 @@ test('đổi ngày nhanh không dùng phản hồi ngày cũ, điều hướng B
   await page.getByRole('button', { name: 'Ngày mai', exact: true }).click();
   await expect(page.getByRole('button', { name: /14:00.*11:30/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /10:00.*11:30/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Đóng form đăng ký' }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
   await page.getByRole('button', { name: 'Tổng quan Cư dân', exact: true }).first().click();
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Đăng ký sử dụng tiện ích' })).toBeVisible();
   await page.goForward();
   await expect(page.getByRole('heading', { name: 'Đăng ký sử dụng tiện ích' })).toHaveCount(0);
+});
+
+test('chỉ tải dữ liệu cần dùng và gộp tải lại khi quay về cửa sổ', async ({ page }) => {
+  let catalogRequests = 0;
+  let rentalRequests = 0;
+  let historyRequests = 0;
+  let current = { ...booking };
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/resident/amenities')) catalogRequests += 1;
+    if (url.pathname.endsWith('/auth/rental-listings')) rentalRequests += 1;
+  });
+  await fixture(page);
+  await expect(page.getByRole('button', { name: /Vườn BBQ/ })).toBeVisible();
+  expect(rentalRequests).toBe(0);
+  await page.route('**/resident/amenity-bookings?**', (route) => {
+    historyRequests += 1;
+    return route.fulfill({ json: { items: [current], page: 1, total: 1, total_pages: 1 } });
+  });
+  await page.getByRole('button', { name: 'Lịch của tôi', exact: true }).click();
+  await expect(page.getByRole('article').getByText('Chờ duyệt', { exact: true })).toBeVisible();
+  const initialCatalogRequests = catalogRequests;
+  const initialHistoryRequests = historyRequests;
+  current = { ...booking, status: 'APPROVED' };
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect(page.getByRole('article').getByText('Đã duyệt', { exact: true })).toBeVisible();
+  expect(catalogRequests).toBe(initialCatalogRequests + 1);
+  expect(historyRequests).toBe(initialHistoryRequests + 1);
+  current = { ...booking, status: 'CANCELLED', can_cancel: false };
+  await page.getByRole('button', { name: 'Tải lại lịch', exact: true }).click();
+  await expect(page.getByRole('article').getByText('Đã hủy', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hủy đăng ký', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /Tòa nhà & Căn hộ cho thuê/ }).first().click();
+  await expect.poll(() => rentalRequests).toBe(1);
 });

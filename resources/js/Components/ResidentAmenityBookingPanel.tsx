@@ -3,8 +3,10 @@ import { CalendarDays, CheckCircle2, Clock, MapPin, Search, Sparkles, Users, X }
 import { Amenity, ApiError, ResidentAmenityBooking, ResidentAmenityCatalog, ResidentAvailableSlot, ResidentBookingList, api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
 
-const money = (value: number | string) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(value));
-const dateLabel = (date: string) => new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(`${date}T12:00:00+07:00`));
+const moneyFormatter = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
+const dateFormatter = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' });
+const money = (value: number | string) => moneyFormatter.format(Number(value));
+const dateLabel = (date: string) => dateFormatter.format(new Date(`${date}T12:00:00+07:00`));
 const addDays = (date: string, days: number) => {
   const value = new Date(`${date}T12:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
@@ -65,6 +67,7 @@ export function ResidentAmenityBookingPanel() {
   const [reason, setReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const registrationDialog = useRef<HTMLDialogElement>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const selectionVersion = useRef(0);
   const amenity = catalog?.amenities.find((item) => item.id === amenityId);
@@ -97,7 +100,7 @@ export function ResidentAmenityBookingPanel() {
   }, [amenityId, apartmentId, date]);
 
   useEffect(() => {
-    if (!amenityId || !apartmentId || !date || tab !== 'register') return;
+    if (!amenityId || !apartmentId || !date || tab !== 'register' || submitting || success) return;
     const controller = new AbortController();
     setAvailabilityLoading(true);
     setAvailabilityError(null);
@@ -108,7 +111,7 @@ export function ResidentAmenityBookingPanel() {
     }).catch((error: ApiError) => { if (!controller.signal.aborted) { setSlots([]); setSlotId(''); setAvailabilityError(error); } })
       .finally(() => { if (!controller.signal.aborted) setAvailabilityLoading(false); });
     return () => controller.abort();
-  }, [amenityId, apartmentId, date, tab, revision]);
+  }, [amenityId, apartmentId, date, tab, revision, submitting, success]);
 
   useEffect(() => {
     if (tab !== 'mine') return;
@@ -130,10 +133,14 @@ export function ResidentAmenityBookingPanel() {
       refresh();
       if (event.type !== 'AMENITY_BOOKING_CHANGED') setCatalogRevision((value) => value + 1);
     });
-    const focused = () => { if (!document.hidden) { refresh(); setCatalogRevision((value) => value + 1); } };
+    let focusTimer: ReturnType<typeof setTimeout>;
+    const focused = () => {
+      clearTimeout(focusTimer);
+      if (!document.hidden) focusTimer = setTimeout(() => { refresh(); setCatalogRevision((value) => value + 1); }, 100);
+    };
     window.addEventListener('focus', focused);
     document.addEventListener('visibilitychange', focused);
-    return () => { unsubscribe(); window.removeEventListener('focus', focused); document.removeEventListener('visibilitychange', focused); detailRequest.current?.abort(); };
+    return () => { clearTimeout(focusTimer); unsubscribe(); window.removeEventListener('focus', focused); document.removeEventListener('visibilitychange', focused); detailRequest.current?.abort(); };
   }, [refresh]);
 
   useEffect(() => {
@@ -141,7 +148,14 @@ export function ResidentAmenityBookingPanel() {
     if (!detail && dialog.current?.open) dialog.current?.close();
   }, [detail]);
 
-  const pickAmenity = (item: Amenity) => { setAmenityId(item.id); setDate(catalog!.today); };
+  useEffect(() => {
+    if (tab !== 'register') setAmenityId('');
+    if (amenity && tab === 'register' && !catalogError && !registrationDialog.current?.open) registrationDialog.current?.showModal();
+    if ((!amenity || tab !== 'register' || catalogError) && registrationDialog.current?.open) registrationDialog.current.close();
+  }, [amenity, tab, catalogError]);
+
+  const closeRegistration = () => { if (!submittingRef.current) setAmenityId(''); };
+  const pickAmenity = (item: Amenity) => { setAmenityId(item.id); setDate(catalog!.today); setAttendees('1'); setNotes(''); };
   const fieldError = (name: string) => formError?.errors?.[name] && <p className="mt-1 text-xs text-rose-700" role="alert">{formError.errors[name][0]}</p>;
 
   const submit = async (event: React.FormEvent) => {
@@ -216,7 +230,7 @@ export function ResidentAmenityBookingPanel() {
       <p className="mt-2 text-sm text-neutral-500">Chọn tiện ích yêu thích và khung giờ phù hợp cho bạn cùng gia đình.</p>
     </header>
     <div className="flex gap-2 border-b border-neutral-200 pb-3" aria-label="Nội dung tiện ích">
-      {(['register', 'mine'] as const).map((value) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => { setTab(value); refresh(); }} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${tab === value ? 'bg-neutral-950 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}>{value === 'register' ? 'Đăng ký tiện ích' : 'Lịch của tôi'}</button>)}
+      {(['register', 'mine'] as const).map((value) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${tab === value ? 'bg-neutral-950 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}>{value === 'register' ? 'Đăng ký tiện ích' : 'Lịch của tôi'}</button>)}
     </div>
     {tab === 'register' ? <>
       <ErrorNotice error={catalogError} retry={() => setCatalogRevision((value) => value + 1)} />
@@ -237,8 +251,10 @@ export function ResidentAmenityBookingPanel() {
             </div>
             {!catalog.amenities.some((item) => (!item.block_id || item.block_id === apartment?.block_id) && (!categoryId || item.category_id === categoryId) && item.amenity_name.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi'))) && <p className="p-8 text-center text-sm text-neutral-500">Không có tiện ích phù hợp.</p>}
           </>}
-          {success && <div role="status" className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><h2 className="flex items-center gap-2 font-bold text-emerald-900"><CheckCircle2 className="h-5 w-5" />Đăng ký thành công · {success.booking_code}</h2><BookingStatus booking={success} /><button type="button" className={primaryClass} onClick={() => { setTab('mine'); setPage(1); setStatus(''); }}>Xem lịch của tôi</button></div>}
-          {amenity && <form onSubmit={submit} className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <dialog ref={registrationDialog} aria-labelledby="resident-registration-dialog-title" onCancel={(event) => { event.preventDefault(); closeRegistration(); }} className="m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-5xl overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-2xl backdrop:bg-neutral-950/50 backdrop:backdrop-blur-sm sm:p-6">
+            <div className="mb-5 flex items-center justify-between gap-3"><h2 id="resident-registration-dialog-title" className="text-lg font-bold">Đăng ký tiện ích · {amenity?.amenity_name}</h2><button type="button" aria-label="Đóng form đăng ký" disabled={submitting} onClick={closeRegistration} className="rounded-lg p-2 hover:bg-neutral-100"><X className="h-5 w-5" /></button></div>
+            {success && <div role="status" className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><h2 className="flex items-center gap-2 font-bold text-emerald-900"><CheckCircle2 className="h-5 w-5" />Đăng ký thành công · {success.booking_code}</h2><BookingStatus booking={success} /><button type="button" className={primaryClass} onClick={() => { setTab('mine'); setPage(1); setStatus(''); }}>Xem lịch của tôi</button></div>}
+          {amenity && !success && <form onSubmit={submit} className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="space-y-5 rounded-2xl border border-neutral-200 bg-white/90 p-5 sm:p-6">
               <h2 className="text-lg font-bold text-neutral-950">{amenity.amenity_name}</h2>
               <div className="rounded-xl bg-neutral-50 p-4 text-xs leading-relaxed text-neutral-600"><p>Đặt trước tối đa <strong>{amenity.advance_booking_days_limit} ngày</strong> · Hủy trước ít nhất <strong>{amenity.min_cancel_hours_before} giờ</strong></p><p className="mt-2 whitespace-pre-wrap">{amenity.rules_and_regulations || 'Vui lòng sử dụng đúng giờ và giữ gìn vệ sinh chung.'}</p></div>
@@ -249,9 +265,11 @@ export function ResidentAmenityBookingPanel() {
             </div>
             <aside className="space-y-4 rounded-2xl border border-neutral-200 bg-white/95 p-5 shadow-xs lg:sticky lg:top-6"><h3 className="flex items-center gap-2 font-bold text-neutral-950"><CalendarDays className="h-4 w-4 text-emerald-600" />Xác nhận đăng ký</h3><dl className="space-y-3 text-sm text-neutral-600"><div><dt className="text-xs text-neutral-400">Tiện ích</dt><dd className="mt-1 font-semibold text-neutral-900">{amenity.amenity_name}</dd></div><div><dt className="text-xs text-neutral-400">Căn hộ</dt><dd>{apartment?.apartment_number}</dd></div><div><dt className="text-xs text-neutral-400">Ngày và giờ</dt><dd>{date ? dateLabel(date) : 'Chưa chọn ngày'}<br />{slot ? `${slot.start_time} – ${slot.end_time}` : 'Chưa chọn khung giờ'}</dd></div><div className="flex justify-between"><dt>Số người</dt><dd>{attendees || '—'}</dd></div><div className="flex justify-between border-t border-neutral-100 pt-3"><dt>Phí sử dụng</dt><dd>{slot ? money(slot.total_amount) : '—'}</dd></div><div className="flex justify-between"><dt>Tiền cọc</dt><dd>{slot ? money(slot.deposit_amount) : money(amenity.security_deposit_required)}</dd></div><div className="flex justify-between border-t border-neutral-100 pt-3 font-bold text-neutral-950"><dt>Tổng cần thu</dt><dd>{slot ? money(slot.total_amount + slot.deposit_amount) : '—'}</dd></div></dl><p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Phí và tiền cọc được thu sau theo hướng dẫn của ban quản lý.{Boolean(amenity.requires_admin_approval) && ' Đăng ký cần được ban quản lý duyệt.'}</p><label className="flex items-start gap-2 text-xs leading-relaxed text-neutral-600"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-emerald-600" required disabled={submitting} checked={acceptedRules} onChange={(event) => setAcceptedRules(event.target.checked)} />Tôi đã đọc và đồng ý với nội quy tiện ích.</label>{fieldError('accepted_rules')}<ErrorNotice error={formError} /><button className={`${primaryClass} w-full`} type="submit" disabled={!slot?.available || !acceptedRules || availabilityLoading || submitting || Boolean(catalogError)}>{submitting ? 'Đang đăng ký…' : 'Xác nhận đăng ký'}</button></aside>
           </form>}
+          </dialog>
         </>}
       </>}
     </> : <div className="space-y-4">
+      <button type="button" onClick={refresh} disabled={bookingsLoading} className="rounded-xl border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-700 disabled:opacity-50">Tải lại lịch</button>
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold text-neutral-950">Lịch đăng ký của tôi</h2><label className="text-xs font-semibold text-neutral-600">Trạng thái<select aria-label="Lọc trạng thái" className={`${inputClass} mt-1`} value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}>{[['', 'Tất cả trạng thái'], ...Object.entries(statusNames)].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
       <ErrorNotice error={bookingsError} retry={refresh} />
       {bookingsLoading ? <p role="status" className="p-8 text-center text-sm text-neutral-500">Đang tải lịch đăng ký…</p> : !bookingsError && <>

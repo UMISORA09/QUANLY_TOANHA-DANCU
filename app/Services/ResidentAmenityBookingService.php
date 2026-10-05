@@ -163,7 +163,7 @@ class ResidentAmenityBookingService
             $query->where('amenity_bookings.status', $status);
         }
         $total = (clone $query)->count();
-        $items = $query->orderByDesc('booking_date')->orderByDesc('start_time')->orderByDesc('amenity_bookings.created_at')->orderBy('amenity_bookings.id')->forPage($page, 10)->get()->map(fn (object $booking): array => $this->formatBooking($booking));
+        $items = $query->orderByDesc('amenity_bookings.created_at')->orderBy('amenity_bookings.id')->forPage($page, 10)->get()->map(fn (object $booking): array => $this->formatBooking($booking));
 
         return ['items' => $items, 'total' => $total, 'page' => $page, 'total_pages' => max(1, (int) ceil($total / 10))];
     }
