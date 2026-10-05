@@ -12,6 +12,7 @@ const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
 const DevConsolePage = lazy(() => import('./Pages/Dev/DevConsolePage'));
 const PublicStatusPage = lazy(() => import('./Pages/PublicStatusPage'));
 const IncidentHistoryPage = lazy(() => import('./Pages/IncidentHistoryPage'));
+const AccountActivationPage = lazy(() => import('./Pages/Auth/AccountActivationPage'));
 const LoginPage = lazy(() => import('./Pages/Auth/LoginPage'));
 const RegisterPage = lazy(() => import('./Pages/Auth/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('./Pages/Auth/ForgotPasswordPage'));
@@ -179,6 +180,16 @@ const App: React.FC = () => {
     );
   }
 
+  // 0.2 Phân hệ Kích hoạt tài khoản cư dân (Public Activation Token Page)
+  if (
+    currentPath === '/kich-hoat-tai-khoan' ||
+    currentPath.startsWith('/kich-hoat-tai-khoan') ||
+    currentPath === '/activate-account' ||
+    currentPath.startsWith('/activate-account')
+  ) {
+    return <AccountActivationPage />;
+  }
+
   // 0.1 Nếu truy cập các URL đăng nhập dev cũ, tự động chuyển về trang /login chung
   const isDevLoginPath =
     currentPath === '/dev/login' ||
@@ -217,6 +228,16 @@ const App: React.FC = () => {
     currentPath.startsWith('/admin/roles') ||
     currentPath.startsWith('/admin/rbac');
 
+  const isResidentAdminPath =
+    currentPath === '/admin/residents' ||
+    currentPath === '/admin/cu-dan' ||
+    currentPath.startsWith('/admin/residents');
+
+  const isTemporaryRegistrationAdminPath =
+    currentPath === '/admin/temporary-registrations' ||
+    currentPath === '/admin/tam-tru' ||
+    currentPath.startsWith('/admin/temporary-registrations');
+
   const isUnifiedAdminDevPath =
     !isAmenityPath &&
     (currentPath === '/admin' ||
@@ -226,7 +247,9 @@ const App: React.FC = () => {
       currentPath === '/developer' ||
       currentPath.startsWith('/developer/') ||
       isCicdAdminPath ||
-      isRoleAdminPath);
+      isRoleAdminPath ||
+      isResidentAdminPath ||
+      isTemporaryRegistrationAdminPath);
 
   if (isUnifiedAdminDevPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
@@ -250,6 +273,10 @@ const App: React.FC = () => {
       ? 'cicd'
       : isRoleAdminPath
       ? 'roles'
+      : isResidentAdminPath
+      ? 'residents'
+      : isTemporaryRegistrationAdminPath
+      ? 'temporary_registrations'
       : (urlTab || 'overview');
 
     return (
@@ -268,13 +295,32 @@ const App: React.FC = () => {
   }
 
   // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà & Quản lý tiện ích)
+  const isAccountProvisioningPath =
+    currentPath === '/quan-ly/account-provisioning' ||
+    currentPath === '/quan-ly/cap-phat-tai-khoan' ||
+    currentPath.startsWith('/quan-ly/account-provisioning') ||
+    currentPath.startsWith('/quan-ly/cap-phat-tai-khoan') ||
+    currentPath === '/admin/account-provisioning' ||
+    currentPath === '/admin/cap-phat-tai-khoan' ||
+    currentPath.startsWith('/admin/account-provisioning');
+
+  const isVehiclePath =
+    currentPath === '/quan-ly/vehicles' ||
+    currentPath === '/quan-ly/phuong-tien' ||
+    currentPath.startsWith('/quan-ly/vehicles') ||
+    currentPath === '/admin/vehicles' ||
+    currentPath === '/admin/phuong-tien' ||
+    currentPath.startsWith('/admin/vehicles');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
     currentPath === '/manager' ||
     currentPath.startsWith('/manager/') ||
     currentPath === '/dashboard' ||
-    isAmenityPath;
+    isAmenityPath ||
+    isAccountProvisioningPath ||
+    isVehiclePath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -291,7 +337,13 @@ const App: React.FC = () => {
 
     const isUserAdmin = currentUser?.role === 'admin';
     const managerUrlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabForManager = isAmenityPath ? 'amenities' : (managerUrlTab || undefined);
+    const initialManagerTab = isAmenityPath
+      ? 'amenities'
+      : isVehiclePath
+      ? 'vehicles'
+      : isAccountProvisioningPath
+      ? 'account_provisioning'
+      : (managerUrlTab || undefined);
 
     return (
       <ManagementHome
@@ -300,7 +352,7 @@ const App: React.FC = () => {
         userRole="manager"
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
-        initialTab={tabForManager}
+        initialTab={initialManagerTab}
       />
     );
   }
@@ -340,24 +392,48 @@ const App: React.FC = () => {
     currentUser?.role?.toLowerCase().includes('receptionist') ||
     currentUser?.role?.toLowerCase().includes('letan');
 
+  const isSecurityPath =
+    currentPath === '/an-ninh' ||
+    currentPath.startsWith('/an-ninh') ||
+    currentPath === '/bao-ve' ||
+    currentPath.startsWith('/bao-ve') ||
+    currentPath === '/security' ||
+    currentPath.startsWith('/security');
+
+  const isReceptionistVehiclePath =
+    currentPath === '/le-tan/vehicles' ||
+    currentPath === '/le-tan/phuong-tien' ||
+    currentPath.startsWith('/le-tan/vehicles') ||
+    currentPath.startsWith('/le-tan/phuong-tien') ||
+    currentPath === '/an-ninh/vehicles' ||
+    currentPath === '/an-ninh/phuong-tien' ||
+    currentPath.startsWith('/an-ninh/vehicles');
+
   const isReceptionistPath =
     currentPath === '/le-tan' ||
     currentPath.startsWith('/le-tan') ||
     currentPath === '/receptionist' ||
     currentPath.startsWith('/receptionist') ||
+    isSecurityPath ||
+    isReceptionistVehiclePath ||
     (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
 
   if (isReceptionistPath) {
     const isUserAdmin = currentUser?.role === 'admin';
-    const effectiveRole = isUserAdmin ? 'admin' : 'receptionist';
+    const effectiveRole = isUserAdmin ? 'admin' : (isSecurityPath ? 'security' : 'receptionist');
+    const receptionUrlTab = new URLSearchParams(window.location.search).get('tab');
+    const initialReceptionTab = isReceptionistVehiclePath
+      ? 'vehicle_reg'
+      : (receptionUrlTab || undefined);
     return (
       <ReceptionHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home?landing=true')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
-        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Lễ Tân Sảnh Chính')}
-        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'letan@cassavas.vn')}
+        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : (isSecurityPath ? 'Đội Trực An Ninh' : 'Lễ Tân Sảnh Chính'))}
+        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : (isSecurityPath ? 'anninh@cassavas.vn' : 'letan@cassavas.vn'))}
+        initialTab={initialReceptionTab}
       />
     );
   }

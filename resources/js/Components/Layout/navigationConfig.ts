@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   CreditCard,
   Sparkles,
   Wrench,
@@ -32,7 +33,6 @@ import {
   CalendarDays,
   Camera,
   Flame,
-  CheckCircle2,
   Terminal,
   Bot,
   Cpu,
@@ -73,6 +73,8 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
       { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: 'Live', badgeType: 'success' },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
@@ -120,9 +122,10 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'reception', label: 'Bàn trực Lễ tân', icon: LayoutDashboard },
       { id: 'visitors', label: 'Khách viếng thăm', icon: UserCheck, badge: '12 đang ở', badgeType: 'info' },
+      { id: 'vehicle_reg', label: 'Đăng ký xe & Phí HĐ', icon: CreditCard, badge: 'Tự động', badgeType: 'success', isNew: true },
+      { id: 'parking', label: 'Bãi đỗ xe & ANPR', icon: Car },
       { id: 'parcels', label: 'Giao nhận bưu phẩm', icon: Package, badge: '24 chờ lấy', badgeType: 'warning' },
       { id: 'keys', label: 'Chìa khóa & Thẻ từ', icon: Key },
-      { id: 'parking', label: 'An ninh bãi xe & Ra vào', icon: Car },
       { id: 'incidents', label: 'Sự cố khẩn cấp', icon: ShieldAlert, badge: '1 mới', badgeType: 'danger' },
       { id: 'handover', label: 'Sổ giao ca trực', icon: ClipboardList },
       { id: 'directory', label: 'Danh bạ nội bộ', icon: Contact },
@@ -140,6 +143,8 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
+      { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
@@ -150,7 +155,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
 
   // ================= 5. DEVELOPER (HỢP NHẤT CHUNG VỚI ADMIN) =================
   dev: {
-    role: 'admin',
+    role: 'dev',
     roleName: 'Quản Trị Viên & Kỹ Thuật (Admin / Dev)',
     portalSubtitle: 'SYSTEM ADMINISTRATOR & DEV CONSOLE',
     sectionTitle: 'TRUNG TÂM QUẢN TRỊ & KỸ THUẬT',
@@ -159,6 +164,8 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
+      { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
