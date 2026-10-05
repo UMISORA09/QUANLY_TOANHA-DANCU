@@ -160,6 +160,22 @@ class ResidentAmenityBookingTest extends TestCase
         $this->postJson('/api/v1/resident/amenity-bookings/'.$id.'/cancel')->assertConflict();
     }
 
+    public function test_personal_bookings_show_latest_registration_first_regardless_of_usage_date(): void
+    {
+        $id = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+        DB::table('amenity_bookings')->where('id', $id)->update(['created_at' => now()->subMinute()]);
+        $original = (array) DB::table('amenity_bookings')->where('id', $id)->first();
+        $olderId = (string) Str::uuid();
+        $newerId = (string) Str::uuid();
+        DB::table('amenity_bookings')->insert([
+            array_merge($original, ['id' => $olderId, 'booking_code' => 'TEST-'.Str::random(12), 'checkin_qr_code' => 'QR-'.Str::random(32), 'booking_date' => today()->addDays(5)->toDateString(), 'created_at' => now()->subMinutes(2)]),
+            array_merge($original, ['id' => $newerId, 'booking_code' => 'TEST-'.Str::random(12), 'checkin_qr_code' => 'QR-'.Str::random(32), 'booking_date' => today()->toDateString(), 'created_at' => now()]),
+        ]);
+
+        $response = $this->getJson('/api/v1/resident/amenity-bookings')->assertOk()->assertJsonCount(3, 'items');
+        $this->assertSame([$newerId, $id, $olderId], array_column($response->json('items'), 'id'));
+    }
+
     public function test_cancellation_deadline_is_checked_at_boundary_and_paid_amount_is_preserved(): void
     {
         $id = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');

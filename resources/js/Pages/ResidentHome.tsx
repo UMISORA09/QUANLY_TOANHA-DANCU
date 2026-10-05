@@ -151,10 +151,12 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
 
   // Fetch rental listings from API
   useEffect(() => {
+    if (activeMenuId !== 'rentals') return;
+    let active = true;
     setIsLoadingRentals(true);
     api.getRentalListings()
       .then((res) => {
-        if (res?.data) {
+        if (active && res?.data) {
           setRentalBlocks(res.data.blocks || []);
           setRentalListings(res.data.listings || []);
         }
@@ -163,9 +165,10 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
         console.warn('Lỗi khi tải danh sách căn hộ cho thuê:', err);
       })
       .finally(() => {
-        setIsLoadingRentals(false);
+        if (active) setIsLoadingRentals(false);
       });
-  }, []);
+    return () => { active = false; };
+  }, [activeMenuId]);
 
   const userDisplayName = data?.user?.full_name || userName || 'Nguyễn Văn A';
   const userDisplayEmail = data?.user?.email || userEmail || 'nguyenvana@cassavas.vn';
