@@ -2,6 +2,7 @@
 
 namespace App\Services\Freshness;
 
+use App\Services\Cicd\GitHubActionsService;
 use App\Services\Freshness\Contracts\FreshnessSourceStrategyInterface;
 use InvalidArgumentException;
 
@@ -25,6 +26,17 @@ class FreshnessStrategyRegistry
     public function register(FreshnessSourceStrategyInterface $strategy): self
     {
         $this->strategies[$strategy->source()] = $strategy;
+
+        return $this;
+    }
+
+    public function bindCicdService(GitHubActionsService $cicdService): self
+    {
+        foreach ($this->strategies as $strategy) {
+            if (method_exists($strategy, 'setCicdService')) {
+                $strategy->setCicdService($cicdService);
+            }
+        }
 
         return $this;
     }

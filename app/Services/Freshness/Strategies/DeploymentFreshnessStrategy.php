@@ -19,6 +19,13 @@ class DeploymentFreshnessStrategy implements FreshnessSourceStrategyInterface
         protected array $config = []
     ) {}
 
+    public function setCicdService(GitHubActionsService $cicdService): self
+    {
+        $this->cicdService = $cicdService;
+
+        return $this;
+    }
+
     public function source(): string
     {
         return 'deployment';

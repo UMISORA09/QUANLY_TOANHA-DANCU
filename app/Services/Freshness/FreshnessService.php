@@ -4,11 +4,6 @@ namespace App\Services\Freshness;
 
 use App\Models\FreshnessIncident;
 use App\Services\Cicd\GitHubActionsService;
-use App\Services\Freshness\Strategies\ApplicationHealthStrategy;
-use App\Services\Freshness\Strategies\CollectorFreshnessStrategy;
-use App\Services\Freshness\Strategies\DatabaseFreshnessStrategy;
-use App\Services\Freshness\Strategies\DeploymentFreshnessStrategy;
-use App\Services\Freshness\Strategies\GitHubFreshnessStrategy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -41,25 +36,15 @@ class FreshnessService
 
     protected array $config;
 
+    protected FreshnessStrategyRegistry $registry;
+
     public function __construct(
         protected GitHubActionsService $cicdService,
-        protected ?FreshnessStrategyRegistry $registry = null
+        ?FreshnessStrategyRegistry $registry = null
     ) {
         $this->config = config('freshness', []);
-        if (! $this->registry) {
-            $this->registry = $this->buildDefaultRegistry();
-        }
-    }
-
-    protected function buildDefaultRegistry(): FreshnessStrategyRegistry
-    {
-        return new FreshnessStrategyRegistry([
-            new CollectorFreshnessStrategy($this->config),
-            new GitHubFreshnessStrategy($this->cicdService, $this->config),
-            new DeploymentFreshnessStrategy($this->cicdService, $this->config),
-            new ApplicationHealthStrategy($this->config),
-            new DatabaseFreshnessStrategy($this->config),
-        ]);
+        $this->registry = $registry ?: app(FreshnessStrategyRegistry::class);
+        $this->registry->bindCicdService($this->cicdService);
     }
 
     public function getRegistry(): FreshnessStrategyRegistry
