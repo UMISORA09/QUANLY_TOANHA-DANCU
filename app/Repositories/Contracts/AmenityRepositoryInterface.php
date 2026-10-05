@@ -69,4 +69,27 @@ interface AmenityRepositoryInterface
     public function getBookings(string $amenityId, array $filters = []): array;
 
     public function countActiveBookings(string $amenityId): int;
+
+    public function getPeakBookings(string $amenityId): int;
+
+    public function isCodeExists(string $code, ?string $excludeId = null): bool;
+
+    public function getAmenityDetail(string $id): ?object;
+
+    /**
+     * @param  array<int, string>  $amenityIds
+     * @return array<string, array{total: int, active: int}>
+     */
+    public function getSlotCountsForAmenities(array $amenityIds): array;
+
+    /**
+     * @param  array<int, string>  $amenityIds
+     * @return array<string, int>
+     */
+    public function getActiveBookingCountsForAmenities(array $amenityIds): array;
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAmenityBookingsWithDetails(string $amenityId): array;
 }

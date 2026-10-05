@@ -196,7 +196,6 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
             'cover_image_url' => $data['cover_image_url'] ?? null,
             'gallery_images' => $galleryJson,
             'is_active' => isset($data['is_active']) ? ((bool) $data['is_active'] ? 1 : 0) : 1,
-            'version' => 1,
             'created_at' => $now,
             'updated_at' => $now,
         ]);
@@ -388,5 +387,163 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
             ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
             ->whereNull('deleted_at')
             ->count();
+    }
+
+    public function getPeakBookings(string $amenityId): int
+    {
+        $activeSlotBookings = DB::table('amenity_bookings')
+            ->where('amenity_id', $amenityId)
+            ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
+            ->whereNull('deleted_at')
+            ->groupBy('booking_date', 'start_time', 'end_time')
+            ->selectRaw('COUNT(*) as total_bookings, COALESCE(SUM(attendee_count), 0) as total_attendees')
+            ->get();
+
+        $peakBookings = 0;
+        foreach ($activeSlotBookings as $slotStat) {
+            $peak = max((int) $slotStat->total_bookings, (int) $slotStat->total_attendees);
+            if ($peak > $peakBookings) {
+                $peakBookings = $peak;
+            }
+        }
+
+        return $peakBookings;
+    }
+
+    public function isCodeExists(string $code, ?string $excludeId = null): bool
+    {
+        $query = DB::table('amenities')
+            ->where('amenity_code', $code)
+            ->whereNull('deleted_at');
+
+        if ($excludeId !== null) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        return $query->exists();
+    }
+
+    public function getAmenityDetail(string $id): ?object
+    {
+        return DB::table('amenities')
+            ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
+            ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
+            ->where('amenities.id', $id)
+            ->whereNull('amenities.deleted_at')
+            ->select(
+                'amenities.*',
+                'amenity_categories.category_name',
+                'amenity_categories.category_code',
+                'blocks.block_name',
+                'blocks.block_code'
+            )
+            ->first();
+    }
+
+    /**
+     * @param  array<int, string>  $amenityIds
+     * @return array<string, array{total: int, active: int}>
+     */
+    public function getSlotCountsForAmenities(array $amenityIds): array
+    {
+        if (empty($amenityIds)) {
+            return [];
+        }
+
+        $slots = DB::table('amenity_time_slots')
+            ->whereIn('amenity_id', $amenityIds)
+            ->select('amenity_id', 'is_active', DB::raw('count(*) as count'))
+            ->groupBy('amenity_id', 'is_active')
+            ->get();
+
+        $result = [];
+        foreach ($slots as $slot) {
+            $aid = (string) $slot->amenity_id;
+            if (! isset($result[$aid])) {
+                $result[$aid] = ['total' => 0, 'active' => 0];
+            }
+            $result[$aid]['total'] += (int) $slot->count;
+            if ($slot->is_active) {
+                $result[$aid]['active'] += (int) $slot->count;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<int, string>  $amenityIds
+     * @return array<string, int>
+     */
+    public function getActiveBookingCountsForAmenities(array $amenityIds): array
+    {
+        if (empty($amenityIds)) {
+            return [];
+        }
+
+        $bookings = DB::table('amenity_bookings')
+            ->whereIn('amenity_id', $amenityIds)
+            ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
+            ->whereNull('deleted_at')
+            ->select('amenity_id', DB::raw('count(*) as count'))
+            ->groupBy('amenity_id')
+            ->get();
+
+        $result = [];
+        foreach ($bookings as $b) {
+            $result[(string) $b->amenity_id] = (int) $b->count;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAmenityBookingsWithDetails(string $amenityId): array
+    {
+        $bookings = DB::table('amenity_bookings')
+            ->leftJoin('users', 'amenity_bookings.resident_user_id', '=', 'users.id')
+            ->leftJoin('apartments', 'amenity_bookings.apartment_id', '=', 'apartments.id')
+            ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
+            ->where('amenity_bookings.amenity_id', $amenityId)
+            ->whereNull('amenity_bookings.deleted_at')
+            ->select(
+                'amenity_bookings.*',
+                'users.full_name as resident_name',
+                'users.phone_number as resident_phone',
+                'apartments.apartment_number',
+                'blocks.block_name'
+            )
+            ->orderBy('amenity_bookings.booking_date', 'desc')
+            ->orderBy('amenity_bookings.start_time', 'desc')
+            ->get();
+
+        return $bookings->map(function ($b) {
+            return [
+                'id' => $b->id,
+                'booking_code' => $b->booking_code,
+                'amenity_id' => $b->amenity_id,
+                'apartment_id' => $b->apartment_id,
+                'resident_user_id' => $b->resident_user_id,
+                'resident_name' => $b->resident_name ?? 'Cư dân',
+                'resident_phone' => $b->resident_phone ?? '',
+                'apartment_number' => $b->apartment_number ?? '',
+                'block_name' => $b->block_name ?? '',
+                'booking_date' => $b->booking_date,
+                'start_time' => substr((string) $b->start_time, 0, 5),
+                'end_time' => substr((string) $b->end_time, 0, 5),
+                'attendee_count' => (int) $b->attendee_count,
+                'total_amount' => (float) $b->total_amount,
+                'deposit_amount' => (float) $b->deposit_amount,
+                'is_paid' => (bool) $b->is_paid,
+                'status' => $b->status,
+                'checkin_qr_code' => $b->checkin_qr_code,
+                'checked_in_at' => $b->checked_in_at ? Carbon::parse($b->checked_in_at)->toIso8601String() : null,
+                'resident_notes' => $b->resident_notes,
+                'admin_notes' => $b->admin_notes,
+                'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
+            ];
+        })->toArray();
     }
 }

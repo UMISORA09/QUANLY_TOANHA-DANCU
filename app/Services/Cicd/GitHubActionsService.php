@@ -3,6 +3,7 @@
 namespace App\Services\Cicd;
 
 use App\Services\Cicd\Contracts\GitHubApiClientInterface;
+use App\Services\Cicd\Contracts\VercelApiClientInterface;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Response;
@@ -26,14 +27,19 @@ class GitHubActionsService
 
     protected GitHubApiClientInterface $apiClient;
 
-    public function __construct(?GitHubApiClientInterface $apiClient = null)
-    {
+    protected VercelApiClientInterface $vercelClient;
+
+    public function __construct(
+        ?GitHubApiClientInterface $apiClient = null,
+        ?VercelApiClientInterface $vercelClient = null
+    ) {
         $this->owner = config('services.github.owner') ?: 'UMISORA09';
         $this->repo = config('services.github.repo') ?: 'QUANLY_TOANHA-DANCU';
         $this->token = config('services.github.token');
         $this->apiBase = "https://api.github.com/repos/{$this->owner}/{$this->repo}";
         $this->storagePath = storage_path('app/cicd_runs.json');
         $this->apiClient = $apiClient ?: app(GitHubApiClientInterface::class);
+        $this->vercelClient = $vercelClient ?: app(VercelApiClientInterface::class);
     }
 
     /**
@@ -471,57 +477,44 @@ class GitHubActionsService
                 }
             }
 
-            // 2. Nếu có VERCEL_TOKEN và VERCEL_PROJECT_ID, truy vấn Vercel Deployments API
-            $vercelToken = env('VERCEL_TOKEN');
-            $vercelProjectId = env('VERCEL_PROJECT_ID');
-            if (! empty($vercelToken) && ! empty($vercelProjectId)) {
-                try {
-                    $vercelRes = Http::withToken($vercelToken)
-                        ->timeout(3)
-                        ->get('https://api.vercel.com/v6/deployments', [
-                            'projectId' => $vercelProjectId,
-                            'limit' => 5,
-                        ]);
+            // 2. Sử dụng Vercel Adapter để lấy Deployments nếu có cấu hình
+            try {
+                $vercelDeps = $this->vercelClient->getDeployments(5);
+                if (! empty($vercelDeps)) {
+                    $deployments = [];
+                    foreach ($vercelDeps as $vDep) {
+                        $target = $vDep['target'] ?? 'production';
+                        $state = strtoupper($vDep['readyState'] ?? $vDep['state'] ?? 'UNKNOWN');
+                        $status = match ($state) {
+                            'READY' => 'healthy',
+                            'ERROR', 'CANCELED' => 'failed',
+                            'BUILDING', 'INITIALIZING', 'QUEUED' => 'deploying',
+                            default => 'unknown',
+                        };
+                        $deployedAt = ($status === 'healthy' && ! empty($vDep['ready']))
+                            ? Carbon::createFromTimestampMs($vDep['ready'])->toIso8601String()
+                            : ($status === 'healthy' && ! empty($vDep['createdAt']) ? Carbon::createFromTimestampMs($vDep['createdAt'])->toIso8601String() : null);
 
-                    if ($vercelRes->successful()) {
-                        $vercelDeps = $vercelRes->json('deployments') ?? [];
-                        if (! empty($vercelDeps)) {
-                            $deployments = [];
-                            foreach ($vercelDeps as $vDep) {
-                                $target = $vDep['target'] ?? 'production';
-                                $state = strtoupper($vDep['readyState'] ?? $vDep['state'] ?? 'UNKNOWN');
-                                $status = match ($state) {
-                                    'READY' => 'healthy',
-                                    'ERROR', 'CANCELED' => 'failed',
-                                    'BUILDING', 'INITIALIZING', 'QUEUED' => 'deploying',
-                                    default => 'unknown',
-                                };
-                                $deployedAt = ($status === 'healthy' && ! empty($vDep['ready']))
-                                    ? Carbon::createFromTimestampMs($vDep['ready'])->toIso8601String()
-                                    : ($status === 'healthy' && ! empty($vDep['createdAt']) ? Carbon::createFromTimestampMs($vDep['createdAt'])->toIso8601String() : null);
+                        $commit = substr($vDep['meta']['githubCommitSha'] ?? $vDep['url'] ?? 'v1', 0, 7);
 
-                                $commit = substr($vDep['meta']['githubCommitSha'] ?? $vDep['url'] ?? 'v1', 0, 7);
-
-                                $deployments[] = [
-                                    'id' => (string) ($vDep['uid'] ?? $vDep['id'] ?? uniqid()),
-                                    'environment' => $target,
-                                    'version' => "sha-{$commit}",
-                                    'image_tag' => $vDep['url'] ?? 'vercel',
-                                    'commit_sha' => $commit,
-                                    'status' => $status,
-                                    'deployed_by' => $vDep['creator']['username'] ?? 'Vercel',
-                                    'deployed_at' => $deployedAt,
-                                    'response_time_ms' => 0,
-                                    'release_notes' => "Triển khai Vercel ({$state}) tại {$vDep['url']}",
-                                ];
-                            }
-
-                            return $deployments;
-                        }
+                        $deployments[] = [
+                            'id' => (string) ($vDep['uid'] ?? $vDep['id'] ?? uniqid()),
+                            'environment' => $target,
+                            'version' => "sha-{$commit}",
+                            'image_tag' => $vDep['url'] ?? 'vercel',
+                            'commit_sha' => $commit,
+                            'status' => $status,
+                            'deployed_by' => $vDep['creator']['username'] ?? 'Vercel',
+                            'deployed_at' => $deployedAt,
+                            'response_time_ms' => 0,
+                            'release_notes' => "Triển khai Vercel ({$state}) tại {$vDep['url']}",
+                        ];
                     }
-                } catch (\Throwable $e) {
-                    Log::warning('Vercel Deployments API failed: '.$e->getMessage());
+
+                    return $deployments;
                 }
+            } catch (\Throwable $e) {
+                Log::warning('Vercel Deployments API failed: '.$e->getMessage());
             }
 
             // 3. Nếu không có dữ liệu API, trả về trạng thái môi trường thực tế (không fake healthy)

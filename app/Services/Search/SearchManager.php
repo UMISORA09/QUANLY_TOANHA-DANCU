@@ -14,10 +14,8 @@ class SearchManager
     protected array $drivers = [];
 
     public function __construct(
-        protected ?SearchDriverFactory $factory = null
-    ) {
-        $this->factory = $this->factory ?: new SearchDriverFactory;
-    }
+        protected SearchDriverFactory $factory
+    ) {}
 
     public function driver(?string $name = null): SearchDriverInterface
     {

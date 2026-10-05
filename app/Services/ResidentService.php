@@ -15,10 +15,8 @@ use Illuminate\Validation\ValidationException;
 class ResidentService
 {
     public function __construct(
-        protected ?ResidentRepositoryInterface $repository = null
-    ) {
-        $this->repository = $this->repository ?: app(ResidentRepositoryInterface::class);
-    }
+        protected ResidentRepositoryInterface $repository
+    ) {}
 
     /**
      * Danh sách nhân khẩu / cư dân với bộ lọc, tìm kiếm, sắp xếp và phân trang

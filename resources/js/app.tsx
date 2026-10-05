@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import '../css/scss/custom.scss';
 import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
 import PageLoadingFallback from './Components/Common/PageLoadingFallback';
+import { useAuth } from './Hooks/useAuth';
+import { resolveDefaultRouteForRole } from './Domain/Auth/roleResolver';
+import { NavigationService } from './Domain/Routing/navigationService';
 
 // Tách nhỏ bundle (Code Splitting) với React.lazy để tải trang ban đầu tức thì
 const Home = lazy(() => import('./Pages/Home'));
@@ -17,24 +20,9 @@ const RegisterPage = lazy(() => import('./Pages/Auth/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('./Pages/Auth/ForgotPasswordPage'));
 const NotFound = lazy(() => import('./Pages/NotFound'));
 
-interface UserSession {
-  role: string;
-  resident_type?: 'OWNER' | 'TENANT';
-  email: string;
-  name: string;
-  isDev?: boolean;
-}
-
 const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname);
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
-    try {
-      const saved = localStorage.getItem('smartcassavas_session');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const { currentUser, login, logout } = useAuth();
 
   useEffect(() => {
     if (window.location.pathname === '/') {
@@ -56,371 +44,150 @@ const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (role: string, email: string, residentType?: string) => {
-    const isDev =
-      email.toLowerCase().includes('dev') ||
-      email === 'dev@cassavas.vn' ||
-      email === 'dev@smartcassavas.vn' ||
-      window.location.pathname.startsWith('/dev');
-    const isAdmin =
-      role === 'admin' ||
-      role.toLowerCase() === 'admin' ||
-      role.toLowerCase() === 'super_admin';
-    const isManager =
-      role === 'manager' ||
-      role.toLowerCase() === 'manager' ||
-      role.toLowerCase() === 'building_manager';
-    const isReceptionist =
-      role === 'receptionist' ||
-      role.toLowerCase().includes('receptionist') ||
-      role.toLowerCase().includes('letan') ||
-      role.toLowerCase().includes('lễ tân');
-    const isResident =
-      role === 'resident' ||
-      role.toLowerCase().includes('resident');
-
-    const normalizedRole = isAdmin || isDev
-      ? 'admin'
-      : isManager
-      ? 'manager'
-      : isReceptionist
-      ? 'receptionist'
-      : 'resident';
-
-    const session: UserSession = {
-      role: normalizedRole,
-      resident_type: (residentType === 'TENANT' ? 'TENANT' : 'OWNER') as any,
-      isDev: isDev,
-      email:
-        email ||
-        (isDev
-          ? 'dev@cassavas.vn'
-          : isAdmin
-          ? 'admin@cassavas.vn'
-          : isManager
-          ? 'quanly@cassavas.vn'
-          : isReceptionist
-          ? 'letan@cassavas.vn'
-          : 'nguyenvanan@cassavas.vn'),
-      name:
-        isDev
-          ? 'Dev Team'
-          : isAdmin
-          ? 'Admin Cassavas'
-          : isManager
-          ? 'Ban Quản Lý'
-          : isReceptionist
-          ? 'Lễ Tân Sảnh Chính'
-          : (residentType === 'TENANT' ? 'Khách Thuê Căn Hộ' : 'Nguyễn Văn An'),
-    };
-    try {
-      localStorage.setItem('smartcassavas_session', JSON.stringify(session));
-      sessionStorage.removeItem('smartcassavas_active_admin_tab');
-      localStorage.removeItem('smartcassavas_active_admin_tab');
-    } catch {
-      // ignore
-    }
-    setCurrentUser(session);
-
-    // Điều hướng theo đúng vai trò được xác thực
-    // Admin / Dev điều hướng trực tiếp vào Cổng Quản Trị & Kỹ Thuật (/admin)
-    if (isDev || isAdmin) {
-      setTimeout(() => {
-        navigateTo('/admin');
-      }, 350);
-    } else if (isManager) {
-      setTimeout(() => {
-        navigateTo('/quan-ly');
-      }, 350);
-    } else if (isReceptionist) {
-      setTimeout(() => {
-        navigateTo('/le-tan');
-      }, 350);
-    } else {
-      setTimeout(() => {
-        if (residentType === 'TENANT') {
-          navigateTo('/cu-dan?tab=rentals');
-        } else {
-          navigateTo('/cu-dan');
-        }
-      }, 350);
-    }
+    const session = login(role, email, residentType);
+    const destination = resolveDefaultRouteForRole(session);
+    setTimeout(() => {
+      navigateTo(destination);
+    }, 350);
   };
 
   const handleLogout = () => {
-    try {
-      localStorage.removeItem('smartcassavas_session');
-      sessionStorage.removeItem('smartcassavas_active_admin_tab');
-      localStorage.removeItem('smartcassavas_active_admin_tab');
-    } catch {
-      // ignore
-    }
-    setCurrentUser(null);
+    logout();
     navigateTo('/home');
   };
 
   const renderContent = () => {
+    const match = NavigationService.matchRoute(currentPath, currentUser);
 
-  // 0. Phân hệ Public Status Page (Công khai cho toàn bộ người dùng theo dõi hệ thống)
-  if (currentPath === '/status' || currentPath === '/status/') {
-    return (
-      <PublicStatusPage
-        onBackHome={() => navigateTo('/home')}
-        onNavigateIncidents={() => navigateTo('/status/incidents')}
-      />
-    );
-  }
-
-  if (currentPath === '/status/incidents' || currentPath.startsWith('/status/incidents')) {
-    return (
-      <IncidentHistoryPage
-        onBackStatus={() => navigateTo('/status')}
-        onBackHome={() => navigateTo('/home')}
-      />
-    );
-  }
-
-  // 0.1 Nếu truy cập các URL đăng nhập dev cũ, tự động chuyển về trang /login chung
-  const isDevLoginPath =
-    currentPath === '/dev/login' ||
-    currentPath === '/admin/login' ||
-    currentPath === '/dev/dang-nhap' ||
-    currentPath === '/admin/dang-nhap';
-
-  if (isDevLoginPath) {
-    navigateTo('/login');
-    return null;
-  }
-
-  // 1. Tuyến đường Quản Lý Tiện Ích: Đã chuyển toàn bộ sang Cổng Ban Quản Lý (/quan-ly?tab=amenities)
-  const isAmenityPath =
-    currentPath === '/admin/amenities' ||
-    currentPath === '/admin/tien-ich' ||
-    currentPath.startsWith('/admin/amenities') ||
-    currentPath === '/quan-ly/amenities' ||
-    currentPath === '/quan-ly/tien-ich' ||
-    currentPath.startsWith('/quan-ly/amenities') ||
-    currentPath === '/tien-ich';
-
-  // 1.1 Phân hệ Quản Trị Viên & Kỹ Thuật (Admin & Dev Console HỢP NHẤT LÀ 1)
-  const isCicdAdminPath =
-    currentPath === '/admin/cicd' ||
-    currentPath.startsWith('/admin/cicd') ||
-    currentPath === '/devops' ||
-    currentPath.startsWith('/devops') ||
-    currentPath === '/admin/devops' ||
-    currentPath.startsWith('/admin/devops');
-
-  const isRoleAdminPath =
-    currentPath === '/admin/roles' ||
-    currentPath === '/admin/rbac' ||
-    currentPath === '/admin/phan-quyen' ||
-    currentPath.startsWith('/admin/roles') ||
-    currentPath.startsWith('/admin/rbac');
-
-  const isUnifiedAdminDevPath =
-    !isAmenityPath &&
-    (currentPath === '/admin' ||
-      currentPath.startsWith('/admin/') ||
-      currentPath === '/dev' ||
-      currentPath.startsWith('/dev/') ||
-      currentPath === '/developer' ||
-      currentPath.startsWith('/developer/') ||
-      isCicdAdminPath ||
-      isRoleAdminPath);
-
-  if (isUnifiedAdminDevPath) {
-    // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
-    if (currentUser && currentUser.role !== 'admin' && !currentUser.isDev) {
-      if (currentUser.role === 'manager') {
-        navigateTo('/quan-ly');
-        return null;
-      }
-      if (currentUser.role === 'receptionist') {
-        navigateTo('/le-tan');
-        return null;
-      }
-      if (currentUser.role === 'resident') {
-        navigateTo('/cu-dan');
-        return null;
-      }
+    // Xử lý chuyển hướng nếu route yêu cầu (ví dụ bảo vệ quyền truy cập)
+    if (match.redirect) {
+      navigateTo(match.redirect);
+      return null;
     }
 
-    const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabToUse = isCicdAdminPath
-      ? 'cicd'
-      : isRoleAdminPath
-      ? 'roles'
-      : (urlTab || 'overview');
+    switch (match.category) {
+      case 'public_status':
+        return (
+          <PublicStatusPage
+            onBackHome={() => navigateTo('/home')}
+            onNavigateIncidents={() => navigateTo('/status/incidents')}
+          />
+        );
 
-    return (
-      <DevConsolePage
-        onLogout={() => {
-          handleLogout();
-          navigateTo('/login');
-        }}
-        onNavigateHome={() => navigateTo('/home')}
-        onNavigateManager={() => navigateTo('/quan-ly')}
-        userName={currentUser?.name || 'Admin & Dev Team'}
-        userEmail={currentUser?.email || 'admin@cassavas.vn'}
-        initialTab={tabToUse}
-      />
-    );
-  }
+      case 'status_incidents':
+        return (
+          <IncidentHistoryPage
+            onBackStatus={() => navigateTo('/status')}
+            onBackHome={() => navigateTo('/home')}
+          />
+        );
 
-  // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà & Quản lý tiện ích)
-  const isManagerPath =
-    currentPath === '/quan-ly' ||
-    currentPath.startsWith('/quan-ly/') ||
-    currentPath === '/manager' ||
-    currentPath.startsWith('/manager/') ||
-    currentPath === '/dashboard' ||
-    isAmenityPath;
-
-  if (isManagerPath) {
-    // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
-    if (currentUser && currentUser.role !== 'manager' && currentUser.role !== 'admin') {
-      if (currentUser.role === 'receptionist') {
-        navigateTo('/le-tan');
+      case 'dev_login_redirect':
+        navigateTo('/login');
         return null;
+
+      case 'admin_dev':
+        return (
+          <DevConsolePage
+            onLogout={() => {
+              handleLogout();
+              navigateTo('/login');
+            }}
+            onNavigateHome={() => navigateTo('/home')}
+            onNavigateManager={() => navigateTo('/quan-ly')}
+            userName={currentUser?.name || 'Admin & Dev Team'}
+            userEmail={currentUser?.email || 'admin@cassavas.vn'}
+            initialTab={match.initialTab || 'overview'}
+          />
+        );
+
+      case 'manager': {
+        const isUserAdmin = currentUser?.role === 'admin';
+        return (
+          <ManagementHome
+            onLogout={handleLogout}
+            onNavigateHome={() => navigateTo('/home')}
+            userRole="manager"
+            userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
+            userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
+            initialTab={match.initialTab}
+          />
+        );
       }
-      if (currentUser.role === 'resident') {
-        navigateTo('/cu-dan');
-        return null;
+
+      case 'resident': {
+        const isUserAdmin = currentUser?.role === 'admin';
+        const effectiveRole = isUserAdmin ? 'admin' : 'resident';
+        return (
+          <ResidentHome
+            onLogout={handleLogout}
+            onNavigateHome={() => navigateTo('/home?landing=true')}
+            onNavigateAdmin={() => navigateTo('/admin')}
+            userRole={effectiveRole}
+            residentType={currentUser?.resident_type}
+            userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Nguyễn Văn An')}
+            userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'nguyenvanan@cassavas.vn')}
+          />
+        );
       }
+
+      case 'receptionist': {
+        const isUserAdmin = currentUser?.role === 'admin';
+        const effectiveRole = isUserAdmin ? 'admin' : 'receptionist';
+        return (
+          <ReceptionHome
+            onLogout={handleLogout}
+            onNavigateHome={() => navigateTo('/home?landing=true')}
+            onNavigateAdmin={() => navigateTo('/admin')}
+            userRole={effectiveRole}
+            userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Lễ Tân Sảnh Chính')}
+            userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'letan@cassavas.vn')}
+          />
+        );
+      }
+
+      case 'login':
+        return (
+          <LoginPage
+            onNavigate={navigateTo}
+            onLoginSuccess={handleLoginSuccess}
+          />
+        );
+
+      case 'register':
+        return (
+          <RegisterPage
+            onNavigate={navigateTo}
+            onRegisterSuccess={handleLoginSuccess}
+          />
+        );
+
+      case 'forgot_password':
+        return (
+          <ForgotPasswordPage
+            onNavigate={navigateTo}
+          />
+        );
+
+      case 'home':
+        return (
+          <Home
+            onLoginSuccess={handleLoginSuccess}
+            onNavigateLogin={(role) => navigateTo(role ? `/login?role=${role}` : '/login')}
+            onNavigateRegister={(type) => navigateTo(type ? `/register?type=${type}` : '/register')}
+            onNavigateAdmin={() => navigateTo('/admin')}
+            onNavigateManager={() => navigateTo('/quan-ly')}
+            onNavigateResident={() => navigateTo('/cu-dan')}
+            onNavigateReception={() => navigateTo('/le-tan')}
+            currentUserRole={currentUser?.role}
+          />
+        );
+
+      case 'not_found':
+      default:
+        return <NotFound onBackHome={() => navigateTo('/home')} />;
     }
-
-    const isUserAdmin = currentUser?.role === 'admin';
-    const managerUrlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabForManager = isAmenityPath ? 'amenities' : (managerUrlTab || undefined);
-
-    return (
-      <ManagementHome
-        onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home')}
-        userRole="manager"
-        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
-        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
-        initialTab={tabForManager}
-      />
-    );
-  }
-
-  // 3. Phân hệ Cổng Cư Dân (Resident Portal)
-  const isExplicitLanding = window.location.search.includes('landing=true');
-  const isResidentSession =
-    currentUser?.role === 'resident' || currentUser?.role?.toLowerCase().includes('resident');
-
-  const isResidentPath =
-    currentPath === '/cu-dan' ||
-    currentPath.startsWith('/cu-dan') ||
-    currentPath === '/resident' ||
-    currentPath.startsWith('/resident') ||
-    currentPath === '/resident-portal' ||
-    (isResidentSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
-
-  if (isResidentPath) {
-    const isUserAdmin = currentUser?.role === 'admin';
-    const effectiveRole = isUserAdmin ? 'admin' : 'resident';
-    return (
-      <ResidentHome
-        onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home?landing=true')}
-        onNavigateAdmin={() => navigateTo('/admin')}
-        userRole={effectiveRole}
-        residentType={currentUser?.resident_type}
-        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Nguyễn Văn An')}
-        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'nguyenvanan@cassavas.vn')}
-      />
-    );
-  }
-
-  // 4. Phân hệ Cổng Lễ Tân & Bảo Vệ (Reception Portal)
-  const isReceptionistSession =
-    currentUser?.role === 'receptionist' ||
-    currentUser?.role?.toLowerCase().includes('receptionist') ||
-    currentUser?.role?.toLowerCase().includes('letan');
-
-  const isReceptionistPath =
-    currentPath === '/le-tan' ||
-    currentPath.startsWith('/le-tan') ||
-    currentPath === '/receptionist' ||
-    currentPath.startsWith('/receptionist') ||
-    (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
-
-  if (isReceptionistPath) {
-    const isUserAdmin = currentUser?.role === 'admin';
-    const effectiveRole = isUserAdmin ? 'admin' : 'receptionist';
-    return (
-      <ReceptionHome
-        onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home?landing=true')}
-        onNavigateAdmin={() => navigateTo('/admin')}
-        userRole={effectiveRole}
-        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Lễ Tân Sảnh Chính')}
-        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'letan@cassavas.vn')}
-      />
-    );
-  }
-
-  // 5. Phân hệ Xác thực độc lập (Dedicated Auth Pages: Đăng nhập, Đăng ký, Quên mật khẩu & OTP)
-  const isLoginPage = currentPath === '/login' || currentPath === '/dang-nhap';
-  const isRegisterPage = currentPath === '/register' || currentPath === '/dang-ky';
-  const isForgotPasswordPage =
-    currentPath === '/forgot-password' ||
-    currentPath === '/quen-mat-khau' ||
-    currentPath === '/verify-otp' ||
-    currentPath === '/reset-password';
-
-  if (isLoginPage) {
-    return (
-      <LoginPage
-        onNavigate={navigateTo}
-        onLoginSuccess={handleLoginSuccess}
-      />
-    );
-  }
-
-  if (isRegisterPage) {
-    return (
-      <RegisterPage
-        onNavigate={navigateTo}
-        onRegisterSuccess={handleLoginSuccess}
-      />
-    );
-  }
-
-  if (isForgotPasswordPage) {
-    return (
-      <ForgotPasswordPage
-        onNavigate={navigateTo}
-      />
-    );
-  }
-
-  // 6. Trang chủ công khai (Home)
-  const isHomePage =
-    currentPath === '/' ||
-    currentPath === '' ||
-    currentPath === '/home' ||
-    currentPath.startsWith('/home');
-
-  if (!isHomePage) {
-    return <NotFound onBackHome={() => navigateTo('/home')} />;
-  }
-
-  return (
-    <Home
-      onLoginSuccess={handleLoginSuccess}
-      onNavigateLogin={(role) => navigateTo(role ? `/login?role=${role}` : '/login')}
-      onNavigateRegister={(type) => navigateTo(type ? `/register?type=${type}` : '/register')}
-      onNavigateAdmin={() => navigateTo('/admin')}
-      onNavigateManager={() => navigateTo('/quan-ly')}
-      onNavigateResident={() => navigateTo('/cu-dan')}
-      onNavigateReception={() => navigateTo('/le-tan')}
-      currentUserRole={currentUser?.role}
-    />
-  );
-};
+  };
 
   return (
     <ChunkErrorBoundary>
@@ -441,3 +208,4 @@ if (rootElement) {
     </React.StrictMode>
   );
 }
+export default App;
