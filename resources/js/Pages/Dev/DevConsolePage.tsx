@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Terminal,
   Bot,
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
+import { RbacManagement } from '../Admin/RbacManagement';
 import { ResidentManagement } from '../Admin/ResidentManagement';
 import { TemporaryRegistrationManagement } from '../Admin/TemporaryRegistrationManagement';
 
@@ -40,6 +41,12 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // State demo cho Feature Flags
   const [featureFlags, setFeatureFlags] = useState([
@@ -149,6 +156,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               {activeTab === 'overview' && 'Bàn Làm Việc Quản Trị & Kỹ Thuật (Admin / Dev)'}
               {activeTab === 'roles' && 'Phân Quyền Tài Khoản (RBAC Matrix)'}
+              {activeTab === 'residents' && 'Quản Lý Cư Dân & Căn Hộ'}
               {activeTab === 'ai_triage' && 'AI Chatbot & Phân Loại Sự Cố Tự Động (Triage)'}
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
