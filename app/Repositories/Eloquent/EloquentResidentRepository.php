@@ -8,6 +8,8 @@ use App\Models\Resident;
 use App\Models\User;
 use App\Repositories\Contracts\ResidentRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Carbon;
 
 class EloquentResidentRepository implements ResidentRepositoryInterface
 {
@@ -135,5 +137,83 @@ class EloquentResidentRepository implements ResidentRepositoryInterface
     public function findUser(string $userId): ?User
     {
         return User::find($userId);
+    }
+
+    /**
+     * @return Collection<int, Resident>
+     */
+    public function getActiveHouseholdMembers(string $apartmentId): Collection
+    {
+        return Resident::with([
+            'user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+        ])
+            ->where('apartment_id', $apartmentId)
+            ->where('is_active', 1)
+            ->orderByDesc('is_head_of_household')
+            ->orderBy('stay_start_date', 'asc')
+            ->get();
+    }
+
+    public function findWithTrashed(string $id): ?Resident
+    {
+        return Resident::withTrashed()->find($id);
+    }
+
+    public function findAndLockForUpdate(string $id): ?Resident
+    {
+        return Resident::where('id', $id)->lockForUpdate()->first();
+    }
+
+    public function findActiveHouseholdHeadExcluding(string $apartmentId, string $excludeResidentId, bool $lockForUpdate = false): ?Resident
+    {
+        $query = Resident::with('user')
+            ->where('apartment_id', $apartmentId)
+            ->where('id', '!=', $excludeResidentId)
+            ->where('is_head_of_household', 1)
+            ->where('is_active', 1);
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function updateOptimistic(string $id, Carbon $currentUpdatedAt, array $data): int
+    {
+        return Resident::where('id', $id)
+            ->where('updated_at', $currentUpdatedAt)
+            ->update($data);
+    }
+
+    /**
+     * @param  array<int, string>  $relations
+     */
+    public function loadRelations(Resident $resident, array $relations = []): Resident
+    {
+        $defaultRelations = [
+            'user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+        ];
+
+        return $resident->load(! empty($relations) ? $relations : $defaultRelations);
+    }
+
+    /**
+     * @return Collection<int, Apartment>
+     */
+    public function getApartmentsForFilter(): Collection
+    {
+        return Apartment::query()
+            ->select('id', 'apartment_number', 'block_id', 'status')
+            ->withCount(['residents' => function ($q) {
+                $q->where('is_active', 1);
+            }])
+            ->with(['headOfHousehold.user:id,full_name,phone_number'])
+            ->orderBy('apartment_number', 'asc')
+            ->get();
     }
 }

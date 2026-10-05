@@ -7,6 +7,8 @@ use App\Models\Apartment;
 use App\Models\Resident;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Carbon;
 
 interface ResidentRepositoryInterface
 {
@@ -40,4 +42,30 @@ interface ResidentRepositoryInterface
     public function findApartment(string $apartmentId): ?Apartment;
 
     public function findUser(string $userId): ?User;
+
+    /**
+     * @return Collection<int, Resident>
+     */
+    public function getActiveHouseholdMembers(string $apartmentId): Collection;
+
+    public function findWithTrashed(string $id): ?Resident;
+
+    public function findAndLockForUpdate(string $id): ?Resident;
+
+    public function findActiveHouseholdHeadExcluding(string $apartmentId, string $excludeResidentId, bool $lockForUpdate = false): ?Resident;
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function updateOptimistic(string $id, Carbon $currentUpdatedAt, array $data): int;
+
+    /**
+     * @param  array<int, string>  $relations
+     */
+    public function loadRelations(Resident $resident, array $relations = []): Resident;
+
+    /**
+     * @return Collection<int, Apartment>
+     */
+    public function getApartmentsForFilter(): Collection;
 }
