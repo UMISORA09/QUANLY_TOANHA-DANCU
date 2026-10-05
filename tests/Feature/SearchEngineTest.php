@@ -4,12 +4,17 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Services\Search\Drivers\SmartSearchDriver;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
 class SearchEngineTest extends TestCase
 {
+    use DatabaseTransactions;
+    use ResidentAmenityBookingFixtures;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -381,6 +386,8 @@ class SearchEngineTest extends TestCase
      */
     public function test_search_soft_deleted_amenity_not_returned(): void
     {
+        $this->createBookingFixture();
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
         $categoryId = $this->getOrCreateTestCategoryId();
 
         $tempId = (string) Str::uuid();

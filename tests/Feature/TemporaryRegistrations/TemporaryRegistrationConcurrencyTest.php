@@ -14,13 +14,21 @@ use Tests\TestCase;
 
 class TemporaryRegistrationConcurrencyTest extends TestCase
 {
+    protected string $testServerUrl;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        $ch = curl_init('http://127.0.0.1:8000/up');
+        if (! getenv('TEST_HTTP_BASE_URL')) {
+            $this->markTestSkipped('Set TEST_HTTP_BASE_URL to a test server using the same dedicated database.');
+        }
+        $this->assertStringEndsWith('_test', DB::connection()->getDatabaseName());
+        $this->testServerUrl = rtrim(getenv('TEST_HTTP_BASE_URL'), '/');
+
+        $ch = curl_init($this->testServerUrl.'/up');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -120,7 +128,7 @@ class TemporaryRegistrationConcurrencyTest extends TestCase
         [$admin2, $token2] = $this->createAdminUser('DelB');
 
         $record = $this->createTestRecord();
-        $targetUrl = "http://127.0.0.1:8000/api/v1/residents/temporary-registrations/{$record->id}";
+        $targetUrl = "{$this->testServerUrl}/api/v1/residents/temporary-registrations/{$record->id}";
 
         $mh = curl_multi_init();
 
@@ -196,7 +204,7 @@ class TemporaryRegistrationConcurrencyTest extends TestCase
         $record = $this->createTestRecord(['reason' => 'Old reason']);
         $snapshotUpdatedAt = $record->updated_at->toISOString();
 
-        $targetUrl = "http://127.0.0.1:8000/api/v1/residents/temporary-registrations/{$record->id}";
+        $targetUrl = "{$this->testServerUrl}/api/v1/residents/temporary-registrations/{$record->id}";
 
         $mh = curl_multi_init();
 
@@ -288,7 +296,7 @@ class TemporaryRegistrationConcurrencyTest extends TestCase
         ]);
         $snapshotUpdatedAt = $record->updated_at->toISOString();
 
-        $targetUrl = "http://127.0.0.1:8000/api/v1/residents/temporary-registrations/{$record->id}";
+        $targetUrl = "{$this->testServerUrl}/api/v1/residents/temporary-registrations/{$record->id}";
 
         $mh = curl_multi_init();
 
@@ -371,7 +379,7 @@ class TemporaryRegistrationConcurrencyTest extends TestCase
         $record = $this->createTestRecord(['reason' => 'Reason Before Concurrency']);
         $snapshotUpdatedAt = $record->updated_at->toISOString();
 
-        $targetUrl = "http://127.0.0.1:8000/api/v1/residents/temporary-registrations/{$record->id}";
+        $targetUrl = "{$this->testServerUrl}/api/v1/residents/temporary-registrations/{$record->id}";
 
         $mh = curl_multi_init();
 
@@ -556,7 +564,7 @@ class TemporaryRegistrationConcurrencyTest extends TestCase
         [$admin2, $token2] = $this->createAdminUser('B');
 
         $record = $this->createTestRecord();
-        $targetUrl = "http://127.0.0.1:8000/api/v1/residents/temporary-registrations/{$record->id}/approve";
+        $targetUrl = "{$this->testServerUrl}/api/v1/residents/temporary-registrations/{$record->id}/approve";
 
         $mh = curl_multi_init();
 
@@ -635,8 +643,8 @@ class TemporaryRegistrationConcurrencyTest extends TestCase
 
         $record = $this->createTestRecord();
 
-        $approveUrl = "http://127.0.0.1:8000/api/v1/residents/temporary-registrations/{$record->id}/approve";
-        $rejectUrl = "http://127.0.0.1:8000/api/v1/residents/temporary-registrations/{$record->id}/reject";
+        $approveUrl = "{$this->testServerUrl}/api/v1/residents/temporary-registrations/{$record->id}/approve";
+        $rejectUrl = "{$this->testServerUrl}/api/v1/residents/temporary-registrations/{$record->id}/reject";
 
         $mh = curl_multi_init();
 

@@ -2,8 +2,15 @@
 
 namespace App\Services;
 
+use App\DTOs\AmenityFilterDTO;
+use App\Events\AmenityCreated;
+use App\Events\AmenityDeleted;
+use App\Events\AmenityUpdated;
+use App\Repositories\Contracts\AmenityRepositoryInterface;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -80,12 +87,13 @@ class AmenityService
     }
 
     /**
-     * Khởi tạo AmenityService với SearchManager
+     * Khởi tạo AmenityService với SearchManager và AmenityRepository
      */
-    public function __construct(protected ?SearchManager $searchManager = null)
-    {
-        $this->searchManager = $searchManager ?: new SearchManager;
-    }
+    public function __construct(
+        protected SearchManager $searchManager,
+        protected AmenityRepositoryInterface $repository,
+        protected Request $request
+    ) {}
 
     /**
      * Gợi ý autocomplete siêu tốc cho thanh tìm kiếm
@@ -136,101 +144,30 @@ class AmenityService
             $isFuzzy = $searchResult->isFuzzy;
             $correctedQuery = $searchResult->metadata['corrected_query'] ?? null;
         } else {
-            $query = DB::table('amenities')
-                ->whereNull('amenities.deleted_at');
+            $filterDto = AmenityFilterDTO::fromArray($filters);
+            $repoResult = $this->repository->getPaginated($filterDto);
 
-            if (! empty($categoryId)) {
-                $query->where('amenities.category_id', $categoryId);
-            }
-
-            if (! empty($blockId)) {
-                $query->where('amenities.block_id', $blockId);
-            }
-
-            if ($isActive !== null && $isActive !== '' && $isActive !== 'all') {
-                $boolVal = filter_var($isActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                if ($boolVal !== null) {
-                    $query->where('amenities.is_active', $boolVal ? 1 : 0);
-                } elseif ($isActive === 'active') {
-                    $query->where('amenities.is_active', 1);
-                } elseif ($isActive === 'inactive') {
-                    $query->where('amenities.is_active', 0);
-                }
-            }
-
-            // Đếm tổng số bản ghi trực tiếp trên bảng amenities (tận dụng idx_amenities_perf, tránh join thừa)
-            $total = (clone $query)->count();
-            $totalPages = $total > 0 ? (int) ceil($total / $limit) : 1;
-
-            // Chỉ join bảng liên kết cho lát cắt dữ liệu phân trang thực tế
-            $itemsQuery = $query
-                ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
-                ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
-                ->select(
-                    'amenities.*',
-                    'amenity_categories.category_name',
-                    'amenity_categories.category_code',
-                    'blocks.block_name',
-                    'blocks.block_code'
-                );
-
-            // Sắp xếp
-            match ($sort) {
-                'name_asc' => $itemsQuery->orderBy('amenities.amenity_name', 'asc'),
-                'name_desc' => $itemsQuery->orderBy('amenities.amenity_name', 'desc'),
-                'price_asc' => $itemsQuery->orderBy('amenities.hourly_rate', 'asc'),
-                'price_desc' => $itemsQuery->orderBy('amenities.hourly_rate', 'desc'),
-                'created_at_asc' => $itemsQuery->orderBy('amenities.created_at', 'asc'),
-                default => $itemsQuery->orderBy('amenities.created_at', 'desc'),
-            };
-
-            $items = $itemsQuery->skip(($page - 1) * $limit)->take($limit)->get();
+            return array_merge($repoResult, [
+                'search_time_ms' => 0.0,
+                'corrected_query' => null,
+                'is_fuzzy' => false,
+            ]);
         }
 
-        // Batch aggregate slot counts & booking counts để tránh N+1 queries
+        // Batch aggregate slot counts & booking counts thông qua Repository
         $amenityIds = $items->pluck('id')->toArray();
-        $slotCounts = [];
-        $activeSlotCounts = [];
-        $activeBookingCounts = [];
+        $slotCounts = $this->repository->getSlotCountsForAmenities($amenityIds);
+        $activeBookingCounts = $this->repository->getActiveBookingCountsForAmenities($amenityIds);
 
-        if (! empty($amenityIds)) {
-            // 1. Khung giờ
-            $slots = DB::table('amenity_time_slots')
-                ->whereIn('amenity_id', $amenityIds)
-                ->select('amenity_id', 'is_active', DB::raw('count(*) as count'))
-                ->groupBy('amenity_id', 'is_active')
-                ->get();
-
-            foreach ($slots as $slot) {
-                $aid = $slot->amenity_id;
-                $slotCounts[$aid] = ($slotCounts[$aid] ?? 0) + $slot->count;
-                if ($slot->is_active) {
-                    $activeSlotCounts[$aid] = ($activeSlotCounts[$aid] ?? 0) + $slot->count;
-                }
-            }
-
-            // 2. Lượt đặt chỗ thực tế đang hoạt động
-            $bookings = DB::table('amenity_bookings')
-                ->whereIn('amenity_id', $amenityIds)
-                ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
-                ->whereNull('deleted_at')
-                ->select('amenity_id', DB::raw('count(*) as count'))
-                ->groupBy('amenity_id')
-                ->get();
-
-            foreach ($bookings as $b) {
-                $activeBookingCounts[$b->amenity_id] = (int) $b->count;
-            }
-        }
-
-        $formatted = $items->map(function ($rawItem) use ($slotCounts, $activeSlotCounts, $activeBookingCounts) {
+        $formatted = $items->map(function ($rawItem) use ($slotCounts, $activeBookingCounts) {
             $item = is_array($rawItem) ? (object) $rawItem : $rawItem;
+            $id = (string) $item->id;
 
             return $this->formatAmenityDto(
                 $item,
-                (int) ($slotCounts[$item->id] ?? 0),
-                (int) ($activeSlotCounts[$item->id] ?? 0),
-                (int) ($activeBookingCounts[$item->id] ?? 0)
+                (int) ($slotCounts[$id]['total'] ?? 0),
+                (int) ($slotCounts[$id]['active'] ?? 0),
+                (int) ($activeBookingCounts[$id] ?? 0)
             );
         })->toArray();
 
@@ -254,27 +191,26 @@ class AmenityService
      */
     public function createAmenity(array $data): array
     {
+        return DB::transaction(fn (): array => $this->createRecord($data));
+    }
+
+    /** @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function createRecord(array $data): array
+    {
         $amenityCode = strtoupper(trim((string) $data['amenity_code']));
 
         // Kiểm tra trùng mã tiện ích trong hệ thống
-        $exists = DB::table('amenities')
-            ->where('amenity_code', $amenityCode)
-            ->whereNull('deleted_at')
-            ->exists();
-
-        if ($exists) {
+        if ($this->repository->isCodeExists($amenityCode)) {
             throw new InvalidArgumentException("Mã tiện ích '{$amenityCode}' đã tồn tại trong hệ thống.");
         }
-
-        $id = (string) Str::uuid();
-        $now = Carbon::now();
 
         $blockId = $this->nullifyEmpty($data['block_id'] ?? null);
         $rules = $this->nullifyEmpty($data['rules_and_regulations'] ?? null);
         $cover = $this->nullifyEmpty($data['cover_image_url'] ?? null);
 
-        DB::table('amenities')->insert([
-            'id' => $id,
+        $toCreate = [
             'category_id' => $data['category_id'],
             'block_id' => $blockId,
             'amenity_name' => trim((string) $data['amenity_name']),
@@ -288,13 +224,16 @@ class AmenityService
             'requires_admin_approval' => ! empty($data['requires_admin_approval']) ? 1 : 0,
             'rules_and_regulations' => $rules,
             'cover_image_url' => $cover,
-            'gallery_images' => isset($data['gallery_images']) ? json_encode($data['gallery_images']) : '[]',
+            'gallery_images' => isset($data['gallery_images']) && is_array($data['gallery_images']) ? $data['gallery_images'] : [],
             'is_active' => isset($data['is_active']) ? ($data['is_active'] ? 1 : 0) : 1,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        ];
 
-        return (array) $this->getAmenityById($id);
+        $createdRecord = $this->repository->create($toCreate);
+        $created = (array) $this->getAmenityById($createdRecord['id']);
+        $this->audit($createdRecord['id'], 'INSERT', null, $created);
+        AmenityCreated::dispatch($created);
+
+        return $created;
     }
 
     /**
@@ -305,47 +244,31 @@ class AmenityService
      */
     public function updateAmenity(string $id, array $data): array
     {
-        $existing = DB::table('amenities')->where('id', $id)->whereNull('deleted_at')->first();
+        return DB::transaction(fn (): array => $this->updateRecord($id, $data), 3);
+    }
+
+    /** @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function updateRecord(string $id, array $data): array
+    {
+        $existing = $this->repository->findById($id, true);
         if (! $existing) {
-            throw new InvalidArgumentException('Không tìm thấy tiện ích hoặc đã bị xóa.');
+            throw (new ModelNotFoundException)->setModel('Amenity', [$id]);
         }
 
         // 1. Kiểm tra mã tiện ích nếu có cập nhật
         if (isset($data['amenity_code'])) {
             $newCode = strtoupper(trim((string) $data['amenity_code']));
-            $dup = DB::table('amenities')
-                ->where('amenity_code', $newCode)
-                ->where('id', '!=', $id)
-                ->whereNull('deleted_at')
-                ->exists();
-
-            if ($dup) {
+            if ($this->repository->isCodeExists($newCode, $id)) {
                 throw new InvalidArgumentException("Mã tiện ích '{$newCode}' đã tồn tại ở một tiện ích khác.");
             }
         }
 
-        // 2. Nghiệp vụ Slot Capacity & Booking Conflict (Section 13 & 14):
-        // Khi Admin giảm Maximum Slot (ví dụ: 50 -> 30), backend phải kiểm tra dữ liệu booking hiện tại.
-        // Không được cho phép cấu hình gây mâu thuẫn với booking hiện tại.
+        // 2. Nghiệp vụ Slot Capacity & Booking Conflict:
         if (isset($data['max_capacity_per_slot'])) {
             $newCapacity = (int) $data['max_capacity_per_slot'];
-
-            // Lấy số lượng đặt chỗ hoặc người tham gia cao nhất trên bất kỳ slot/ngày nào đang hoạt động
-            $activeSlotBookings = DB::table('amenity_bookings')
-                ->where('amenity_id', $id)
-                ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
-                ->whereNull('deleted_at')
-                ->groupBy('booking_date', 'start_time', 'end_time')
-                ->selectRaw('COUNT(*) as total_bookings, COALESCE(SUM(attendee_count), 0) as total_attendees')
-                ->get();
-
-            $peakBookings = 0;
-            foreach ($activeSlotBookings as $slotStat) {
-                $peak = max((int) $slotStat->total_bookings, (int) $slotStat->total_attendees);
-                if ($peak > $peakBookings) {
-                    $peakBookings = $peak;
-                }
-            }
+            $peakBookings = $this->repository->getPeakBookings($id);
 
             if ($peakBookings > 0 && $newCapacity < $peakBookings) {
                 throw new InvalidArgumentException(
@@ -354,7 +277,7 @@ class AmenityService
             }
         }
 
-        $update = ['updated_at' => Carbon::now()];
+        $update = [];
 
         if (isset($data['category_id'])) {
             $update['category_id'] = $data['category_id'];
@@ -402,9 +325,46 @@ class AmenityService
             $update['is_active'] = $data['is_active'] ? 1 : 0;
         }
 
-        DB::table('amenities')->where('id', $id)->update($update);
+        $update['updated_at'] = $data['updated_at'];
+        if (! $this->repository->update($id, $update)) {
+            throw new AmenityConflictException;
+        }
 
-        return (array) $this->getAmenityById($id);
+        $updated = (array) $this->getAmenityById($id);
+        $this->audit($id, 'UPDATE', (array) $existing, $updated);
+        AmenityUpdated::dispatch($id, $updated);
+
+        return $updated;
+    }
+
+    public function deleteAmenity(string $id): void
+    {
+        DB::transaction(function () use ($id): void {
+            $existing = $this->repository->findById($id, true);
+            if (! $existing) {
+                throw (new ModelNotFoundException)->setModel('Amenity', [$id]);
+            }
+            if ($this->repository->countActiveBookings($id) > 0) {
+                throw new AmenityConflictException;
+            }
+            $this->repository->softDelete($id);
+            $this->audit($id, 'DELETE', (array) $existing, ['deleted_at' => now()->toIso8601String(), 'is_active' => false]);
+            AmenityDeleted::dispatch($id);
+        }, 3);
+    }
+
+    /** @param array<string, mixed>|null $oldData
+     * @param  array<string, mixed>  $newData
+     */
+    private function audit(string $id, string $action, ?array $oldData, array $newData): void
+    {
+        $this->repository->recordAudit([
+            'id' => (string) Str::uuid(), 'table_name' => 'amenities', 'record_id' => $id, 'action' => $action,
+            'performed_by_user_id' => $this->request->user()?->id, 'client_ip_address' => $this->request->ip(),
+            'user_agent' => Str::limit($this->request->userAgent() ?? '', 500, ''),
+            'old_data' => $oldData === null ? null : json_encode($oldData, JSON_THROW_ON_ERROR),
+            'new_data' => json_encode($newData, JSON_THROW_ON_ERROR), 'created_at' => now(),
+        ]);
     }
 
     /**
@@ -414,33 +374,21 @@ class AmenityService
      */
     public function getAmenityById(string $id): ?array
     {
-        $item = DB::table('amenities')
-            ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
-            ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
-            ->where('amenities.id', $id)
-            ->whereNull('amenities.deleted_at')
-            ->select(
-                'amenities.*',
-                'amenity_categories.category_name',
-                'amenity_categories.category_code',
-                'blocks.block_name',
-                'blocks.block_code'
-            )
-            ->first();
+        $item = $this->repository->getAmenityDetail($id);
 
         if (! $item) {
             return null;
         }
 
-        $slotCount = DB::table('amenity_time_slots')->where('amenity_id', $id)->count();
-        $activeSlotCount = DB::table('amenity_time_slots')->where('amenity_id', $id)->where('is_active', 1)->count();
-        $activeBookingsCount = DB::table('amenity_bookings')
-            ->where('amenity_id', $id)
-            ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
-            ->whereNull('deleted_at')
-            ->count();
+        $slotCounts = $this->repository->getSlotCountsForAmenities([$id]);
+        $activeBookingsCount = $this->repository->countActiveBookings($id);
 
-        return $this->formatAmenityDto($item, $slotCount, $activeSlotCount, $activeBookingsCount);
+        return $this->formatAmenityDto(
+            $item,
+            (int) ($slotCounts[$id]['total'] ?? 0),
+            (int) ($slotCounts[$id]['active'] ?? 0),
+            $activeBookingsCount
+        );
     }
 
     /**
@@ -450,48 +398,6 @@ class AmenityService
      */
     public function getAmenityBookings(string $amenityId): array
     {
-        $bookings = DB::table('amenity_bookings')
-            ->leftJoin('users', 'amenity_bookings.resident_user_id', '=', 'users.id')
-            ->leftJoin('apartments', 'amenity_bookings.apartment_id', '=', 'apartments.id')
-            ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
-            ->where('amenity_bookings.amenity_id', $amenityId)
-            ->whereNull('amenity_bookings.deleted_at')
-            ->select(
-                'amenity_bookings.*',
-                'users.full_name as resident_name',
-                'users.phone_number as resident_phone',
-                'apartments.apartment_number',
-                'blocks.block_name'
-            )
-            ->orderBy('amenity_bookings.booking_date', 'desc')
-            ->orderBy('amenity_bookings.start_time', 'desc')
-            ->get();
-
-        return $bookings->map(function ($b) {
-            return [
-                'id' => $b->id,
-                'booking_code' => $b->booking_code,
-                'amenity_id' => $b->amenity_id,
-                'apartment_id' => $b->apartment_id,
-                'resident_user_id' => $b->resident_user_id,
-                'resident_name' => $b->resident_name ?? 'Cư dân',
-                'resident_phone' => $b->resident_phone ?? '',
-                'apartment_number' => $b->apartment_number ?? '',
-                'block_name' => $b->block_name ?? '',
-                'booking_date' => $b->booking_date,
-                'start_time' => substr((string) $b->start_time, 0, 5),
-                'end_time' => substr((string) $b->end_time, 0, 5),
-                'attendee_count' => (int) $b->attendee_count,
-                'total_amount' => (float) $b->total_amount,
-                'deposit_amount' => (float) $b->deposit_amount,
-                'is_paid' => (bool) $b->is_paid,
-                'status' => $b->status,
-                'checkin_qr_code' => $b->checkin_qr_code,
-                'checked_in_at' => $b->checked_in_at ? Carbon::parse($b->checked_in_at)->toIso8601String() : null,
-                'resident_notes' => $b->resident_notes,
-                'admin_notes' => $b->admin_notes,
-                'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
-            ];
-        })->toArray();
+        return $this->repository->getAmenityBookingsWithDetails($amenityId);
     }
 }
