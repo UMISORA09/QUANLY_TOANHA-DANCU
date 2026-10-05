@@ -62,6 +62,36 @@ async function chooseSlot(page: Page) {
   await page.getByRole('checkbox').check();
 }
 
+test('quản lý từ chối đăng ký với lý do bắt buộc', async ({ page }) => {
+  let current = { ...booking, resident_name: 'Cư dân QA', resident_phone: '', rejection_reason: '' };
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'Quản lý QA', email: 'manager@example.test' }));
+    localStorage.setItem('smart_cassavas_token', 'test-admin-token');
+  });
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/bookings/booking-test/status')) {
+      const payload = route.request().postDataJSON();
+      expect(payload).toMatchObject({ status: 'REJECTED', rejection_reason: 'Bảo trì đột xuất' });
+      current = { ...current, status: 'REJECTED', rejection_reason: payload.rejection_reason };
+      return route.fulfill({ json: current });
+    }
+    if (url.pathname.endsWith('/bookings')) return route.fulfill({ json: [current] });
+    if (url.pathname.endsWith('/amenities')) return route.fulfill({ json: { items: [{ ...amenity, amenity_code: 'BBQ-QA', active_bookings_count: 1 }], total: 1, page: 1, limit: 10, total_pages: 1 } });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto('/quan-ly?tab=amenities');
+  await page.getByTitle('Xem thông tin đặt chỗ của cư dân', { exact: true }).click();
+  await page.getByRole('button', { name: 'Từ chối', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Từ chối đăng ký tiện ích' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Xác nhận từ chối' })).toBeDisabled();
+  await dialog.getByLabel('Lý do từ chối').fill('Bảo trì đột xuất');
+  await dialog.getByRole('button', { name: 'Xác nhận từ chối' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText('Bị từ chối', { exact: true }).last()).toBeVisible();
+});
+
 for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 }]) {
   test(`đăng ký, xem và hủy trên ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
@@ -82,6 +112,33 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await expect(page.getByRole('heading', { name: 'Đăng ký sử dụng tiện ích' })).toBeVisible();
   });
 }
+
+test('đăng ký bằng bàn phím và đóng chi tiết bằng Escape', async ({ page }) => {
+  await fixture(page);
+  const amenity = page.getByRole('button', { name: /Vườn BBQ/ });
+  await amenity.focus();
+  await page.keyboard.press('Enter');
+  const slot = page.getByRole('button', { name: /10:00.*11:30/ });
+  await slot.focus();
+  await page.keyboard.press('Enter');
+  await page.getByLabel('Số người', { exact: true }).focus();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('2');
+  await page.getByRole('checkbox').focus();
+  await page.keyboard.press('Space');
+  await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('status').filter({ hasText: 'Đăng ký thành công' })).toBeVisible();
+  await page.getByRole('button', { name: 'Xem lịch của tôi' }).focus();
+  await page.keyboard.press('Enter');
+  const detail = page.getByRole('button', { name: 'Xem chi tiết', exact: true });
+  await detail.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(detail).toBeFocused();
+});
 
 test('tab cư dân đồng bộ URL và Back/Forward', async ({ page }) => {
   await fixture(page);

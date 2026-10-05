@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ResidentPortalController extends Controller
 {
@@ -261,34 +262,28 @@ class ResidentPortalController extends Controller
             'category_id' => 'nullable|string',
             'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT',
             'preferred_service_time' => 'nullable|date',
-            'apartment_id' => 'nullable|string',
-            'user_id' => 'nullable|string',
+            'apartment_id' => 'nullable|uuid',
         ]);
 
-        $userId = $validated['user_id'] ?? $request->input('user_id');
-        if (! $userId) {
-            $user = DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
-            $userId = $user ? $user->id : (string) Str::uuid();
-        }
-
-        $apartmentId = $validated['apartment_id'] ?? null;
-        if (! $apartmentId) {
-            $resident = DB::table('residents')->where('user_id', $userId)->first();
-            $apartmentId = $resident ? $resident->apartment_id : null;
-            if (! $apartmentId) {
-                $apt = DB::table('apartments')->where('apartment_number', 'A1-05')->first();
-                $apartmentId = $apt ? $apt->id : (string) Str::uuid();
-            }
+        $userId = $request->user()->id;
+        $apartments = app(DatabaseResidentAmenityBookingRepository::class)->apartments($userId);
+        abort_if($apartments->isEmpty(), 403, 'Bạn chưa có hồ sơ cư trú còn hiệu lực.');
+        $apartmentId = $validated['apartment_id'] ?? ($apartments->count() === 1 ? $apartments->first()->id : null);
+        if (! $apartments->contains('id', $apartmentId)) {
+            throw ValidationException::withMessages(['apartment_id' => 'Vui lòng chọn căn hộ bạn đang cư trú.']);
         }
 
         $categoryId = $validated['category_id'] ?? null;
         if (! $categoryId) {
             $cat = DB::table('ticket_categories')->first();
-            $categoryId = $cat ? $cat->id : (string) Str::uuid();
+            $categoryId = $cat?->id;
+        }
+        if (! $categoryId || ! DB::table('ticket_categories')->where('id', $categoryId)->exists()) {
+            throw ValidationException::withMessages(['category_id' => 'Danh mục sự cố không hợp lệ.']);
         }
 
         $ticketId = (string) Str::uuid();
-        $ticketNumber = 'TICKET-'.rand(1100, 9999);
+        $ticketNumber = 'TICKET-'.Str::upper(Str::random(12));
         $now = Carbon::now();
 
         DB::table('tickets')->insert([

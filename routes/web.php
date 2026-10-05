@@ -171,7 +171,7 @@ Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'ove
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
-Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket']);
+Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket'])->middleware('auth.bearer:strict');
 Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
     Route::get('amenities/{id}/availability', [ResidentAmenityBookingController::class, 'availability']);

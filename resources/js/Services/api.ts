@@ -987,7 +987,7 @@ class ApiService {
   ): Promise<AmenityBooking> {
     const result = await this.request<AmenityBooking>(`/admin/amenities/${amenityId}/bookings/${bookingId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, admin_notes: adminNotes }),
+      body: JSON.stringify({ status, admin_notes: adminNotes, ...(status === 'REJECTED' ? { rejection_reason: adminNotes } : {}) }),
     });
     amenityCache.invalidateBookings(amenityId);
     amenityCache.invalidateAmenities();
