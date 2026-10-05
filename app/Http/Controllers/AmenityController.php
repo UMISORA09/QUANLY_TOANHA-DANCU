@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\AmenityDeleted;
 use App\Services\AmenityService;
 use App\Services\Search\SearchCacheService;
 use Carbon\Carbon;
@@ -350,7 +351,6 @@ class AmenityController extends Controller
 
         try {
             $created = $this->amenityService->createAmenity($validated);
-            $this->bumpDataVersion();
 
             return response()->json($created, 201);
         } catch (InvalidArgumentException $e) {
@@ -384,7 +384,6 @@ class AmenityController extends Controller
 
         try {
             $updated = $this->amenityService->updateAmenity($id, $validated);
-            $this->bumpDataVersion();
 
             return response()->json($updated);
         } catch (InvalidArgumentException $e) {
@@ -443,7 +442,7 @@ class AmenityController extends Controller
             'is_active' => 0,
         ]);
 
-        $this->bumpDataVersion();
+        AmenityDeleted::dispatch($id);
 
         return response()->json(['success' => true, 'message' => 'Đã xóa tiện ích thành công.']);
     }
