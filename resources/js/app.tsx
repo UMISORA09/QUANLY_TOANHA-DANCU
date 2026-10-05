@@ -15,6 +15,7 @@ const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
 const DevConsolePage = lazy(() => import('./Pages/Dev/DevConsolePage'));
 const PublicStatusPage = lazy(() => import('./Pages/PublicStatusPage'));
 const IncidentHistoryPage = lazy(() => import('./Pages/IncidentHistoryPage'));
+const AccountActivationPage = lazy(() => import('./Pages/Auth/AccountActivationPage'));
 const LoginPage = lazy(() => import('./Pages/Auth/LoginPage'));
 const RegisterPage = lazy(() => import('./Pages/Auth/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('./Pages/Auth/ForgotPasswordPage'));
@@ -82,6 +83,9 @@ const App: React.FC = () => {
           />
         );
 
+      case 'account_activation':
+        return <AccountActivationPage />;
+
       case 'dev_login_redirect':
         navigateTo('/login');
         return null;
@@ -133,15 +137,16 @@ const App: React.FC = () => {
 
       case 'receptionist': {
         const isUserAdmin = currentUser?.role === 'admin';
-        const effectiveRole = isUserAdmin ? 'admin' : 'receptionist';
+        const effectiveRole = isUserAdmin ? 'admin' : (match.isSecurity ? 'security' : 'receptionist');
         return (
           <ReceptionHome
             onLogout={handleLogout}
             onNavigateHome={() => navigateTo('/home?landing=true')}
             onNavigateAdmin={() => navigateTo('/admin')}
             userRole={effectiveRole}
-            userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Lễ Tân Sảnh Chính')}
-            userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'letan@cassavas.vn')}
+            userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : (match.isSecurity ? 'Đội Trực An Ninh' : 'Lễ Tân Sảnh Chính'))}
+            userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : (match.isSecurity ? 'anninh@cassavas.vn' : 'letan@cassavas.vn'))}
+            initialTab={match.initialTab}
           />
         );
       }

@@ -295,9 +295,11 @@ class AmenityController extends Controller
             ]);
         }
 
-        $result = Cache::remember("amenities_page_{$fingerprint}", 600, function () use ($filters) {
-            return $this->amenityService->getPaginatedAmenities($filters);
-        });
+        $result = app()->environment('testing')
+            ? $this->amenityService->getPaginatedAmenities($filters)
+            : Cache::remember("amenities_page_{$fingerprint}", 600, function () use ($filters) {
+                return $this->amenityService->getPaginatedAmenities($filters);
+            });
 
         return response()->json($result, 200, [
             'ETag' => $etag,

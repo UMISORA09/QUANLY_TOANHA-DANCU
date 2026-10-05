@@ -36,6 +36,7 @@ import {
   Search,
 } from 'lucide-react';
 import { AppLayout } from '../Components/Layout/AppLayout';
+import { VehicleManagement } from './Admin/VehicleManagement';
 
 export interface ReceptionHomeProps {
   onLogout?: () => void;
@@ -44,6 +45,7 @@ export interface ReceptionHomeProps {
   userName?: string;
   userEmail?: string;
   userRole?: string;
+  initialTab?: string;
 }
 
 interface MenuItem {
@@ -78,9 +80,36 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
   userName = 'Admin Cassavas',
   userEmail = 'admin@cassavas.vn',
   userRole = 'receptionist',
+  initialTab,
 }) => {
+  // Helper xác định tab ban đầu linh hoạt theo URL hoặc prop
+  const resolveInitialTab = (): string => {
+    const path = window.location.pathname;
+    if (
+      path === '/le-tan/vehicles' ||
+      path === '/le-tan/phuong-tien' ||
+      path === '/an-ninh/vehicles' ||
+      path === '/an-ninh/phuong-tien' ||
+      path.includes('/vehicles') ||
+      path.includes('/phuong-tien')
+    ) {
+      return 'vehicle_reg';
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam) {
+      if (tabParam === 'vehicles' || tabParam === 'phuong-tien') return 'vehicle_reg';
+      return tabParam;
+    }
+    if (initialTab) {
+      if (initialTab === 'vehicles' || initialTab === 'phuong-tien') return 'vehicle_reg';
+      return initialTab;
+    }
+    return 'overview';
+  };
+
   // Navigation & Interactive states
-  const [activeMenuId, setActiveMenuId] = useState<string>('overview');
+  const [activeMenuId, setActiveMenuId] = useState<string>(resolveInitialTab);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
   const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
@@ -333,12 +362,12 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
     () => [
       { id: 'overview', label: 'Tổng quan Lễ tân', icon: Gauge },
       { id: 'visitors', label: 'Khách & Check-in An ninh', icon: Users, badge: `${kpis.activeGuests}` },
-      { id: 'parking', label: 'Bãi đỗ & ANPR', icon: Car, badge: `${kpis.pendingVehicles}` },
+      { id: 'vehicle_reg', label: 'Đăng ký xe & Đẩy phí HĐ', icon: CreditCard, badge: `${kpis.pendingVehicles} chờ duyệt` },
+      { id: 'parking', label: 'Bãi đỗ xe & ANPR', icon: Car },
       { id: 'lost_found', label: 'Đồ thất lạc', icon: PackageOpen },
       { id: 'smart_lockers', label: 'Tủ đồ thông minh', icon: Layers, badge: '24 ô' },
       { id: 'walkin_guest', label: 'Check-in Khách vãng lai', icon: UserPlus },
       { id: 'parcels', label: 'Quản lý Bưu phẩm', icon: Package, badge: `${kpis.pendingParcels}` },
-      { id: 'vehicle_reg', label: 'Quản lý Đăng ký xe', icon: CreditCard },
     ],
     [kpis]
   );
@@ -481,16 +510,17 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
         </div>
       )}
 
-      {/* Zoomable Container */}
-      <div
-        style={{
-          transform: `scale(${zoomLevel / 100})`,
-          transformOrigin: 'top left',
-          width: `${(100 / zoomLevel) * 100}%`,
-        }}
-        className="transition-transform duration-200 p-4 sm:p-6 lg:p-8 xl:p-10"
-      >
-        <div className="w-full max-w-7xl mx-auto space-y-6">
+      {/* Main Content Container */}
+      <div className="p-4 sm:p-6 lg:p-8 xl:p-10">
+        {activeMenuId === 'vehicle_reg' || activeMenuId === 'parking' ? (
+          <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+            {/* Embedded Vehicle Management Module */}
+            <div className="bg-white/95 backdrop-blur-2xl border border-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl glass-specular-edge">
+              <VehicleManagement embedded={true} portalMode="receptionist" />
+            </div>
+          </div>
+        ) : (
+          <div className="w-full max-w-7xl mx-auto space-y-6">
             {/* Section Breadcrumb Tag */}
             <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
               <Building2 className="w-3.5 h-3.5 text-sky-500" />
@@ -559,19 +589,26 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
                 <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-400/10 rounded-full blur-xl pointer-events-none" />
               </div>
 
-              {/* Stat 3: Đăng ký xe chờ duyệt */}
-              <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-indigo-300/80 transition-all group relative overflow-hidden glass-specular-edge">
+              {/* Stat 3: Đăng ký xe chờ duyệt - CLICKABLE TO VEHICLE REGISTRATION */}
+              <div
+                onClick={() => handleMenuClick('vehicle_reg')}
+                className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-xl hover:border-indigo-400/90 hover:-translate-y-1 transition-all group relative overflow-hidden glass-specular-edge cursor-pointer"
+                title="Bấm để xem danh sách hồ sơ xe chờ duyệt và đẩy phí"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium">Đăng ký xe chờ duyệt</span>
-                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xs">
+                  <span className="text-xs text-slate-500 font-medium group-hover:text-indigo-600 transition-colors">
+                    Đăng ký xe chờ duyệt
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-2xs">
                     <Car className="w-4 h-4" />
                   </div>
                 </div>
-                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight">
+                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight group-hover:text-indigo-900 transition-colors">
                   {kpis.pendingVehicles}
                 </div>
-                <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5">
+                <div className="text-[11px] text-indigo-600 mt-2 flex items-center justify-between font-medium">
                   <span>{kpis.pendingVehiclesNote}</span>
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold">Xử lý ngay →</span>
                 </div>
                 <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-400/10 rounded-full blur-xl pointer-events-none" />
               </div>
@@ -611,22 +648,43 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
                   </div>
 
                   <div className="mt-5 space-y-3">
-                    {activities.map((act) => (
-                      <div
-                        key={act.num}
-                        className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 hover:bg-slate-100/90 border border-slate-100 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 shrink-0 shadow-2xs">
-                            {act.num}
-                          </span>
-                          <span className="text-xs sm:text-sm font-semibold text-neutral-800 truncate">
-                            {act.title}
-                          </span>
+                    {activities.map((act) => {
+                      const isVehicle = act.type === 'vehicle';
+                      return (
+                        <div
+                          key={act.num}
+                          onClick={() => {
+                            if (isVehicle) {
+                              handleMenuClick('vehicle_reg');
+                            }
+                          }}
+                          className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
+                            isVehicle
+                              ? 'bg-indigo-50/60 hover:bg-indigo-100/80 border-indigo-100 cursor-pointer group'
+                              : 'bg-slate-50/80 hover:bg-slate-100/90 border-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`text-xs font-bold rounded-lg px-2 py-1 shrink-0 shadow-2xs ${
+                              isVehicle ? 'bg-indigo-600 text-white' : 'text-slate-600 bg-white border border-slate-200'
+                            }`}>
+                              {act.num}
+                            </span>
+                            <span className="text-xs sm:text-sm font-semibold text-neutral-800 truncate">
+                              {act.title}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            {isVehicle && (
+                              <span className="text-[10px] font-bold text-indigo-700 bg-white/80 px-2 py-0.5 rounded-full border border-indigo-200 opacity-90 group-hover:opacity-100">
+                                Xem & Duyệt
+                              </span>
+                            )}
+                            <span className="text-[11px] text-slate-400">{act.time}</span>
+                          </div>
                         </div>
-                        <span className="text-[11px] text-slate-400 shrink-0 ml-2">{act.time}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -681,16 +739,17 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
                       </span>
                     </button>
 
-                    {/* Action 3: Đăng ký xe */}
+                    {/* Action 3: Đăng ký xe & Đẩy phí Hóa đơn - CLICKABLE */}
                     <button
-                      onClick={() => showToast('Mở danh sách hồ sơ xe chờ phê duyệt')}
-                      className="flex flex-col items-center justify-center p-4 sm:p-5 border border-slate-200/90 rounded-2xl hover:border-indigo-300 hover:bg-indigo-50/50 transition-all text-neutral-800 cursor-pointer group shadow-2xs hover:shadow-xs"
+                      onClick={() => handleMenuClick('vehicle_reg')}
+                      className="flex flex-col items-center justify-center p-4 sm:p-5 border border-slate-200/90 rounded-2xl hover:border-indigo-400 hover:bg-indigo-50/60 transition-all text-neutral-800 cursor-pointer group shadow-2xs hover:shadow-md"
+                      title="Mở hồ sơ đăng ký xe & đẩy phí hóa đơn"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-indigo-500 group-hover:text-white flex items-center justify-center text-slate-700 transition-colors mb-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center text-slate-700 transition-colors mb-2.5">
                         <Car className="w-5 h-5 group-hover:scale-110 transition-transform" />
                       </div>
-                      <span className="text-xs font-semibold text-neutral-800 group-hover:text-indigo-900">
-                        Đăng ký xe
+                      <span className="text-xs font-semibold text-neutral-800 group-hover:text-indigo-950 text-center">
+                        Đăng ký xe & Phí HĐ
                       </span>
                     </button>
                   </div>
@@ -703,6 +762,7 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
               </div>
             </div>
           </div>
+        )}
         </div>
 
     </AppLayout>
