@@ -212,7 +212,7 @@ class AmenityManagementTest extends TestCase
      */
     public function test_can_update_booking_status_and_invalidate_etag(): void
     {
-        $booking = DB::table('amenity_bookings')->whereNull('deleted_at')->first();
+        $booking = DB::table('amenity_bookings')->where('amenity_id', $this->amenityId)->where('status', 'PENDING')->whereNull('deleted_at')->first();
         $this->assertNotNull($booking);
 
         // Lấy ETag trước khi thay đổi
@@ -245,6 +245,7 @@ class AmenityManagementTest extends TestCase
     public function test_can_cancel_booking_and_invalidate_etag(): void
     {
         $booking = DB::table('amenity_bookings')
+            ->where('amenity_id', $this->amenityId)
             ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
             ->whereNull('deleted_at')
             ->first();
