@@ -435,28 +435,28 @@ export const BuildingListManagement: React.FC = () => {
     switch (status) {
       case 'OCCUPIED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="sass-db-status sass-db-status--occupied">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Đã bán
           </span>
         );
       case 'RENTED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+          <span className="sass-db-status sass-db-status--rented">
             <KeyRound className="w-3.5 h-3.5" />
             Đang thuê
           </span>
         );
       case 'VACANT':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="sass-db-status sass-db-status--vacant">
             <Home className="w-3.5 h-3.5" />
             Trống
           </span>
         );
       case 'MAINTENANCE':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+          <span className="sass-db-status sass-db-status--maintenance">
             <Wrench className="w-3.5 h-3.5" />
             Bảo trì
           </span>
@@ -578,10 +578,10 @@ export const BuildingListManagement: React.FC = () => {
       {/* 5 Realtime Summary Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         {/* Card 1: Tổng quy mô */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-xs">
+        <div className="sass-db-kpi-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Tổng quy mô căn hộ</span>
-            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
+            <div className="kpi-icon-wrapper bg-sky-50 text-sky-600">
               <Building className="w-4 h-4" />
             </div>
           </div>
@@ -594,10 +594,10 @@ export const BuildingListManagement: React.FC = () => {
         </div>
 
         {/* Card 2: Đã bán / Đang ở */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-xs">
+        <div className="sass-db-kpi-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Đã bán / Cư trú</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="kpi-icon-wrapper bg-emerald-50 text-emerald-600">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
@@ -610,10 +610,10 @@ export const BuildingListManagement: React.FC = () => {
         </div>
 
         {/* Card 3: Đang thuê */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-xs">
+        <div className="sass-db-kpi-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Đang cho thuê</span>
-            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+            <div className="kpi-icon-wrapper bg-sky-50 text-sky-600">
               <KeyRound className="w-4 h-4" />
             </div>
           </div>
@@ -626,10 +626,10 @@ export const BuildingListManagement: React.FC = () => {
         </div>
 
         {/* Card 4: Căn hộ trống */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-xs">
+        <div className="sass-db-kpi-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Căn hộ trống</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <div className="kpi-icon-wrapper bg-amber-50 text-amber-600">
               <Home className="w-4 h-4" />
             </div>
           </div>
@@ -642,10 +642,10 @@ export const BuildingListManagement: React.FC = () => {
         </div>
 
         {/* Card 5: Đang bảo trì */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-xs">
+        <div className="sass-db-kpi-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Đang bảo trì / Sửa</span>
-            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+            <div className="kpi-icon-wrapper bg-purple-50 text-purple-600">
               <Wrench className="w-4 h-4" />
             </div>
           </div>
@@ -680,20 +680,14 @@ export const BuildingListManagement: React.FC = () => {
                 }
                 setCurrentPage(1);
               }}
-              className={`bg-white rounded-2xl border p-4.5 shadow-xs transition-all cursor-pointer flex flex-col justify-between ${
-                isSelected
-                  ? 'border-sky-500 ring-2 ring-sky-500/20 shadow-md bg-sky-50/20'
-                  : 'border-slate-200/80 hover:border-slate-300 hover:shadow-sm'
+              className={`sass-db-block-card flex flex-col justify-between ${
+                isSelected ? 'is-active' : ''
               }`}
             >
               <div>
                 <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                   <div className="flex items-center gap-2.5">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${
-                        isSelected ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'
-                      }`}
-                    >
+                    <div className="block-badge-code">
                       {block.block_code}
                     </div>
                     <div>
@@ -716,9 +710,9 @@ export const BuildingListManagement: React.FC = () => {
                     </span>
                     <span className="font-bold text-neutral-900">{occupancy}%</span>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="occupancy-meter">
                     <div
-                      className="h-full bg-sky-600 rounded-full transition-all duration-500"
+                      className="occupancy-meter-fill"
                       style={{ width: `${occupancy}%` }}
                     />
                   </div>
@@ -1147,7 +1141,7 @@ export const BuildingListManagement: React.FC = () => {
                 <span className="font-semibold text-slate-500 text-[11px]">Xem trước định dạng mã căn hộ sinh ra:</span>
                 <div className="flex flex-wrap gap-1.5 mt-1.5 font-mono text-xs">
                   {Array.from({ length: Math.min(batchCount, 6) }).map((_, i) => (
-                    <span key={i} className="px-2 py-0.5 rounded bg-white border border-slate-200 text-sky-700 font-bold">
+                    <span key={i} className="sass-db-batch-preview-chip">
                       {batchPrefix}
                       {String(batchStartNum + i).padStart(2, '0')}
                     </span>

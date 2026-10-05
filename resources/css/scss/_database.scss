@@ -1,0 +1,222 @@
+// ==============================================================================
+// SASS PREPROCESSOR STYLES CHO DATABASE (TÒA NHÀ & CĂN HỘ)
+// ==============================================================================
+@use 'variables' as vars;
+@use 'mixins' as mix;
+
+// 1. KPI Counter & Widget Card
+.sass-db-kpi-card {
+    background: #ffffff;
+    border-radius: vars.$radius-xl;
+    border: 1px solid rgba(226, 232, 240, 0.85);
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    position: relative;
+    overflow: hidden;
+    @include mix.hover-lift(-3px, 0 12px 24px -6px rgba(0, 0, 0, 0.06));
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(14, 165, 233, 0.4), transparent);
+    }
+
+    .kpi-icon-wrapper {
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: vars.$radius-md;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        transition: transform vars.$transition-fast;
+    }
+
+    &:hover .kpi-icon-wrapper {
+        transform: scale(1.08);
+    }
+}
+
+// 2. Block/Tòa nhà Selector Card
+.sass-db-block-card {
+    background: #ffffff;
+    border-radius: vars.$radius-xl;
+    border: 1px solid rgba(226, 232, 240, 0.85);
+    padding: 1.25rem;
+    cursor: pointer;
+    position: relative;
+    @include mix.hover-lift(-2px, 0 10px 20px -4px rgba(0, 0, 0, 0.05));
+
+    &.is-active {
+        border-color: vars.$color-sky-500;
+        background: rgba(240, 249, 255, 0.4);
+        box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25), 0 8px 20px -4px rgba(14, 165, 233, 0.12);
+
+        .block-badge-code {
+            background: vars.$color-sky-600;
+            color: #ffffff;
+        }
+    }
+
+    .block-badge-code {
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: vars.$radius-md;
+        background: rgba(224, 242, 254, 0.8);
+        color: vars.$color-sky-600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.875rem;
+        transition: all vars.$transition-fast;
+    }
+
+    .occupancy-meter {
+        width: 100%;
+        height: 0.5rem;
+        background: #f1f5f9;
+        border-radius: vars.$radius-full;
+        overflow: hidden;
+
+        .occupancy-meter-fill {
+            height: 100%;
+            background: linear-gradient(90deg, vars.$color-sky-500, vars.$color-indigo-500);
+            border-radius: vars.$radius-full;
+            transition: width vars.$transition-slow;
+        }
+    }
+}
+
+// 3. Status Badges Preprocessing
+.sass-db-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: vars.$radius-sm;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    transition: all vars.$transition-fast;
+
+    // Đã bán / Cư trú
+    &--occupied {
+        background-color: #ecfdf5;
+        color: #047857;
+        border: 1px solid #a7f3d0;
+
+        &:hover {
+            background-color: #d1fae5;
+        }
+    }
+
+    // Đang thuê
+    &--rented {
+        background-color: #f0f9ff;
+        color: #0369a1;
+        border: 1px solid #bae6fd;
+
+        &:hover {
+            background-color: #e0f2fe;
+        }
+    }
+
+    // Trống
+    &--vacant {
+        background-color: #fffbeb;
+        color: #b45309;
+        border: 1px solid #fde68a;
+
+        &:hover {
+            background-color: #fef3c7;
+        }
+    }
+
+    // Đang bảo trì
+    &--maintenance {
+        background-color: #faf5ff;
+        color: #7e22ce;
+        border: 1px solid #e9d5ff;
+
+        &:hover {
+            background-color: #f3e8ff;
+        }
+    }
+}
+
+// 4. Data Table Container
+.sass-db-table-wrapper {
+    background: #ffffff;
+    border-radius: vars.$radius-xl;
+    border: 1px solid rgba(226, 232, 240, 0.85);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    overflow: hidden;
+
+    .table-toolbar {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #f1f5f9;
+        background: rgba(248, 250, 252, 0.6);
+        backdrop-filter: blur(8px);
+    }
+
+    table {
+        width: 100%;
+        text-align: left;
+        font-size: 0.75rem;
+
+        thead {
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+
+            th {
+                padding: 0.75rem 1rem;
+            }
+        }
+
+        tbody {
+            tr {
+                border-bottom: 1px solid #f1f5f9;
+                transition: background-color vars.$transition-fast;
+
+                &:hover {
+                    background-color: rgba(248, 250, 252, 0.8);
+                }
+
+                td {
+                    padding: 0.75rem 1rem;
+                    vertical-align: middle;
+                }
+            }
+        }
+    }
+}
+
+// 5. Batch Preview Grid Chips
+.sass-db-batch-preview-chip {
+    padding: 0.25rem 0.625rem;
+    border-radius: vars.$radius-sm;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    color: vars.$color-sky-600;
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: transform vars.$transition-fast;
+
+    &:hover {
+        transform: translateY(-1px);
+        border-color: vars.$color-sky-500;
+    }
+}

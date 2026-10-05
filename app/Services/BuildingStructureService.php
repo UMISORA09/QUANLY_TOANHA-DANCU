@@ -387,6 +387,15 @@ class BuildingStructureService
             $actualBlockUnits = Apartment::where('block_id', $blockId)->count();
             Block::where('id', $blockId)->update(['total_apartments' => $actualBlockUnits]);
 
+            // Gọi Stored Procedure tiền xử lý (Database Preprocessing) nếu chạy trên MySQL
+            if (DB::getDriverName() === 'mysql') {
+                try {
+                    DB::statement('CALL sp_preprocess_building_occupancy(?)', [$blockId]);
+                } catch (\Throwable) {
+                    // Fallback đã hoàn tất ở trên
+                }
+            }
+
             return [
                 'created_count' => count($created),
                 'skipped_count' => $skipped,
