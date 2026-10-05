@@ -10,6 +10,8 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        config(['cache.default' => 'array']);
+
         if (method_exists($this, 'withoutVite')) {
             $this->withoutVite();
         }

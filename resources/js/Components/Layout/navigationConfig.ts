@@ -149,7 +149,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
       { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },
-      { id: 'manager_portal', label: 'Chuyển sang Cổng Ban Quản Lý', icon: Building2 },
     ],
   },
 
@@ -170,7 +169,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
       { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },
-      { id: 'manager_portal', label: 'Chuyển sang Cổng Ban Quản Lý', icon: Building2 },
     ],
   },
 };
