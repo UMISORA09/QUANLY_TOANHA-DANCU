@@ -88,6 +88,62 @@ export interface AmenityListResponse {
   is_fuzzy?: boolean;
 }
 
+export interface ResidentAmenityCatalog {
+  apartments: Array<{ id: string; apartment_number: string; block_id: string; block_name: string }>;
+  amenities: Amenity[];
+  categories: Array<{ id: string; category_name: string }>;
+  today: string;
+  timezone: string;
+}
+
+export interface ResidentAvailableSlot {
+  slot_id: string;
+  start_time: string;
+  end_time: string;
+  slot_label: string | null;
+  remaining_bookings: number;
+  remaining_attendees: number;
+  available: boolean;
+  reason: string | null;
+  total_amount: number;
+  deposit_amount: number;
+}
+
+export type ResidentBookingStatus = 'PENDING' | 'APPROVED' | 'CONFIRMED' | 'CHECKED_IN' | 'COMPLETED' | 'CANCELLED' | 'REJECTED';
+
+export interface ResidentAmenityBooking extends Omit<AmenityBooking, 'resident_name'> {
+  amenity_name: string;
+  location_detail: string;
+  status: ResidentBookingStatus;
+  can_cancel: boolean;
+  cancel_deadline: string;
+  rejection_reason?: string | null;
+}
+
+export interface ResidentBookingList {
+  items: ResidentAmenityBooking[];
+  page: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface ResidentBookingPayload {
+  amenity_id: string;
+  slot_id?: string;
+  booking_date: string;
+  start_time?: string;
+  end_time?: string;
+  attendee_count: number;
+  apartment_id?: string;
+  resident_notes?: string;
+  accepted_rules: boolean;
+}
+
+export interface ApiError extends Error {
+  status?: number;
+  errors?: Record<string, string[]>;
+}
+
 export interface TimeSlot {
   id: string;
   amenity_id: string;
@@ -753,10 +809,10 @@ class ApiService {
     return result;
   }
 
-  async patchAmenityStatus(id: string, is_active: boolean): Promise<Amenity> {
+  async patchAmenityStatus(id: string, is_active: boolean, updated_at: string): Promise<Amenity> {
     const result = await this.request<Amenity>(`/admin/amenities/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active }),
+      body: JSON.stringify({ is_active, updated_at }),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
@@ -931,7 +987,7 @@ class ApiService {
   ): Promise<AmenityBooking> {
     const result = await this.request<AmenityBooking>(`/admin/amenities/${amenityId}/bookings/${bookingId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, admin_notes: adminNotes }),
+      body: JSON.stringify({ status, admin_notes: adminNotes, ...(status === 'REJECTED' ? { rejection_reason: adminNotes } : {}) }),
     });
     amenityCache.invalidateBookings(amenityId);
     amenityCache.invalidateAmenities();
@@ -1015,20 +1071,43 @@ class ApiService {
     });
   }
 
-  async createResidentBooking(payload: {
-    amenity_id: string;
-    booking_date: string;
-    start_time: string;
-    end_time: string;
-    attendee_count?: number;
-    apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    const result = await this.request<any>('/resident/amenity-bookings', {
+  async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
+    return this.request('/resident/amenities', { signal, cache: 'no-store' });
+  }
+
+  async getResidentAvailability(amenityId: string, date: string, apartmentId: string, signal?: AbortSignal): Promise<{ slots: ResidentAvailableSlot[] }> {
+    const query = new URLSearchParams({ date, apartment_id: apartmentId });
+    return this.request(`/resident/amenities/${amenityId}/availability?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentBookings(status: string, page: number, signal?: AbortSignal): Promise<ResidentBookingList> {
+    const query = new URLSearchParams({ page: String(page) });
+    if (status) query.set('status', status);
+    return this.request(`/resident/amenity-bookings?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentBooking(id: string, signal?: AbortSignal): Promise<ResidentAmenityBooking> {
+    return this.request(`/resident/amenity-bookings/${id}`, { signal, cache: 'no-store' });
+  }
+
+  async cancelResidentBooking(booking: ResidentAmenityBooking, reason: string): Promise<{ success: boolean; booking: ResidentAmenityBooking }> {
+    const result = await this.request<{ success: boolean; booking: ResidentAmenityBooking }>(`/resident/amenity-bookings/${booking.id}/cancel`, {
+      method: 'POST', body: JSON.stringify({ reason }),
+    });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
+  }
+
+  async createResidentBooking(payload: ResidentBookingPayload): Promise<{ success: boolean; booking: ResidentAmenityBooking }> {
+    const result = await this.request<{ success: boolean; booking: ResidentAmenityBooking }>('/resident/amenity-bookings', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateAmenities();
+    amenityCache.invalidateBookings(payload.amenity_id);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', payload.amenity_id, result.booking.id);
     return result;
   }
 

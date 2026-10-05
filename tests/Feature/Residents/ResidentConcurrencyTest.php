@@ -19,13 +19,19 @@ class ResidentConcurrencyTest extends TestCase
     {
         parent::setUp();
 
+        if (! getenv('TEST_HTTP_BASE_URL')) {
+            $this->markTestSkipped('Set TEST_HTTP_BASE_URL to a test server using the same dedicated database.');
+        }
+        $this->assertStringEndsWith('_test', DB::connection()->getDatabaseName());
+        $this->baseUrl = rtrim(getenv('TEST_HTTP_BASE_URL'), '/').'/api/v1';
+
         if (! function_exists('curl_init')) {
             $this->markTestSkipped('cURL extension is not installed or enabled.');
         }
 
-        $ch = curl_init('http://127.0.0.1:8000/up');
+        $ch = curl_init(rtrim(getenv('TEST_HTTP_BASE_URL'), '/').'/up');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
         curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AuthenticateBearer;
 use App\Http\Middleware\CheckPermission;
+use App\Http\Middleware\LockAmenityConfiguration;
 use App\Http\Middleware\RequestIdMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -26,6 +27,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.bearer' => AuthenticateBearer::class,
             'permission' => CheckPermission::class,
+            'amenity.lock' => LockAmenityConfiguration::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
