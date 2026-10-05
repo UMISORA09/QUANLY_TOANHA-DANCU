@@ -44,4 +44,15 @@ class VercelApiAdapter implements VercelApiClientInterface
 
         return [];
     }
+
+    public function probeDeploymentHealth(string $url, int $timeout = 3): bool
+    {
+        try {
+            $resp = Http::timeout($timeout)->withoutVerifying()->get($url);
+
+            return $resp->successful() || in_array($resp->status(), [401, 403], true);
+        } catch (Throwable) {
+            return false;
+        }
+    }
 }
