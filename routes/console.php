@@ -10,5 +10,6 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::call(function (FreshnessService $freshness) {
+    $freshness->getOverview(true, true);
     $freshness->recordCollectorHeartbeat();
 })->everyMinute()->name('freshness-collector-heartbeat');

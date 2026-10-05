@@ -38,8 +38,9 @@ class VercelApiAdapter implements VercelApiClientInterface
 
                 return is_array($deployments) ? $deployments : [];
             }
-        } catch (Throwable) {
-            // Gracefully handle network / auth issues
+            throw new \RuntimeException('Vercel Deployments API HTTP '.$response->status());
+        } catch (Throwable $e) {
+            throw new \RuntimeException('Vercel Deployments API unavailable', 0, $e);
         }
 
         return [];
@@ -48,9 +49,9 @@ class VercelApiAdapter implements VercelApiClientInterface
     public function probeDeploymentHealth(string $url, int $timeout = 3): bool
     {
         try {
-            $resp = Http::timeout($timeout)->withoutVerifying()->get($url);
+            $resp = Http::timeout($timeout)->get($url);
 
-            return $resp->successful() || in_array($resp->status(), [401, 403], true);
+            return $resp->successful();
         } catch (Throwable) {
             return false;
         }

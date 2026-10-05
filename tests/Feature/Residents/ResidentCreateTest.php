@@ -531,9 +531,7 @@ class ResidentCreateTest extends TestCase
         echo 'Response body: '.json_encode($body, JSON_UNESCAPED_UNICODE).PHP_EOL;
         echo '============================================================'.PHP_EOL;
 
-        // Kiểm tra xem database constraint uq_resident_apt có chặn duplicate không
-        // Nếu MySQL chặn: response sẽ là 500 do QueryException Duplicate Entry (hoặc 409/422 nếu có catch)
-        $this->assertTrue(in_array($status, [409, 422, 500], true), "Actual HTTP status: {$status}");
+        $response->assertUnprocessable()->assertJsonValidationErrors('user_id');
 
         // Tổng số record (bao gồm trashed) không được vượt quá 1 nếu unique constraint chặn, hoặc báo cáo chính xác
         $totalRecordsIncludingTrashed = Resident::withTrashed()

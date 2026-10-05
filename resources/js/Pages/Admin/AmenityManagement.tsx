@@ -612,7 +612,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       action: async () => {
         setIsConfirmLoading(true);
         try {
-          await api.patchAmenityStatus(amenity.id, nextStatus);
+          await api.patchAmenityStatus(amenity.id, nextStatus, amenity.updated_at);
           showToast(`Đã ${nextStatus ? 'kích hoạt' : 'tạm ngưng'} tiện ích thành công.`);
           await fetchAmenities(true);
         } catch (err: any) {

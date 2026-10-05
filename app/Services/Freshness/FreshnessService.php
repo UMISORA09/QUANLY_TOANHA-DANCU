@@ -56,7 +56,7 @@ class FreshnessService
      * Thu thập và tính toán toàn bộ Freshness Overview (Data + Monitoring)
      * Phản ánh 100% dữ liệu thực tế, không mock, không tự làm tươi timestamps.
      */
-    public function getOverview(bool $forceRefresh = false): array
+    public function getOverview(bool $forceRefresh = false, bool $recordIncidents = false): array
     {
         $now = Carbon::now('Asia/Ho_Chi_Minh');
         $collectorTimestamp = $now->toIso8601String();
@@ -86,7 +86,7 @@ class FreshnessService
         $worstSource = $assessment['worst_source'];
 
         // Ghi nhận và theo dõi các sự cố Freshness bền vững với DB là Single Source of Truth
-        $incidents = $this->trackIncidents($allSources);
+        $incidents = $recordIncidents ? $this->trackIncidents($allSources) : $this->readIncidents();
 
         // Tính toán các metrics dữ liệu: Newest Data Age, Oldest Data Age
         $newestDataAge = $database['newest_data_age_seconds'] ?? null;
@@ -228,7 +228,10 @@ class FreshnessService
             return self::STATE_STALE;
         }
 
-        $knownStates = array_filter($states, fn ($s) => $s !== self::STATE_UNKNOWN);
+        if (in_array(self::STATE_UNKNOWN, $states, true)) {
+            return self::STATE_UNKNOWN;
+        }
+        $knownStates = $states;
         if (empty($knownStates)) {
             return self::STATE_UNKNOWN;
         }
@@ -409,6 +412,11 @@ class FreshnessService
             }
         }
 
+        return $this->readIncidents();
+    }
+
+    private function readIncidents(): array
+    {
         try {
             return FreshnessIncident::query()
                 ->orderBy('detected_at', 'desc')

@@ -14,7 +14,7 @@ class AuthenticateBearer
     /**
      * Handle an incoming request.
      */
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $mode = 'legacy'): Response
     {
         $authHeader = $request->header('Authorization');
 
@@ -52,7 +52,7 @@ class AuthenticateBearer
 
         if ($session) {
             $user = User::with('roles.permissions')->find($session->user_id);
-        } else {
+        } elseif ($mode !== 'strict') {
             // 2. Fallback kiểm tra smart_token format (phục vụ tương thích ngược nếu chưa lưu session vào DB)
             // Cấu trúc token: smart_token_{uuid}_{random} hoặc kiểm tra token demo
             if (str_starts_with($token, 'smart_token_')) {

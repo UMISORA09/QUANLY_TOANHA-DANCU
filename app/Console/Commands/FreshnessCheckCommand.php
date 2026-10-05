@@ -30,7 +30,7 @@ class FreshnessCheckCommand extends Command
     public function handle(FreshnessService $freshnessService): int
     {
         $force = (bool) $this->option('force');
-        $overview = $freshnessService->getOverview($force);
+        $overview = $freshnessService->getOverview($force, true);
 
         if ($this->option('json')) {
             $this->output->writeln(json_encode($overview, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));

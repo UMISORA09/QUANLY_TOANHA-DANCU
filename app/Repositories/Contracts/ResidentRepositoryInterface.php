@@ -39,7 +39,7 @@ interface ResidentRepositoryInterface
      */
     public function getApartments(): array;
 
-    public function findApartment(string $apartmentId): ?Apartment;
+    public function findApartment(string $apartmentId, bool $lock = false): ?Apartment;
 
     public function findUser(string $userId): ?User;
 

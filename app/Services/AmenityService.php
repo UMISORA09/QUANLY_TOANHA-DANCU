@@ -4,10 +4,15 @@ namespace App\Services;
 
 use App\DTOs\AmenityFilterDTO;
 use App\Events\AmenityCreated;
+use App\Events\AmenityDeleted;
 use App\Events\AmenityUpdated;
 use App\Repositories\Contracts\AmenityRepositoryInterface;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -86,7 +91,8 @@ class AmenityService
      */
     public function __construct(
         protected SearchManager $searchManager,
-        protected AmenityRepositoryInterface $repository
+        protected AmenityRepositoryInterface $repository,
+        protected Request $request
     ) {}
 
     /**
@@ -185,6 +191,14 @@ class AmenityService
      */
     public function createAmenity(array $data): array
     {
+        return DB::transaction(fn (): array => $this->createRecord($data));
+    }
+
+    /** @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function createRecord(array $data): array
+    {
         $amenityCode = strtoupper(trim((string) $data['amenity_code']));
 
         // Kiểm tra trùng mã tiện ích trong hệ thống
@@ -216,6 +230,7 @@ class AmenityService
 
         $createdRecord = $this->repository->create($toCreate);
         $created = (array) $this->getAmenityById($createdRecord['id']);
+        $this->audit($createdRecord['id'], 'INSERT', null, $created);
         AmenityCreated::dispatch($created);
 
         return $created;
@@ -229,9 +244,17 @@ class AmenityService
      */
     public function updateAmenity(string $id, array $data): array
     {
-        $existing = $this->repository->findById($id);
+        return DB::transaction(fn (): array => $this->updateRecord($id, $data), 3);
+    }
+
+    /** @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function updateRecord(string $id, array $data): array
+    {
+        $existing = $this->repository->findById($id, true);
         if (! $existing) {
-            throw new InvalidArgumentException('Không tìm thấy tiện ích hoặc đã bị xóa.');
+            throw (new ModelNotFoundException)->setModel('Amenity', [$id]);
         }
 
         // 1. Kiểm tra mã tiện ích nếu có cập nhật
@@ -302,12 +325,46 @@ class AmenityService
             $update['is_active'] = $data['is_active'] ? 1 : 0;
         }
 
-        $this->repository->update($id, $update);
+        $update['updated_at'] = $data['updated_at'];
+        if (! $this->repository->update($id, $update)) {
+            throw new AmenityConflictException;
+        }
 
         $updated = (array) $this->getAmenityById($id);
+        $this->audit($id, 'UPDATE', (array) $existing, $updated);
         AmenityUpdated::dispatch($id, $updated);
 
         return $updated;
+    }
+
+    public function deleteAmenity(string $id): void
+    {
+        DB::transaction(function () use ($id): void {
+            $existing = $this->repository->findById($id, true);
+            if (! $existing) {
+                throw (new ModelNotFoundException)->setModel('Amenity', [$id]);
+            }
+            if ($this->repository->countActiveBookings($id) > 0) {
+                throw new AmenityConflictException;
+            }
+            $this->repository->softDelete($id);
+            $this->audit($id, 'DELETE', (array) $existing, ['deleted_at' => now()->toIso8601String(), 'is_active' => false]);
+            AmenityDeleted::dispatch($id);
+        }, 3);
+    }
+
+    /** @param array<string, mixed>|null $oldData
+     * @param  array<string, mixed>  $newData
+     */
+    private function audit(string $id, string $action, ?array $oldData, array $newData): void
+    {
+        $this->repository->recordAudit([
+            'id' => (string) Str::uuid(), 'table_name' => 'amenities', 'record_id' => $id, 'action' => $action,
+            'performed_by_user_id' => $this->request->user()?->id, 'client_ip_address' => $this->request->ip(),
+            'user_agent' => Str::limit($this->request->userAgent() ?? '', 500, ''),
+            'old_data' => $oldData === null ? null : json_encode($oldData, JSON_THROW_ON_ERROR),
+            'new_data' => json_encode($newData, JSON_THROW_ON_ERROR), 'created_at' => now(),
+        ]);
     }
 
     /**

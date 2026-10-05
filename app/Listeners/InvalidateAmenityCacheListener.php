@@ -5,8 +5,7 @@ namespace App\Listeners;
 use App\Events\AmenityCreated;
 use App\Events\AmenityDeleted;
 use App\Events\AmenityUpdated;
-use App\Services\Search\SearchCacheService;
-use Illuminate\Support\Facades\Cache;
+use App\Services\ResidentAmenityBookingService;
 
 class InvalidateAmenityCacheListener
 {
@@ -15,11 +14,6 @@ class InvalidateAmenityCacheListener
      */
     public function handle(AmenityCreated|AmenityUpdated|AmenityDeleted $event): void
     {
-        if (! Cache::has('amenities_data_version')) {
-            Cache::forever('amenities_data_version', 1);
-        }
-        Cache::increment('amenities_data_version');
-
-        SearchCacheService::invalidate();
+        app(ResidentAmenityBookingService::class)->invalidateAfterCommit();
     }
 }

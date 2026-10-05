@@ -81,7 +81,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
         if (! empty($amenityIds)) {
             $bookingsData = DB::table('amenity_bookings')
                 ->whereIn('amenity_id', $amenityIds)
-                ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
+                ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
                 ->whereNull('deleted_at')
                 ->select('amenity_id', DB::raw('COUNT(*) as active_count'))
                 ->groupBy('amenity_id')
@@ -145,12 +145,13 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
         ];
     }
 
-    public function findById(string $id): ?object
+    public function findById(string $id, bool $lock = false): ?object
     {
-        return DB::table('amenities')
+        $query = DB::table('amenities')
             ->where('id', $id)
-            ->whereNull('deleted_at')
-            ->first();
+            ->whereNull('deleted_at');
+
+        return ($lock ? $query->lockForUpdate() : $query)->first();
     }
 
     public function findByCode(string $code, ?string $excludeId = null): ?object
@@ -212,17 +213,27 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
      */
     public function update(string $id, array $data): bool
     {
-        $data['updated_at'] = now();
+        $expectedTimestamp = Carbon::parse($data['updated_at'])->setTimezone(config('app.timezone'))->startOfSecond();
+        // ponytail: datetime has second precision; advance monotonically, use fractional timestamps if write throughput requires it.
+        $data['updated_at'] = now()->max($expectedTimestamp->copy()->addSecond())->format('Y-m-d H:i:s');
 
-        return (bool) DB::table('amenities')->where('id', $id)->update($data);
+        return (bool) DB::table('amenities')->where('id', $id)->whereNull('deleted_at')
+            ->where('updated_at', $expectedTimestamp->format('Y-m-d H:i:s'))->update($data);
     }
 
     public function softDelete(string $id): bool
     {
-        return (bool) DB::table('amenities')->where('id', $id)->update([
+        return (bool) DB::table('amenities')->where('id', $id)->whereNull('deleted_at')->update([
             'deleted_at' => now(),
+            'updated_at' => now(),
             'is_active' => 0,
         ]);
+    }
+
+    /** @param array<string, mixed> $data */
+    public function recordAudit(array $data): void
+    {
+        DB::table('audit_logs')->insert($data);
     }
 
     /**
@@ -312,15 +323,15 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
         return DB::table('amenity_time_slots')
             ->where('amenity_id', $amenityId)
             ->orderBy('day_of_week', 'asc')
-            ->orderBy('start_time', 'asc')
+            ->orderBy('slot_start_time', 'asc')
             ->get()
             ->map(function ($item) {
                 return [
                     'id' => $item->id,
                     'amenity_id' => $item->amenity_id,
                     'day_of_week' => (int) $item->day_of_week,
-                    'start_time' => mb_substr((string) $item->start_time, 0, 5),
-                    'end_time' => mb_substr((string) $item->end_time, 0, 5),
+                    'start_time' => mb_substr((string) $item->slot_start_time, 0, 5),
+                    'end_time' => mb_substr((string) $item->slot_end_time, 0, 5),
                     'is_active' => (bool) $item->is_active,
                 ];
             })
@@ -334,14 +345,15 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
     {
         return DB::table('amenity_blackouts')
             ->where('amenity_id', $amenityId)
-            ->orderBy('start_datetime', 'desc')
+            ->orderBy('blackout_date', 'desc')
             ->get()
             ->map(function ($item) {
                 return [
                     'id' => $item->id,
                     'amenity_id' => $item->amenity_id,
-                    'start_datetime' => Carbon::parse($item->start_datetime)->toIso8601String(),
-                    'end_datetime' => Carbon::parse($item->end_datetime)->toIso8601String(),
+                    'blackout_date' => $item->blackout_date,
+                    'start_time' => $item->start_time,
+                    'end_time' => $item->end_time,
                     'reason' => $item->reason,
                     'created_at' => Carbon::parse($item->created_at)->toIso8601String(),
                 ];
@@ -357,7 +369,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
     {
         $query = DB::table('amenity_bookings')
             ->leftJoin('apartments', 'amenity_bookings.apartment_id', '=', 'apartments.id')
-            ->leftJoin('users', 'amenity_bookings.user_id', '=', 'users.id')
+            ->leftJoin('users', 'amenity_bookings.resident_user_id', '=', 'users.id')
             ->where('amenity_bookings.amenity_id', $amenityId)
             ->whereNull('amenity_bookings.deleted_at')
             ->select(
@@ -384,7 +396,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
     {
         return (int) DB::table('amenity_bookings')
             ->where('amenity_id', $amenityId)
-            ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
+            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
             ->whereNull('deleted_at')
             ->count();
     }
@@ -393,17 +405,24 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
     {
         $activeSlotBookings = DB::table('amenity_bookings')
             ->where('amenity_id', $amenityId)
-            ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
+            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
             ->whereNull('deleted_at')
-            ->groupBy('booking_date', 'start_time', 'end_time')
-            ->selectRaw('COUNT(*) as total_bookings, COALESCE(SUM(attendee_count), 0) as total_attendees')
+            ->select('booking_date', 'start_time', 'end_time', 'attendee_count')
             ->get();
 
+        $events = [];
+        foreach ($activeSlotBookings as $booking) {
+            $people = max(1, (int) $booking->attendee_count);
+            $events[$booking->booking_date][] = [$booking->start_time, $people];
+            $events[$booking->booking_date][] = [$booking->end_time, -$people];
+        }
         $peakBookings = 0;
-        foreach ($activeSlotBookings as $slotStat) {
-            $peak = max((int) $slotStat->total_bookings, (int) $slotStat->total_attendees);
-            if ($peak > $peakBookings) {
-                $peakBookings = $peak;
+        foreach ($events as $dayEvents) {
+            usort($dayEvents, fn (array $left, array $right): int => $left[0] <=> $right[0] ?: $left[1] <=> $right[1]);
+            $currentPeople = 0;
+            foreach ($dayEvents as [, $delta]) {
+                $currentPeople += $delta;
+                $peakBookings = max($peakBookings, $currentPeople);
             }
         }
 
@@ -483,7 +502,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
 
         $bookings = DB::table('amenity_bookings')
             ->whereIn('amenity_id', $amenityIds)
-            ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
+            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
             ->whereNull('deleted_at')
             ->select('amenity_id', DB::raw('count(*) as count'))
             ->groupBy('amenity_id')

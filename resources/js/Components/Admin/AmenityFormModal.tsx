@@ -290,7 +290,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
     if (!amenity?.id) return;
     setIsReloading(true);
     try {
-      const fresh = await api.getAmenity(amenity.id);
+      const fresh = await api.getAmenity(amenity.id, true);
       setCategoryId(fresh.category_id);
       setBlockId(fresh.block_id || '');
       setAmenityName(fresh.amenity_name);
@@ -306,8 +306,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
       setCoverImageUrl(fresh.cover_image_url || '');
       setGalleryImages(Array.isArray(fresh.gallery_images) ? fresh.gallery_images : []);
       setIsActive(fresh.is_active);
-      // Sync fresh version
-      amenity.version = fresh.version;
+      amenity.updated_at = fresh.updated_at;
       setIsConflict(false);
       setErrorMessage(null);
     } catch (err: any) {
@@ -367,7 +366,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
       if (isEdit && amenity) {
         await api.updateAmenity(amenity.id, {
           ...payload,
-          version: amenity.version || 1,
+          updated_at: amenity.updated_at,
         });
       } else {
         await api.createAmenity(payload);
@@ -378,7 +377,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
       const msg = err.message || 'Đã xảy ra lỗi khi lưu tiện ích.';
       setErrorMessage(msg);
       if (
-        msg.includes('409') ||
+        err.status === 409 ||
         msg.toLowerCase().includes('người dùng khác') ||
         msg.toLowerCase().includes('phiên bản')
       ) {

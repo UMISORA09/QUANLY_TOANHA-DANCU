@@ -182,7 +182,7 @@ class GitHubApiAdapter implements GitHubApiClientInterface
             ]);
 
             if (! $deploymentsRes->successful()) {
-                return [];
+                throw new \RuntimeException('GitHub Deployments API HTTP '.$deploymentsRes->status());
             }
 
             $deployments = $deploymentsRes->json();
@@ -222,6 +222,8 @@ class GitHubApiAdapter implements GitHubApiClientInterface
                 $statuses = [];
                 if (isset($responses[$id]) && $responses[$id]->successful()) {
                     $statuses = is_array($responses[$id]->json()) ? $responses[$id]->json() : [];
+                } else {
+                    throw new \RuntimeException('GitHub deployment statuses unavailable');
                 }
                 $result[] = [
                     'deployment' => $dep,
@@ -230,8 +232,8 @@ class GitHubApiAdapter implements GitHubApiClientInterface
             }
 
             return $result;
-        } catch (Throwable) {
-            return [];
+        } catch (Throwable $e) {
+            throw new \RuntimeException('GitHub Deployments API unavailable', 0, $e);
         }
     }
 

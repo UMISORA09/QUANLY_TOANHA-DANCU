@@ -11,6 +11,7 @@ use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ReceptionPortalController;
+use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\RoleController;
@@ -171,7 +172,14 @@ Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'ove
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview']);
 Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket']);
-Route::post('/api/v1/resident/amenity-bookings', [ResidentPortalController::class, 'createAmenityBooking']);
+Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
+    Route::get('amenities/{id}/availability', [ResidentAmenityBookingController::class, 'availability']);
+    Route::post('amenity-bookings', [ResidentAmenityBookingController::class, 'store']);
+    Route::get('amenity-bookings', [ResidentAmenityBookingController::class, 'bookings']);
+    Route::get('amenity-bookings/{id}', [ResidentAmenityBookingController::class, 'show']);
+    Route::post('amenity-bookings/{id}/cancel', [ResidentAmenityBookingController::class, 'cancel']);
+});
 Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
 
@@ -406,44 +414,44 @@ Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
-Route::prefix('api/v1/admin')->group(function () {
+Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     // Tòa nhà / Blocks
     Route::get('blocks', [AmenityController::class, 'getBlocks']);
 
     // Danh mục tiện ích
     Route::get('amenity-categories', [AmenityController::class, 'getCategories']);
-    Route::post('amenity-categories', [AmenityController::class, 'createCategory']);
-    Route::put('amenity-categories/{id}', [AmenityController::class, 'updateCategory']);
-    Route::delete('amenity-categories/{id}', [AmenityController::class, 'deleteCategory']);
+    Route::post('amenity-categories', [AmenityController::class, 'createCategory'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CREATE']);
+    Route::put('amenity-categories/{id}', [AmenityController::class, 'updateCategory'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::delete('amenity-categories/{id}', [AmenityController::class, 'deleteCategory'])->middleware(['auth.bearer:strict', 'permission:AMENITY:DELETE']);
 
     // Tiện ích
     Route::get('amenities', [AmenityController::class, 'getAmenities']);
-    Route::post('amenities', [AmenityController::class, 'createAmenity']);
+    Route::post('amenities', [AmenityController::class, 'createAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CREATE']);
     Route::get('amenities/{id}', [AmenityController::class, 'getAmenity']);
-    Route::put('amenities/{id}', [AmenityController::class, 'updateAmenity']);
-    Route::patch('amenities/{id}/status', [AmenityController::class, 'toggleAmenityStatus']);
-    Route::delete('amenities/{id}', [AmenityController::class, 'deleteAmenity']);
-    Route::get('amenities/{id}/bookings', [AmenityController::class, 'getAmenityBookings']);
-    Route::patch('amenities/{amenityId}/bookings/{bookingId}/status', [AmenityController::class, 'updateBookingStatus']);
-    Route::post('amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking']);
+    Route::put('amenities/{id}', [AmenityController::class, 'updateAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::patch('amenities/{id}/status', [AmenityController::class, 'toggleAmenityStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::delete('amenities/{id}', [AmenityController::class, 'deleteAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:DELETE']);
+    Route::get('amenities/{id}/bookings', [AmenityController::class, 'getAmenityBookings'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::patch('amenities/{amenityId}/bookings/{bookingId}/status', [AmenityController::class, 'updateBookingStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::post('amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
 
     // Khung giờ hoạt động (Time Slots)
     Route::get('amenities/{amenityId}/time-slots', [AmenityController::class, 'getTimeSlots']);
-    Route::post('amenities/{amenityId}/time-slots', [AmenityController::class, 'createTimeSlot']);
-    Route::put('amenities/{amenityId}/time-slots/{slotId}', [AmenityController::class, 'updateTimeSlot']);
-    Route::patch('amenities/{amenityId}/time-slots/{slotId}/status', [AmenityController::class, 'toggleTimeSlotStatus']);
-    Route::delete('amenities/{amenityId}/time-slots/{slotId}', [AmenityController::class, 'deleteTimeSlot']);
+    Route::post('amenities/{amenityId}/time-slots', [AmenityController::class, 'createTimeSlot'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
+    Route::put('amenities/{amenityId}/time-slots/{slotId}', [AmenityController::class, 'updateTimeSlot'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
+    Route::patch('amenities/{amenityId}/time-slots/{slotId}/status', [AmenityController::class, 'toggleTimeSlotStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
+    Route::delete('amenities/{amenityId}/time-slots/{slotId}', [AmenityController::class, 'deleteTimeSlot'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
 
     // Ngày đóng cửa bảo trì (Blackouts)
     Route::get('amenities/{amenityId}/blackouts', [AmenityController::class, 'getBlackouts']);
-    Route::post('amenities/{amenityId}/blackouts', [AmenityController::class, 'createBlackout']);
-    Route::put('amenities/{amenityId}/blackouts/{blackoutId}', [AmenityController::class, 'updateBlackout']);
-    Route::delete('amenities/{amenityId}/blackouts/{blackoutId}', [AmenityController::class, 'deleteBlackout']);
+    Route::post('amenities/{amenityId}/blackouts', [AmenityController::class, 'createBlackout'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
+    Route::put('amenities/{amenityId}/blackouts/{blackoutId}', [AmenityController::class, 'updateBlackout'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
+    Route::delete('amenities/{amenityId}/blackouts/{blackoutId}', [AmenityController::class, 'deleteBlackout'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
 });
 
 // Đặt chỗ tiện ích (Booking Enforcement)
-Route::post('/api/v1/amenities/{id}/bookings', [AmenityController::class, 'bookAmenity']);
-Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking']);
+Route::post('/api/v1/amenities/{id}/bookings', [ResidentAmenityBookingController::class, 'store'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [ResidentAmenityBookingController::class, 'cancelAlias'])->middleware('auth.bearer:strict');
 
 // Phân hệ Quản trị CI/CD & DevOps Dashboard APIs
 Route::prefix('api/admin/cicd')->group(function () {

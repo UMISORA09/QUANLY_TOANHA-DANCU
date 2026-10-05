@@ -244,7 +244,10 @@ class DatabaseFreshnessStrategy implements FreshnessSourceStrategyInterface
             return FreshnessService::STATE_STALE;
         }
 
-        $knownStates = array_filter($states, fn ($s) => $s !== FreshnessService::STATE_UNKNOWN);
+        if (in_array(FreshnessService::STATE_UNKNOWN, $states, true)) {
+            return FreshnessService::STATE_UNKNOWN;
+        }
+        $knownStates = $states;
         if (empty($knownStates)) {
             return FreshnessService::STATE_UNKNOWN;
         }

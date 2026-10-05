@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { api } from '../Services/api';
 import { AppLayout } from '../Components/Layout/AppLayout';
+import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -82,6 +83,19 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       // ignore
     }
   }, [residentType]);
+
+  useEffect(() => {
+    const syncTab = () => setActiveMenuId(new URLSearchParams(window.location.search).get('tab') || (residentType === 'TENANT' ? 'rentals' : 'overview'));
+    window.addEventListener('popstate', syncTab);
+    return () => window.removeEventListener('popstate', syncTab);
+  }, [residentType]);
+
+  const selectMenu = (id: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', id);
+    window.history.pushState({}, '', url);
+    setActiveMenuId(id);
+  };
 
   const [data, setData] = useState<any>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -201,7 +215,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       role="resident"
       userRole={userRole as any}
       activeItemId={activeMenuId}
-      onItemClick={setActiveMenuId}
+      onItemClick={selectMenu}
       customItems={menuItems}
       userName={userDisplayName}
       userEmail={userDisplayEmail}
@@ -480,6 +494,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
               )}
             </div>
           </div>
+        ) : activeMenuId === 'amenities' ? (
+          <ResidentAmenityBookingPanel />
         ) : activeMenuId === 'overview' ? (
           /* ================= VIEW 2: TỔNG QUAN CƯ DÂN ================= */
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">

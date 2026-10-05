@@ -328,8 +328,9 @@ class ResidentCreateConcurrencyTest extends TestCase
         }
         echo '============================================================'.PHP_EOL;
 
-        // Lưu ý theo User Rule: Nếu COUNT = 2:
-        // → CONCURRENCY / BUSINESS RULE BUG. Báo cáo, không sửa code.
-        $this->assertLessThanOrEqual(2, $activeHeadCount);
+        $this->assertSame(1, $activeHeadCount);
+        $statuses = [$resA['status'], $resB['status']];
+        sort($statuses);
+        $this->assertSame([201, 422], $statuses);
     }
 }

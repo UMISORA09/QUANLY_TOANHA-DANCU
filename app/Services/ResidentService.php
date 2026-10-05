@@ -66,32 +66,33 @@ class ResidentService
      */
     public function create(array $data): Resident
     {
-        $apartmentId = $data['apartment_id'];
-        $userId = $data['user_id'];
-        $isHead = ! empty($data['is_head_of_household']);
+        return DB::transaction(function () use ($data) {
+            $apartmentId = $data['apartment_id'];
+            $userId = $data['user_id'];
+            $isHead = ! empty($data['is_head_of_household']);
+            $this->repository->findApartment($apartmentId, true);
 
-        // 1. Kiểm tra cư dân đã tồn tại trong căn hộ chưa qua Repository
-        $existingResident = $this->repository->findByUserAndApartment($userId, $apartmentId);
+            // 1. Kiểm tra cư dân đã tồn tại trong căn hộ chưa qua Repository
+            $existingResident = $this->repository->findByUserAndApartment($userId, $apartmentId);
 
-        if ($existingResident) {
-            throw ValidationException::withMessages([
-                'user_id' => 'Người dùng này đã được đăng ký cư trú tại căn hộ này.',
-            ]);
-        }
-
-        // 2. Kiểm tra quy tắc Chủ hộ: Một căn hộ chỉ có duy nhất 1 chủ hộ active
-        if ($isHead) {
-            $existingHead = $this->repository->findHouseholdHead($apartmentId);
-
-            if ($existingHead) {
-                $headName = $existingHead->user?->full_name ?? 'Cư dân hiện tại';
+            if ($existingResident) {
                 throw ValidationException::withMessages([
-                    'is_head_of_household' => "Căn hộ này đã có Chủ hộ đang hoạt động ({$headName}). Mỗi căn hộ chỉ được có duy nhất một chủ hộ.",
+                    'user_id' => 'Người dùng này đã được đăng ký cư trú tại căn hộ này.',
                 ]);
             }
-        }
 
-        return DB::transaction(function () use ($data, $isHead) {
+            // 2. Kiểm tra quy tắc Chủ hộ: Một căn hộ chỉ có duy nhất 1 chủ hộ active
+            if ($isHead) {
+                $existingHead = $this->repository->findHouseholdHead($apartmentId);
+
+                if ($existingHead) {
+                    $headName = $existingHead->user?->full_name ?? 'Cư dân hiện tại';
+                    throw ValidationException::withMessages([
+                        'is_head_of_household' => "Căn hộ này đã có Chủ hộ đang hoạt động ({$headName}). Mỗi căn hộ chỉ được có duy nhất một chủ hộ.",
+                    ]);
+                }
+            }
+
             if ($isHead && empty($data['relationship_to_head'])) {
                 $data['relationship_to_head'] = 'SELF';
             }
@@ -103,7 +104,7 @@ class ResidentService
             $resident = $this->repository->create($data);
 
             return $this->repository->loadRelations($resident);
-        });
+        }, 3);
     }
 
     /**
@@ -137,7 +138,8 @@ class ResidentService
             }
         }
 
-        return DB::transaction(function () use ($id, $data) {
+        return DB::transaction(function () use ($id, $data, $resident) {
+            $this->repository->findApartment($resident->apartment_id, true);
             // Khóa dòng với lockForUpdate để tránh race condition
             $lockedResident = $this->repository->findAndLockForUpdate($id);
 
@@ -210,7 +212,8 @@ class ResidentService
             throw new ResidentNotFoundException('Cư dân không tồn tại trong hệ thống.', 404);
         }
 
-        return DB::transaction(function () use ($id) {
+        return DB::transaction(function () use ($id, $resident) {
+            $this->repository->findApartment($resident->apartment_id, true);
             $lockedResident = $this->repository->findAndLockForUpdate($id);
 
             if (! $lockedResident) {

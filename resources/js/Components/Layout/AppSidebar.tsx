@@ -62,7 +62,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       return can('ROLE:VIEW|USER:VIEW');
     }
     if (item.id === 'amenities') {
-      return can('AMENITY:VIEW');
+      return role === 'resident' || can('AMENITY:VIEW');
     }
     if (item.id === 'billing') {
       return can('INVOICE:VIEW');

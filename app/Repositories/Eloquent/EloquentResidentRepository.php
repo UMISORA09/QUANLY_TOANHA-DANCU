@@ -65,7 +65,7 @@ class EloquentResidentRepository implements ResidentRepositoryInterface
 
     public function findByUserAndApartment(string $userId, string $apartmentId): ?Resident
     {
-        return Resident::where('apartment_id', $apartmentId)
+        return Resident::withTrashed()->where('apartment_id', $apartmentId)
             ->where('user_id', $userId)
             ->first();
     }
@@ -129,9 +129,9 @@ class EloquentResidentRepository implements ResidentRepositoryInterface
             ->toArray();
     }
 
-    public function findApartment(string $apartmentId): ?Apartment
+    public function findApartment(string $apartmentId, bool $lock = false): ?Apartment
     {
-        return Apartment::find($apartmentId);
+        return Apartment::query()->when($lock, fn ($query) => $query->lockForUpdate())->find($apartmentId);
     }
 
     public function findUser(string $userId): ?User

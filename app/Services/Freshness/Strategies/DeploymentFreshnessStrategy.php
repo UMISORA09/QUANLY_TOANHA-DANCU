@@ -39,6 +39,11 @@ class DeploymentFreshnessStrategy implements FreshnessSourceStrategyInterface
 
         try {
             $deployments = $this->cicdService->getDeployments($force);
+            foreach ($deployments as $deployment) {
+                if (($deployment['status'] ?? '') === 'unavailable') {
+                    throw new \RuntimeException($deployment['error'] ?? 'Deployment API unavailable');
+                }
+            }
             if (empty($deployments)) {
                 return [
                     'source' => 'deployment',

@@ -11,7 +11,7 @@ interface AmenityRepositoryInterface
      */
     public function getPaginated(AmenityFilterDTO $filter): array;
 
-    public function findById(string $id): ?object;
+    public function findById(string $id, bool $lock = false): ?object;
 
     public function findByCode(string $code, ?string $excludeId = null): ?object;
 
@@ -27,6 +27,9 @@ interface AmenityRepositoryInterface
     public function update(string $id, array $data): bool;
 
     public function softDelete(string $id): bool;
+
+    /** @param array<string, mixed> $data */
+    public function recordAudit(array $data): void;
 
     /**
      * @return array<int, array<string, mixed>>

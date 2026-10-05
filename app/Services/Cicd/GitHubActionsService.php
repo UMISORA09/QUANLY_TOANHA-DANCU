@@ -87,10 +87,10 @@ class GitHubActionsService
             $lastDeployedProd = $this->getLastDeployedImageRef('production');
             $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
 
-            $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
+            $prodStatus = $prodConfigured ? ($this->probeLiveUrlHealth(env('PROD_URL')) ? 'healthy' : 'unknown') : 'not_configured';
             $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
-            $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
+            $stagingStatus = $stagingConfigured ? ($this->probeLiveUrlHealth(env('STAGING_URL')) ? 'healthy' : 'unknown') : 'not_configured';
             $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
 
             $security = $this->getSecurityAudit();
@@ -367,7 +367,11 @@ class GitHubActionsService
 
             // 1. Nếu có token GitHub, truy vấn danh sách Deployments thực tế từ GitHub API (Vercel/GitHub Actions) qua Adapter
             if ($this->isLiveGitHubAvailable()) {
-                $rawDeployments = $this->apiClient->getDeploymentsWithStatuses(10);
+                try {
+                    $rawDeployments = $this->apiClient->getDeploymentsWithStatuses(10);
+                } catch (\Throwable) {
+                    return [['id' => 'github', 'environment' => 'unknown', 'status' => 'unavailable', 'deployed_at' => null, 'error' => 'GitHub Deployments API unavailable']];
+                }
                 if (! empty($rawDeployments)) {
                     $deployments = [];
                     foreach ($rawDeployments as $item) {
@@ -456,7 +460,7 @@ class GitHubActionsService
                     return $deployments;
                 }
             } catch (\Throwable $e) {
-                Log::warning('Vercel Deployments API failed: '.$e->getMessage());
+                return [['id' => 'vercel', 'environment' => 'unknown', 'status' => 'unavailable', 'deployed_at' => null, 'error' => 'Vercel Deployments API unavailable']];
             }
 
             // 3. Nếu không có dữ liệu API, trả về trạng thái môi trường thực tế (không fake healthy)
@@ -538,7 +542,7 @@ class GitHubActionsService
                 'status' => $dbLatency !== -1 ? 'operational' : 'degraded',
                 'version' => "local-dev ({$commitSha})",
                 'commit_sha' => $commitSha,
-                'last_deployment' => now()->toIso8601String(),
+                'last_deployment' => null,
                 'response_time_ms' => max(0, $dbLatency),
                 'uptime_percentage' => 'N/A (local)',
                 'branch' => $this->getCurrentBranch(),
@@ -548,7 +552,7 @@ class GitHubActionsService
                 'id' => 'staging',
                 'name' => 'Staging (Máy chủ kiểm thử / Vercel Preview)',
                 'url' => env('STAGING_URL') ?: 'https://quanly-toanha-dancu.vercel.app',
-                'status' => $stagingConfigured ? ($stagingImage ? 'operational' : 'operational') : 'not_configured',
+                'status' => $stagingConfigured ? ($this->probeLiveUrlHealth(env('STAGING_URL')) ? 'operational' : 'unknown') : 'not_configured',
                 'version' => $stagingConfigured ? ($stagingImage ?: "preview-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / STAGING_HOST)',
                 'commit_sha' => $stagingConfigured ? $commitSha : 'N/A',
                 'last_deployment' => $stagingDeployedAt ?: 'N/A',
@@ -561,7 +565,7 @@ class GitHubActionsService
                 'id' => 'production',
                 'name' => 'Production (Vercel Container Runtime)',
                 'url' => $prodUrl,
-                'status' => $prodConfigured ? 'operational' : 'not_configured',
+                'status' => $prodConfigured ? ($this->probeLiveUrlHealth($prodUrl) ? 'operational' : 'unknown') : 'not_configured',
                 'version' => $prodConfigured ? ($prodImage ?: "prod-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / PROD_HOST)',
                 'commit_sha' => $prodConfigured ? $commitSha : 'N/A',
                 'last_deployment' => $prodDeployedAt ?: 'N/A',
