@@ -87,6 +87,7 @@ RUN npm ci --ignore-scripts
 COPY resources/ ./resources/
 COPY vite.config.js tsconfig.json ./
 COPY public/ ./public/
+COPY scripts/ ./scripts/
 
 RUN npm run build
 
@@ -131,6 +132,7 @@ COPY . .
 
 # Sao chép frontend bundles đã build từ frontend-builder
 COPY --from=frontend-builder /app/public/build ./public/build
+COPY --from=frontend-builder /app/public/index.html ./public/index.html
 
 # Tạo classmap autoloader tối ưu cho production
 RUN composer dump-autoload --optimize --no-dev --classmap-authoritative
