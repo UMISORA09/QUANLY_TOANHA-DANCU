@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
 use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\FreshnessController;
@@ -392,6 +393,42 @@ Route::get('/le-tan/phuong-tien', function () {
     return view('welcome');
 });
 Route::get('/an-ninh/vehicles', function () {
+    return view('welcome');
+});
+
+// ==========================================
+// QUẢN LÝ KHỐI, TẦNG & CĂN HỘ (BUILDING, FLOORS & APARTMENTS) - CHỨC NĂNG 2
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    // Khối tòa nhà & Thống kê KPI
+    Route::get('blocks', [BuildingStructureController::class, 'indexBlocks']);
+    Route::get('apartments/stats', [BuildingStructureController::class, 'getStats']);
+
+    // Tầng theo khối (1-N: Block -> Floors)
+    Route::get('blocks/{blockId}/floors', [BuildingStructureController::class, 'indexFloors']);
+    Route::post('blocks/{blockId}/floors', [BuildingStructureController::class, 'storeFloor']);
+    Route::put('floors/{floorId}', [BuildingStructureController::class, 'updateFloor']);
+    Route::delete('floors/{floorId}', [BuildingStructureController::class, 'destroyFloor']);
+
+    // Căn hộ (1-N: Floor -> Apartments)
+    Route::get('apartments', [BuildingStructureController::class, 'indexApartments']);
+    Route::post('apartments', [BuildingStructureController::class, 'storeApartment']);
+    Route::post('apartments/batch-generate', [BuildingStructureController::class, 'batchGenerateApartments']);
+    Route::put('apartments/{id}', [BuildingStructureController::class, 'updateApartment']);
+    Route::patch('apartments/{id}/status', [BuildingStructureController::class, 'updateStatus']);
+    Route::delete('apartments/{id}', [BuildingStructureController::class, 'destroyApartment']);
+});
+
+Route::get('/quan-ly/apartments', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/buildings', function () {
+    return view('welcome');
+});
+Route::get('/admin/buildings', function () {
+    return view('welcome');
+});
+Route::get('/admin/apartments', function () {
     return view('welcome');
 });
 

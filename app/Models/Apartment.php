@@ -75,4 +75,20 @@ class Apartment extends Model
     {
         return $this->belongsTo(User::class, 'current_resident_user_id');
     }
+
+    /**
+     * Khối tòa nhà chứa căn hộ (Quan hệ N-1: Apartment -> Block)
+     */
+    public function block(): BelongsTo
+    {
+        return $this->belongsTo(Block::class, 'block_id');
+    }
+
+    /**
+     * Tầng chứa căn hộ (Quan hệ N-1: Apartment -> Floor)
+     */
+    public function floor(): BelongsTo
+    {
+        return $this->belongsTo(Floor::class, 'floor_id');
+    }
 }
