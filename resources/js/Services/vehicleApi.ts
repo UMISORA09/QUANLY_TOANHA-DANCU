@@ -76,6 +76,8 @@ export interface VehicleResidentOption {
   email?: string;
   resident_type: string;
   is_head_of_household: boolean;
+  apartment_id?: string;
+  apartment_number?: string;
 }
 
 class VehicleApiService {
