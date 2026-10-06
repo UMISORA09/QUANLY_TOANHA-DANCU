@@ -23,7 +23,7 @@ class LockAmenityConfiguration
         }
 
         return DB::transaction(function () use ($request, $next, $amenityId): Response {
-            DB::table('amenities')->where('id', $amenityId)->lockForUpdate()->first();
+            abort_unless(DB::table('amenities')->where('id', $amenityId)->whereNull('deleted_at')->lockForUpdate()->first(), 404);
 
             return $next($request);
         }, 3);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
   Calendar,
@@ -35,7 +35,17 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const rejectionDialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (isOpen && rejectingId) rejectionDialog.current?.showModal();
+    else rejectionDialog.current?.close();
+    if (!isOpen) setRejectingId(null);
+  }, [isOpen, rejectingId]);
 
   const fetchBookings = useCallback(async (force = true) => {
     if (!amenity) return;
@@ -53,6 +63,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen && amenity) {
+      setSuccessMessage(null);
       fetchBookings(true);
     } else {
       setBookings([]);
@@ -81,11 +92,15 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
     };
   }, [isOpen, amenity, onClose, fetchBookings]);
 
-  const handleUpdateStatus = async (bookingId: string, status: string) => {
+  const handleUpdateStatus = async (bookingId: string, status: string, reason?: string) => {
     if (!amenity) return;
     try {
       setUpdatingId(bookingId);
-      await api.patchAmenityBookingStatus(amenity.id, bookingId, status);
+      setError(null);
+      setSuccessMessage(null);
+      await api.patchAmenityBookingStatus(amenity.id, bookingId, status, reason);
+      setSuccessMessage(status === 'APPROVED' ? 'Đã duyệt đăng ký tiện ích thành công.' : status === 'REJECTED' ? 'Đã từ chối đăng ký tiện ích.' : status === 'CANCELLED' ? 'Đã hủy đăng ký tiện ích thành công.' : 'Đã cập nhật trạng thái đăng ký thành công.');
+      if (status === 'REJECTED') setRejectingId(null);
       await fetchBookings(true);
     } catch (err: any) {
       setError(err?.message || 'Không thể cập nhật trạng thái đặt chỗ.');
@@ -157,7 +172,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-            Đã hủy
+            {s === 'REJECTED' ? 'Bị từ chối' : 'Đã hủy'}
           </span>
         );
       default:
@@ -237,6 +252,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
           </div>
         </div>
 
+        {successMessage && <p role="status" className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{successMessage}</p>}
         {/* Filter Toolbar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-3">
           <div className="relative w-full sm:w-72">
@@ -268,7 +284,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
+          <div role="alert" className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -400,6 +416,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                             <span>Duyệt</span>
                           </button>
                         )}
+                        {b.status === 'PENDING' && <button type="button" disabled={updatingId === b.id} onClick={() => { setRejectingId(b.id); setRejectionReason(''); setError(null); }} className="rounded-lg bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-50">Từ chối</button>}
                         {['PENDING', 'APPROVED', 'CONFIRMED'].includes(b.status?.toUpperCase()) && (
                           <button
                             type="button"
@@ -421,6 +438,14 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
           </table>
         </div>
 
+        <dialog ref={rejectionDialog} aria-labelledby="amenity-rejection-title" onCancel={(event) => { if (updatingId === rejectingId) event.preventDefault(); else setRejectingId(null); }} onClose={() => setRejectingId(null)} className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50">
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (rejectingId && !updatingId) void handleUpdateStatus(rejectingId, 'REJECTED', rejectionReason.trim()); }}>
+            <h3 id="amenity-rejection-title" className="font-bold text-neutral-900">Từ chối đăng ký tiện ích</h3>
+            <label className="block space-y-2 text-sm">Lý do từ chối<textarea required maxLength={500} value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} disabled={Boolean(updatingId)} className="w-full rounded-xl border border-neutral-200 p-3" /></label>
+            {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+            <div className="flex justify-end gap-2"><button type="button" disabled={Boolean(updatingId)} onClick={() => setRejectingId(null)} className="rounded-lg border px-3 py-2 text-sm">Đóng</button><button type="submit" disabled={Boolean(updatingId) || !rejectionReason.trim()} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{updatingId ? 'Đang xử lý…' : 'Xác nhận từ chối'}</button></div>
+          </form>
+        </dialog>
         {/* Footer */}
         <div className="mt-4 pt-3 border-t border-neutral-200/80 flex items-center justify-between text-xs text-neutral-500">
           <span>

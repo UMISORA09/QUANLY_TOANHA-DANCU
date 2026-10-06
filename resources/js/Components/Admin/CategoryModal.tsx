@@ -75,6 +75,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSuccessMessage(null);
     const trimmedCode = code.trim().toUpperCase();
     const trimmedName = name.trim();
     const trimmedDesc = description.trim();
@@ -137,6 +138,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   };
 
   const handleDelete = async (cat: Category) => {
+    setSuccessMessage(null);
     if (cat.amenities_count > 0) {
       setErrorMessage(`Không thể xóa danh mục '${cat.category_name}' vì đang có ${cat.amenities_count} tiện ích trực thuộc!`);
       return;
@@ -147,6 +149,8 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
     setLoading(true);
     try {
+      setErrorMessage(null);
+      setSuccessMessage(null);
       await api.deleteCategory(cat.id);
       setSuccessMessage('Đã xóa danh mục.');
       await fetchCategories();
@@ -190,13 +194,13 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
         {/* Alerts */}
         {errorMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+          <div role="alert" className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
         {successMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
+          <div role="status" className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
           </div>

@@ -19,6 +19,7 @@ class DatabaseResidentAmenityBookingRepository
             ->where('residents.is_active', 1)
             ->whereNull('residents.deleted_at')
             ->whereNull('apartments.deleted_at')
+            ->whereNull('blocks.deleted_at')
             ->whereDate('residents.stay_start_date', '<=', today())
             ->where(fn (Builder $query) => $query->whereNull('residents.stay_end_date')->orWhereDate('residents.stay_end_date', '>=', today()))
             ->select('apartments.id', 'apartments.apartment_number', 'apartments.block_id', 'blocks.block_name')
