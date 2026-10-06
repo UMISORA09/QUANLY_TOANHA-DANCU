@@ -82,6 +82,7 @@ interface NotificationItem {
 interface HomeProps {
   initialAuthModal?: 'login' | 'register' | null;
   onLoginSuccess?: (role: UserRole, userEmail: string) => void;
+  onLogout?: () => void;
   onNavigateAdmin?: () => void;
   onNavigateManager?: () => void;
   onNavigateResident?: () => void;
@@ -94,6 +95,7 @@ interface HomeProps {
 export const Home: React.FC<HomeProps> = ({
   initialAuthModal = null,
   onLoginSuccess,
+  onLogout,
   onNavigateAdmin,
   onNavigateManager,
   onNavigateResident,
@@ -145,7 +147,11 @@ export const Home: React.FC<HomeProps> = ({
   }, []);
 
   const handleLogout = () => {
-    api.logout();
+    if (onLogout) {
+      onLogout();
+    } else {
+      api.logout();
+    }
     setCurrentUser(null);
     setLoginFeedback('Đã đăng xuất tài khoản thành công.');
     setTimeout(() => setLoginFeedback(null), 3000);

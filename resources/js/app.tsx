@@ -47,9 +47,7 @@ const App: React.FC = () => {
   const handleLoginSuccess = (role: string, email: string, residentType?: string) => {
     const session = login(role, email, residentType);
     const destination = resolveDefaultRouteForRole(session);
-    setTimeout(() => {
-      navigateTo(destination);
-    }, 350);
+    navigateTo(destination);
   };
 
   const handleLogout = () => {
@@ -178,6 +176,7 @@ const App: React.FC = () => {
         return (
           <Home
             onLoginSuccess={handleLoginSuccess}
+            onLogout={handleLogout}
             onNavigateLogin={(role) => navigateTo(role ? `/login?role=${role}` : '/login')}
             onNavigateRegister={(type) => navigateTo(type ? `/register?type=${type}` : '/register')}
             onNavigateAdmin={() => navigateTo('/admin')}

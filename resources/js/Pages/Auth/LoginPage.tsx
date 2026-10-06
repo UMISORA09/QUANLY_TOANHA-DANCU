@@ -124,9 +124,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
 
       const residentTypeFound = (res.user?.resident_type === 'TENANT' ? 'TENANT' : 'OWNER') as ('OWNER' | 'TENANT');
 
-      setTimeout(() => {
-        onLoginSuccess(roleFound, res.user?.email || cleanIdentifier, residentTypeFound);
-      }, 400);
+      onLoginSuccess(roleFound, res.user?.email || cleanIdentifier, residentTypeFound);
     } catch (err: any) {
       setErrorMessage(
         err.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin tài khoản.'

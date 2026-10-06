@@ -136,6 +136,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   useEffect(() => {
     setMode(initialMode);
     setErrorMessage(null);
+    setSubmitSuccess(false);
     if (initialRole && ROLE_DEMOS[initialRole]) {
       setSelectedRole(initialRole);
       setLoginIdentifier(ROLE_DEMOS[initialRole].email);
@@ -198,27 +199,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       try {
         const res = await api.login(loginIdentifier.trim(), password);
         setSubmitSuccess(true);
-        setTimeout(() => {
-          setSubmitSuccess(false);
-          if (onSuccess) {
-            const role = (res.user?.roles?.[0]?.toLowerCase().includes('admin') ? 'admin' : (res.user?.roles?.[0] || selectedRole || 'resident')) as UserRole;
-            onSuccess(role, res.user?.email || res.user?.username || loginIdentifier, res.user);
-          }
-          onClose();
-        }, 500);
-      } catch (err: any) {
-        if (selectedRole || loginIdentifier.includes('letan') || loginIdentifier.includes('admin') || loginIdentifier.includes('quanly')) {
-          const fallbackRole = (selectedRole || (loginIdentifier.includes('letan') ? 'receptionist' : loginIdentifier.includes('admin') ? 'admin' : 'manager')) as UserRole;
-          setSubmitSuccess(true);
-          setTimeout(() => {
-            setSubmitSuccess(false);
-            if (onSuccess) {
-              onSuccess(fallbackRole, loginIdentifier);
-            }
-            onClose();
-          }, 500);
-          return;
+        if (onSuccess) {
+          const role = (res.user?.roles?.[0]?.toLowerCase().includes('admin') ? 'admin' : (res.user?.roles?.[0] || selectedRole || 'resident')) as UserRole;
+          onSuccess(role, res.user?.email || res.user?.username || loginIdentifier, res.user);
         }
+        onClose();
+      } catch (err: any) {
         setErrorMessage(err.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản và mật khẩu.');
       } finally {
         setIsSubmitting(false);
