@@ -66,10 +66,10 @@ trait ResidentAmenityBookingFixtures
             'max_capacity_per_slot' => 4, 'hourly_rate' => 100000, 'security_deposit_required' => 50000,
             'advance_booking_days_limit' => 7, 'min_cancel_hours_before' => 12, 'requires_admin_approval' => 1,
         ]);
-        $this->bookingDate = today()->addDay()->toDateString();
+        $this->bookingDate = today()->addDays(2)->toDateString();
         $this->slotId = (string) Str::uuid();
         DB::table('amenity_time_slots')->insert([
-            'id' => $this->slotId, 'amenity_id' => $this->amenityId, 'day_of_week' => today()->addDay()->dayOfWeek,
+            'id' => $this->slotId, 'amenity_id' => $this->amenityId, 'day_of_week' => today()->addDays(2)->dayOfWeek,
             'slot_start_time' => '10:00', 'slot_end_time' => '11:30', 'slot_label' => 'Buổi sáng', 'max_bookings' => 2,
         ]);
         $this->withHeader('Authorization', 'Bearer '.$this->residentToken);

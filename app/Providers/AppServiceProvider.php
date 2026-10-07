@@ -35,7 +35,7 @@ class AppServiceProvider extends ServiceProvider
 
         if (
             $this->app->environment('production')
-            || request()->header('x-forwarded-proto') === 'https'
+            || ($this->app->bound('request') && request()->header('x-forwarded-proto') === 'https')
             || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
             || env('VERCEL')
         ) {

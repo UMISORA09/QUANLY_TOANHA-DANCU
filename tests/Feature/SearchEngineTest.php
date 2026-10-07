@@ -172,7 +172,7 @@ class SearchEngineTest extends TestCase
             'id' => $bbqId,
             'category_id' => $categoryId,
             'amenity_name' => 'Vườn Nướng BBQ Ven Hồ Số 1',
-            'amenity_code' => 'BBQ_VEN_HO_'.rand(100, 999),
+            'amenity_code' => 'BBQ_VEN_HO_'.Str::random(8),
             'location_detail' => 'Khu dã ngoại công viên bờ hồ',
             'max_capacity_per_slot' => 15,
             'hourly_rate' => 0,
