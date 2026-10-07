@@ -1353,44 +1353,31 @@ export const BuildingListManagement: React.FC<BuildingListManagementProps> = ({
         </div>
       )}
 
-      {/* Top Segmented Sub-navigation Tabs (1. Quản lý Khối / Tòa nhà - xuanhoa/1 & 2. Quản lý Tầng & Căn hộ - xuanhoa/2) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/90">
-        <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200/80 shadow-2xs self-start">
-          <button
-            type="button"
-            onClick={() => handleSectionChange('blocks')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
-              currentSection === 'blocks'
-                ? 'bg-white text-sky-700 shadow-xs ring-1 ring-slate-200/70'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <Building2 className={`w-4 h-4 ${currentSection === 'blocks' ? 'text-sky-600' : 'text-slate-400'}`} />
-            <span>1. Quản lý Khối / Tòa nhà</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-mono font-bold">
-              {blocks.length} Khối
+      {/* Header Info & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/90">
+        <div>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider font-mono text-sky-600">
+            <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500 shrink-0" />
+            <span>HỆ THỐNG KHỐI TÒA NHÀ & CĂN HỘ</span>
+            <span className="text-slate-300">·</span>
+            <span className="text-slate-500">
+              {currentSection === 'blocks'
+                ? 'CHỨC NĂNG #1 (QUẢN LÝ KHỐI / TÒA NHÀ)'
+                : 'CHỨC NĂNG #2 (QUẢN LÝ TẦNG & CĂN HỘ)'}
             </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSectionChange('apartments')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
-              currentSection === 'apartments'
-                ? 'bg-white text-indigo-700 shadow-xs ring-1 ring-slate-200/70'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <Layers className={`w-4 h-4 ${currentSection === 'apartments' ? 'text-indigo-600' : 'text-slate-400'}`} />
-            <span>2. Quản lý Tầng & Căn hộ</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-mono font-bold">
-              {totalApartmentsCount || statsOverview.total} Căn
-            </span>
-          </button>
+          </div>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 tracking-tight mt-1">
+            {currentSection === 'blocks' ? 'Quản lý Khối / Tòa nhà' : 'Quản lý Tầng & Căn hộ'}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl leading-relaxed">
+            {currentSection === 'blocks'
+              ? 'Tổng quan quy mô các tòa tháp cao tầng, tầng nổi, tầng hầm, cơ cấu cư trú và điều hành hạ tầng kỹ thuật.'
+              : 'Khởi tạo danh sách căn hộ theo tầng hàng loạt, gắn trạng thái Đã bán - Đang thuê - Trống, quản lý sơ đồ và vận hành trực quan.'}
+          </p>
         </div>
 
         {/* Action Buttons in Header depending on current section */}
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
           {currentSection === 'blocks' ? (
             <>
               <button
@@ -1464,28 +1451,6 @@ export const BuildingListManagement: React.FC<BuildingListManagementProps> = ({
             </>
           )}
         </div>
-      </div>
-
-      {/* Header Info */}
-      <div className="pb-1">
-        <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider font-mono text-sky-600">
-          <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500 shrink-0" />
-          <span>HỆ THỐNG KHỐI TÒA NHÀ & CĂN HỘ</span>
-          <span className="text-slate-300">·</span>
-          <span className="text-slate-500">
-            {currentSection === 'blocks'
-              ? 'CHỨC NĂNG #1 (QUẢN LÝ KHỐI / TÒA NHÀ)'
-              : 'CHỨC NĂNG #2 (QUẢN LÝ TẦNG & CĂN HỘ)'}
-          </span>
-        </div>
-        <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 tracking-tight mt-1">
-          {currentSection === 'blocks' ? 'Quản lý Khối / Tòa nhà' : 'Quản lý Tầng & Căn hộ'}
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl leading-relaxed">
-          {currentSection === 'blocks'
-            ? 'Tổng quan quy mô các tòa tháp cao tầng, tầng nổi, tầng hầm, cơ cấu cư trú và điều hành hạ tầng kỹ thuật.'
-            : 'Khởi tạo danh sách căn hộ theo tầng hàng loạt, gắn trạng thái Đã bán - Đang thuê - Trống, quản lý sơ đồ và vận hành trực quan.'}
-        </p>
       </div>
 
       {/* ============================================================== */}
