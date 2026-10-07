@@ -23,15 +23,15 @@ services:
       - DB_USERNAME=root
       - DB_PASSWORD=123567
       - SESSION_DRIVER=file
-      - CACHE_STORE=redis
+      - CACHE_STORE=file
       - PHP_CLI_SERVER_WORKERS=8
       - QUEUE_CONNECTION=sync
       - REDIS_CLIENT=phpredis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - RUN_DEV_INIT=${RUN_DEV_INIT:-true}
-      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
-      - SEED_DEMO_DATA=${SEED_DEMO_DATA:-true}
+      - RUN_DEV_INIT=false
+      - RUN_MIGRATIONS=false
+      - SEED_DEMO_DATA=false
       - SEED_CLASS=${SEED_CLASS:-Database\Seeders\DatabaseSeeder}
     healthcheck:
       test: ["CMD-SHELL", "curl -f -s http://127.0.0.1:8000/health || exit 1"]

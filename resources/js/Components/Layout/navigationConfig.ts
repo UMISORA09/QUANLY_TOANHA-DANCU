@@ -72,6 +72,8 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     defaultPath: '/quan-ly',
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
+      { id: 'blocks', label: 'Khối / Tòa nhà', icon: Building2 },
+      { id: 'apartments', label: 'Tầng & Căn hộ', icon: Layers },
       { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
       { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
       { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },

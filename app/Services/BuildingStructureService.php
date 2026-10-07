@@ -20,11 +20,44 @@ class BuildingStructureService
      */
     public function getBlocks(): Collection
     {
-        return Block::query()
-            ->withCount(['floors', 'apartments'])
+        $blocks = Block::query()
+            ->withCount('floors')
             ->with(['buildingManager:id,full_name,email,phone_number'])
             ->orderBy('block_code', 'asc')
             ->get();
+
+        // 1 truy vấn GROUP BY duy nhất gộp toàn bộ thống kê căn hộ của tất cả khối (O(1) database queries)
+        $apartmentStats = DB::table('apartments')
+            ->whereNull('deleted_at')
+            ->selectRaw("
+                block_id,
+                COUNT(*) as total_count,
+                COUNT(CASE WHEN status IN ('OCCUPIED', 'SOLD', 'DA_BAN') THEN 1 END) as occupied_count,
+                COUNT(CASE WHEN status IN ('RENTED', 'DANG_THUE') THEN 1 END) as rented_count,
+                COUNT(CASE WHEN status IN ('VACANT', 'TRONG') THEN 1 END) as vacant_count,
+                COUNT(CASE WHEN status IN ('MAINTENANCE', 'REPAIRING', 'RESERVED') THEN 1 END) as maintenance_count
+            ")
+            ->groupBy('block_id')
+            ->get()
+            ->keyBy('block_id');
+
+        foreach ($blocks as $block) {
+            $stat = $apartmentStats->get($block->id);
+            $total = (int) ($stat->total_count ?? 0);
+            $occupied = (int) ($stat->occupied_count ?? 0);
+            $rented = (int) ($stat->rented_count ?? 0);
+            $vacant = (int) ($stat->vacant_count ?? 0);
+            $maintenance = (int) ($stat->maintenance_count ?? 0);
+
+            $block->apartments_count = $total;
+            $block->total_apartments = $total;
+            $block->occupied_apartments = $occupied;
+            $block->rented_apartments = $rented;
+            $block->vacant_apartments = $vacant;
+            $block->maintenance_apartments = $maintenance;
+        }
+
+        return $blocks;
     }
 
     /**
@@ -34,16 +67,24 @@ class BuildingStructureService
      */
     public function getOverviewStats(?string $blockId = null): array
     {
-        $query = Apartment::query();
+        $query = DB::table('apartments')->whereNull('deleted_at');
         if ($blockId) {
             $query->where('block_id', $blockId);
         }
 
-        $total = (clone $query)->count();
-        $vacant = (clone $query)->where('status', 'VACANT')->count();
-        $occupied = (clone $query)->whereIn('status', ['OCCUPIED', 'SOLD', 'DA_BAN'])->count();
-        $rented = (clone $query)->whereIn('status', ['RENTED', 'DANG_THUE'])->count();
-        $maintenance = (clone $query)->whereIn('status', ['MAINTENANCE', 'REPAIRING', 'RESERVED'])->count();
+        $row = $query->selectRaw("
+            COUNT(*) as total_apartments,
+            COUNT(CASE WHEN status IN ('VACANT', 'TRONG') THEN 1 END) as vacant,
+            COUNT(CASE WHEN status IN ('OCCUPIED', 'SOLD', 'DA_BAN') THEN 1 END) as occupied,
+            COUNT(CASE WHEN status IN ('RENTED', 'DANG_THUE') THEN 1 END) as rented,
+            COUNT(CASE WHEN status IN ('MAINTENANCE', 'REPAIRING', 'RESERVED') THEN 1 END) as maintenance
+        ")->first();
+
+        $total = (int) ($row->total_apartments ?? 0);
+        $vacant = (int) ($row->vacant ?? 0);
+        $occupied = (int) ($row->occupied ?? 0);
+        $rented = (int) ($row->rented ?? 0);
+        $maintenance = (int) ($row->maintenance ?? 0);
 
         $occupiedTotal = $occupied + $rented;
         $occupancyRate = $total > 0 ? round(($occupiedTotal / $total) * 100, 1) : 0.0;
@@ -165,6 +206,7 @@ class BuildingStructureService
                 'floor:id,floor_number,floor_code,floor_name',
                 'currentResident:id,full_name,email,phone_number',
                 'headOfHousehold.user:id,full_name,email,phone_number',
+                'firstResident.user:id,full_name,email,phone_number',
             ])
             ->withCount('residents');
 
@@ -178,12 +220,14 @@ class BuildingStructureService
 
         if (! empty($filters['status']) && $filters['status'] !== 'all') {
             $statusVal = strtoupper(trim((string) $filters['status']));
-            if ($statusVal === 'SOLD') {
+            if (in_array($statusVal, ['SOLD', 'OCCUPIED', 'DA_BAN'], true)) {
                 $query->whereIn('status', ['SOLD', 'OCCUPIED', 'DA_BAN']);
-            } elseif ($statusVal === 'RENTED') {
+            } elseif (in_array($statusVal, ['RENTED', 'DANG_THUE'], true)) {
                 $query->whereIn('status', ['RENTED', 'DANG_THUE']);
-            } elseif ($statusVal === 'VACANT') {
+            } elseif (in_array($statusVal, ['VACANT', 'TRONG'], true)) {
                 $query->whereIn('status', ['VACANT', 'TRONG']);
+            } elseif (in_array($statusVal, ['MAINTENANCE', 'REPAIRING', 'RESERVED'], true)) {
+                $query->whereIn('status', ['MAINTENANCE', 'REPAIRING', 'RESERVED']);
             } else {
                 $query->where('status', $statusVal);
             }
@@ -198,20 +242,23 @@ class BuildingStructureService
             $query->where(function ($q) use ($term) {
                 $q->where('apartment_number', 'LIKE', "%{$term}%")
                     ->orWhereHas('block', fn ($b) => $b->where('block_name', 'LIKE', "%{$term}%")->orWhere('block_code', 'LIKE', "%{$term}%"))
-                    ->orWhereHas('currentResident', fn ($u) => $u->where('full_name', 'LIKE', "%{$term}%")->orWhere('phone_number', 'LIKE', "%{$term}%"));
+                    ->orWhereHas('currentResident', fn ($u) => $u->where('full_name', 'LIKE', "%{$term}%")->orWhere('phone_number', 'LIKE', "%{$term}%"))
+                    ->orWhereHas('residents.user', fn ($u) => $u->where('full_name', 'LIKE', "%{$term}%")->orWhere('phone_number', 'LIKE', "%{$term}%"));
             });
         }
 
+        $page = max(1, (int) ($filters['page'] ?? request()->input('page', 1)));
+
         $sortField = $filters['sort_by'] ?? 'apartment_number';
-        $sortDir = strtolower((string) ($filters['sort_dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+        $sortDir = strtolower((string) ($filters['sort_dir'] ?? $filters['sort_order'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
 
         if (in_array($sortField, ['apartment_number', 'gross_floor_area_sqm', 'status', 'created_at'], true)) {
-            $query->orderBy($sortField, $sortDir);
+            $query->orderBy($sortField, $sortDir)->orderBy('id', 'asc');
         } else {
-            $query->orderBy('apartment_number', 'asc');
+            $query->orderBy('apartment_number', 'asc')->orderBy('id', 'asc');
         }
 
-        return $query->paginate($perPage);
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**
@@ -295,7 +342,7 @@ class BuildingStructureService
     {
         $blockId = (string) ($params['block_id'] ?? '');
         $floorId = (string) ($params['floor_id'] ?? '');
-        $count = max(1, min((int) ($params['count'] ?? 8), 50));
+        $count = max(1, min((int) ($params['count'] ?? 8), 100));
         $prefix = trim((string) ($params['prefix'] ?? ''));
         $startNumber = max(1, (int) ($params['start_number'] ?? 1));
         $defaultRoomType = (string) ($params['room_type'] ?? '2_BEDROOM');

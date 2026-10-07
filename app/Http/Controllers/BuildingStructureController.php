@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Floor;
 use App\Services\BuildingStructureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -16,19 +18,97 @@ class BuildingStructureController extends Controller
     ) {}
 
     /**
+     * Tăng số phiên bản dữ liệu khi có thay đổi CRUD để làm mới bộ đệm Cache ngay lập tức
+     */
+    private function bumpVersion(): void
+    {
+        if (! Cache::has('apartments_data_version')) {
+            Cache::forever('apartments_data_version', 1);
+        }
+        Cache::increment('apartments_data_version');
+    }
+
+    /**
+     * Lấy phiên bản đồng bộ dữ liệu hiện tại (Cross-tab & Multi-client sync heartbeat)
+     * GET /api/v1/buildings/version
+     */
+    public function getDataVersion(): JsonResponse
+    {
+        $version = (int) Cache::get('apartments_data_version', 1);
+
+        return response()->json([
+            'success' => true,
+            'version' => $version,
+            'timestamp' => microtime(true),
+        ]);
+    }
+
+    /**
+     * Tải nhanh toàn bộ cấu trúc tòa nhà (Blocks, Floors, Stats, Apartments) trong 1 request duy nhất
+     * GET /api/v1/buildings/bootstrap
+     */
+    public function bootstrap(Request $request): JsonResponse
+    {
+        try {
+            $version = (int) Cache::get('apartments_data_version', 1);
+            $cacheKey = "buildings_bootstrap_v{$version}";
+
+            $cached = Cache::remember($cacheKey, 180, function () use ($version) {
+                $blocks = $this->service->getBlocks()->toArray();
+                $stats = $this->service->getOverviewStats();
+                $floors = Floor::query()
+                    ->select(['id', 'block_id', 'floor_number', 'floor_code', 'floor_name', 'floor_type', 'total_units'])
+                    ->orderBy('floor_number', 'asc')
+                    ->get()
+                    ->toArray();
+
+                $paginator = $this->service->getApartments([], 1000);
+                $apartments = collect($paginator->items())
+                    ->unique('id')
+                    ->map(fn ($item) => is_array($item) ? $item : $item->toArray())
+                    ->values()
+                    ->all();
+
+                return [
+                    'blocks' => array_values($blocks),
+                    'stats' => $stats,
+                    'floors' => $floors,
+                    'apartments' => $apartments,
+                    'version' => $version,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $cached,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi nạp cấu trúc tòa nhà: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Lấy danh sách Khối tòa nhà kèm thống kê số tầng và căn hộ
      * GET /api/v1/blocks
      */
     public function indexBlocks(Request $request): JsonResponse
     {
         try {
-            $blocks = $this->service->getBlocks();
-            $stats = $this->service->getOverviewStats();
+            $version = (int) Cache::get('apartments_data_version', 1);
+            $cached = Cache::remember("blocks_overview_v{$version}", 120, function () {
+                return [
+                    'blocks' => $this->service->getBlocks()->toArray(),
+                    'stats' => $this->service->getOverviewStats(),
+                ];
+            });
 
             return response()->json([
                 'success' => true,
-                'data' => $blocks,
-                'stats' => $stats,
+                'data' => array_values($cached['blocks']),
+                'stats' => $cached['stats'],
             ]);
         } catch (Throwable $e) {
             return response()->json([
@@ -45,8 +125,11 @@ class BuildingStructureController extends Controller
     public function getStats(Request $request): JsonResponse
     {
         try {
-            $blockId = $request->query('block_id');
-            $stats = $this->service->getOverviewStats($blockId ?: null);
+            $blockId = (string) ($request->query('block_id') ?: 'all');
+            $version = (int) Cache::get('apartments_data_version', 1);
+            $stats = Cache::remember("apartments_stats_v{$version}_{$blockId}", 300, function () use ($blockId) {
+                return $this->service->getOverviewStats($blockId !== 'all' ? $blockId : null);
+            });
 
             return response()->json([
                 'success' => true,
@@ -67,7 +150,10 @@ class BuildingStructureController extends Controller
     public function indexFloors(Request $request, string $blockId): JsonResponse
     {
         try {
-            $floors = $this->service->getFloorsByBlock($blockId);
+            $version = (int) Cache::get('apartments_data_version', 1);
+            $floors = Cache::remember("block_{$blockId}_floors_v{$version}", 300, function () use ($blockId) {
+                return $this->service->getFloorsByBlock($blockId)->toArray();
+            });
 
             return response()->json([
                 'success' => true,
@@ -98,6 +184,7 @@ class BuildingStructureController extends Controller
 
         try {
             $floor = $this->service->createFloor($blockId, $validated);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,
@@ -131,6 +218,7 @@ class BuildingStructureController extends Controller
 
         try {
             $floor = $this->service->updateFloor($floorId, $validated);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,
@@ -155,6 +243,7 @@ class BuildingStructureController extends Controller
 
         try {
             $this->service->deleteFloor($floorId, $force);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,
@@ -180,7 +269,8 @@ class BuildingStructureController extends Controller
     public function indexApartments(Request $request): JsonResponse
     {
         try {
-            $perPage = max(1, min((int) $request->query('per_page', 15), 100));
+            $page = max(1, (int) $request->query('page', 1));
+            $perPage = max(1, min((int) $request->query('per_page', 15), 1000));
             $filters = [
                 'block_id' => $request->query('block_id'),
                 'floor_id' => $request->query('floor_id'),
@@ -188,22 +278,37 @@ class BuildingStructureController extends Controller
                 'room_type' => $request->query('room_type'),
                 'search' => $request->query('search'),
                 'sort_by' => $request->query('sort_by'),
-                'sort_dir' => $request->query('sort_dir'),
+                'sort_dir' => $request->query('sort_dir', $request->query('sort_order', 'asc')),
+                'page' => $page,
             ];
 
-            $paginator = $this->service->getApartments($filters, $perPage);
+            $version = (int) Cache::get('apartments_data_version', 1);
+            $cacheKey = "apartments_v{$version}_".md5(json_encode($filters)."_{$perPage}_{$page}");
 
-            return response()->json([
-                'success' => true,
-                'data' => $paginator->items(),
-                'pagination' => [
+            $result = Cache::remember($cacheKey, 120, function () use ($filters, $perPage) {
+                $paginator = $this->service->getApartments($filters, $perPage);
+
+                $meta = [
                     'current_page' => $paginator->currentPage(),
                     'last_page' => $paginator->lastPage(),
                     'per_page' => $paginator->perPage(),
                     'total' => $paginator->total(),
                     'from' => $paginator->firstItem(),
                     'to' => $paginator->lastItem(),
-                ],
+                ];
+
+                return [
+                    'data' => collect($paginator->items())->unique('id')->map(fn ($item) => is_array($item) ? $item : $item->toArray())->values()->all(),
+                    'pagination' => $meta,
+                    'meta' => $meta,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => array_values($result['data']),
+                'pagination' => $result['pagination'],
+                'meta' => $result['meta'],
             ]);
         } catch (Throwable $e) {
             return response()->json([
@@ -238,6 +343,7 @@ class BuildingStructureController extends Controller
 
         try {
             $apartment = $this->service->createApartment($validated);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,
@@ -266,7 +372,7 @@ class BuildingStructureController extends Controller
         $validated = $request->validate([
             'block_id' => 'nullable|string',
             'floor_id' => 'required|string',
-            'count' => 'required|integer|min:1|max:50',
+            'count' => 'required|integer|min:1|max:100',
             'prefix' => 'nullable|string|max:20',
             'start_number' => 'nullable|integer|min:1|max:999',
             'room_type' => 'nullable|string|in:STUDIO,1_BEDROOM,2_BEDROOM,3_BEDROOM,PENTHOUSE',
@@ -277,6 +383,7 @@ class BuildingStructureController extends Controller
 
         try {
             $result = $this->service->batchGenerateApartments($validated);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,
@@ -320,6 +427,7 @@ class BuildingStructureController extends Controller
 
         try {
             $apartment = $this->service->updateApartment($id, $validated);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,
@@ -351,6 +459,7 @@ class BuildingStructureController extends Controller
 
         try {
             $apartment = $this->service->updateStatus($id, $validated['status']);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,
@@ -378,6 +487,7 @@ class BuildingStructureController extends Controller
     {
         try {
             $this->service->deleteApartment($id);
+            $this->bumpVersion();
 
             return response()->json([
                 'success' => true,

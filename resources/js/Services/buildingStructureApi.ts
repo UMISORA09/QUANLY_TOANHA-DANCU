@@ -113,6 +113,21 @@ export interface ApiResponse<T> {
   };
 }
 
+export interface BuildingBootstrapData {
+  blocks: BlockItem[];
+  floors: FloorItem[];
+  stats: {
+    total_apartments: number;
+    vacant: number;
+    occupied: number;
+    rented: number;
+    maintenance: number;
+    occupancy_rate: number;
+  };
+  apartments: ApartmentItem[];
+  version: number;
+}
+
 class BuildingStructureApiService {
   private getBaseUrl(): string {
     return '';
@@ -185,6 +200,22 @@ class BuildingStructureApiService {
     }
 
     return responseData as T;
+  }
+
+  // --- BOOTSTRAP: Load all blocks, floors, stats & apartments in 1 single fast roundtrip ---
+  async getBootstrap(): Promise<BuildingBootstrapData> {
+    const res = await this.request<{ success: boolean; data: BuildingBootstrapData }>('/api/v1/buildings/bootstrap');
+    return res.data;
+  }
+
+  // --- VERSION / SYNC HEARTBEAT ---
+  async getDataVersion(): Promise<{ version: number; timestamp: number }> {
+    try {
+      const res = await this.request<{ success: boolean; version: number; timestamp: number }>('/api/v1/buildings/version');
+      return { version: res.version || 1, timestamp: res.timestamp || Date.now() };
+    } catch {
+      return { version: 1, timestamp: Date.now() };
+    }
   }
 
   // --- BLOCKS ---

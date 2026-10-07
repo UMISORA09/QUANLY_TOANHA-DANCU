@@ -399,7 +399,13 @@ Route::get('/an-ninh/vehicles', function () {
 // ==========================================
 // QUẢN LÝ KHỐI, TẦNG & CĂN HỘ (BUILDING, FLOORS & APARTMENTS) - CHỨC NĂNG 2
 // ==========================================
+// Heartbeat kiểm tra phiên bản dữ liệu thời gian thực (Cực nhanh qua Redis, không phụ thuộc auth middleware)
+Route::get('api/v1/buildings/version', [BuildingStructureController::class, 'getDataVersion']);
+
 Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    // Tải toàn bộ cấu trúc tòa nhà siêu tốc 1 request duy nhất
+    Route::get('buildings/bootstrap', [BuildingStructureController::class, 'bootstrap']);
+
     // Khối tòa nhà & Thống kê KPI
     Route::get('blocks', [BuildingStructureController::class, 'indexBlocks']);
     Route::get('apartments/stats', [BuildingStructureController::class, 'getStats']);
