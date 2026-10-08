@@ -17,6 +17,7 @@ use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\ServicePricingController;
 use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
@@ -387,7 +388,23 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::post('vehicles/{id}/approve', [VehicleController::class, 'approve']);
     Route::post('vehicles/{id}/sync-invoice', [VehicleController::class, 'syncInvoice']);
 });
-Route::get('/api/v1/pricing-configs', [VehicleController::class, 'pricingConfig']);
+Route::get('vehicles/pricing-config', [ServicePricingController::class, 'pricingConfig']);
+
+// ==========================================
+// CÀI ĐẶT ĐƠN GIÁ ĐIỆN, NƯỚC LŨY TIẾN & PHÍ QUẢN LÝ (CHỨC NĂNG 3 - XUANHOA)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('pricing-configs', [ServicePricingController::class, 'index']);
+    Route::post('pricing-configs', [ServicePricingController::class, 'store']);
+    Route::get('pricing-configs/{id}', [ServicePricingController::class, 'show']);
+    Route::put('pricing-configs/{id}', [ServicePricingController::class, 'update']);
+    Route::delete('pricing-configs/{id}', [ServicePricingController::class, 'destroy']);
+    Route::patch('pricing-configs/{id}/toggle-active', [ServicePricingController::class, 'toggleActive']);
+    Route::get('pricing-configs/{configId}/tiers', [ServicePricingController::class, 'getTiers']);
+    Route::put('pricing-configs/{configId}/tiers', [ServicePricingController::class, 'updateTiers']);
+    Route::post('pricing-configs/{configId}/simulate', [ServicePricingController::class, 'simulate']);
+});
+
 Route::get('/quan-ly/vehicles', function () {
     return view('welcome');
 });
@@ -401,6 +418,15 @@ Route::get('/le-tan/phuong-tien', function () {
     return view('welcome');
 });
 Route::get('/an-ninh/vehicles', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/don-gia', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/pricing-configs', function () {
+    return view('welcome');
+});
+Route::get('/admin/pricing-configs', function () {
     return view('welcome');
 });
 

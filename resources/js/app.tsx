@@ -312,6 +312,13 @@ const App: React.FC = () => {
     currentPath === '/admin/phuong-tien' ||
     currentPath.startsWith('/admin/vehicles');
 
+  const isPricingPath =
+    currentPath === '/quan-ly/don-gia' ||
+    currentPath === '/quan-ly/pricing-configs' ||
+    currentPath === '/admin/pricing-configs' ||
+    currentPath.startsWith('/quan-ly/pricing-configs') ||
+    currentPath.startsWith('/quan-ly/don-gia');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
@@ -320,7 +327,8 @@ const App: React.FC = () => {
     currentPath === '/dashboard' ||
     isAmenityPath ||
     isAccountProvisioningPath ||
-    isVehiclePath;
+    isVehiclePath ||
+    isPricingPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -341,6 +349,8 @@ const App: React.FC = () => {
       ? 'amenities'
       : isVehiclePath
       ? 'vehicles'
+      : isPricingPath
+      ? 'pricing_configs'
       : isAccountProvisioningPath
       ? 'account_provisioning'
       : (managerUrlTab || undefined);

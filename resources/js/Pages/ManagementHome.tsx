@@ -54,6 +54,7 @@ import { ResidentManagement } from './Admin/ResidentManagement';
 import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
 import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
 import { VehicleManagement } from './Admin/VehicleManagement';
+import { ServicePricingManagement } from './Admin/ServicePricingManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -838,6 +839,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'vehicles' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <VehicleManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'don_gia' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <ServicePricingManagement />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

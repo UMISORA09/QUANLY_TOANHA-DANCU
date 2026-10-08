@@ -78,6 +78,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
       { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: 'Live', badgeType: 'success' },
+      { id: 'pricing_configs', label: 'Cài đặt đơn giá & Bậc thang', icon: Receipt, badge: 'EVN', badgeType: 'info', isNew: true },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
       { id: 'tickets', label: 'Phản ánh & Sự cố', icon: AlertCircle, badge: '12 mới', badgeType: 'danger' },
