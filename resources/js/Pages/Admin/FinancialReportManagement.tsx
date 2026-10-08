@@ -103,7 +103,7 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
     const handleExportExcel = () => {
         try {
             showToast('Đang tạo và tải xuống file Excel báo cáo tài chính...');
-            const url = invoiceApi.getFinancialReportExportUrl({
+            const url = invoiceApi.getFinancialReportExportExcelUrl({
                 period: period || undefined,
                 block_id: blockId || undefined,
                 status: status !== 'ALL' ? status : undefined,
@@ -120,7 +120,7 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
     const handleExportPdf = () => {
         try {
             showToast('Đang xuất bản in báo cáo PDF chuẩn A4...');
-            const url = invoiceApi.getFinancialReportPdfUrl({
+            const url = invoiceApi.getFinancialReportExportPdfUrl({
                 period: period || undefined,
                 block_id: blockId || undefined,
                 status: status !== 'ALL' ? status : undefined,
@@ -135,13 +135,12 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
 
     const summary = previewData?.summary || {
         total_invoices: 0,
-        total_amount: 0,
-        paid_amount: 0,
-        debt_amount: 0,
-        paid_count: 0,
-        unpaid_count: 0,
+        total_billed: 0,
+        total_collected: 0,
+        total_debt: 0,
         collection_rate: 0,
     };
+    const reportRows = previewData?.rows || previewData?.items || [];
 
     return (
         <div className="space-y-6">
@@ -288,11 +287,11 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
                         <DollarSign className="w-4 h-4 text-sky-400" />
                     </div>
                     <div className="text-2xl font-black text-white">
-                        {formatVND(summary.total_amount)}
+                        {formatVND(summary.total_billed || (summary as any).total_amount || 0)}
                     </div>
                     <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
                         <span>Quy mô:</span>
-                        <strong className="text-slate-200">{summary.total_invoices} hóa đơn</strong>
+                        <strong className="text-slate-200">{summary.total_invoices || reportRows.length} hóa đơn</strong>
                     </div>
                 </div>
 
@@ -302,11 +301,10 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
                         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                     </div>
                     <div className="text-2xl font-black text-emerald-400">
-                        {formatVND(summary.paid_amount)}
+                        {formatVND(summary.total_collected || (summary as any).paid_amount || 0)}
                     </div>
                     <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
-                        <span>Hoàn tất:</span>
-                        <strong className="text-emerald-300">{summary.paid_count} căn hộ</strong>
+                        <span>Hoàn tất thanh toán</span>
                     </div>
                 </div>
 
@@ -316,11 +314,10 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
                         <AlertCircle className="w-4 h-4 text-rose-400" />
                     </div>
                     <div className="text-2xl font-black text-rose-400">
-                        {formatVND(summary.debt_amount)}
+                        {formatVND(summary.total_debt || (summary as any).debt_amount || 0)}
                     </div>
                     <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
-                        <span>Còn nợ / Quá hạn:</span>
-                        <strong className="text-rose-300">{summary.unpaid_count} căn hộ</strong>
+                        <span>Tồn đọng / Chưa thanh toán</span>
                     </div>
                 </div>
 
@@ -350,7 +347,7 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
                             Bản Xem Trước Dữ Liệu Báo Cáo
                         </h3>
                         <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                            {previewData?.items?.length || 0} dòng ghi nhận
+                            {reportRows.length} dòng ghi nhận
                         </span>
                     </div>
 
@@ -364,7 +361,7 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
                         <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
                         <span className="text-xs font-semibold">Đang tổng hợp dữ liệu báo cáo tài chính...</span>
                     </div>
-                ) : !previewData?.items || previewData.items.length === 0 ? (
+                ) : !reportRows || reportRows.length === 0 ? (
                     <div className="py-16 text-center text-slate-400 border border-dashed border-slate-800 rounded-2xl">
                         <FileSpreadsheet className="w-10 h-10 mx-auto text-slate-600 mb-2" />
                         <p className="text-sm font-semibold">Không tìm thấy dữ liệu hóa đơn phù hợp với bộ lọc</p>
@@ -390,16 +387,16 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800/60 font-medium">
-                                {previewData.items.map((row: any, idx: number) => (
-                                    <tr key={row.invoice_id || idx} className="hover:bg-slate-800/40 transition-colors">
+                                {reportRows.map((row: any, idx: number) => (
+                                    <tr key={row.invoice_id || row.id || idx} className="hover:bg-slate-800/40 transition-colors">
                                         <td className="py-3 px-4 font-mono font-bold text-indigo-300">
                                             {row.invoice_code}
                                         </td>
                                         <td className="py-3 px-4 text-white font-bold">
-                                            {row.apartment_number}
+                                            {row.apartment_code || row.apartment_number}
                                         </td>
                                         <td className="py-3 px-4 text-slate-300">
-                                            {row.block_name}
+                                            {row.block_code || row.block_name}
                                         </td>
                                         <td className="py-3 px-4 text-slate-300">
                                             {row.resident_name || '---'}
