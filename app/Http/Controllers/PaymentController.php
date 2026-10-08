@@ -77,7 +77,7 @@ class PaymentController extends Controller
 
     /**
      * GET /api/v1/payments
-     * Lịch sử các giao dịch thu tiền
+     * Lịch sử các giao dịch thu tiền (Chức năng 10 - Xem lịch sử giao dịch các kỳ trước)
      */
     public function index(Request $request): JsonResponse
     {
@@ -86,6 +86,11 @@ class PaymentController extends Controller
             'apartment_id',
             'payment_gateway',
             'payment_method',
+            'payment_status',
+            'billing_period',
+            'date_from',
+            'date_to',
+            'block_id',
             'search',
             'per_page',
         ]);
@@ -105,6 +110,49 @@ class PaymentController extends Controller
     public function listPayments(Request $request): JsonResponse
     {
         return $this->index($request);
+    }
+
+    /**
+     * GET /api/v1/payments/summary
+     * Thống kê tổng hợp số tiền và số lượng giao dịch theo bộ lọc
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        $filters = $request->only([
+            'apartment_id',
+            'payment_gateway',
+            'billing_period',
+            'date_from',
+            'date_to',
+        ]);
+
+        $summary = $this->paymentService->getPaymentSummary($filters);
+
+        return response()->json([
+            'success' => true,
+            'data' => $summary,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/payments/{id}/receipt
+     * Xem chi tiết biên lai thu tiền của một giao dịch
+     */
+    public function receipt(string $id): JsonResponse
+    {
+        try {
+            $data = $this->paymentService->getReceiptDetail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\DomainException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 404);
+        }
     }
 
     /**

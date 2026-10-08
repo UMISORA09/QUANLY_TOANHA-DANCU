@@ -29,7 +29,8 @@ import {
     QrCode,
     Printer,
     Copy,
-    Check
+    Check,
+    History
 } from 'lucide-react';
 import {
     invoiceApi,
@@ -37,6 +38,7 @@ import {
     InvoiceSummaryModel
 } from '../../Services/invoiceApi';
 import { InvoiceBatchGeneration } from './InvoiceBatchGeneration';
+import { PaymentHistoryManagement } from './PaymentHistoryManagement';
 
 interface BlockOption {
     id: string;
@@ -45,8 +47,8 @@ interface BlockOption {
 }
 
 export const InvoiceManagement: React.FC = () => {
-    // Mode chuyển đổi giữa Quản lý danh sách và Sinh hóa đơn hàng loạt
-    const [viewMode, setViewMode] = useState<'list' | 'batch_generate'>('list');
+    // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch và Sinh hóa đơn hàng loạt
+    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history'>('list');
 
     // Dữ liệu danh sách & KPI
     const [invoices, setInvoices] = useState<InvoiceModel[]>([]);
@@ -354,7 +356,7 @@ export const InvoiceManagement: React.FC = () => {
 
     if (viewMode === 'batch_generate') {
         return (
-            <div className="space-y-4">
+            <div className="space-y-4 min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
                 <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between">
                     <button
                         type="button"
@@ -369,6 +371,29 @@ export const InvoiceManagement: React.FC = () => {
                     </span>
                 </div>
                 <InvoiceBatchGeneration />
+            </div>
+        );
+    }
+
+    if (viewMode === 'history') {
+        return (
+            <div className="space-y-4 min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
+                <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode('list')}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                    >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Quay Lại Danh Sách Hóa Đơn</span>
+                    </button>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-emerald-400 font-semibold font-mono">
+                            CHỨC NĂNG: LỊCH SỬ GIAO DỊCH CÁC KỲ TRƯỚC (CHỨC NĂNG 10)
+                        </span>
+                    </div>
+                </div>
+                <PaymentHistoryManagement />
             </div>
         );
     }
@@ -409,6 +434,15 @@ export const InvoiceManagement: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode('history')}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-emerald-500/30 text-sm font-bold shadow-lg transition-all"
+                    >
+                        <History className="w-4 h-4 text-emerald-400" />
+                        <span>Lịch Sử Giao Dịch</span>
+                    </button>
+
                     <button
                         type="button"
                         onClick={() => setViewMode('batch_generate')}

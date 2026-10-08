@@ -493,6 +493,13 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::post('payments/collect', [PaymentController::class, 'collectPayment']);
     Route::get('payments', [PaymentController::class, 'listPayments']);
     Route::get('invoices/{id}/vietqr-payload', [PaymentController::class, 'getVietQrPayload']);
+
+    // ==========================================
+    // LỊCH SỬ GIAO DỊCH CÁC KỲ TRƯỚC (CHỨC NĂNG 10 - XUANHOA)
+    // ==========================================
+    Route::get('payments/summary', [PaymentController::class, 'summary']);
+    Route::get('payments/history', [PaymentController::class, 'listPayments']);
+    Route::get('payments/{id}/receipt', [PaymentController::class, 'receipt']);
 });
 
 Route::get('/quan-ly/sinh-hoa-don', function () {

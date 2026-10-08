@@ -339,4 +339,102 @@ export const invoiceApi = {
         if (!res.ok) throw new Error(json.message || 'Lỗi tải sao kê chi tiết hóa đơn');
         return json;
     },
+
+    /**
+     * Lấy lịch sử giao dịch thanh toán các kỳ (Chức năng 10)
+     */
+    async getPaymentHistory(filters?: {
+        apartment_id?: string;
+        payment_gateway?: string;
+        payment_status?: string;
+        billing_period?: string;
+        date_from?: string;
+        date_to?: string;
+        block_id?: string;
+        search?: string;
+        page?: number;
+        per_page?: number;
+    }): Promise<{
+        success: boolean;
+        data: {
+            data: any[];
+            current_page: number;
+            last_page: number;
+            total: number;
+            per_page: number;
+        };
+    }> {
+        const query = new URLSearchParams();
+        if (filters) {
+            Object.entries(filters).forEach(([key, val]) => {
+                if (val !== undefined && val !== null && val !== '') {
+                    query.append(key, String(val));
+                }
+            });
+        }
+
+        const res = await fetch(`/api/v1/payments/history?${query.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải lịch sử giao dịch');
+        return json;
+    },
+
+    /**
+     * Thống kê tổng hợp số tiền các giao dịch (Chức năng 10)
+     */
+    async getPaymentSummary(filters?: {
+        apartment_id?: string;
+        payment_gateway?: string;
+        billing_period?: string;
+        date_from?: string;
+        date_to?: string;
+    }): Promise<{
+        success: boolean;
+        data: {
+            total_transactions: number;
+            successful_transactions: number;
+            total_amount: number;
+            by_gateway: Record<string, { count: number; total: number }>;
+        };
+    }> {
+        const query = new URLSearchParams();
+        if (filters) {
+            Object.entries(filters).forEach(([key, val]) => {
+                if (val !== undefined && val !== null && val !== '') {
+                    query.append(key, String(val));
+                }
+            });
+        }
+
+        const res = await fetch(`/api/v1/payments/summary?${query.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải thống kê giao dịch');
+        return json;
+    },
+
+    /**
+     * Lấy chi tiết biên lai thu tiền (Chức năng 10)
+     */
+    async getReceiptDetail(paymentId: string): Promise<{
+        success: boolean;
+        data: {
+            payment: any;
+            receipt: any;
+            invoice: InvoiceModel;
+        };
+    }> {
+        const res = await fetch(`/api/v1/payments/${paymentId}/receipt`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải chi tiết biên lai');
+        return json;
+    },
 };

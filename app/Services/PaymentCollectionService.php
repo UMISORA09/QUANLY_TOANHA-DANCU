@@ -188,7 +188,7 @@ class PaymentCollectionService
     }
 
     /**
-     * Danh sách lịch sử các giao dịch thu tiền
+     * Danh sách lịch sử các giao dịch thu tiền (Chức năng 10 - Xem lịch sử giao dịch các kỳ trước)
      *
      * @param  array<string, mixed>  $filters
      */
@@ -197,10 +197,11 @@ class PaymentCollectionService
         $query = Payment::with([
             'invoice',
             'apartment.block',
+            'apartment.floor',
             'payerUser',
             'recordedByStaff',
             'receipt',
-        ])->orderBy('created_at', 'desc');
+        ])->orderBy('payment_time', 'desc')->orderBy('created_at', 'desc');
 
         if (! empty($filters['invoice_id'])) {
             $query->where('invoice_id', $filters['invoice_id']);
@@ -214,18 +215,117 @@ class PaymentCollectionService
             $query->where('payment_gateway', $filters['payment_gateway']);
         }
 
+        if (! empty($filters['payment_status'])) {
+            $query->where('payment_status', $filters['payment_status']);
+        }
+
+        if (! empty($filters['billing_period'])) {
+            $query->whereHas('invoice', fn ($inv) => $inv->where('billing_period', $filters['billing_period']));
+        }
+
+        if (! empty($filters['date_from'])) {
+            $query->whereDate('payment_time', '>=', $filters['date_from']);
+        }
+
+        if (! empty($filters['date_to'])) {
+            $query->whereDate('payment_time', '<=', $filters['date_to']);
+        }
+
+        if (! empty($filters['block_id'])) {
+            $query->whereHas('apartment', fn ($apt) => $apt->where('block_id', $filters['block_id']));
+        }
+
         if (! empty($filters['search'])) {
             $search = trim($filters['search']);
             $query->where(function ($q) use ($search) {
                 $q->where('payment_reference_code', 'like', "%{$search}%")
+                    ->orWhere('gateway_transaction_id', 'like', "%{$search}%")
                     ->orWhereHas('invoice', fn ($inv) => $inv->where('invoice_number', 'like', "%{$search}%"))
-                    ->orWhereHas('apartment', fn ($apt) => $apt->where('apartment_number', 'like', "%{$search}%"));
+                    ->orWhereHas('apartment', fn ($apt) => $apt->where('apartment_number', 'like', "%{$search}%"))
+                    ->orWhereHas('receipt', fn ($rcp) => $rcp->where('receipt_number', 'like', "%{$search}%"));
             });
         }
 
         $perPage = max(1, min(100, (int) ($filters['per_page'] ?? 15)));
 
         return $query->paginate($perPage);
+    }
+
+    /**
+     * Thống kê tổng hợp số tiền và số lượng giao dịch theo bộ lọc (Chức năng 10)
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function getPaymentSummary(array $filters = []): array
+    {
+        $query = Payment::query();
+
+        if (! empty($filters['apartment_id'])) {
+            $query->where('apartment_id', $filters['apartment_id']);
+        }
+
+        if (! empty($filters['payment_gateway'])) {
+            $query->where('payment_gateway', $filters['payment_gateway']);
+        }
+
+        if (! empty($filters['billing_period'])) {
+            $query->whereHas('invoice', fn ($inv) => $inv->where('billing_period', $filters['billing_period']));
+        }
+
+        if (! empty($filters['date_from'])) {
+            $query->whereDate('payment_time', '>=', $filters['date_from']);
+        }
+
+        if (! empty($filters['date_to'])) {
+            $query->whereDate('payment_time', '<=', $filters['date_to']);
+        }
+
+        $totalCount = (clone $query)->count();
+        $successfulPayments = (clone $query)->where('payment_status', 'SUCCESS');
+        $totalAmount = (float) $successfulPayments->sum('amount_paid');
+        $successCount = $successfulPayments->count();
+
+        // Thống kê theo phương thức thanh toán
+        $byGateway = Payment::where('payment_status', 'SUCCESS')
+            ->selectRaw('payment_gateway, count(*) as count, sum(amount_paid) as total')
+            ->groupBy('payment_gateway')
+            ->get()
+            ->keyBy('payment_gateway');
+
+        return [
+            'total_transactions' => $totalCount,
+            'successful_transactions' => $successCount,
+            'total_amount' => $totalAmount,
+            'by_gateway' => $byGateway,
+        ];
+    }
+
+    /**
+     * Xem chi tiết biên lai thu tiền theo ID thanh toán
+     *
+     * @return array<string, mixed>
+     */
+    public function getReceiptDetail(string $paymentId): array
+    {
+        $payment = Payment::with([
+            'invoice.apartment.block',
+            'apartment.block',
+            'apartment.floor',
+            'payerUser',
+            'recordedByStaff',
+            'receipt',
+        ])->findOrFail($paymentId);
+
+        if (! $payment->receipt) {
+            throw new \DomainException("Giao dịch {$payment->payment_reference_code} chưa có biên lai thu tiền.");
+        }
+
+        return [
+            'payment' => $payment,
+            'receipt' => $payment->receipt,
+            'invoice' => $payment->invoice,
+        ];
     }
 
     /**
