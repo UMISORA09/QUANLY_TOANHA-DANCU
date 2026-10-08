@@ -1262,7 +1262,7 @@ class ApiService {
     sort_order?: 'asc' | 'desc';
     page?: number;
     limit?: number;
-  } = {}) {
+  } = {}, options: RequestInit = {}) {
     const q = new URLSearchParams();
     if (params.search) q.append('search', params.search);
     if (params.apartment_id) q.append('apartment_id', params.apartment_id);
@@ -1278,7 +1278,7 @@ class ApiService {
       success: boolean;
       data: ResidentItem[];
       meta: { current_page: number; last_page: number; per_page: number; total: number };
-    }>(`/residents?${q.toString()}`);
+    }>(`/residents?${q.toString()}`, options);
   }
 
   async getResident(id: string) {
@@ -1292,7 +1292,7 @@ class ApiService {
     apartment_id: string;
     user_id: string;
     resident_type: string;
-    is_head_of_household?: boolean;
+    is_head_of_household: boolean;
     stay_start_date: string;
     stay_end_date?: string | null;
     relationship_to_head?: string;
@@ -1348,7 +1348,7 @@ class ApiService {
   // ==========================================
   // TEMPORARY REGISTRATIONS APIs
   // ==========================================
-  async getTemporaryRegistrations(params?: Record<string, string | number | boolean | undefined | null>) {
+  async getTemporaryRegistrations(params?: Record<string, string | number | boolean | undefined | null>, options: RequestInit = {}) {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -1367,7 +1367,7 @@ class ApiService {
         per_page: number;
         total: number;
       };
-    }>(`/residents/temporary-registrations${qStr ? `?${qStr}` : ''}`);
+    }>(`/residents/temporary-registrations${qStr ? `?${qStr}` : ''}`, options);
   }
 
   async getTemporaryRegistrationById(id: string) {

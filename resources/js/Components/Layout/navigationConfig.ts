@@ -72,9 +72,9 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     defaultPath: '/quan-ly',
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
-      { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'residents', label: 'Quản lý Chủ hộ & Nhân khẩu căn hộ', icon: Users, badge: '1,248' },
       { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
-      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },
+      { id: 'temporary_registrations', label: 'Đăng ký & Quản lý Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: 'Live', badgeType: 'success' },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
@@ -143,8 +143,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
-      { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
-      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
@@ -163,8 +161,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'overview', label: 'Bàn làm việc Quản trị & Dev', icon: LayoutDashboard },
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
-      { id: 'residents', label: 'Quản lý Cư dân & Căn hộ', icon: Users, badge: '1,248' },
-      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
