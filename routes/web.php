@@ -436,6 +436,11 @@ Route::get('/admin/pricing-configs', function () {
 // ==========================================
 Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('meter-readings/summary', [MeterReadingController::class, 'summary']);
+    Route::get('meter-readings/template', [MeterReadingController::class, 'downloadTemplate']);
+    Route::post('meter-readings/import', [MeterReadingController::class, 'importExcel']);
+    Route::get('meter-reading-batches', [MeterReadingController::class, 'indexBatches']);
+    Route::get('meter-reading-batches/{id}', [MeterReadingController::class, 'showBatch']);
+
     Route::get('meter-readings', [MeterReadingController::class, 'indexReadings']);
     Route::post('meter-readings', [MeterReadingController::class, 'storeReading']);
     Route::put('meter-readings/{id}', [MeterReadingController::class, 'updateReading']);

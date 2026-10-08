@@ -14,6 +14,8 @@ class MeterReadingBatch extends Model
 
     protected $table = 'meter_reading_batches';
 
+    public const UPDATED_AT = null;
+
     protected $fillable = [
         'batch_code',
         'billing_month_year',

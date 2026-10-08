@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Models\Apartment;
 use App\Models\Meter;
 use App\Models\MeterReading;
+use App\Models\MeterReadingBatch;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class MeterReadingService
@@ -406,5 +408,388 @@ class MeterReadingService
         }
 
         return $query->update(['is_locked_for_billing' => false]);
+    }
+
+    /**
+     * Sinh file mẫu CSV có sẵn danh sách đồng hồ và chỉ số cũ của các căn hộ
+     */
+    public function generateTemplate(string $cycle, ?string $blockId = null, ?string $meterType = null): string
+    {
+        $query = Meter::query()
+            ->with(['apartment.block', 'apartment.floor', 'readings' => fn ($q) => $q->where('billing_cycle', $cycle)])
+            ->where('is_active', true);
+
+        if ($blockId) {
+            $query->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
+        }
+
+        if ($meterType && $meterType !== 'ALL') {
+            $query->where('meter_type', $meterType);
+        }
+
+        $meters = $query->orderBy('meter_code')->get();
+
+        // Thêm UTF-8 BOM để Excel tự động nhận diện tiếng Việt có dấu chuẩn xác
+        $output = "\xEF\xBB\xBF";
+        $headers = [
+            'STT',
+            'Mã Đồng Hồ',
+            'Số Căn Hộ',
+            'Khối Tòa Nhà',
+            'Tầng',
+            'Loại Dịch Vụ',
+            'Chỉ Số Kỳ Trước',
+            'Chỉ Số Kỳ Này (*)',
+            'Ngày Ghi Số (YYYY-MM-DD)',
+            'Thay Đồng Hồ Mới (1/0)',
+            'Ghi Chú',
+        ];
+
+        $handle = fopen('php://memory', 'r+');
+        fputcsv($handle, $headers);
+
+        $cycleCarbon = Carbon::createFromFormat('Y-m', $cycle);
+        $suggestedDate = $cycleCarbon->endOfMonth()->toDateString();
+
+        $stt = 1;
+        foreach ($meters as $m) {
+            $existingReading = $m->readings->first();
+            $prev = $existingReading ? $existingReading->previous_reading : $m->current_reading;
+            $curr = $existingReading ? $existingReading->current_reading : '';
+
+            $row = [
+                $stt++,
+                $m->meter_code,
+                $m->apartment?->apartment_number ?? '',
+                $m->apartment?->block?->block_name ?? '',
+                $m->apartment?->floor?->floor_name ?? '',
+                $m->meter_type,
+                $prev,
+                $curr,
+                $suggestedDate,
+                '0',
+                $existingReading?->abnormal_reason ?? '',
+            ];
+            fputcsv($handle, $row);
+        }
+
+        rewind($handle);
+        $output .= stream_get_contents($handle);
+        fclose($handle);
+
+        return $output;
+    }
+
+    /**
+     * Import danh sách chỉ số điện nước hàng loạt từ file CSV / Excel text
+     */
+    public function importFromCsv(
+        string $filePath,
+        string $originalFileName,
+        string $cycle,
+        ?string $blockId = null,
+        ?string $meterType = null,
+        ?string $userId = null
+    ): MeterReadingBatch {
+        // 1. Kiểm tra kỳ này đã bị khóa sổ chưa
+        $lockedQuery = MeterReading::where('billing_cycle', $cycle)->where('is_locked_for_billing', true);
+        if ($blockId) {
+            $lockedQuery->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
+        }
+        if ($lockedQuery->exists()) {
+            throw ValidationException::withMessages([
+                'billing_cycle' => "Kỳ {$cycle} đã bị khóa sổ để lập hóa đơn, không thể import dữ liệu.",
+            ]);
+        }
+
+        if (! file_exists($filePath)) {
+            throw new \RuntimeException('Không tìm thấy tệp tải lên để xử lý.');
+        }
+
+        $rawContent = file_get_contents($filePath);
+        // Xóa UTF-8 BOM nếu có
+        $cleanContent = preg_replace('/^\xEF\xBB\xBF/', '', $rawContent);
+        $lines = preg_split('/\r\n|\r|\n/', trim($cleanContent));
+
+        if (empty($lines) || count($lines) < 2) {
+            throw ValidationException::withMessages([
+                'file' => 'Tệp dữ liệu trống hoặc không có dòng dữ liệu hợp lệ.',
+            ]);
+        }
+
+        // Tạo Batch record
+        $batchCode = 'BATCH-'.str_replace('-', '', $cycle).'-'.strtoupper(Str::random(6));
+        $batch = MeterReadingBatch::create([
+            'batch_code' => $batchCode,
+            'billing_month_year' => $cycle,
+            'meter_type' => $meterType ?: 'ALL',
+            'block_id' => $blockId,
+            'file_name' => $originalFileName,
+            'file_url' => $filePath,
+            'uploaded_by' => $userId ?: '00000000-0000-0000-0000-000000000000',
+            'total_records' => 0,
+            'success_records' => 0,
+            'failed_records' => 0,
+            'import_status' => 'PROCESSING',
+            'error_summary_json' => [],
+        ]);
+
+        // Xác định delimiter (phẩy, chấm phẩy, tab)
+        $firstLine = $lines[0];
+        $delimiter = ',';
+        if (substr_count($firstLine, ';') > substr_count($firstLine, ',')) {
+            $delimiter = ';';
+        } elseif (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) {
+            $delimiter = "\t";
+        }
+
+        $headerRow = str_getcsv($firstLine, $delimiter);
+        $headerMap = [];
+        foreach ($headerRow as $idx => $colName) {
+            $normalized = Str::lower(Str::ascii(trim($colName)));
+            if (str_contains($normalized, 'ma dong ho') || str_contains($normalized, 'meter_code')) {
+                $headerMap['meter_code'] = $idx;
+            } elseif (str_contains($normalized, 'chi so ky nay') || str_contains($normalized, 'chi so moi') || str_contains($normalized, 'current_reading')) {
+                $headerMap['current_reading'] = $idx;
+            } elseif (str_contains($normalized, 'chi so ky truoc') || str_contains($normalized, 'chi so cu') || str_contains($normalized, 'previous_reading')) {
+                $headerMap['previous_reading'] = $idx;
+            } elseif (str_contains($normalized, 'ngay ghi') || str_contains($normalized, 'reading_date')) {
+                $headerMap['reading_date'] = $idx;
+            } elseif (str_contains($normalized, 'thay dong ho') || str_contains($normalized, 'force_reset')) {
+                $headerMap['force_reset'] = $idx;
+            } elseif (str_contains($normalized, 'ghi chu') || str_contains($normalized, 'notes')) {
+                $headerMap['notes'] = $idx;
+            } elseif (str_contains($normalized, 'can ho') || str_contains($normalized, 'apartment')) {
+                $headerMap['apartment'] = $idx;
+            }
+        }
+
+        // Fallback vị trí cột nếu không khớp header
+        $meterCodeIdx = $headerMap['meter_code'] ?? 1;
+        $currentReadingIdx = $headerMap['current_reading'] ?? 7;
+        $prevReadingIdx = $headerMap['previous_reading'] ?? 6;
+        $dateIdx = $headerMap['reading_date'] ?? 8;
+        $forceResetIdx = $headerMap['force_reset'] ?? 9;
+        $notesIdx = $headerMap['notes'] ?? 10;
+        $aptIdx = $headerMap['apartment'] ?? 2;
+
+        $cycleCarbon = Carbon::createFromFormat('Y-m', $cycle);
+        $defaultPeriodStart = $cycleCarbon->startOfMonth()->toDateString();
+        $defaultPeriodEnd = $cycleCarbon->endOfMonth()->toDateString();
+
+        $totalRecords = 0;
+        $successRecords = 0;
+        $failedRecords = 0;
+        $errors = [];
+
+        // Duyệt qua từng dòng dữ liệu (bỏ header)
+        for ($i = 1; $i < count($lines); $i++) {
+            $lineContent = trim($lines[$i]);
+            if ($lineContent === '') {
+                continue;
+            }
+
+            $totalRecords++;
+            $row = str_getcsv($lineContent, $delimiter);
+            $lineIndex = $i + 1; // Số dòng trên Excel (1-based)
+
+            $meterCode = isset($row[$meterCodeIdx]) ? trim($row[$meterCodeIdx]) : '';
+            $rawCurrent = isset($row[$currentReadingIdx]) ? trim($row[$currentReadingIdx]) : '';
+            $rawPrev = isset($row[$prevReadingIdx]) ? trim($row[$prevReadingIdx]) : '';
+            $readingDate = isset($row[$dateIdx]) && trim($row[$dateIdx]) !== '' ? trim($row[$dateIdx]) : $defaultPeriodEnd;
+            $forceReset = isset($row[$forceResetIdx]) && in_array(trim($row[$forceResetIdx]), ['1', 'true', 'yes', 'TRUE'], true);
+            $notes = isset($row[$notesIdx]) ? trim($row[$notesIdx]) : '';
+            $aptNumber = isset($row[$aptIdx]) ? trim($row[$aptIdx]) : '';
+
+            // Validation 1: Mã công tơ không được rỗng
+            if ($meterCode === '') {
+                $failedRecords++;
+                $errors[] = [
+                    'line' => $lineIndex,
+                    'meter_code' => 'N/A',
+                    'apartment' => $aptNumber,
+                    'error' => 'Mã đồng hồ bị để trống.',
+                ];
+
+                continue;
+            }
+
+            // Validation 2: Tìm Meter
+            $meter = Meter::where('meter_code', $meterCode)->first();
+            if (! $meter) {
+                $failedRecords++;
+                $errors[] = [
+                    'line' => $lineIndex,
+                    'meter_code' => $meterCode,
+                    'apartment' => $aptNumber,
+                    'error' => "Không tìm thấy đồng hồ '{$meterCode}' trên hệ thống.",
+                ];
+
+                continue;
+            }
+
+            // Validation 3: Chỉ số mới phải là số hợp lệ
+            if ($rawCurrent === '' || ! is_numeric($rawCurrent)) {
+                $failedRecords++;
+                $errors[] = [
+                    'line' => $lineIndex,
+                    'meter_code' => $meterCode,
+                    'apartment' => $meter->apartment?->apartment_number ?? $aptNumber,
+                    'error' => "Chỉ số mới '{$rawCurrent}' không hợp lệ hoặc bị để trống.",
+                ];
+
+                continue;
+            }
+
+            $currentReading = (float) $rawCurrent;
+            if ($currentReading < 0) {
+                $failedRecords++;
+                $errors[] = [
+                    'line' => $lineIndex,
+                    'meter_code' => $meterCode,
+                    'apartment' => $meter->apartment?->apartment_number ?? $aptNumber,
+                    'error' => 'Chỉ số mới không được là số âm.',
+                ];
+
+                continue;
+            }
+
+            // Xác định previous_reading
+            $prevReading = (is_numeric($rawPrev) && $rawPrev !== '')
+                ? (float) $rawPrev
+                : (float) $meter->current_reading;
+
+            // Validation 4: Chỉ số mới < chỉ số cũ
+            if ($currentReading < $prevReading && ! $forceReset) {
+                $failedRecords++;
+                $errors[] = [
+                    'line' => $lineIndex,
+                    'meter_code' => $meterCode,
+                    'apartment' => $meter->apartment?->apartment_number ?? $aptNumber,
+                    'error' => "Chỉ số mới ({$currentReading}) nhỏ hơn chỉ số cũ ({$prevReading}). Cần bật cờ thay mới đồng hồ nếu vừa thay công tơ.",
+                ];
+
+                continue;
+            }
+
+            // Tính lượng tiêu thụ
+            $multiplier = $meter->multiplier_factor > 0 ? $meter->multiplier_factor : 1.0;
+            $consumed = $forceReset ? $currentReading * $multiplier : ($currentReading - $prevReading) * $multiplier;
+            $consumed = max(0, round($consumed, 2));
+
+            // Kiểm tra bất thường
+            $isAbnormal = false;
+            $abnormalReason = null;
+
+            if ($meter->meter_type === 'ELECTRICITY' && $consumed >= 600) {
+                $isAbnormal = true;
+                $abnormalReason = "Sản lượng điện tiêu thụ cao bất thường ({$consumed} kWh >= 600 kWh).";
+            } elseif (in_array($meter->meter_type, ['WATER', 'COLD_WATER']) && $consumed >= 50) {
+                $isAbnormal = true;
+                $abnormalReason = "Lượng nước tiêu thụ cao bất thường ({$consumed} m³ >= 50 m³ - nghi vấn rò rỉ).";
+            }
+
+            // Lưu bản ghi vào CSDL
+            try {
+                DB::transaction(function () use (
+                    $meter,
+                    $batch,
+                    $cycle,
+                    $defaultPeriodStart,
+                    $readingDate,
+                    $prevReading,
+                    $currentReading,
+                    $consumed,
+                    $userId,
+                    $isAbnormal,
+                    $abnormalReason
+                ) {
+                    MeterReading::updateOrCreate(
+                        [
+                            'meter_id' => $meter->id,
+                            'billing_cycle' => $cycle,
+                        ],
+                        [
+                            'apartment_id' => $meter->apartment_id,
+                            'batch_id' => $batch->id,
+                            'period_start_date' => $defaultPeriodStart,
+                            'period_end_date' => $readingDate,
+                            'previous_reading' => $prevReading,
+                            'current_reading' => $currentReading,
+                            'consumed_units' => $consumed,
+                            'reading_source' => 'EXCEL_IMPORT',
+                            'recorded_by_user_id' => $userId,
+                            'is_abnormal_consumption' => $isAbnormal,
+                            'abnormal_reason' => $abnormalReason,
+                            'is_locked_for_billing' => false,
+                        ]
+                    );
+
+                    $meter->update([
+                        'current_reading' => $currentReading,
+                        'last_reading_date' => $readingDate,
+                    ]);
+                });
+
+                $successRecords++;
+            } catch (\Throwable $e) {
+                $failedRecords++;
+                $errors[] = [
+                    'line' => $lineIndex,
+                    'meter_code' => $meterCode,
+                    'apartment' => $meter->apartment?->apartment_number ?? $aptNumber,
+                    'error' => 'Lỗi lưu CSDL: '.$e->getMessage(),
+                ];
+            }
+        }
+
+        // Cập nhật kết quả cuối cùng của Batch
+        $status = 'COMPLETED';
+        if ($failedRecords > 0 && $successRecords === 0) {
+            $status = 'FAILED';
+        }
+
+        $batch->update([
+            'total_records' => $totalRecords,
+            'success_records' => $successRecords,
+            'failed_records' => $failedRecords,
+            'import_status' => $status,
+            'error_summary_json' => $errors,
+            'completed_at' => Carbon::now(),
+        ]);
+
+        return $batch;
+    }
+
+    /**
+     * Danh sách lịch sử các đợt import hàng loạt
+     */
+    public function listBatches(array $filters = [], int $perPage = 10): LengthAwarePaginator
+    {
+        $query = MeterReadingBatch::query()
+            ->with(['block', 'uploader'])
+            ->orderByDesc('created_at');
+
+        if (! empty($filters['cycle'])) {
+            $query->where('billing_month_year', $filters['cycle']);
+        }
+
+        if (! empty($filters['meter_type']) && $filters['meter_type'] !== 'ALL') {
+            $query->where('meter_type', $filters['meter_type']);
+        }
+
+        if (! empty($filters['block_id'])) {
+            $query->where('block_id', $filters['block_id']);
+        }
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Lấy thông tin chi tiết một đợt import kèm danh sách lỗi
+     */
+    public function getBatchDetail(string $batchId): MeterReadingBatch
+    {
+        return MeterReadingBatch::with(['block', 'uploader'])->findOrFail($batchId);
     }
 }

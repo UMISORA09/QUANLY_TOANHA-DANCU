@@ -25,12 +25,18 @@ import {
     ShieldAlert,
     Clock,
     Sparkles,
-    Check
+    Check,
+    Download,
+    UploadCloud,
+    FileSpreadsheet,
+    FileWarning,
+    CheckCheck
 } from 'lucide-react';
 import {
     meterReadingApi,
     MeterModel,
     MeterReadingModel,
+    MeterReadingBatchModel,
     MeterSummaryData
 } from '../../Services/meterReadingApi';
 
@@ -50,15 +56,22 @@ export const MeterReadingManagement: React.FC = () => {
     const [selectedBlock, setSelectedBlock] = useState<string>('ALL');
     const [selectedMeterType, setSelectedMeterType] = useState<string>('ALL');
     const [searchQuery, setSearchQuery] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<'meters' | 'readings' | 'abnormal'>('meters');
+    const [activeTab, setActiveTab] = useState<'meters' | 'readings' | 'abnormal' | 'import'>('meters');
 
     // Dữ liệu từ API
     const [summary, setSummary] = useState<MeterSummaryData | null>(null);
     const [meters, setMeters] = useState<MeterModel[]>([]);
     const [readings, setReadings] = useState<MeterReadingModel[]>([]);
+    const [batches, setBatches] = useState<MeterReadingBatchModel[]>([]);
     const [blocks, setBlocks] = useState<BlockOption[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 });
+
+    // State Import Excel
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importing, setImporting] = useState<boolean>(false);
+    const [lastImportBatch, setLastImportBatch] = useState<MeterReadingBatchModel | null>(null);
+    const [selectedBatchForDetail, setSelectedBatchForDetail] = useState<MeterReadingBatchModel | null>(null);
 
     // Toast thông báo
     const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -126,6 +139,16 @@ export const MeterReadingManagement: React.FC = () => {
                 });
                 setMeters(meterRes.data);
                 setPagination(meterRes.meta);
+            } else if (activeTab === 'import') {
+                const batchRes = await meterReadingApi.getBatches({
+                    cycle: selectedCycle,
+                    block_id: blockId,
+                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                    page: pagination.current_page,
+                    per_page: 10,
+                });
+                setBatches(batchRes.data);
+                setPagination(batchRes.meta);
             } else {
                 const readingRes = await meterReadingApi.getReadings({
                     cycle: selectedCycle,
@@ -143,6 +166,49 @@ export const MeterReadingManagement: React.FC = () => {
             showToast('error', err.message || 'Lỗi khi tải dữ liệu');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Tải file mẫu CSV
+    const handleDownloadTemplate = async () => {
+        try {
+            showToast('success', 'Đang kết xuất tệp mẫu CSV có sẵn dữ liệu căn hộ...');
+            await meterReadingApi.downloadTemplate(selectedCycle, selectedBlock, selectedMeterType);
+        } catch (err: any) {
+            showToast('error', err.message || 'Lỗi khi tải tệp mẫu');
+        }
+    };
+
+    // Tiến hành import file Excel/CSV
+    const handleExecuteImport = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!importFile) {
+            showToast('error', 'Vui lòng chọn một tệp Excel hoặc CSV để tải lên.');
+            return;
+        }
+
+        setImporting(true);
+        try {
+            const batch = await meterReadingApi.importReadings(
+                importFile,
+                selectedCycle,
+                selectedBlock !== 'ALL' ? selectedBlock : undefined,
+                selectedMeterType !== 'ALL' ? selectedMeterType : undefined
+            );
+
+            setLastImportBatch(batch);
+            if (batch.failed_records === 0) {
+                showToast('success', `Import thành công trọn vẹn ${batch.success_records}/${batch.total_records} bản ghi!`);
+            } else {
+                showToast('error', `Import hoàn tất có lỗi: ${batch.success_records} thành công, ${batch.failed_records} dòng lỗi.`);
+            }
+
+            setImportFile(null);
+            fetchData();
+        } catch (err: any) {
+            showToast('error', err.message || 'Quá trình import thất bại.');
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -513,16 +579,37 @@ export const MeterReadingManagement: React.FC = () => {
                             <ShieldAlert className="w-4 h-4" />
                             <span>Bất Thường ({summary?.abnormal_count || 0})</span>
                         </button>
+                        <button
+                            onClick={() => { setActiveTab('import'); setPagination(p => ({ ...p, current_page: 1 })); }}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                                activeTab === 'import'
+                                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                                    : 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900'
+                            }`}
+                        >
+                            <FileSpreadsheet className="w-4 h-4" />
+                            <span>Import Excel / CSV</span>
+                        </button>
                     </div>
 
-                    {/* Bộ lọc Tòa nhà & Loại Đồng Hồ */}
+                    {/* Bộ lọc Tòa nhà & Loại Đồng Hồ & Nút Tải Mẫu */}
                     <div className="flex flex-wrap items-center gap-3">
+                        {/* Nút Tải File Mẫu */}
+                        <button
+                            onClick={handleDownloadTemplate}
+                            title="Tải tệp mẫu CSV/Excel có sẵn danh sách công tơ căn hộ"
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 hover:text-white transition-colors"
+                        >
+                            <Download className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>Tải Mẫu Excel</span>
+                        </button>
+
                         {/* Tìm kiếm */}
-                        <div className="relative min-w-[200px] flex-1 md:flex-initial">
+                        <div className="relative min-w-[180px] flex-1 md:flex-initial">
                             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                             <input
                                 type="text"
-                                placeholder="Tìm mã công tơ, số căn hộ..."
+                                placeholder="Tìm mã công tơ, căn hộ..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
@@ -702,7 +789,7 @@ export const MeterReadingManagement: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
-                    ) : (
+                    ) : activeTab === 'readings' || activeTab === 'abnormal' ? (
                         /* TAB 2 & 3: DANH SÁCH BẢN GHI ĐÃ CHỐT HOẶC BẤT THƯỜNG */
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm text-slate-300">
@@ -839,6 +926,252 @@ export const MeterReadingManagement: React.FC = () => {
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    ) : (
+                        /* TAB 4: IMPORT HÀNG LOẠT TỪ EXCEL / CSV */
+                        <div className="p-6 space-y-6">
+                            {/* Khu vực Upload & Hướng dẫn */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Cột 1 & 2: Form Upload File */}
+                                <div className="lg:col-span-2 bg-slate-950/60 border border-slate-800 rounded-2xl p-6">
+                                    <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                <UploadCloud className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-bold text-white">Tải Lên Tệp Chỉ Số Đo</h3>
+                                                <p className="text-xs text-slate-400">Hỗ trợ định dạng .csv, .txt tương thích Microsoft Excel</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleDownloadTemplate}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-indigo-300 border border-slate-700 transition-colors"
+                                        >
+                                            <Download className="w-3.5 h-3.5" />
+                                            <span>Tải Mẫu Excel</span>
+                                        </button>
+                                    </div>
+
+                                    <form onSubmit={handleExecuteImport} className="mt-5 space-y-4">
+                                        <div className="border-2 border-dashed border-slate-700/80 hover:border-indigo-500/60 rounded-2xl p-8 text-center bg-slate-900/40 hover:bg-slate-900/70 transition-all cursor-pointer relative">
+                                            <input
+                                                type="file"
+                                                accept=".csv,.txt"
+                                                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            />
+                                            <div className="space-y-2 pointer-events-none">
+                                                <div className="w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto">
+                                                    <FileSpreadsheet className="w-6 h-6" />
+                                                </div>
+                                                {importFile ? (
+                                                    <div>
+                                                        <p className="text-sm font-bold text-white">{importFile.name}</p>
+                                                        <p className="text-xs text-emerald-400 font-medium mt-0.5">
+                                                            {(importFile.size / 1024).toFixed(1)} KB - Đã sẵn sàng import
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-200">
+                                                            Kéo thả tệp vào đây hoặc <span className="text-indigo-400 underline">chọn từ thiết bị</span>
+                                                        </p>
+                                                        <p className="text-xs text-slate-500 mt-1">Dung lượng tối đa 10MB</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-2">
+                                            <div className="text-xs text-slate-400">
+                                                Kỳ chốt số mục tiêu: <span className="font-bold text-indigo-400 font-mono">{selectedCycle}</span>
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                disabled={!importFile || importing || summary?.is_cycle_locked}
+                                                className={`px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all inline-flex items-center gap-2 ${
+                                                    !importFile || summary?.is_cycle_locked
+                                                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                                        : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                                                }`}
+                                            >
+                                                {importing ? (
+                                                    <>
+                                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                                        <span>Đang phân tích & lưu...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCheck className="w-4 h-4" />
+                                                        <span>Bắt Đầu Import & Đối Soát</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                {/* Cột 3: Hướng Dẫn & Quy Tắc */}
+                                <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                        <HelpCircle className="w-4 h-4 text-indigo-400" />
+                                        <span>Quy Tắc Import & Validate</span>
+                                    </h4>
+                                    <ul className="text-xs text-slate-300 space-y-2.5">
+                                        <li className="flex items-start gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0"></span>
+                                            <span>File mẫu chứa đúng mã công tơ của từng căn hộ để tránh nhầm lẫn.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0"></span>
+                                            <span><strong>Chỉ số mới &ge; Chỉ số cũ:</strong> Hệ thống tự động chặn nếu chỉ số mới thấp hơn chỉ số cũ.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0"></span>
+                                            <span><strong>Thay đồng hồ:</strong> Điền giá trị <code>1</code> tại cột <i>Thay Đồng Hồ Mới</i> nếu vừa thay công tơ.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 mt-1.5 shrink-0"></span>
+                                            <span><strong>Khóa sổ:</strong> Không thể import khi chu kỳ đã được ban quản lý khóa sổ.</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            {/* Báo Cáo Kết Quả Đợt Import Mới Nhất (Nếu có) */}
+                            {lastImportBatch && (
+                                <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-white">Kết Quả Đợt Import:</span>
+                                            <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-indigo-300">
+                                                {lastImportBatch.batch_code}
+                                            </span>
+                                        </div>
+                                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                            lastImportBatch.import_status === 'COMPLETED'
+                                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                                : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                                        }`}>
+                                            {lastImportBatch.import_status}
+                                        </span>
+                                    </div>
+
+                                    {/* Chỉ số nhanh */}
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
+                                            <div className="text-xs text-slate-400 font-medium">Tổng Bản Ghi</div>
+                                            <div className="text-xl font-extrabold text-white mt-1">{lastImportBatch.total_records}</div>
+                                        </div>
+                                        <div className="bg-emerald-950/20 p-3 rounded-xl border border-emerald-500/20 text-center">
+                                            <div className="text-xs text-emerald-400 font-medium">Thành Công</div>
+                                            <div className="text-xl font-extrabold text-emerald-400 mt-1">{lastImportBatch.success_records}</div>
+                                        </div>
+                                        <div className="bg-rose-950/20 p-3 rounded-xl border border-rose-500/20 text-center">
+                                            <div className="text-xs text-rose-400 font-medium">Dòng Lỗi Bị Chặn</div>
+                                            <div className="text-xl font-extrabold text-rose-400 mt-1">{lastImportBatch.failed_records}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bảng Chi Tiết Lỗi (nếu có lỗi) */}
+                                    {lastImportBatch.error_summary_json && lastImportBatch.error_summary_json.length > 0 && (
+                                        <div className="space-y-2 pt-2">
+                                            <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 uppercase tracking-wider">
+                                                <FileWarning className="w-4 h-4" />
+                                                <span>Chi Tiết {lastImportBatch.error_summary_json.length} Dòng Bị Lỗi Cần Sửa:</span>
+                                            </div>
+                                            <div className="max-h-60 overflow-y-auto border border-rose-500/20 rounded-xl overflow-hidden">
+                                                <table className="w-full text-left text-xs text-slate-300">
+                                                    <thead className="bg-rose-950/30 text-rose-300 uppercase font-semibold">
+                                                        <tr>
+                                                            <th className="p-2.5">Dòng Excel</th>
+                                                            <th className="p-2.5">Mã Đồng Hồ</th>
+                                                            <th className="p-2.5">Căn Hộ</th>
+                                                            <th className="p-2.5">Nguyên Nhân Lỗi</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-800">
+                                                        {lastImportBatch.error_summary_json.map((err, idx) => (
+                                                            <tr key={idx} className="hover:bg-rose-500/5">
+                                                                <td className="p-2.5 font-mono text-slate-400 font-bold">Dòng {err.line}</td>
+                                                                <td className="p-2.5 font-mono text-slate-200">{err.meter_code}</td>
+                                                                <td className="p-2.5 text-slate-300">{err.apartment || 'N/A'}</td>
+                                                                <td className="p-2.5 text-rose-300">{err.error}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Bảng Lịch Sử Các Đợt Import (Batches) */}
+                            <div className="space-y-3 pt-2">
+                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-indigo-400" />
+                                    <span>Lịch Sử Các Đợt Import Trong Kỳ</span>
+                                </h4>
+
+                                <div className="border border-slate-800 rounded-xl overflow-hidden">
+                                    <table className="w-full text-left text-xs text-slate-300">
+                                        <thead className="bg-slate-950/70 border-b border-slate-800 uppercase font-semibold text-slate-400">
+                                            <tr>
+                                                <th className="py-3 px-4">Mã Đợt (Batch Code)</th>
+                                                <th className="py-3 px-4">Tên Tệp</th>
+                                                <th className="py-3 px-4">Kỳ Chốt</th>
+                                                <th className="py-3 px-4 text-right">Tổng Dòng</th>
+                                                <th className="py-3 px-4 text-right">Thành Công</th>
+                                                <th className="py-3 px-4 text-right">Thất Bại</th>
+                                                <th className="py-3 px-4 text-center">Trạng Thái</th>
+                                                <th className="py-3 px-4 text-right">Thao Tác</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800/60">
+                                            {batches.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={8} className="py-8 text-center text-slate-500">
+                                                        Chưa có đợt import nào trong kỳ này.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                batches.map((b) => (
+                                                    <tr key={b.id} className="hover:bg-slate-800/40">
+                                                        <td className="py-3 px-4 font-mono font-bold text-indigo-300">{b.batch_code}</td>
+                                                        <td className="py-3 px-4 text-slate-200">{b.file_name}</td>
+                                                        <td className="py-3 px-4 font-mono text-slate-400">{b.billing_month_year}</td>
+                                                        <td className="py-3 px-4 text-right font-mono font-bold">{b.total_records}</td>
+                                                        <td className="py-3 px-4 text-right font-mono text-emerald-400 font-bold">{b.success_records}</td>
+                                                        <td className="py-3 px-4 text-right font-mono text-rose-400 font-bold">{b.failed_records}</td>
+                                                        <td className="py-3 px-4 text-center">
+                                                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                                                b.import_status === 'COMPLETED'
+                                                                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                                                    : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                                                            }`}>
+                                                                {b.import_status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-right">
+                                                            {b.error_summary_json && b.error_summary_json.length > 0 && (
+                                                                <button
+                                                                    onClick={() => setSelectedBatchForDetail(b)}
+                                                                    className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 font-semibold"
+                                                                >
+                                                                    Xem {b.error_summary_json.length} lỗi
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -1131,6 +1464,61 @@ export const MeterReadingManagement: React.FC = () => {
                                 }`}
                             >
                                 {summary?.is_cycle_locked ? 'Xác Nhận Mở Sổ' : 'Xác Nhận Khóa Sổ'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 4: XEM CHI TIẾT ĐỢT IMPORT & LỖI */}
+            {selectedBatchForDetail && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div>
+                                <h4 className="text-base font-bold text-white flex items-center gap-2">
+                                    <FileWarning className="w-5 h-5 text-rose-400" />
+                                    <span>Chi Tiết Lỗi Đợt Import: {selectedBatchForDetail.batch_code}</span>
+                                </h4>
+                                <p className="text-xs text-slate-400 mt-0.5">Tệp gốc: {selectedBatchForDetail.file_name}</p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedBatchForDetail(null)}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="max-h-80 overflow-y-auto border border-slate-800 rounded-xl overflow-hidden">
+                            <table className="w-full text-left text-xs text-slate-300">
+                                <thead className="bg-slate-950/80 uppercase font-semibold text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th className="p-3">Dòng</th>
+                                        <th className="p-3">Mã Đồng Hồ</th>
+                                        <th className="p-3">Căn Hộ</th>
+                                        <th className="p-3">Nguyên Nhân Lỗi Cụ Thể</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                    {selectedBatchForDetail.error_summary_json?.map((err, i) => (
+                                        <tr key={i} className="hover:bg-slate-800/40">
+                                            <td className="p-3 font-mono font-bold text-indigo-400">Dòng {err.line}</td>
+                                            <td className="p-3 font-mono text-slate-200">{err.meter_code}</td>
+                                            <td className="p-3 text-slate-300">{err.apartment || 'N/A'}</td>
+                                            <td className="p-3 text-rose-400 font-medium">{err.error}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex justify-end pt-2">
+                            <button
+                                onClick={() => setSelectedBatchForDetail(null)}
+                                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
+                            >
+                                Đóng
                             </button>
                         </div>
                     </div>

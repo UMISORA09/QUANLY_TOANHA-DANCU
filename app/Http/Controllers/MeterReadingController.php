@@ -292,4 +292,115 @@ class MeterReadingController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Tải tệp mẫu Excel/CSV ghi chỉ số đo kỳ hiện tại
+     */
+    public function downloadTemplate(Request $request)
+    {
+        $cycle = $request->input('cycle', Carbon::now()->format('Y-m'));
+        $blockId = $request->input('block_id');
+        $meterType = $request->input('meter_type');
+
+        try {
+            $csvContent = $this->service->generateTemplate($cycle, $blockId, $meterType);
+
+            return response($csvContent, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => "attachment; filename=\"mau_chot_chi_so_{$cycle}.csv\"",
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi khi tạo file mẫu: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Import danh sách chỉ số điện nước hàng loạt từ file Excel/CSV
+     */
+    public function importExcel(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|max:10240', // Cho phép đến 10MB
+            'billing_cycle' => 'required|string|regex:/^\d{4}-\d{2}$/',
+            'block_id' => 'nullable|uuid|exists:blocks,id',
+            'meter_type' => 'nullable|string|in:ELECTRICITY,WATER,COLD_WATER,ALL',
+        ]);
+
+        $uploadedFile = $request->file('file');
+        $originalName = $uploadedFile->getClientOriginalName();
+        $storedPath = $uploadedFile->store('meter-import-batches', 'local');
+        $fullPath = Storage::disk('local')->path($storedPath);
+
+        try {
+            $batch = $this->service->importFromCsv(
+                $fullPath,
+                $originalName,
+                $request->input('billing_cycle'),
+                $request->input('block_id'),
+                $request->input('meter_type'),
+                $request->user()?->id
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Import hoàn tất: {$batch->success_records}/{$batch->total_records} bản ghi thành công.",
+                'data' => $batch,
+            ], 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Danh sách lịch sử các đợt import hàng loạt
+     */
+    public function indexBatches(Request $request): JsonResponse
+    {
+        $filters = [
+            'cycle' => $request->input('cycle'),
+            'meter_type' => $request->input('meter_type'),
+            'block_id' => $request->input('block_id'),
+        ];
+
+        $perPage = (int) $request->input('per_page', 10);
+        $paginated = $this->service->listBatches($filters, $perPage);
+
+        return response()->json([
+            'success' => true,
+            'data' => $paginated->items(),
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Lấy chi tiết một đợt import và danh sách lỗi
+     */
+    public function showBatch(string $id): JsonResponse
+    {
+        try {
+            $batch = $this->service->getBatchDetail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $batch,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy đợt import này: '.$e->getMessage(),
+            ], 404);
+        }
+    }
 }
