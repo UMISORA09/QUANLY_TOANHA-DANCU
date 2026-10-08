@@ -9,6 +9,7 @@ use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\ManagementDashboardController;
+use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ReceptionPortalController;
@@ -427,6 +428,29 @@ Route::get('/quan-ly/pricing-configs', function () {
     return view('welcome');
 });
 Route::get('/admin/pricing-configs', function () {
+    return view('welcome');
+});
+
+// ==========================================
+// CHỐT CHỈ SỐ ĐIỆN/NƯỚC THỦ CÔNG QUA FORM (CHỨC NĂNG 4 - XUANHOA)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('meter-readings/summary', [MeterReadingController::class, 'summary']);
+    Route::get('meter-readings', [MeterReadingController::class, 'indexReadings']);
+    Route::post('meter-readings', [MeterReadingController::class, 'storeReading']);
+    Route::put('meter-readings/{id}', [MeterReadingController::class, 'updateReading']);
+    Route::delete('meter-readings/{id}', [MeterReadingController::class, 'destroyReading']);
+    Route::post('meter-readings/lock-cycle', [MeterReadingController::class, 'lockCycle']);
+    Route::post('meter-readings/unlock-cycle', [MeterReadingController::class, 'unlockCycle']);
+
+    Route::get('meters', [MeterReadingController::class, 'indexMeters']);
+    Route::post('meters', [MeterReadingController::class, 'storeMeter']);
+});
+
+Route::get('/quan-ly/chot-chi-so', function () {
+    return view('welcome');
+});
+Route::get('/admin/meter-readings', function () {
     return view('welcome');
 });
 

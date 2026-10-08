@@ -55,6 +55,7 @@ import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationMa
 import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
 import { VehicleManagement } from './Admin/VehicleManagement';
 import { ServicePricingManagement } from './Admin/ServicePricingManagement';
+import { MeterReadingManagement } from './Admin/MeterReadingManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -183,6 +184,15 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.startsWith('/admin/buildings')
     ) {
       return 'blocks';
+    }
+    if (
+      path === '/quan-ly/chot-chi-so' ||
+      path === '/admin/meter-readings' ||
+      path === '/quan-ly/meter-readings' ||
+      path.startsWith('/quan-ly/chot-chi-so') ||
+      path.startsWith('/admin/meter-readings')
+    ) {
+      return 'meter_readings';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -843,6 +853,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'pricing_configs' || activeMenuId === 'don_gia' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ServicePricingManagement />
+            </div>
+          ) : activeMenuId === 'meter_readings' || activeMenuId === 'chot_chi_so' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <MeterReadingManagement />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

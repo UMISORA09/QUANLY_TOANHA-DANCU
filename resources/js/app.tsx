@@ -319,6 +319,13 @@ const App: React.FC = () => {
     currentPath.startsWith('/quan-ly/pricing-configs') ||
     currentPath.startsWith('/quan-ly/don-gia');
 
+  const isMeterReadingPath =
+    currentPath === '/quan-ly/chot-chi-so' ||
+    currentPath === '/quan-ly/meter-readings' ||
+    currentPath === '/admin/meter-readings' ||
+    currentPath.startsWith('/quan-ly/chot-chi-so') ||
+    currentPath.startsWith('/admin/meter-readings');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
@@ -328,7 +335,8 @@ const App: React.FC = () => {
     isAmenityPath ||
     isAccountProvisioningPath ||
     isVehiclePath ||
-    isPricingPath;
+    isPricingPath ||
+    isMeterReadingPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -351,6 +359,8 @@ const App: React.FC = () => {
       ? 'vehicles'
       : isPricingPath
       ? 'pricing_configs'
+      : isMeterReadingPath
+      ? 'meter_readings'
       : isAccountProvisioningPath
       ? 'account_provisioning'
       : (managerUrlTab || undefined);

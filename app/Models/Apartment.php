@@ -139,4 +139,20 @@ class Apartment extends Model
     {
         return $this->belongsTo(Floor::class, 'floor_id');
     }
+
+    /**
+     * Danh sách đồng hồ đo điện/nước của căn hộ
+     */
+    public function meters(): HasMany
+    {
+        return $this->hasMany(Meter::class, 'apartment_id');
+    }
+
+    /**
+     * Lịch sử chỉ số đo của căn hộ
+     */
+    public function meterReadings(): HasMany
+    {
+        return $this->hasMany(MeterReading::class, 'apartment_id');
+    }
 }
