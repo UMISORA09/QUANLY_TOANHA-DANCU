@@ -56,6 +56,7 @@ import { AccountProvisioningManagement } from './Admin/AccountProvisioningManage
 import { VehicleManagement } from './Admin/VehicleManagement';
 import { ServicePricingManagement } from './Admin/ServicePricingManagement';
 import { MeterReadingManagement } from './Admin/MeterReadingManagement';
+import { InvoiceBatchGeneration } from './Admin/InvoiceBatchGeneration';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -850,13 +851,17 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <VehicleManagement embedded={true} />
             </div>
-          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'don_gia' ? (
+          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'don_gia' || activeMenuId === 'pricing' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ServicePricingManagement />
             </div>
-          ) : activeMenuId === 'meter_readings' || activeMenuId === 'chot_chi_so' ? (
+          ) : activeMenuId === 'meter_readings' || activeMenuId === 'chot_chi_so' || activeMenuId === 'metering' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <MeterReadingManagement />
+            </div>
+          ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' || activeMenuId === 'sinh_hoa_don' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceBatchGeneration />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

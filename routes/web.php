@@ -8,6 +8,7 @@ use App\Http\Controllers\CicdDashboardController;
 use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
+use App\Http\Controllers\InvoiceGenerationController;
 use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
@@ -456,6 +457,23 @@ Route::get('/quan-ly/chot-chi-so', function () {
     return view('welcome');
 });
 Route::get('/admin/meter-readings', function () {
+    return view('welcome');
+});
+
+// ==========================================
+// SINH HÓA ĐƠN TỰ ĐỘNG HÀNG LOẠT THEO THÁNG (CHỨC NĂNG 6 - XUANHOA)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::post('invoices/batch/preview', [InvoiceGenerationController::class, 'preview']);
+    Route::post('invoices/batch/generate', [InvoiceGenerationController::class, 'generate']);
+    Route::get('invoices/batches', [InvoiceGenerationController::class, 'listBatches']);
+    Route::get('invoices/batches/{id}', [InvoiceGenerationController::class, 'getBatchDetail']);
+});
+
+Route::get('/quan-ly/sinh-hoa-don', function () {
+    return view('welcome');
+});
+Route::get('/admin/invoice-generation', function () {
     return view('welcome');
 });
 
