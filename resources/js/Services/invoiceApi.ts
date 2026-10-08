@@ -660,4 +660,80 @@ export const invoiceApi = {
         if (!res.ok) throw new Error(json.message || 'Lỗi tải danh sách căn hộ nợ');
         return json;
     },
+
+    /**
+     * Xem trước (Preview) Báo cáo Tài chính & Công nợ (Chức năng 13)
+     */
+    async getFinancialReportPreview(params?: {
+        period?: string;
+        block_id?: string;
+        status?: string;
+        report_type?: string;
+    }): Promise<{
+        success: boolean;
+        data: {
+            filters: any;
+            summary: {
+                total_invoices: number;
+                total_billed: number;
+                total_collected: number;
+                total_debt: number;
+                collection_rate: number;
+            };
+            rows: any[];
+            generated_at: string;
+        };
+    }> {
+        const query = new URLSearchParams();
+        if (params?.period) query.append('period', params.period);
+        if (params?.block_id) query.append('block_id', params.block_id);
+        if (params?.status) query.append('status', params.status);
+        if (params?.report_type) query.append('report_type', params.report_type);
+
+        const res = await fetch(`/api/v1/reports/financial/preview?${query.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải bản xem trước báo cáo');
+        return json;
+    },
+
+    /**
+     * Tạo đường dẫn tải file Excel (.CSV UTF-8)
+     */
+    getFinancialReportExportExcelUrl(params?: {
+        period?: string;
+        block_id?: string;
+        status?: string;
+        report_type?: string;
+    }): string {
+        const query = new URLSearchParams();
+        if (params?.period) query.append('period', params.period);
+        if (params?.block_id) query.append('block_id', params.block_id);
+        if (params?.status) query.append('status', params.status);
+        if (params?.report_type) query.append('report_type', params.report_type);
+
+        return `/api/v1/reports/financial/export-excel?${query.toString()}`;
+    },
+
+    /**
+     * Tạo đường dẫn xem & in báo cáo PDF / HTML
+     */
+    getFinancialReportExportPdfUrl(params?: {
+        period?: string;
+        block_id?: string;
+        status?: string;
+        report_type?: string;
+        auto_print?: boolean;
+    }): string {
+        const query = new URLSearchParams();
+        if (params?.period) query.append('period', params.period);
+        if (params?.block_id) query.append('block_id', params.block_id);
+        if (params?.status) query.append('status', params.status);
+        if (params?.report_type) query.append('report_type', params.report_type);
+        if (params?.auto_print) query.append('auto_print', '1');
+
+        return `/api/v1/reports/financial/export-pdf?${query.toString()}`;
+    },
 };

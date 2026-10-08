@@ -7,6 +7,7 @@ use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
 use App\Http\Controllers\DebtReminderController;
 use App\Http\Controllers\DevOpsApiController;
+use App\Http\Controllers\FinancialReportController;
 use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InvoiceGenerationController;
@@ -517,6 +518,13 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::post('invoices/{id}/send-reminder', [DebtReminderController::class, 'sendSingle']);
     Route::post('invoices/bulk-send-reminders', [DebtReminderController::class, 'sendBulk']);
     Route::get('invoices/reminders/history', [DebtReminderController::class, 'logs']);
+
+    // ==========================================
+    // XUẤT BÁO CÁO TÀI CHÍNH VÀ CÔNG NỢ (CHỨC NĂNG 13 - XUANHOA)
+    // ==========================================
+    Route::get('reports/financial/preview', [FinancialReportController::class, 'preview']);
+    Route::get('reports/financial/export-excel', [FinancialReportController::class, 'exportExcel']);
+    Route::get('reports/financial/export-pdf', [FinancialReportController::class, 'exportPdf']);
 });
 
 Route::get('/quan-ly/sinh-hoa-don', function () {

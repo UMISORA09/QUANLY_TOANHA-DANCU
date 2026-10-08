@@ -18,9 +18,11 @@ import {
     Droplets,
     Car,
     FileText,
-    BellRing
+    BellRing,
+    Download
 } from 'lucide-react';
 import { invoiceApi } from '../../Services/invoiceApi';
+import { FinancialReportExportModal } from './FinancialReportExportModal';
 
 interface RevenueAnalyticsDashboardProps {
     onBackToList?: () => void;
@@ -34,6 +36,7 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
     const [dashboardData, setDashboardData] = useState<any | null>(null);
     const [hoveredMonthIndex, setHoveredMonthIndex] = useState<number | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [reportModalOpen, setReportModalOpen] = useState<boolean>(false);
 
     const showToast = (text: string) => {
         setToastMessage(text);
@@ -193,6 +196,17 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                             })}
                         </select>
                     </div>
+
+                    {/* Nút Xuất Báo Cáo */}
+                    <button
+                        type="button"
+                        onClick={() => setReportModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-teal-300 border border-teal-500/30 text-xs font-bold transition-all shadow-md"
+                        title="Xuất báo cáo tài chính và công nợ ra Excel / PDF"
+                    >
+                        <Download className="w-3.5 h-3.5 text-teal-400" />
+                        <span>Xuất Báo Cáo</span>
+                    </button>
 
                     {/* Nút Làm Mới */}
                     <button
@@ -563,6 +577,12 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                     </div>
                 </div>
             </div>
+
+            {/* MODAL XUẤT BÁO CÁO TÀI CHÍNH (CHỨC NĂNG 13) */}
+            <FinancialReportExportModal
+                isOpen={reportModalOpen}
+                onClose={() => setReportModalOpen(false)}
+            />
         </div>
     );
 };

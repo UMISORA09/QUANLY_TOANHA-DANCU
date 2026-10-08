@@ -43,6 +43,7 @@ import {
 import { InvoiceBatchGeneration } from './InvoiceBatchGeneration';
 import { PaymentHistoryManagement } from './PaymentHistoryManagement';
 import { RevenueAnalyticsDashboard } from './RevenueAnalyticsDashboard';
+import { FinancialReportExportModal } from './FinancialReportExportModal';
 
 interface BlockOption {
     id: string;
@@ -109,6 +110,9 @@ export const InvoiceManagement: React.FC = () => {
     const [reminderLogsModalOpen, setReminderLogsModalOpen] = useState<boolean>(false);
     const [reminderLogs, setReminderLogs] = useState<any[]>([]);
     const [loadingReminderLogs, setLoadingReminderLogs] = useState<boolean>(false);
+
+    // Xuất báo cáo tài chính & công nợ (Chức năng 13)
+    const [reportModalOpen, setReportModalOpen] = useState<boolean>(false);
 
     // Toast message
     const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -503,6 +507,16 @@ export const InvoiceManagement: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setReportModalOpen(true)}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-teal-300 border border-teal-500/30 text-sm font-bold shadow-lg transition-all"
+                        title="Xuất báo cáo tài chính và công nợ ra Excel và PDF (Chức năng 13)"
+                    >
+                        <Download className="w-4 h-4 text-teal-400" />
+                        <span>Xuất Báo Cáo</span>
+                    </button>
+
                     <button
                         type="button"
                         onClick={handleOpenReminderLogs}
@@ -1733,6 +1747,13 @@ export const InvoiceManagement: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* MODAL 7: XUẤT BÁO CÁO TÀI CHÍNH & CÔNG NỢ (CHỨC NĂNG 13) */}
+            <FinancialReportExportModal
+                isOpen={reportModalOpen}
+                onClose={() => setReportModalOpen(false)}
+                blocks={blocks}
+            />
         </div>
     );
 };
