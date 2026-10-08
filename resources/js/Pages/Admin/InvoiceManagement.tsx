@@ -32,7 +32,8 @@ import {
     Check,
     History,
     Mail,
-    BellRing
+    BellRing,
+    BarChart3
 } from 'lucide-react';
 import {
     invoiceApi,
@@ -41,6 +42,7 @@ import {
 } from '../../Services/invoiceApi';
 import { InvoiceBatchGeneration } from './InvoiceBatchGeneration';
 import { PaymentHistoryManagement } from './PaymentHistoryManagement';
+import { RevenueAnalyticsDashboard } from './RevenueAnalyticsDashboard';
 
 interface BlockOption {
     id: string;
@@ -49,8 +51,8 @@ interface BlockOption {
 }
 
 export const InvoiceManagement: React.FC = () => {
-    // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch và Sinh hóa đơn hàng loạt
-    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history'>('list');
+    // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch, Dashboard Doanh thu và Sinh hóa đơn hàng loạt
+    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history' | 'analytics'>('list');
 
     // Dữ liệu danh sách & KPI
     const [invoices, setInvoices] = useState<InvoiceModel[]>([]);
@@ -457,6 +459,14 @@ export const InvoiceManagement: React.FC = () => {
         );
     }
 
+    if (viewMode === 'analytics') {
+        return (
+            <div className="space-y-4 min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
+                <RevenueAnalyticsDashboard onBackToList={() => setViewMode('list')} />
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 space-y-8">
             {/* TOAST THÔNG BÁO */}
@@ -501,6 +511,16 @@ export const InvoiceManagement: React.FC = () => {
                     >
                         <Mail className="w-4 h-4 text-amber-400" />
                         <span>Nhật Ký Nhắc Nợ</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setViewMode('analytics')}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-500/30 text-sm font-bold shadow-lg transition-all"
+                        title="Xem biểu đồ phân tích doanh thu và thu hồi công nợ (Chức năng 12)"
+                    >
+                        <BarChart3 className="w-4 h-4 text-sky-400" />
+                        <span>Dashboard Doanh Thu</span>
                     </button>
 
                     <button

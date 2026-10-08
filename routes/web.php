@@ -20,6 +20,7 @@ use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\RevenueAnalyticsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
@@ -483,6 +484,14 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     // ==========================================
     Route::get('invoices/current-month', [InvoiceManagementController::class, 'currentMonth']);
     Route::get('invoices/{id}/statement', [InvoiceManagementController::class, 'statement']);
+
+    // ==========================================
+    // DASHBOARD THỐNG KÊ DOANH THU & CHART (CHỨC NĂNG 12 - XUANHOA)
+    // ==========================================
+    Route::get('invoices/analytics/dashboard', [RevenueAnalyticsController::class, 'dashboard']);
+    Route::get('invoices/analytics/monthly-trend', [RevenueAnalyticsController::class, 'monthlyTrend']);
+    Route::get('invoices/analytics/category-breakdown', [RevenueAnalyticsController::class, 'categoryBreakdown']);
+    Route::get('invoices/analytics/top-debtors', [RevenueAnalyticsController::class, 'topDebtors']);
 
     Route::get('invoices/{id}', [InvoiceManagementController::class, 'show']);
     Route::post('invoices/{id}/cancel', [InvoiceManagementController::class, 'cancel']);

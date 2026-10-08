@@ -514,4 +514,150 @@ export const invoiceApi = {
         if (!res.ok) throw new Error(json.message || 'Lỗi tải lịch sử nhắc nợ');
         return json;
     },
+
+    /**
+     * Lấy toàn bộ dữ liệu Dashboard Thống kê Doanh thu (Chức năng 12)
+     */
+    async getRevenueAnalyticsDashboard(params?: { year?: number; period?: string }): Promise<{
+        success: boolean;
+        data: {
+            year: number;
+            period: string | null;
+            summary: {
+                total_billed: number;
+                total_collected: number;
+                total_debt: number;
+                total_invoices: number;
+                paid_invoices: number;
+                overdue_invoices: number;
+                collection_rate: number;
+                previous_period: string;
+                billed_growth_pct: number;
+                collected_growth_pct: number;
+            };
+            monthly_trend: Array<{
+                month: string;
+                month_name: string;
+                billed_amount: number;
+                collected_amount: number;
+                debt_amount: number;
+                invoice_count: number;
+                collection_rate: number;
+            }>;
+            revenue_by_category: Array<{
+                item_type: string;
+                label: string;
+                total_amount: number;
+                percentage: number;
+                item_count: number;
+                color: string;
+            }>;
+            payment_methods: Array<{
+                gateway: string;
+                label: string;
+                total_amount: number;
+                transaction_count: number;
+                percentage: number;
+                color: string;
+            }>;
+            top_debtors: Array<{
+                apartment_id: string;
+                apartment_number: string;
+                block_name: string;
+                resident_name: string;
+                resident_phone: string;
+                total_debt: number;
+                unpaid_invoice_count: number;
+                latest_due_date: string;
+            }>;
+        };
+    }> {
+        const query = new URLSearchParams();
+        if (params?.year) query.append('year', String(params.year));
+        if (params?.period) query.append('period', params.period);
+
+        const res = await fetch(`/api/v1/invoices/analytics/dashboard?${query.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải dữ liệu phân tích doanh thu');
+        return json;
+    },
+
+    /**
+     * Lấy xu hướng doanh thu 12 tháng (Chức năng 12)
+     */
+    async getRevenueMonthlyTrend(year: number): Promise<{
+        success: boolean;
+        year: number;
+        data: Array<{
+            month: string;
+            month_name: string;
+            billed_amount: number;
+            collected_amount: number;
+            debt_amount: number;
+            invoice_count: number;
+            collection_rate: number;
+        }>;
+    }> {
+        const res = await fetch(`/api/v1/invoices/analytics/monthly-trend?year=${year}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải xu hướng doanh thu');
+        return json;
+    },
+
+    /**
+     * Lấy cơ cấu doanh thu theo loại phí (Chức năng 12)
+     */
+    async getRevenueCategoryBreakdown(year: number, period?: string): Promise<{
+        success: boolean;
+        data: Array<{
+            item_type: string;
+            label: string;
+            total_amount: number;
+            percentage: number;
+            item_count: number;
+            color: string;
+        }>;
+    }> {
+        const query = new URLSearchParams({ year: String(year) });
+        if (period) query.append('period', period);
+
+        const res = await fetch(`/api/v1/invoices/analytics/category-breakdown?${query.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải cơ cấu doanh thu');
+        return json;
+    },
+
+    /**
+     * Lấy top căn hộ còn nợ nhiều nhất (Chức năng 12)
+     */
+    async getTopDebtors(limit: number = 5): Promise<{
+        success: boolean;
+        data: Array<{
+            apartment_id: string;
+            apartment_number: string;
+            block_name: string;
+            resident_name: string;
+            resident_phone: string;
+            total_debt: number;
+            unpaid_invoice_count: number;
+            latest_due_date: string;
+        }>;
+    }> {
+        const res = await fetch(`/api/v1/invoices/analytics/top-debtors?limit=${limit}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải danh sách căn hộ nợ');
+        return json;
+    },
 };
