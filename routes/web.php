@@ -9,6 +9,7 @@ use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InvoiceGenerationController;
+use App\Http\Controllers\InvoiceManagementController;
 use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
@@ -468,6 +469,15 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::post('invoices/batch/generate', [InvoiceGenerationController::class, 'generate']);
     Route::get('invoices/batches', [InvoiceGenerationController::class, 'listBatches']);
     Route::get('invoices/batches/{id}', [InvoiceGenerationController::class, 'getBatchDetail']);
+
+    // ==========================================
+    // QUẢN LÝ VÀ LỌC TRẠNG THÁI HÓA ĐƠN (CHỨC NĂNG 7 - XUANHOA)
+    // ==========================================
+    Route::get('invoices', [InvoiceManagementController::class, 'index']);
+    Route::get('invoices/summary', [InvoiceManagementController::class, 'summary']);
+    Route::get('invoices/{id}', [InvoiceManagementController::class, 'show']);
+    Route::post('invoices/{id}/cancel', [InvoiceManagementController::class, 'cancel']);
+    Route::post('invoices/bulk-cancel', [InvoiceManagementController::class, 'bulkCancel']);
 });
 
 Route::get('/quan-ly/sinh-hoa-don', function () {
