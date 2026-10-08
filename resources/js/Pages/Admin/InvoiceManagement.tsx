@@ -30,7 +30,9 @@ import {
     Printer,
     Copy,
     Check,
-    History
+    History,
+    Mail,
+    BellRing
 } from 'lucide-react';
 import {
     invoiceApi,
@@ -98,6 +100,13 @@ export const InvoiceManagement: React.FC = () => {
 
     // Biên lai thu tiền Modal states
     const [receiptModalData, setReceiptModalData] = useState<any | null>(null);
+
+    // Nhắc nợ tự động & Queue email states (Chức năng 11)
+    const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+    const [bulkSendingReminders, setBulkSendingReminders] = useState<boolean>(false);
+    const [reminderLogsModalOpen, setReminderLogsModalOpen] = useState<boolean>(false);
+    const [reminderLogs, setReminderLogs] = useState<any[]>([]);
+    const [loadingReminderLogs, setLoadingReminderLogs] = useState<boolean>(false);
 
     // Toast message
     const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -306,6 +315,56 @@ export const InvoiceManagement: React.FC = () => {
         showToast('success', `Đã sao chép ${label}!`);
     };
 
+    // Gửi email nhắc nợ đơn lẻ (Chức năng 11)
+    const handleSendReminder = async (inv: InvoiceModel) => {
+        try {
+            setSendingReminderId(inv.id);
+            const res = await invoiceApi.sendDebtReminder(inv.id);
+            if (res.success) {
+                showToast('success', res.message || 'Đã xếp hàng gửi email nhắc nợ thành công');
+            }
+        } catch (err: any) {
+            showToast('error', err.message || 'Không thể gửi email nhắc nợ');
+        } finally {
+            setSendingReminderId(null);
+        }
+    };
+
+    // Gửi email nhắc nợ hàng loạt (Chức năng 11)
+    const handleBulkSendReminders = async () => {
+        if (selectedInvoiceIds.length === 0) return;
+        if (!confirm(`Bạn có chắc chắn muốn gửi email nhắc nợ cho ${selectedInvoiceIds.length} hóa đơn đã chọn?`)) return;
+
+        try {
+            setBulkSendingReminders(true);
+            const res = await invoiceApi.bulkSendDebtReminders(selectedInvoiceIds);
+            if (res.success) {
+                showToast('success', res.message || 'Đã xếp hàng gửi email nhắc nợ hàng loạt thành công');
+                setSelectedInvoiceIds([]);
+            }
+        } catch (err: any) {
+            showToast('error', err.message || 'Lỗi khi gửi email nhắc nợ hàng loạt');
+        } finally {
+            setBulkSendingReminders(false);
+        }
+    };
+
+    // Xem lịch sử gửi email nhắc nợ (Chức năng 11)
+    const handleOpenReminderLogs = async () => {
+        setReminderLogsModalOpen(true);
+        setLoadingReminderLogs(true);
+        try {
+            const res = await invoiceApi.getDebtReminderLogs({ per_page: 20 });
+            if (res.success) {
+                setReminderLogs(res.data.data || []);
+            }
+        } catch (err: any) {
+            showToast('error', err.message || 'Không thể tải lịch sử gửi email');
+        } finally {
+            setLoadingReminderLogs(false);
+        }
+    };
+
     // Helper render Pill trạng thái
     const renderStatusBadge = (status: string, dueDate: string) => {
         const isOverdue = status === 'OVERDUE' || (['ISSUED', 'PARTIAL'].includes(status) && new Date(dueDate) < new Date());
@@ -434,6 +493,16 @@ export const InvoiceManagement: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={handleOpenReminderLogs}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 text-sm font-bold shadow-lg transition-all"
+                        title="Xem nhật ký hàng đợi gửi email nhắc nợ tự động"
+                    >
+                        <Mail className="w-4 h-4 text-amber-400" />
+                        <span>Nhật Ký Nhắc Nợ</span>
+                    </button>
+
                     <button
                         type="button"
                         onClick={() => setViewMode('history')}
@@ -635,9 +704,24 @@ export const InvoiceManagement: React.FC = () => {
                     )}
                 </div>
 
-                {/* Thao tác hàng loạt (Bulk Cancel) */}
+                {/* Thao tác hàng loạt (Bulk Cancel & Bulk Reminder) */}
                 {selectedInvoiceIds.length > 0 && (
                     <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleBulkSendReminders}
+                            disabled={bulkSendingReminders}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-amber-600/30 transition-all"
+                            title="Xếp hàng gửi email nhắc nợ kèm mã QR cho các hóa đơn đã chọn"
+                        >
+                            {bulkSendingReminders ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <BellRing className="w-3.5 h-3.5" />
+                            )}
+                            <span>Nhắc Nợ {selectedInvoiceIds.length} HĐ Đã Chọn</span>
+                        </button>
+
                         <button
                             type="button"
                             onClick={handleBulkCancel}
@@ -782,6 +866,23 @@ export const InvoiceManagement: React.FC = () => {
                                                             title="Tạo mã VietQR thanh toán nhanh"
                                                         >
                                                             <QrCode className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+
+                                                    {/* Nút Gửi Email Nhắc Nợ */}
+                                                    {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && inv.remaining_balance > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSendReminder(inv)}
+                                                            disabled={sendingReminderId === inv.id}
+                                                            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-amber-300 border border-amber-500/20 transition-colors"
+                                                            title="Xếp hàng gửi email nhắc nợ tự động"
+                                                        >
+                                                            {sendingReminderId === inv.id ? (
+                                                                <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                                                            ) : (
+                                                                <BellRing className="w-4 h-4" />
+                                                            )}
                                                         </button>
                                                     )}
 
@@ -1496,6 +1597,117 @@ export const InvoiceManagement: React.FC = () => {
                                 className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors"
                             >
                                 Hoàn Tất
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 6: NHẬT KÝ HÀNG ĐỢI GỬI EMAIL NHẮC NỢ (CHỨC NĂNG 11) */}
+            {reminderLogsModalOpen && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="p-5 bg-gradient-to-r from-amber-950/30 to-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                    <Mail className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">Nhật Ký Hàng Đợi Gửi Email Nhắc Nợ</h3>
+                                    <p className="text-xs text-slate-400">
+                                        Theo dõi trạng thái tiến trình Laravel Queue xử lý gửi email nhắc nợ tự động kèm VietQR
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setReminderLogsModalOpen(false)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Body - Table logs */}
+                        <div className="p-6 overflow-y-auto flex-1 text-xs">
+                            {loadingReminderLogs ? (
+                                <div className="py-16 text-center text-slate-400">
+                                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
+                                    <span>Đang tải nhật ký gửi nhắc nợ...</span>
+                                </div>
+                            ) : reminderLogs.length === 0 ? (
+                                <div className="py-16 text-center text-slate-500">
+                                    Chưa có nhật ký gửi email nhắc nợ nào được ghi nhận.
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                                    <table className="w-full text-left text-xs text-slate-300">
+                                        <thead className="bg-slate-950/90 text-slate-400 font-semibold border-b border-slate-800 uppercase">
+                                            <tr>
+                                                <th className="py-3 px-3">Thời Gian</th>
+                                                <th className="py-3 px-3">Mã Hóa Đơn</th>
+                                                <th className="py-3 px-3">Người Nhận (Email)</th>
+                                                <th className="py-3 px-3 text-right">Số Tiền Nợ</th>
+                                                <th className="py-3 px-3 text-center">Kênh</th>
+                                                <th className="py-3 px-3 text-center">Trạng Thái</th>
+                                                <th className="py-3 px-3">Ghi Chú / Lỗi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                                            {reminderLogs.map((log: any) => (
+                                                <tr key={log.id} className="hover:bg-slate-800/30">
+                                                    <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
+                                                        {new Date(log.created_at).toLocaleString('vi-VN')}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 font-bold text-indigo-300">
+                                                        {log.invoice?.invoice_number || log.invoice_id}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 font-sans text-slate-200">
+                                                        {log.recipient_email || 'N/A'}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right font-bold text-amber-400">
+                                                        {Number(log.debt_amount).toLocaleString('vi-VN')} đ
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-center">
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                                            {log.channel}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-center">
+                                                        {log.status === 'SENT' ? (
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                                                ĐÃ GỬI
+                                                            </span>
+                                                        ) : log.status === 'FAILED' ? (
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                                                THẤT BÀI
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                                                CHỜ XỬ LÝ
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 font-sans text-slate-400 text-[11px] truncate max-w-xs" title={log.error_message || log.notes || ''}>
+                                                        {log.error_message || log.notes || '-'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-slate-950/70 border-t border-slate-800 flex justify-end shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setReminderLogsModalOpen(false)}
+                                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                            >
+                                Đóng
                             </button>
                         </div>
                     </div>

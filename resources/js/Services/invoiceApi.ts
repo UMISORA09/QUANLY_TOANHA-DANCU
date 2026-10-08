@@ -437,4 +437,81 @@ export const invoiceApi = {
         if (!res.ok) throw new Error(json.message || 'Lỗi tải chi tiết biên lai');
         return json;
     },
+
+    /**
+     * Gửi email nhắc nợ đơn lẻ qua Queue (Chức năng 11)
+     */
+    async sendDebtReminder(invoiceId: string): Promise<{
+        success: boolean;
+        message: string;
+        data: any;
+    }> {
+        const res = await fetch(`/api/v1/invoices/${invoiceId}/send-reminder`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi gửi email nhắc nợ');
+        return json;
+    },
+
+    /**
+     * Gửi email nhắc nợ hàng loạt qua Queue (Chức năng 11)
+     */
+    async bulkSendDebtReminders(invoiceIds: string[]): Promise<{
+        success: boolean;
+        message: string;
+        data: {
+            queued_count: number;
+            skipped_count: number;
+            errors: string[];
+        };
+    }> {
+        const res = await fetch('/api/v1/invoices/bulk-send-reminders', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ invoice_ids: invoiceIds }),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi gửi hàng loạt nhắc nợ');
+        return json;
+    },
+
+    /**
+     * Lấy lịch sử các đợt gửi email nhắc nợ (Chức năng 11)
+     */
+    async getDebtReminderLogs(filters?: {
+        invoice_id?: string;
+        apartment_id?: string;
+        channel_status?: string;
+        search?: string;
+        page?: number;
+    }): Promise<{
+        success: boolean;
+        data: {
+            data: any[];
+            current_page: number;
+            last_page: number;
+            total: number;
+        };
+    }> {
+        const query = new URLSearchParams();
+        if (filters) {
+            Object.entries(filters).forEach(([key, val]) => {
+                if (val !== undefined && val !== null && val !== '') {
+                    query.append(key, String(val));
+                }
+            });
+        }
+
+        const res = await fetch(`/api/v1/invoices/reminders/history?${query.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải lịch sử nhắc nợ');
+        return json;
+    },
 };

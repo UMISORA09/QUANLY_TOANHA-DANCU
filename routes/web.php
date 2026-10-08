@@ -5,6 +5,7 @@ use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
+use App\Http\Controllers\DebtReminderController;
 use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
@@ -500,6 +501,13 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('payments/summary', [PaymentController::class, 'summary']);
     Route::get('payments/history', [PaymentController::class, 'listPayments']);
     Route::get('payments/{id}/receipt', [PaymentController::class, 'receipt']);
+
+    // ==========================================
+    // LARAVEL QUEUE GỬI EMAIL NHẮC NỢ TỰ ĐỘNG (CHỨC NĂNG 11 - XUANHOA)
+    // ==========================================
+    Route::post('invoices/{id}/send-reminder', [DebtReminderController::class, 'sendSingle']);
+    Route::post('invoices/bulk-send-reminders', [DebtReminderController::class, 'sendBulk']);
+    Route::get('invoices/reminders/history', [DebtReminderController::class, 'logs']);
 });
 
 Route::get('/quan-ly/sinh-hoa-don', function () {
