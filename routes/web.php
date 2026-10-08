@@ -476,6 +476,13 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     // ==========================================
     Route::get('invoices', [InvoiceManagementController::class, 'index']);
     Route::get('invoices/summary', [InvoiceManagementController::class, 'summary']);
+
+    // ==========================================
+    // XEM CHI TIẾT HÓA ĐƠN THÁNG HIỆN TẠI & SAO KÊ (CHỨC NĂNG 9 - XUANHOA)
+    // ==========================================
+    Route::get('invoices/current-month', [InvoiceManagementController::class, 'currentMonth']);
+    Route::get('invoices/{id}/statement', [InvoiceManagementController::class, 'statement']);
+
     Route::get('invoices/{id}', [InvoiceManagementController::class, 'show']);
     Route::post('invoices/{id}/cancel', [InvoiceManagementController::class, 'cancel']);
     Route::post('invoices/bulk-cancel', [InvoiceManagementController::class, 'bulkCancel']);

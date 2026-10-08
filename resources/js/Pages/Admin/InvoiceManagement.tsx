@@ -937,6 +937,33 @@ export const InvoiceManagement: React.FC = () => {
                                 )}
                             </div>
 
+                            {/* Lịch sử thanh toán & gạch nợ (nếu có) */}
+                            {((detailInvoice as any).payments?.length || 0) > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        <span>Lịch Sử Các Đợt Thanh Toán & Biên Lai ({(detailInvoice as any).payments.length})</span>
+                                    </h4>
+                                    <div className="space-y-2">
+                                        {(detailInvoice as any).payments.map((p: any) => (
+                                            <div key={p.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs font-mono">
+                                                <div>
+                                                    <span className="font-bold text-white">{p.payment_reference_code}</span>
+                                                    <span className="text-slate-500 mx-2">•</span>
+                                                    <span className="text-emerald-400">{p.payment_gateway}</span>
+                                                    {p.receipt && (
+                                                        <span className="ml-2 text-indigo-300">({p.receipt.receipt_number})</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="font-bold text-emerald-400">+{Number(p.amount_paid).toLocaleString('vi-VN')} đ</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Tổng kết tiền */}
                             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
                                 <div className="flex justify-between text-slate-400">
@@ -968,14 +995,53 @@ export const InvoiceManagement: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="p-4 bg-slate-950/70 border-t border-slate-800 flex justify-end">
+                        <div className="p-4 bg-slate-950/70 border-t border-slate-800 flex items-center justify-between">
                             <button
                                 type="button"
-                                onClick={() => setDetailInvoice(null)}
-                                className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                                onClick={() => window.print()}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
                             >
-                                Đóng
+                                <Printer className="w-4 h-4" />
+                                <span>In Bản Sao Kê</span>
                             </button>
+
+                            <div className="flex items-center gap-2">
+                                {detailInvoice.status !== 'PAID' && detailInvoice.status !== 'CANCELLED' && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const inv = detailInvoice;
+                                                setDetailInvoice(null);
+                                                handleOpenVietQr(inv);
+                                            }}
+                                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all"
+                                        >
+                                            <QrCode className="w-4 h-4" />
+                                            <span>Mã VietQR</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const inv = detailInvoice;
+                                                setDetailInvoice(null);
+                                                handleOpenPayModal(inv);
+                                            }}
+                                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-600/30 transition-all"
+                                        >
+                                            <CreditCard className="w-4 h-4" />
+                                            <span>Thu Tiền Ngay</span>
+                                        </button>
+                                    </>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setDetailInvoice(null)}
+                                    className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                                >
+                                    Đóng
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

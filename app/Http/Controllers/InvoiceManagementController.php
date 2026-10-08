@@ -62,6 +62,33 @@ class InvoiceManagementController extends Controller
     }
 
     /**
+     * GET /api/v1/invoices/current-month
+     * Lấy hóa đơn tháng hiện tại của căn hộ hoặc cư dân (Chức năng 9)
+     */
+    public function currentMonth(Request $request): JsonResponse
+    {
+        $apartmentId = $request->query('apartment_id');
+        $billingPeriod = $request->query('billing_period');
+        $userId = $request->user()?->id ? (string) $request->user()->id : null;
+
+        $invoice = $this->invoiceService->getCurrentMonthInvoice($userId, $apartmentId, $billingPeriod);
+
+        if (! $invoice) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy hóa đơn cho kỳ phí hiện tại.',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Lấy chi tiết hóa đơn tháng hiện tại thành công.',
+            'data' => $invoice,
+        ]);
+    }
+
+    /**
      * GET /api/v1/invoices/{id}
      * Chi tiết một hóa đơn và các dòng tính phí dịch vụ
      */
@@ -72,6 +99,20 @@ class InvoiceManagementController extends Controller
         return response()->json([
             'success' => true,
             'data' => $invoice,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/invoices/{id}/statement
+     * Xuất sao kê hóa đơn chi tiết phục vụ in ấn & hiển thị
+     */
+    public function statement(string $id): JsonResponse
+    {
+        $statement = $this->invoiceService->getDetailedStatement($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $statement,
         ]);
     }
 

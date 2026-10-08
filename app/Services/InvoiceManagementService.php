@@ -99,8 +99,155 @@ class InvoiceManagementService
             'apartment.floor',
             'residentUser',
             'items.meterReading.meter',
+            'payments.receipt',
             'batch',
         ])->findOrFail($invoiceId);
+    }
+
+    /**
+     * Lấy hóa đơn của kỳ phí hiện tại (hoặc kỳ phí được chỉ định)
+     */
+    public function getCurrentMonthInvoice(?string $userId = null, ?string $apartmentId = null, ?string $period = null): ?Invoice
+    {
+        $targetPeriod = $period ?: Carbon::now()->format('Y-m');
+
+        $query = Invoice::with([
+            'apartment.block',
+            'apartment.floor',
+            'residentUser',
+            'items.meterReading.meter',
+            'payments.receipt',
+            'batch',
+        ]);
+
+        if ($apartmentId) {
+            $query->where('apartment_id', $apartmentId);
+        } elseif ($userId) {
+            $query->where(function ($q) use ($userId) {
+                $q->where('resident_user_id', $userId)
+                    ->orWhereHas('apartment.residents', function ($rq) use ($userId) {
+                        $rq->where('user_id', $userId)->where('is_active', 1);
+                    });
+            });
+        }
+
+        // Ưu tiên kỳ phí hiện tại
+        $invoice = (clone $query)->where('billing_period', $targetPeriod)->first();
+
+        // Nếu không có hóa đơn tháng hiện tại, lấy hóa đơn mới nhất gần nhất
+        if (! $invoice) {
+            $invoice = $query->orderBy('billing_period', 'desc')->first();
+        }
+
+        return $invoice;
+    }
+
+    /**
+     * Xuất sao kê hóa đơn chi tiết (Detailed Statement) phục vụ hiển thị & in ấn
+     *
+     * @return array<string, mixed>
+     */
+    public function getDetailedStatement(string $invoiceId): array
+    {
+        $invoice = $this->getInvoiceDetail($invoiceId);
+
+        $electricityItem = $invoice->items->first(fn ($item) => str_contains(strtoupper($item->service_code), 'ELECTRIC'));
+        $waterItem = $invoice->items->first(fn ($item) => str_contains(strtoupper($item->service_code), 'WATER'));
+        $managementItem = $invoice->items->first(fn ($item) => str_contains(strtoupper($item->service_code), 'MANAGEMENT'));
+        $parkingItems = $invoice->items->filter(fn ($item) => str_contains(strtoupper($item->service_code), 'PARKING'));
+        $otherItems = $invoice->items->filter(fn ($item) => ! in_array($item->id, array_filter([
+            $electricityItem?->id,
+            $waterItem?->id,
+            $managementItem?->id,
+            ...$parkingItems->pluck('id')->all(),
+        ])));
+
+        $amountInWords = $this->convertNumberToWords((int) round($invoice->total_amount)).' đồng chẵn';
+
+        return [
+            'invoice' => $invoice,
+            'summary' => [
+                'subtotal_amount' => (float) $invoice->subtotal_amount,
+                'tax_amount' => (float) $invoice->tax_amount,
+                'previous_debt_amount' => (float) $invoice->previous_debt_amount,
+                'total_amount' => (float) $invoice->total_amount,
+                'paid_amount' => (float) $invoice->paid_amount,
+                'remaining_balance' => (float) $invoice->remaining_balance,
+                'amount_in_words' => $amountInWords,
+                'is_paid' => $invoice->status === 'PAID',
+            ],
+            'categorized_items' => [
+                'electricity' => $electricityItem,
+                'water' => $waterItem,
+                'management' => $managementItem,
+                'parking' => $parkingItems->values(),
+                'others' => $otherItems->values(),
+            ],
+            'payment_history' => $invoice->payments,
+        ];
+    }
+
+    /**
+     * Chuyển đổi số tiền thành chữ tiếng Việt
+     */
+    public function convertNumberToWords(int $number): string
+    {
+        if ($number === 0) {
+            return 'Không';
+        }
+
+        $units = ['', ' nghìn', ' triệu', ' tỷ', ' nghìn tỷ', ' triệu tỷ'];
+        $digits = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+
+        $result = '';
+        $unitIdx = 0;
+
+        while ($number > 0) {
+            $group = $number % 1000;
+            if ($group > 0) {
+                $groupStr = '';
+                $hundreds = intdiv($group, 100);
+                $tens = intdiv($group % 100, 10);
+                $ones = $group % 10;
+
+                if ($hundreds > 0 || $number >= 1000) {
+                    $groupStr .= $digits[$hundreds].' trăm ';
+                }
+
+                if ($tens > 1) {
+                    $groupStr .= $digits[$tens].' mươi ';
+                    if ($ones === 1) {
+                        $groupStr .= 'mốt ';
+                    } elseif ($ones === 5) {
+                        $groupStr .= 'lăm ';
+                    } elseif ($ones > 0) {
+                        $groupStr .= $digits[$ones].' ';
+                    }
+                } elseif ($tens === 1) {
+                    $groupStr .= 'mười ';
+                    if ($ones === 5) {
+                        $groupStr .= 'lăm ';
+                    } elseif ($ones > 0) {
+                        $groupStr .= $digits[$ones].' ';
+                    }
+                } elseif ($tens === 0 && $ones > 0) {
+                    if ($hundreds > 0 || $number >= 1000) {
+                        $groupStr .= 'lẻ '.$digits[$ones].' ';
+                    } else {
+                        $groupStr .= $digits[$ones].' ';
+                    }
+                }
+
+                $result = trim($groupStr).$units[$unitIdx].' '.$result;
+            }
+
+            $number = intdiv($number, 1000);
+            $unitIdx++;
+        }
+
+        $result = trim($result);
+
+        return mb_strtoupper(mb_substr($result, 0, 1)).mb_substr($result, 1);
     }
 
     /**

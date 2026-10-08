@@ -281,4 +281,62 @@ export const invoiceApi = {
         if (!res.ok) throw new Error(json.message || 'Lỗi tạo mã VietQR');
         return json;
     },
+
+    /**
+     * Lấy hóa đơn tháng hiện tại (Chức năng 9)
+     */
+    async getCurrentMonthInvoice(params?: { apartment_id?: string; billing_period?: string }): Promise<{
+        success: boolean;
+        message: string;
+        data: InvoiceModel;
+    }> {
+        const query = new URLSearchParams();
+        if (params?.apartment_id) query.append('apartment_id', params.apartment_id);
+        if (params?.billing_period) query.append('billing_period', params.billing_period);
+
+        const url = `/api/v1/invoices/current-month${query.toString() ? '?' + query.toString() : ''}`;
+        const res = await fetch(url, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải hóa đơn tháng hiện tại');
+        return json;
+    },
+
+    /**
+     * Lấy sao kê hóa đơn chi tiết phục vụ in ấn & hiển thị (Chức năng 9)
+     */
+    async getInvoiceStatement(invoiceId: string): Promise<{
+        success: boolean;
+        data: {
+            invoice: InvoiceModel;
+            summary: {
+                subtotal_amount: number;
+                tax_amount: number;
+                previous_debt_amount: number;
+                total_amount: number;
+                paid_amount: number;
+                remaining_balance: number;
+                amount_in_words: string;
+                is_paid: boolean;
+            };
+            categorized_items: {
+                electricity?: any;
+                water?: any;
+                management?: any;
+                parking: any[];
+                others: any[];
+            };
+            payment_history: any[];
+        };
+    }> {
+        const res = await fetch(`/api/v1/invoices/${invoiceId}/statement`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải sao kê chi tiết hóa đơn');
+        return json;
+    },
 };
