@@ -44,7 +44,8 @@ import {
   Compass,
   Terminal,
   UserPlus,
-  Car
+  Car,
+  History
 } from 'lucide-react';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';

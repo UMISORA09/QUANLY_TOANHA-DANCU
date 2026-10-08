@@ -683,6 +683,7 @@ export const invoiceApi = {
             rows: any[];
             generated_at: string;
         };
+        message?: string;
     }> {
         const query = new URLSearchParams();
         if (params?.period) query.append('period', params.period);

@@ -81,7 +81,7 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
             if (res.success) {
                 setPreviewData(res.data);
             } else {
-                showToast(res.message || 'Không thể tải bản xem trước báo cáo');
+                showToast((res as any).message || 'Không thể tải bản xem trước báo cáo');
             }
         } catch (err: any) {
             console.error('Lỗi khi tải preview báo cáo:', err);
