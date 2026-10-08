@@ -51,7 +51,11 @@ interface BlockOption {
     block_name: string;
 }
 
-export const InvoiceManagement: React.FC = () => {
+export interface InvoiceManagementProps {
+    onNavigateTab?: (tabKey: string) => void;
+}
+
+export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigateTab }) => {
     // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch, Dashboard Doanh thu và Sinh hóa đơn hàng loạt
     const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history' | 'analytics'>('list');
 
@@ -509,9 +513,9 @@ export const InvoiceManagement: React.FC = () => {
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        onClick={() => setReportModalOpen(true)}
+                        onClick={() => onNavigateTab ? onNavigateTab('financial_reports') : setReportModalOpen(true)}
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-teal-300 border border-teal-500/30 text-sm font-bold shadow-lg transition-all"
-                        title="Xuất báo cáo tài chính và công nợ ra Excel và PDF (Chức năng 13)"
+                        title="Xem trang báo cáo tài chính và công nợ ra Excel và PDF (Chức năng 13)"
                     >
                         <Download className="w-4 h-4 text-teal-400" />
                         <span>Xuất Báo Cáo</span>
@@ -529,7 +533,7 @@ export const InvoiceManagement: React.FC = () => {
 
                     <button
                         type="button"
-                        onClick={() => setViewMode('analytics')}
+                        onClick={() => onNavigateTab ? onNavigateTab('revenue_analytics') : setViewMode('analytics')}
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-500/30 text-sm font-bold shadow-lg transition-all"
                         title="Xem biểu đồ phân tích doanh thu và thu hồi công nợ (Chức năng 12)"
                     >
@@ -539,7 +543,7 @@ export const InvoiceManagement: React.FC = () => {
 
                     <button
                         type="button"
-                        onClick={() => setViewMode('history')}
+                        onClick={() => onNavigateTab ? onNavigateTab('payment_history') : setViewMode('history')}
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-emerald-500/30 text-sm font-bold shadow-lg transition-all"
                     >
                         <History className="w-4 h-4 text-emerald-400" />
@@ -548,7 +552,7 @@ export const InvoiceManagement: React.FC = () => {
 
                     <button
                         type="button"
-                        onClick={() => setViewMode('batch_generate')}
+                        onClick={() => onNavigateTab ? onNavigateTab('invoice_generation') : setViewMode('batch_generate')}
                         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-600/30 transition-all"
                     >
                         <Plus className="w-4 h-4" />
