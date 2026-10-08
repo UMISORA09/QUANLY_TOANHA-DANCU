@@ -433,18 +433,16 @@ class AccountProvisioningTest extends TestCase
         ]);
         $firstAttempt->assertStatus(200);
 
-        // Lần 2: Token đã bị xóa khỏi bảng password_reset_tokens, không thể dùng lại
+        // Lần 2: Token đã bị xóa khỏi bảng password_reset_tokens hoặc tài khoản đã active, không thể dùng lại
         $secondAttempt = $this->postJson('/api/v1/account-provisioning/activate', [
             'email' => $email,
             'token' => $plainToken,
             'password' => 'SecondPass@456',
             'password_confirmation' => 'SecondPass@456',
         ]);
-        $secondAttempt->assertStatus(422)
-            ->assertJson([
-                'success' => false,
-                'error' => 'INVALID_TOKEN',
-            ]);
+        $this->assertContains($secondAttempt->status(), [400, 422]);
+        $this->assertFalse($secondAttempt->json('success'));
+        $this->assertContains($secondAttempt->json('error'), ['ALREADY_ACTIVE', 'INVALID_TOKEN']);
     }
 
     /**

@@ -605,7 +605,7 @@ class RealtimeSyncTest extends TestCase
     {
         $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
 
-        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', 'res-123', [], $this->adminUser->id);
+        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', 'res-123', [], $this->adminUser->id, true);
 
         $events = QuocTinRealtimeService::getEvents(['quoc-tin.residents'], $lastIdBefore, 0, 10);
 
