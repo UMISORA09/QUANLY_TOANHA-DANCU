@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\Search\SearchCacheService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -15,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 
 class ResidentAmenityBookingService
 {
-    public function __construct(public DatabaseResidentAmenityBookingRepository $repository) {}
+    public function __construct(public DatabaseResidentAmenityBookingRepository $repository, public AmenityBookingPaymentService $payments) {}
 
     /** @return array{apartments: Collection, amenities: Collection, categories: Collection, today: string, timezone: string} */
     public function catalog(User $user): array
@@ -71,6 +72,7 @@ class ResidentAmenityBookingService
     public function availability(User $user, string $amenityId, string $date, ?string $apartmentId): array
     {
         $amenity = $this->accessibleAmenity($amenityId, $this->apartment($user, $apartmentId));
+        $this->payments->expire($amenityId);
         $day = $this->validateDate($amenity, $date);
         $bookings = $this->repository->holdingBookings($amenityId, $date);
         $blackouts = $this->repository->blackouts($amenityId, $date);
@@ -147,8 +149,11 @@ class ResidentAmenityBookingService
                 'checkin_qr_code' => 'QR-'.Str::upper(Str::random(32)),
                 'resident_notes' => $data['resident_notes'] ?? null, 'created_at' => now(), 'updated_at' => now(),
             ]);
+            $this->payments->initialize((array) DB::table('amenity_bookings')->where('id', $id)->first());
             $booking = $this->detail($user, $id, true);
             $this->audit($user, $id, 'INSERT', null, $booking, $request);
+            $this->notifyManagers($amenity->id, $booking['booking_code'], 'Đăng ký tiện ích mới · '.$amenity->amenity_name,
+                $user->full_name.' · Căn hộ '.$apartment->apartment_number.' · '.$data['booking_date'].' '.$availability['start_time'].'–'.$availability['end_time'].($booking['status'] === 'PENDING' ? ' · Cần duyệt' : ' · Đã tự động duyệt'));
             $this->invalidateAfterCommit();
 
             return $booking;
@@ -158,12 +163,15 @@ class ResidentAmenityBookingService
     /** @return array<string, mixed> */
     public function list(User $user, ?string $status, int $page): array
     {
+        $this->payments->expire(null, $user->id);
         $query = $this->repository->bookings($user->id);
         if ($status) {
             $query->where('amenity_bookings.status', $status);
         }
         $total = (clone $query)->count();
-        $items = $query->orderByDesc('amenity_bookings.created_at')->orderBy('amenity_bookings.id')->forPage($page, 10)->get()->map(fn (object $booking): array => $this->formatBooking($booking));
+        $rows = $query->orderByDesc('amenity_bookings.created_at')->orderBy('amenity_bookings.id')->forPage($page, 10)->get();
+        $payments = DB::table('amenity_booking_payments')->whereIn('booking_id', $rows->pluck('id'))->get()->keyBy('booking_id');
+        $items = $rows->map(fn (object $booking): array => $this->formatBooking($booking, $payments->get($booking->id)));
 
         return ['items' => $items, 'total' => $total, 'page' => $page, 'total_pages' => max(1, (int) ceil($total / 10))];
     }
@@ -171,15 +179,18 @@ class ResidentAmenityBookingService
     /** @return array<string, mixed> */
     public function detail(User $user, string $id, bool $lock = false): array
     {
+        if (! $lock) {
+            $this->payments->expire(null, $user->id);
+        }
         $query = $this->repository->bookings($user->id)->where('amenity_bookings.id', $id);
         $booking = ($lock ? $query->lockForUpdate() : $query)->first();
         abort_unless($booking, 404, 'Không tìm thấy lượt đăng ký.');
 
-        return $this->formatBooking($booking);
+        return $this->formatBooking($booking, DB::table('amenity_booking_payments')->where('booking_id', $id)->first());
     }
 
     /** @return array<string, mixed> */
-    private function formatBooking(object $booking): array
+    private function formatBooking(object $booking, ?object $payment = null): array
     {
         $start = Carbon::parse($booking->booking_date.' '.$booking->start_time, config('app.timezone'));
         $deadline = $start->copy()->subHours((int) $booking->min_cancel_hours_before);
@@ -190,6 +201,7 @@ class ResidentAmenityBookingService
             'total_amount' => (float) $booking->total_amount, 'deposit_amount' => (float) $booking->deposit_amount,
             'is_paid' => (bool) $booking->is_paid, 'can_cancel' => $canCancel,
             'cancel_deadline' => $deadline->toIso8601String(),
+            'payment' => $this->payments->format($payment, $booking),
         ]);
     }
 
@@ -205,8 +217,10 @@ class ResidentAmenityBookingService
             abort_unless($booking['can_cancel'], 409, 'Lượt đăng ký đã qua thời hạn hủy hoặc không còn được phép hủy.');
             $notes = trim(($booking['resident_notes'] ?? '').($reason ? "\nLý do hủy: ".$reason : ''));
             DB::table('amenity_bookings')->where('id', $id)->update(['status' => 'CANCELLED', 'resident_notes' => $notes ?: null, 'updated_at' => now()]);
+            $this->payments->synchronize(DB::table('amenity_bookings')->where('id', $id)->first(), $request);
             $updated = $this->detail($user, $id, true);
             $this->audit($user, $id, 'UPDATE', $booking, $updated, $request);
+            $this->notifyResident((object) $updated, 'Đã hủy đăng ký tiện ích', 'Đăng ký đã hủy. Nếu đã chuyển tiền, liên hệ ban quản lý để đối soát hoặc hoàn tiền.');
             $this->invalidateAfterCommit();
 
             return $updated;
@@ -221,6 +235,135 @@ class ResidentAmenityBookingService
             Cache::forget('portal:amenities:available');
             SearchCacheService::invalidate();
         });
+    }
+
+    public function notifyManagers(string $amenityId, string $bookingCode, string $title, string $message): void
+    {
+        $recipients = User::query()->where('status', 'ACTIVE')->whereHas('roles', function (Builder $roles): void {
+            $roles->whereIn('role_code', ['SUPER_ADMIN', 'SUPER_ADMI'])
+                ->orWhereHas('permissions', fn (Builder $permissions): Builder => $permissions->where('permission_code', 'AMENITY:UPDATE'));
+        })->pluck('id');
+        $rows = $recipients->map(fn (string $id): array => [
+            'id' => (string) Str::uuid(), 'recipient_user_id' => $id,
+            'title' => $title, 'body_message' => $message,
+            'deep_link_url' => '/quan-ly?'.http_build_query(['tab' => 'amenities', 'amenity_id' => $amenityId, 'booking_code' => $bookingCode]),
+            'category' => 'AMENITY_BOOKING', 'is_read' => 0, 'created_at' => now(),
+        ])->all();
+        if ($rows !== []) {
+            DB::table('user_in_app_notifications')->insert($rows);
+        }
+    }
+
+    public function notifyResident(object $booking, string $title, string $message): void
+    {
+        DB::table('user_in_app_notifications')->insert([
+            'id' => (string) Str::uuid(), 'recipient_user_id' => $booking->resident_user_id,
+            'title' => $title.' · '.$booking->booking_code, 'body_message' => $message,
+            'deep_link_url' => '/cu-dan?'.http_build_query(['tab' => 'amenities', 'booking_id' => $booking->id]),
+            'category' => 'AMENITY', 'is_read' => 0, 'created_at' => now(),
+        ]);
+    }
+
+    /** @param array{page?: int|string, unread?: bool|string} $data */
+    public function notifications(User $user, string $category, array $data): array
+    {
+        $query = DB::table('user_in_app_notifications')->where('recipient_user_id', $user->id)->where('category', $category);
+        $unread = (clone $query)->where('is_read', 0)->count();
+        $latest = (clone $query)->where('is_read', 0)->orderByDesc('created_at')->orderByDesc('id')->first();
+        if (filter_var($data['unread'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $query->where('is_read', 0);
+        }
+        $total = (clone $query)->count();
+        $pages = max(1, (int) ceil($total / 20));
+        $page = min((int) ($data['page'] ?? 1), $pages);
+        $format = fn (object $item): array => [
+            'id' => $item->id, 'title' => $item->title, 'message' => $item->body_message,
+            'isRead' => (bool) $item->is_read, 'deepLink' => $item->deep_link_url, 'category' => $item->category,
+            'timeAgo' => Carbon::parse($item->created_at)->locale('vi')->diffForHumans(),
+        ];
+
+        return ['items' => $query->orderByDesc('created_at')->orderByDesc('id')->forPage($page, 20)->get()->map($format),
+            'unread_count' => $unread, 'page' => $page, 'total_pages' => $pages, 'latest_unread' => $latest ? $format($latest) : null];
+    }
+
+    public function readNotification(User $user, string $category, string $id): void
+    {
+        $query = DB::table('user_in_app_notifications')->where('id', $id)->where('recipient_user_id', $user->id)->where('category', $category);
+        abort_unless((clone $query)->exists(), 404);
+        $query->where('is_read', 0)->update(['is_read' => 1, 'read_at' => now()]);
+    }
+
+    public function recordStatusChange(Request $request, object $before, object $after): void
+    {
+        $this->audit($request->user(), $after->id, 'UPDATE', (array) $before, (array) $after, $request);
+        $message = match ($after->status) {
+            'APPROVED' => $after->is_paid ? 'Đăng ký đã được duyệt.' : 'Đăng ký đã được duyệt. Mở thông tin thanh toán để xem QR và thời hạn chuyển khoản.',
+            'REJECTED' => 'Đăng ký bị từ chối: '.($after->rejection_reason ?? ''),
+            'CANCELLED' => 'Đăng ký đã hủy.'.($after->admin_notes ? ' Lý do: '.$after->admin_notes.'.' : '').' Nếu đã chuyển tiền, liên hệ ban quản lý để đối soát hoặc hoàn tiền.',
+            'COMPLETED' => 'Đăng ký đã hoàn tất.',
+            default => 'Đăng ký đã được xác nhận sử dụng.',
+        };
+        $this->notifyResident($after, 'Cập nhật đăng ký tiện ích', $message);
+    }
+
+    /** @param array<string, mixed> $period */
+    public function closureBookings(string $amenityId, array $period, bool $lock = false): Collection
+    {
+        $query = DB::table('amenity_bookings as b')->leftJoin('amenity_booking_payments as p', 'p.booking_id', '=', 'b.id')
+            ->where('b.amenity_id', $amenityId)->whereNull('b.deleted_at')->whereIn('b.status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
+            ->whereRaw('CONCAT(b.booking_date, " ", b.end_time) > ?', [now()]);
+        if (! empty($period['blackout_date'])) {
+            $query->whereDate('b.booking_date', $period['blackout_date']);
+            if (! empty($period['start_time'])) {
+                $query->where('b.start_time', '<', $period['end_time'])->where('b.end_time', '>', $period['start_time']);
+            }
+        }
+        $query->select('b.*', 'p.status as closure_payment_status', 'p.received_amount as closure_received_amount', 'p.bank_transaction_id as closure_transaction')->orderBy('b.id');
+
+        return ($lock ? $query->lockForUpdate() : $query)->get();
+    }
+
+    /** @param array<string, mixed> $period
+     * @return array<string, mixed>
+     */
+    public function closureImpact(string $amenityId, array $period, Collection $bookings): array
+    {
+        $amenity = $this->repository->amenity($amenityId);
+        abort_unless($amenity && ! $amenity->deleted_at, 404);
+        $period = [$period['blackout_date'] ?? null, $period['start_time'] ?? null, $period['end_time'] ?? null];
+
+        return ['count' => $bookings->count(), 'received_amount' => $bookings->sum(fn (object $booking): float => (float) ($booking->closure_received_amount ?? ($booking->is_paid ? $booking->total_amount + $booking->deposit_amount : 0))),
+            'reported_count' => $bookings->where('closure_payment_status', 'REPORTED')->count(),
+            'items' => $bookings->take(20)->map(fn (object $booking): array => ['booking_code' => $booking->booking_code, 'booking_date' => $booking->booking_date, 'start_time' => $booking->start_time, 'end_time' => $booking->end_time])->values(),
+            'confirmation_token' => hash_hmac('sha256', json_encode([$amenityId, $amenity->updated_at, $period, $bookings], JSON_THROW_ON_ERROR), (string) config('app.key'))];
+    }
+
+    /** Must run under the amenity lock.
+     * @param  array<string, mixed>  $period
+     */
+    public function prepareClosure(string $amenityId, array $period, ?string $token, Request $request): Collection
+    {
+        $bookings = $this->closureBookings($amenityId, $period, true);
+        abort_if($bookings->isNotEmpty() && ! $request->user()->isSuperAdmin() && ! $request->user()->hasPermission('AMENITY:UPDATE'), 403, 'Cần quyền xử lý đăng ký tiện ích để hủy các đơn bị ảnh hưởng.');
+        $impact = $this->closureImpact($amenityId, $period, $bookings);
+        if ($bookings->isNotEmpty() && ! hash_equals($impact['confirmation_token'], $token ?? '')) {
+            abort(response()->json(['message' => 'Danh sách đăng ký bị ảnh hưởng cần được xem lại trước khi xác nhận.', 'impact' => $impact], 409));
+        }
+
+        return $bookings;
+    }
+
+    public function cancelForClosure(Collection $bookings, string $reason, Request $request): void
+    {
+        foreach ($bookings as $before) {
+            DB::table('amenity_bookings')->where('id', $before->id)->update(['status' => 'CANCELLED', 'admin_notes' => trim(($before->admin_notes ? $before->admin_notes."\n" : '').'Đóng cửa tiện ích: '.$reason), 'updated_at' => now()]);
+            $after = DB::table('amenity_bookings')->where('id', $before->id)->first();
+            $this->payments->synchronize($after, $request);
+            $this->recordStatusChange($request, $before, $after);
+        }
+        if ($bookings->isNotEmpty()) {
+            $this->invalidateAfterCommit();
+        }
     }
 
     /** @param array<string, mixed>|null $oldData

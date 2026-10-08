@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountProvisioningController;
+use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CicdDashboardController;
@@ -176,9 +177,14 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
     Route::get('amenities/{id}/availability', [ResidentAmenityBookingController::class, 'availability']);
     Route::post('amenity-bookings', [ResidentAmenityBookingController::class, 'store']);
+    Route::get('amenity-notifications', [ResidentAmenityBookingController::class, 'notifications']);
+    Route::post('amenity-notifications/{id}/read', [ResidentAmenityBookingController::class, 'readNotification']);
     Route::get('amenity-bookings', [ResidentAmenityBookingController::class, 'bookings']);
     Route::get('amenity-bookings/{id}', [ResidentAmenityBookingController::class, 'show']);
     Route::post('amenity-bookings/{id}/cancel', [ResidentAmenityBookingController::class, 'cancel']);
+    Route::get('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
+    Route::post('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
+    Route::post('amenity-bookings/{id}/payment/report', [AmenityBookingPaymentController::class, 'report'])->middleware('throttle:10,1');
 });
 Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
@@ -425,6 +431,10 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::delete('amenity-categories/{id}', [AmenityController::class, 'deleteCategory'])->middleware(['auth.bearer:strict', 'permission:AMENITY:DELETE']);
 
     // Tiện ích
+    Route::get('amenity-booking-notifications', [AmenityController::class, 'bookingNotifications'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::get('amenity-booking-worklist', [AmenityController::class, 'bookingWorklist'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::get('amenities/{id}/closure-impact', [AmenityController::class, 'closureImpact'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE|AMENITY:CONFIG_SLOT']);
+    Route::post('amenity-booking-notifications/{id}/read', [AmenityController::class, 'readBookingNotification'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::get('amenities', [AmenityController::class, 'getAmenities']);
     Route::post('amenities', [AmenityController::class, 'createAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CREATE']);
     Route::get('amenities/{id}', [AmenityController::class, 'getAmenity']);
@@ -434,6 +444,8 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::get('amenities/{id}/bookings', [AmenityController::class, 'getAmenityBookings'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::patch('amenities/{amenityId}/bookings/{bookingId}/status', [AmenityController::class, 'updateBookingStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::post('amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::post('amenities/{amenityId}/bookings/{bookingId}/payment/confirm', [AmenityBookingPaymentController::class, 'confirm'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::post('amenities/{amenityId}/bookings/{bookingId}/payment/reject', [AmenityBookingPaymentController::class, 'reject'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
 
     // Khung giờ hoạt động (Time Slots)
     Route::get('amenities/{amenityId}/time-slots', [AmenityController::class, 'getTimeSlots']);
