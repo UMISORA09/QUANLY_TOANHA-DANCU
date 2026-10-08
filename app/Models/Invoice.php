@@ -94,4 +94,12 @@ class Invoice extends Model
     {
         return $this->hasMany(InvoiceItem::class, 'invoice_id');
     }
+
+    /**
+     * Danh sách các đợt thanh toán của hóa đơn
+     */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'invoice_id')->orderBy('created_at', 'desc');
+    }
 }

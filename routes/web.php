@@ -13,6 +13,7 @@ use App\Http\Controllers\InvoiceManagementController;
 use App\Http\Controllers\ManagementDashboardController;
 use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
+use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentAmenityBookingController;
@@ -478,6 +479,13 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('invoices/{id}', [InvoiceManagementController::class, 'show']);
     Route::post('invoices/{id}/cancel', [InvoiceManagementController::class, 'cancel']);
     Route::post('invoices/bulk-cancel', [InvoiceManagementController::class, 'bulkCancel']);
+
+    // ==========================================
+    // THU TIỀN & GẠCH NỢ TỨC THỜI (CHỨC NĂNG 8 - XUANHOA)
+    // ==========================================
+    Route::post('payments/collect', [PaymentController::class, 'collectPayment']);
+    Route::get('payments', [PaymentController::class, 'listPayments']);
+    Route::get('invoices/{id}/vietqr-payload', [PaymentController::class, 'getVietQrPayload']);
 });
 
 Route::get('/quan-ly/sinh-hoa-don', function () {

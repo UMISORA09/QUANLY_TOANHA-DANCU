@@ -25,7 +25,11 @@ import {
     Sparkles,
     Trash2,
     Plus,
-    X
+    X,
+    QrCode,
+    Printer,
+    Copy,
+    Check
 } from 'lucide-react';
 import {
     invoiceApi,
@@ -76,6 +80,22 @@ export const InvoiceManagement: React.FC = () => {
     const [cancelModalInvoice, setCancelModalInvoice] = useState<InvoiceModel | null>(null);
     const [cancelReason, setCancelReason] = useState<string>('');
     const [cancelling, setCancelling] = useState<boolean>(false);
+
+    // Thu tiền & Gạch nợ states (Chức năng 8)
+    const [payModalInvoice, setPayModalInvoice] = useState<InvoiceModel | null>(null);
+    const [payAmount, setPayAmount] = useState<number>(0);
+    const [payMethod, setPayMethod] = useState<string>('CASH');
+    const [payTransactionId, setPayTransactionId] = useState<string>('');
+    const [payNotes, setPayNotes] = useState<string>('');
+    const [paying, setPaying] = useState<boolean>(false);
+
+    // VietQR Modal states
+    const [vietQrModalData, setVietQrModalData] = useState<any | null>(null);
+    const [loadingVietQr, setLoadingVietQr] = useState<boolean>(false);
+    const [copiedText, setCopiedText] = useState<string | null>(null);
+
+    // Biên lai thu tiền Modal states
+    const [receiptModalData, setReceiptModalData] = useState<any | null>(null);
 
     // Toast message
     const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -207,6 +227,81 @@ export const InvoiceManagement: React.FC = () => {
         } else {
             setSelectedInvoiceIds(prev => prev.filter(item => item !== id));
         }
+    };
+
+    // Mở Modal Thu tiền
+    const handleOpenPayModal = (inv: InvoiceModel) => {
+        setPayModalInvoice(inv);
+        setPayAmount(inv.remaining_balance);
+        setPayMethod('CASH');
+        setPayTransactionId('');
+        setPayNotes(`Thu tiền hóa đơn ${inv.invoice_number}`);
+    };
+
+    // Xác nhận thu tiền & gạch nợ tức thời
+    const handleConfirmPayment = async () => {
+        if (!payModalInvoice) return;
+        if (payAmount <= 0) {
+            showToast('error', 'Số tiền thanh toán phải lớn hơn 0 đ');
+            return;
+        }
+        if (payAmount > payModalInvoice.remaining_balance) {
+            showToast('error', `Số tiền không được lớn hơn dư nợ còn lại (${payModalInvoice.remaining_balance.toLocaleString('vi-VN')} đ)`);
+            return;
+        }
+
+        setPaying(true);
+        try {
+            const idempotencyKey = `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const res = await invoiceApi.collectPayment({
+                invoice_id: payModalInvoice.id,
+                amount: payAmount,
+                payment_method: payMethod,
+                transaction_id: payTransactionId.trim() || undefined,
+                notes: payNotes.trim() || undefined,
+                idempotency_key: idempotencyKey,
+            });
+
+            if (res.success) {
+                showToast('success', res.message);
+                setPayModalInvoice(null);
+                loadData();
+                if (res.data?.receipt) {
+                    setReceiptModalData({
+                        receipt: res.data.receipt,
+                        payment: res.data.payment,
+                        invoice: res.data.invoice,
+                    });
+                }
+            }
+        } catch (err: any) {
+            showToast('error', err.message || 'Lỗi xử lý thu tiền');
+        } finally {
+            setPaying(false);
+        }
+    };
+
+    // Mở Modal VietQR
+    const handleOpenVietQr = async (inv: InvoiceModel) => {
+        setLoadingVietQr(true);
+        try {
+            const res = await invoiceApi.getVietQrPayload(inv.id);
+            if (res.success) {
+                setVietQrModalData(res.data);
+            }
+        } catch (err: any) {
+            showToast('error', err.message || 'Không thể tạo mã VietQR');
+        } finally {
+            setLoadingVietQr(false);
+        }
+    };
+
+    // Sao chép clipboard
+    const copyToClipboard = (text: string, label: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedText(label);
+        setTimeout(() => setCopiedText(null), 2500);
+        showToast('success', `Đã sao chép ${label}!`);
     };
 
     // Helper render Pill trạng thái
@@ -644,6 +739,31 @@ export const InvoiceManagement: React.FC = () => {
                                             {/* Thao tác */}
                                             <td className="py-3 px-4 text-right">
                                                 <div className="flex items-center justify-end gap-1.5">
+                                                    {/* Nút VietQR */}
+                                                    {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenVietQr(inv)}
+                                                            className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 transition-colors"
+                                                            title="Tạo mã VietQR thanh toán nhanh"
+                                                        >
+                                                            <QrCode className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+
+                                                    {/* Nút Thu tiền & Gạch nợ */}
+                                                    {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && inv.remaining_balance > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenPayModal(inv)}
+                                                            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-colors"
+                                                            title="Thu tiền & Gạch nợ tức thời"
+                                                        >
+                                                            <CreditCard className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+
+                                                    {/* Nút Xem chi tiết */}
                                                     <button
                                                         type="button"
                                                         onClick={() => setDetailInvoice(inv)}
@@ -653,6 +773,7 @@ export const InvoiceManagement: React.FC = () => {
                                                         <Eye className="w-4 h-4" />
                                                     </button>
 
+                                                    {/* Nút Hủy hóa đơn */}
                                                     {canCancel && (
                                                         <button
                                                             type="button"
@@ -909,6 +1030,372 @@ export const InvoiceManagement: React.FC = () => {
                             >
                                 {cancelling && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                                 <span>{cancelling ? 'Đang Hủy...' : 'Xác Nhận Hủy Hóa Đơn'}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* MODAL 3: THU TIỀN & GẠCH NỢ TỨC THỜI (CHỨC NĂNG 8) */}
+            {payModalInvoice && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        {/* Header Modal */}
+                        <div className="p-5 bg-gradient-to-r from-emerald-950/40 to-slate-900 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    <CreditCard className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">Thu Tiền & Gạch Nợ Tức Thời</h3>
+                                    <p className="text-xs text-slate-400 font-mono">
+                                        {payModalInvoice.invoice_number} • Căn {payModalInvoice.apartment?.apartment_number}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setPayModalInvoice(null)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Body Form */}
+                        <div className="p-6 space-y-4 text-xs">
+                            {/* Tóm tắt dư nợ */}
+                            <div className="grid grid-cols-3 gap-2 p-3 bg-slate-950 rounded-xl border border-slate-800">
+                                <div>
+                                    <span className="text-slate-400">Tổng hóa đơn:</span>
+                                    <p className="font-mono font-bold text-white text-sm">
+                                        {payModalInvoice.total_amount.toLocaleString('vi-VN')} đ
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400">Đã thanh toán:</span>
+                                    <p className="font-mono font-semibold text-emerald-400 text-sm">
+                                        {payModalInvoice.paid_amount.toLocaleString('vi-VN')} đ
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400">Dư nợ còn lại:</span>
+                                    <p className="font-mono font-bold text-amber-400 text-sm">
+                                        {payModalInvoice.remaining_balance.toLocaleString('vi-VN')} đ
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Số tiền thu */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <label className="font-semibold text-slate-300">Số tiền thu thực tế (VNĐ):</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayAmount(payModalInvoice.remaining_balance)}
+                                        className="text-[11px] text-emerald-400 hover:underline font-semibold"
+                                    >
+                                        Thu trọn dư nợ ({payModalInvoice.remaining_balance.toLocaleString('vi-VN')} đ)
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={payModalInvoice.remaining_balance}
+                                        value={payAmount || ''}
+                                        onChange={(e) => setPayAmount(Number(e.target.value))}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 px-3 font-mono font-bold text-base text-emerald-400 focus:outline-none focus:border-emerald-500"
+                                        placeholder="Nhập số tiền thu..."
+                                    />
+                                    <span className="absolute right-3 top-3 text-slate-500 font-semibold">VND</span>
+                                </div>
+                            </div>
+
+                            {/* Phương thức thanh toán */}
+                            <div className="space-y-1.5">
+                                <label className="font-semibold text-slate-300">Phương thức thanh toán:</label>
+                                <select
+                                    value={payMethod}
+                                    onChange={(e) => setPayMethod(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-medium focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value="CASH">Tiền mặt tại quầy lễ tân (CASH)</option>
+                                    <option value="BANK_TRANSFER">Chuyển khoản ngân hàng trực tiếp</option>
+                                    <option value="VIETQR">Quét mã VietQR chuyển khoản nhanh</option>
+                                    <option value="VNPAY">Cổng thanh toán điện tử VNPay</option>
+                                    <option value="MOMO">Ví điện tử MoMo</option>
+                                </select>
+                            </div>
+
+                            {/* Mã giao dịch ngân hàng / Ref */}
+                            {payMethod !== 'CASH' && (
+                                <div className="space-y-1.5">
+                                    <label className="font-semibold text-slate-300">Mã giao dịch / Mã tham chiếu ngân hàng:</label>
+                                    <input
+                                        type="text"
+                                        value={payTransactionId}
+                                        onChange={(e) => setPayTransactionId(e.target.value)}
+                                        placeholder="Ví dụ: FT261088921 hoặc MB99210"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Ghi chú */}
+                            <div className="space-y-1.5">
+                                <label className="font-semibold text-slate-300">Ghi chú thu tiền:</label>
+                                <input
+                                    type="text"
+                                    value={payNotes}
+                                    onChange={(e) => setPayNotes(e.target.value)}
+                                    placeholder="Ghi chú thêm nếu có..."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                                />
+                            </div>
+
+                            {/* Dự báo trạng thái sau khi gạch nợ */}
+                            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl flex items-center justify-between text-xs">
+                                <span className="text-slate-300">Trạng thái sau gạch nợ:</span>
+                                <span className="font-bold text-emerald-400">
+                                    {payAmount >= payModalInvoice.remaining_balance
+                                        ? 'ĐÃ THANH TOÁN TOÀN BỘ (Dư nợ = 0 đ)'
+                                        : `THANH TOÁN 1 PHẦN (Còn nợ: ${(payModalInvoice.remaining_balance - payAmount).toLocaleString('vi-VN')} đ)`}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="flex items-center justify-end gap-3 p-4 bg-slate-950/70 border-t border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => setPayModalInvoice(null)}
+                                disabled={paying}
+                                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 transition-colors"
+                            >
+                                Hủy Bỏ
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmPayment}
+                                disabled={paying || payAmount <= 0}
+                                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-2"
+                            >
+                                {paying && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                                <span>{paying ? 'Đang Gạch Nợ...' : 'Xác Nhận Thu Tiền & Gạch Nợ'}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 4: QUÉT MÃ VIETQR NHANH */}
+            {vietQrModalData && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-5 bg-gradient-to-r from-cyan-950/40 to-slate-900 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                    <QrCode className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">Mã QR Thanh Toán VietQR</h3>
+                                    <p className="text-xs text-slate-400 font-mono">
+                                        HĐ: {vietQrModalData.invoice_number} • Căn {vietQrModalData.apartment_number}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setVietQrModalData(null)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 text-center space-y-4">
+                            {/* Ảnh QR VietQR */}
+                            <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-slate-200 mx-auto">
+                                <img
+                                    src={vietQrModalData.qr_image_url}
+                                    alt="VietQR Chuyển Khoản"
+                                    className="w-56 h-56 object-contain rounded-lg"
+                                />
+                            </div>
+
+                            <p className="text-xs text-slate-400">
+                                Quét mã bằng ứng dụng ngân hàng bất kỳ để tự động điền số tiền và nội dung chuyển khoản.
+                            </p>
+
+                            {/* Chi tiết tài khoản nhận */}
+                            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs text-left">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-400">Ngân hàng:</span>
+                                    <span className="font-bold text-white">MB Bank (BIN {vietQrModalData.bank_bin})</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-400">Số tài khoản:</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono font-bold text-cyan-300">{vietQrModalData.bank_account_number}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => copyToClipboard(vietQrModalData.bank_account_number, 'Số tài khoản')}
+                                            className="text-slate-400 hover:text-white"
+                                            title="Sao chép STK"
+                                        >
+                                            <Copy className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-400">Chủ tài khoản:</span>
+                                    <span className="font-semibold text-slate-200">{vietQrModalData.bank_account_name}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-400">Số tiền cần nộp:</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono font-bold text-emerald-400 text-sm">
+                                            {Number(vietQrModalData.amount_due).toLocaleString('vi-VN')} đ
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => copyToClipboard(vietQrModalData.amount_due.toString(), 'Số tiền')}
+                                            className="text-slate-400 hover:text-white"
+                                            title="Sao chép số tiền"
+                                        >
+                                            <Copy className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-400">Nội dung chuyển khoản:</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono font-bold text-indigo-300">{vietQrModalData.transfer_content}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => copyToClipboard(vietQrModalData.transfer_content, 'Nội dung')}
+                                            className="text-slate-400 hover:text-white"
+                                            title="Sao chép nội dung"
+                                        >
+                                            <Copy className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-slate-950/70 border-t border-slate-800 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setVietQrModalData(null)}
+                                className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                            >
+                                Đóng
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 5: BIÊN LAI THU TIỀN ĐIỆN TỬ (PAYMENT RECEIPT) */}
+            {receiptModalData && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="p-5 bg-gradient-to-r from-emerald-950/40 to-slate-900 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    <CheckCircle2 className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">Biên Lai Thu Tiền Điện Tử</h3>
+                                    <p className="text-xs text-slate-400 font-mono">
+                                        Mã BL: {receiptModalData.receipt?.receipt_number}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setReceiptModalData(null)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Phiếu biên lai in ấn */}
+                        <div className="p-6 space-y-4 text-xs bg-slate-900">
+                            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800 space-y-3 font-mono">
+                                <div className="text-center pb-3 border-b border-slate-800">
+                                    <h4 className="font-bold text-white uppercase text-sm tracking-wider">
+                                        BAN QUẢN LÝ TÒA NHÀ CASSAVAS SMART
+                                    </h4>
+                                    <p className="text-[11px] text-slate-400">BIÊN LAI THU TIỀN DỊCH VỤ TÒA NHÀ</p>
+                                    <p className="text-[10px] text-slate-500">
+                                        Số: <strong className="text-indigo-400">{receiptModalData.receipt?.receipt_number}</strong> • Ngày lập: {receiptModalData.receipt?.receipt_date}
+                                    </p>
+                                </div>
+
+                                <div className="space-y-1.5 text-xs text-slate-300 font-sans">
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-400">Người nộp tiền:</span>
+                                        <strong className="text-white">{receiptModalData.receipt?.received_from_name}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-400">Hóa đơn gạch nợ:</span>
+                                        <strong className="text-indigo-300 font-mono">{receiptModalData.invoice?.invoice_number}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-400">Căn hộ:</span>
+                                        <strong className="text-white">
+                                            {receiptModalData.invoice?.apartment?.apartment_number} ({receiptModalData.invoice?.apartment?.block?.block_name})
+                                        </strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-400">Phương thức:</span>
+                                        <strong className="text-emerald-400">{receiptModalData.payment?.payment_gateway}</strong>
+                                    </div>
+                                    <div className="flex justify-between pt-2 border-t border-slate-800">
+                                        <span className="text-slate-400">Số tiền đã nộp:</span>
+                                        <strong className="text-base text-emerald-400 font-mono">
+                                            {Number(receiptModalData.receipt?.amount).toLocaleString('vi-VN')} đ
+                                        </strong>
+                                    </div>
+                                    <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                                        <span className="text-[11px] text-slate-400">Bằng chữ: </span>
+                                        <em className="text-slate-200 font-serif font-semibold">{receiptModalData.receipt?.amount_in_words}</em>
+                                    </div>
+                                </div>
+
+                                {/* Chữ ký số điện tử */}
+                                <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-500 space-y-1">
+                                    <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                                        <Sparkles className="w-3 h-3" />
+                                        <span>Chứng chỉ xác thực số điện tử bảo chứng</span>
+                                    </div>
+                                    <p className="font-mono break-all text-slate-400 bg-slate-900 p-2 rounded border border-slate-800">
+                                        SHA256: {receiptModalData.receipt?.digital_signature_hash}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="flex items-center justify-between p-4 bg-slate-950/70 border-t border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => window.print()}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                            >
+                                <Printer className="w-4 h-4" />
+                                <span>In Biên Lai</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setReceiptModalData(null)}
+                                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors"
+                            >
+                                Hoàn Tất
                             </button>
                         </div>
                     </div>

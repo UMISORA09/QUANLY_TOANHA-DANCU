@@ -223,4 +223,62 @@ export const invoiceApi = {
         if (!res.ok) throw new Error(json.message || 'Lỗi hủy hàng loạt hóa đơn');
         return json;
     },
+
+    /**
+     * Thu tiền và gạch nợ tức thời (Chức năng 8)
+     */
+    async collectPayment(payload: {
+        invoice_id: string;
+        amount: number;
+        payment_method: string;
+        transaction_id?: string;
+        notes?: string;
+        idempotency_key?: string;
+    }): Promise<{
+        success: boolean;
+        message: string;
+        data: {
+            payment: any;
+            receipt: any;
+            invoice: InvoiceModel;
+            is_fully_paid: boolean;
+            is_duplicate?: boolean;
+        };
+    }> {
+        const res = await fetch('/api/v1/payments/collect', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi xử lý thu tiền');
+        return json;
+    },
+
+    /**
+     * Lấy dữ liệu và mã VietQR cho hóa đơn
+     */
+    async getVietQrPayload(invoiceId: string): Promise<{
+        success: boolean;
+        data: {
+            invoice_id: string;
+            invoice_number: string;
+            apartment_number: string;
+            amount_due: number;
+            transfer_content: string;
+            bank_bin: string;
+            bank_account_number: string;
+            bank_account_name: string;
+            qr_image_url: string;
+        };
+    }> {
+        const res = await fetch(`/api/v1/invoices/${invoiceId}/vietqr-payload`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tạo mã VietQR');
+        return json;
+    },
 };
