@@ -83,22 +83,22 @@ class PerformanceBenchmarkTest extends TestCase
         // 1. RBAC
         $roleId = Role::value('id') ?? '';
         $r1 = $this->measure(function () {
-            $this->getJson('/api/roles', $this->getHeaders());
-            $this->getJson('/api/permissions', $this->getHeaders());
+            $this->getJson('/api/v1/roles', $this->getHeaders());
+            $this->getJson('/api/v1/permissions', $this->getHeaders());
         });
         $r2 = $this->measure(function () {
-            $this->getJson('/api/roles', $this->getHeaders());
-            $this->getJson('/api/permissions', $this->getHeaders());
+            $this->getJson('/api/v1/roles', $this->getHeaders());
+            $this->getJson('/api/v1/permissions', $this->getHeaders());
         });
         $r_search = $this->measure(function () {
-            $this->getJson('/api/roles', $this->getHeaders());
+            $this->getJson('/api/v1/roles', $this->getHeaders());
         });
         $r_filter = $this->measure(function () {
-            $this->getJson('/api/permissions?format=flat', $this->getHeaders());
+            $this->getJson('/api/v1/permissions?format=flat', $this->getHeaders());
         });
         $r_detail = $this->measure(function () use ($roleId) {
             if ($roleId) {
-                $this->getJson("/api/roles/{$roleId}", $this->getHeaders());
+                $this->getJson("/api/v1/roles/{$roleId}", $this->getHeaders());
             }
         });
         $results['RBAC'] = [
@@ -113,21 +113,21 @@ class PerformanceBenchmarkTest extends TestCase
         $resId = Resident::value('id') ?? '';
         $aptId = Apartment::value('id') ?? '';
         $res1 = $this->measure(function () {
-            $this->getJson('/api/residents?page=1&limit=15', $this->getHeaders());
-            $this->getJson('/api/residents/apartments', $this->getHeaders());
+            $this->getJson('/api/v1/residents?page=1&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/residents/apartments', $this->getHeaders());
         });
         $res2 = $this->measure(function () {
-            $this->getJson('/api/residents?page=1&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/residents?page=1&limit=15', $this->getHeaders());
         });
         $res_search = $this->measure(function () {
-            $this->getJson('/api/residents?search=Nguyen&page=1&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/residents?search=Nguyen&page=1&limit=15', $this->getHeaders());
         });
         $res_filter = $this->measure(function () use ($aptId) {
-            $this->getJson("/api/residents?apartment_id={$aptId}&page=1&limit=15", $this->getHeaders());
+            $this->getJson("/api/v1/residents?apartment_id={$aptId}&page=1&limit=15", $this->getHeaders());
         });
         $res_detail = $this->measure(function () use ($resId) {
             if ($resId) {
-                $this->getJson("/api/residents/{$resId}", $this->getHeaders());
+                $this->getJson("/api/v1/residents/{$resId}", $this->getHeaders());
             }
         });
         $results['Residents'] = [
@@ -141,20 +141,20 @@ class PerformanceBenchmarkTest extends TestCase
         // 3. Temporary Registration
         $trId = TemporaryRegistration::value('id') ?? '';
         $tr1 = $this->measure(function () {
-            $this->getJson('/api/temporary-registrations?page=1&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/residents/temporary-registrations?page=1&limit=15', $this->getHeaders());
         });
         $tr2 = $this->measure(function () {
-            $this->getJson('/api/temporary-registrations?page=1&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/residents/temporary-registrations?page=1&limit=15', $this->getHeaders());
         });
         $tr_search = $this->measure(function () {
-            $this->getJson('/api/temporary-registrations?search=test&page=1&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/residents/temporary-registrations?search=test&page=1&limit=15', $this->getHeaders());
         });
         $tr_filter = $this->measure(function () {
-            $this->getJson('/api/temporary-registrations?police_status=PENDING&page=1&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/residents/temporary-registrations?police_status=PENDING&page=1&limit=15', $this->getHeaders());
         });
         $tr_detail = $this->measure(function () use ($trId) {
             if ($trId) {
-                $this->getJson("/api/temporary-registrations/{$trId}", $this->getHeaders());
+                $this->getJson("/api/v1/residents/temporary-registrations/{$trId}", $this->getHeaders());
             }
         });
         $results['TemporaryRegistration'] = [
@@ -168,20 +168,20 @@ class PerformanceBenchmarkTest extends TestCase
         // 4. Account Provisioning
         $userId = $this->adminUser->id;
         $acc1 = $this->measure(function () {
-            $this->getJson('/api/users?roles=RESIDENT&limit=15', $this->getHeaders());
-            $this->getJson('/api/roles', $this->getHeaders());
+            $this->getJson('/api/v1/users?roles=RESIDENT&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/roles', $this->getHeaders());
         });
         $acc2 = $this->measure(function () {
-            $this->getJson('/api/users?roles=RESIDENT&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/users?roles=RESIDENT&limit=15', $this->getHeaders());
         });
         $acc_search = $this->measure(function () {
-            $this->getJson('/api/users?search=Nguyen&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/users?search=Nguyen&limit=15', $this->getHeaders());
         });
         $acc_filter = $this->measure(function () {
-            $this->getJson('/api/users?status=ACTIVE&limit=15', $this->getHeaders());
+            $this->getJson('/api/v1/users?status=ACTIVE&limit=15', $this->getHeaders());
         });
         $acc_detail = $this->measure(function () use ($userId) {
-            $this->getJson("/api/users/{$userId}", $this->getHeaders());
+            $this->getJson("/api/v1/users/{$userId}", $this->getHeaders());
         });
         $results['AccountProvisioning'] = [
             'first_load' => $acc1,
@@ -194,22 +194,22 @@ class PerformanceBenchmarkTest extends TestCase
         // 5. Vehicles
         $vehId = Vehicle::value('id') ?? '';
         $veh1 = $this->measure(function () {
-            $this->getJson('/api/vehicles?page=1&per_page=15', $this->getHeaders());
-            $this->getJson('/api/vehicles/apartments', $this->getHeaders());
-            $this->getJson('/api/vehicles/pricing-configs', $this->getHeaders());
+            $this->getJson('/api/v1/vehicles?page=1&per_page=15', $this->getHeaders());
+            $this->getJson('/api/v1/vehicles/apartments', $this->getHeaders());
+            $this->getJson('/api/v1/vehicles/pricing-config', $this->getHeaders());
         });
         $veh2 = $this->measure(function () {
-            $this->getJson('/api/vehicles?page=1&per_page=15', $this->getHeaders());
+            $this->getJson('/api/v1/vehicles?page=1&per_page=15', $this->getHeaders());
         });
         $veh_search = $this->measure(function () {
-            $this->getJson('/api/vehicles?search=29&page=1&per_page=15', $this->getHeaders());
+            $this->getJson('/api/v1/vehicles?search=29&page=1&per_page=15', $this->getHeaders());
         });
         $veh_filter = $this->measure(function () {
-            $this->getJson('/api/vehicles?vehicle_category=MOTORBIKE&page=1&per_page=15', $this->getHeaders());
+            $this->getJson('/api/v1/vehicles?vehicle_category=MOTORBIKE&page=1&per_page=15', $this->getHeaders());
         });
         $veh_detail = $this->measure(function () use ($vehId) {
             if ($vehId) {
-                $this->getJson("/api/vehicles/{$vehId}", $this->getHeaders());
+                $this->getJson("/api/v1/vehicles/{$vehId}", $this->getHeaders());
             }
         });
         $results['Vehicles'] = [

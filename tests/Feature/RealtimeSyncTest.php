@@ -27,6 +27,10 @@ class RealtimeSyncTest extends TestCase
 
     protected ?string $restrictedToken = null;
 
+    protected ?Apartment $testApartment = null;
+
+    protected ?Resident $testResident = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -92,6 +96,62 @@ class RealtimeSyncTest extends TestCase
             'created_at' => now(),
         ]);
 
+        // 3. Đảm bảo căn hộ và cư dân tồn tại an toàn cho test suite
+        $block = DB::table('blocks')->first();
+        $floor = DB::table('floors')->first();
+        $blockId = $block?->id ?? (string) Str::uuid();
+        $floorId = $floor?->id ?? (string) Str::uuid();
+
+        if (! $block) {
+            DB::table('blocks')->insert([
+                'id' => $blockId,
+                'block_code' => 'RT-'.Str::random(6),
+                'block_name' => 'Realtime Block',
+                'total_floors' => 10,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        if (! $floor) {
+            DB::table('floors')->insert([
+                'id' => $floorId,
+                'block_id' => $blockId,
+                'floor_number' => 1,
+                'floor_code' => 'F1',
+                'floor_name' => 'Floor 1',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $this->testApartment = Apartment::first();
+        if (! $this->testApartment) {
+            $this->testApartment = Apartment::create([
+                'id' => (string) Str::uuid(),
+                'block_id' => $blockId,
+                'floor_id' => $floorId,
+                'apartment_number' => 'RT-'.rand(100, 999),
+                'room_type' => '2_BEDROOM',
+                'gross_floor_area_sqm' => 75.0,
+                'net_usable_area_sqm' => 68.0,
+                'status' => 'OCCUPIED',
+            ]);
+        }
+
+        $this->testResident = Resident::where('is_active', 1)->first();
+        if (! $this->testResident) {
+            $this->testResident = Resident::create([
+                'apartment_id' => $this->testApartment->id,
+                'user_id' => $this->adminUser->id,
+                'resident_type' => 'OWNER',
+                'is_head_of_household' => true,
+                'stay_start_date' => now()->toDateString(),
+                'relationship_to_head' => 'SELF',
+                'is_active' => true,
+            ]);
+        }
+
         DB::table('realtime_sync_events')->delete();
         foreach (['rbac', 'residents', 'temporary_registrations', 'account_provisioning', 'vehicles'] as $mod) {
             QuocTinRealtimeService::clearModuleCooldown($mod);
@@ -128,7 +188,7 @@ class RealtimeSyncTest extends TestCase
      */
     public function test_1_client_a_create_vehicle_broadcasts_to_channel(): void
     {
-        $aptId = Apartment::value('id') ?? (string) Str::uuid();
+        $aptId = $this->testApartment->id;
         $plate = '29A-'.rand(10000, 99999);
 
         $response = $this->postJson('/api/v1/vehicles', [
@@ -158,18 +218,7 @@ class RealtimeSyncTest extends TestCase
      */
     public function test_2_client_a_update_resident_broadcasts_to_channel(): void
     {
-        $resident = Resident::first();
-        if (! $resident) {
-            $aptId = Apartment::value('id');
-            $resident = Resident::create([
-                'apartment_id' => $aptId,
-                'user_id' => $this->adminUser->id,
-                'resident_type' => 'FAMILY_MEMBER',
-                'is_head_of_household' => 0,
-                'is_active' => 1,
-                'stay_start_date' => now()->toDateString(),
-            ]);
-        }
+        $resident = $this->testResident;
 
         $service = app(ResidentService::class);
         $service->update($resident->id, [
@@ -212,7 +261,7 @@ class RealtimeSyncTest extends TestCase
      */
     public function test_4_approve_and_reject_temporary_registration_broadcasts(): void
     {
-        $resident = Resident::first();
+        $resident = $this->testResident;
         $tempreg = TemporaryRegistration::create([
             'resident_id' => $resident->id,
             'apartment_id' => $resident->apartment_id,
@@ -234,7 +283,7 @@ class RealtimeSyncTest extends TestCase
         });
         $this->assertNotNull($matchedApprove, 'Client B phải nhận được trạng thái APPROVED ngay lập tức');
 
-        // Tạo hồ sơ thứ 2 để test từ chối (clear cooldown để cho phép mutation kế tiếp trong test case này)
+        // Tạo hồ sơ thứ 2 để test từ chối
         QuocTinRealtimeService::clearModuleCooldown('temporary_registrations');
         $tempreg2 = TemporaryRegistration::create([
             'resident_id' => $resident->id,
@@ -261,20 +310,27 @@ class RealtimeSyncTest extends TestCase
     public function test_5_multiple_clients_watching_same_record_receive_targeted_entity_id(): void
     {
         $vehicle = Vehicle::first();
-        if ($vehicle) {
-            $service = app(VehicleService::class);
-            $service->updateVehicle($vehicle->id, ['color' => 'Xanh Neon']);
-
-            $events = QuocTinRealtimeService::getEvents(['quoc-tin.vehicles'], 0, 0, 5);
-            $matched = collect($events)->first(function ($ev) use ($vehicle) {
-                return $ev['entity_id'] === $vehicle->id;
-            });
-
-            $this->assertNotNull($matched);
-            $this->assertEquals($vehicle->id, $matched['entity_id']);
-        } else {
-            $this->assertTrue(true);
+        if (! $vehicle) {
+            $vehicle = Vehicle::create([
+                'apartment_id' => $this->testApartment->id,
+                'owner_user_id' => $this->adminUser->id,
+                'license_plate' => '29C-'.rand(10000, 99999),
+                'vehicle_category' => 'MOTORBIKE',
+                'monthly_parking_fee' => 120000,
+                'is_active' => 1,
+            ]);
         }
+
+        $service = app(VehicleService::class);
+        $service->updateVehicle($vehicle->id, ['color' => 'Xanh Neon']);
+
+        $events = QuocTinRealtimeService::getEvents(['quoc-tin.vehicles'], 0, 0, 5);
+        $matched = collect($events)->first(function ($ev) use ($vehicle) {
+            return $ev['entity_id'] === $vehicle->id;
+        });
+
+        $this->assertNotNull($matched);
+        $this->assertEquals($vehicle->id, $matched['entity_id']);
     }
 
     /**
@@ -369,23 +425,8 @@ class RealtimeSyncTest extends TestCase
     {
         QuocTinRealtimeService::clearModuleCooldown('residents');
 
-        $resident = Resident::first();
-        if (! $resident) {
-            $aptId = Apartment::value('id');
-            $resident = Resident::create([
-                'apartment_id' => $aptId,
-                'user_id' => $this->adminUser->id,
-                'resident_type' => 'FAMILY_MEMBER',
-                'is_head_of_household' => 0,
-                'is_active' => 1,
-                'stay_start_date' => now()->toDateString(),
-            ]);
-        }
-
-        $service = app(ResidentService::class);
-        $service->update($resident->id, [
-            'occupation' => 'Architect_'.Str::random(4),
-        ]);
+        $resident = $this->testResident;
+        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', $resident->id, [], $this->adminUser->id, true);
 
         $cooldown = QuocTinRealtimeService::getModuleCooldown('residents');
         $this->assertNotNull($cooldown, 'Server phải lưu trạng thái cooldown cho module residents');
@@ -400,7 +441,7 @@ class RealtimeSyncTest extends TestCase
     {
         QuocTinRealtimeService::setModuleCooldown('residents', 120, $this->adminUser->id);
 
-        $resident = Resident::first();
+        $resident = $this->testResident;
         $response = $this->putJson(
             "/api/v1/residents/{$resident->id}",
             ['occupation' => 'Tester'],
@@ -423,7 +464,7 @@ class RealtimeSyncTest extends TestCase
     {
         QuocTinRealtimeService::setModuleCooldown('residents', 120, 'different_user_id');
 
-        $resident = Resident::first();
+        $resident = $this->testResident;
         $response = $this->putJson(
             "/api/v1/residents/{$resident->id}",
             ['occupation' => 'Engineer'],
@@ -470,7 +511,7 @@ class RealtimeSyncTest extends TestCase
 
         $this->assertFalse(QuocTinRealtimeService::isModuleInCooldown('residents'));
 
-        $resident = Resident::first();
+        $resident = $this->testResident;
         $response = $this->putJson(
             "/api/v1/residents/{$resident->id}",
             ['occupation' => 'Doctor'],

@@ -83,15 +83,59 @@ class DatabaseCrudOptimizationTest extends TestCase
         parent::tearDown();
     }
 
+    protected function getTestApartment(): Apartment
+    {
+        $existing = Apartment::first();
+        if ($existing) {
+            return $existing;
+        }
+
+        $block = DB::table('blocks')->first();
+        $floor = DB::table('floors')->first();
+        $blockId = $block?->id ?? (string) Str::uuid();
+        $floorId = $floor?->id ?? (string) Str::uuid();
+
+        if (! $block) {
+            DB::table('blocks')->insert([
+                'id' => $blockId,
+                'block_code' => 'TEST-'.Str::random(6),
+                'block_name' => 'Test Block',
+                'total_floors' => 10,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        if (! $floor) {
+            DB::table('floors')->insert([
+                'id' => $floorId,
+                'block_id' => $blockId,
+                'floor_number' => 1,
+                'floor_code' => 'F1',
+                'floor_name' => 'Floor 1',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return Apartment::create([
+            'id' => (string) Str::uuid(),
+            'block_id' => $blockId,
+            'floor_id' => $floorId,
+            'apartment_number' => 'TEST-'.rand(100, 999),
+            'room_type' => '2_BEDROOM',
+            'gross_floor_area_sqm' => 70.0,
+            'net_usable_area_sqm' => 65.0,
+            'status' => 'OCCUPIED',
+        ]);
+    }
+
     /**
      * 1. Test Resident CREATE / UPDATE / DELETE tối ưu query và atomic soft delete
      */
     public function test_resident_create_update_delete_optimized(): void
     {
-        $apartment = Apartment::first() ?? Apartment::create([
-            'apartment_number' => 'TEST-'.rand(100, 999),
-            'status' => 'VACANT',
-        ]);
+        $apartment = $this->getTestApartment();
 
         $user = User::create([
             'username' => 'test_res_'.Str::random(8),
@@ -150,18 +194,7 @@ class DatabaseCrudOptimizationTest extends TestCase
         })->first();
 
         if (! $apartment) {
-            $block = DB::table('blocks')->first();
-            $floor = DB::table('floors')->first();
-            $apartment = Apartment::create([
-                'id' => (string) Str::uuid(),
-                'block_id' => $block->id ?? (string) Str::uuid(),
-                'floor_id' => $floor->id ?? (string) Str::uuid(),
-                'apartment_number' => 'DUP-HEAD-'.rand(100, 999),
-                'room_type' => '2_BEDROOM',
-                'gross_floor_area_sqm' => 70.0,
-                'net_usable_area_sqm' => 65.0,
-                'status' => 'OCCUPIED',
-            ]);
+            $apartment = $this->getTestApartment();
         }
         $user1 = User::create([
             'username' => 'head1_'.Str::random(8),
@@ -208,7 +241,7 @@ class DatabaseCrudOptimizationTest extends TestCase
      */
     public function test_resident_optimistic_concurrency_rejection(): void
     {
-        $apartment = Apartment::first();
+        $apartment = $this->getTestApartment();
         $user = User::create([
             'username' => 'occ_'.Str::random(8),
             'phone_number' => '09'.rand(10000000, 99999999),
@@ -243,7 +276,7 @@ class DatabaseCrudOptimizationTest extends TestCase
      */
     public function test_temporary_registration_lifecycle(): void
     {
-        $apartment = Apartment::first();
+        $apartment = $this->getTestApartment();
         $user = User::create([
             'username' => 'tempreg_'.Str::random(8),
             'phone_number' => '09'.rand(10000000, 99999999),
@@ -304,7 +337,7 @@ class DatabaseCrudOptimizationTest extends TestCase
      */
     public function test_vehicle_create_and_idempotent_invoice_sync(): void
     {
-        $apartment = Apartment::first();
+        $apartment = $this->getTestApartment();
         $plate = '51A-'.rand(10000, 99999);
 
         $service = app(VehicleService::class);
@@ -330,7 +363,7 @@ class DatabaseCrudOptimizationTest extends TestCase
      */
     public function test_vehicle_duplicate_license_plate_rejected(): void
     {
-        $apartment = Apartment::first();
+        $apartment = $this->getTestApartment();
         $plate = '29B-'.rand(10000, 99999);
 
         $service = app(VehicleService::class);
@@ -452,6 +485,12 @@ class DatabaseCrudOptimizationTest extends TestCase
 
         $rbacService = app(RbacService::class);
         $role = Role::first();
+        if (! $role) {
+            $role = Role::create([
+                'role_code' => 'ROLE_TEST_'.rand(100, 999),
+                'role_name' => 'Role Test',
+            ]);
+        }
 
         // Gán vai trò 2 lần với cùng role_id trong danh sách
         $rbacService->syncUserRoles($targetUser, [$role->id, $role->id], null, $this->adminUser);

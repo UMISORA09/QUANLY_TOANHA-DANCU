@@ -183,7 +183,7 @@ class QuocTinRealtimeService
      * @param  string|null  $entityId  Target entity primary ID
      * @param  array<string, mixed>  $extra  Additional non-sensitive metadata
      * @param  string|null  $actorId  User ID who performed the mutation
-     * @param  bool  $triggerCooldown  Whether to initiate the 120s server-side edit cooldown (default true)
+     * @param  bool  $triggerCooldown  Whether to initiate the 120s server-side edit cooldown (default false)
      */
     public static function emit(
         string $module,
@@ -192,7 +192,7 @@ class QuocTinRealtimeService
         ?string $entityId = null,
         array $extra = [],
         ?string $actorId = null,
-        bool $triggerCooldown = true
+        bool $triggerCooldown = false
     ): void {
         $canonicalModule = self::normalizeModuleName($module);
         $channel = self::getChannelForModule($canonicalModule);
