@@ -136,8 +136,6 @@ class AccessCardService
      */
     public function createCard(array $data, ?string $actorId = null): AccessCard
     {
-        QuocTinRealtimeService::assertNotInCooldown('rfid_cards');
-
         // Chuẩn hóa dữ liệu
         $data['card_uid'] = strtoupper(trim((string) ($data['card_uid'] ?? '')));
         $data['card_number'] = strtoupper(trim((string) ($data['card_number'] ?? '')));
@@ -163,7 +161,7 @@ class AccessCardService
             'assignedVehicle:id,license_plate,vehicle_category,model',
         ]);
 
-        // Phát realtime event với triggerCooldown = true
+        // Phát realtime event (không kích hoạt cooldown)
         QuocTinRealtimeService::emit('rfid_cards', 'rfid_card', 'CREATED', $card->id, [
             'card_uid' => $card->card_uid,
             'card_number' => $card->card_number,
@@ -171,18 +169,16 @@ class AccessCardService
             'status' => $card->status,
             'assigned_apartment_id' => $card->assigned_apartment_id,
             'assigned_user_id' => $card->assigned_user_id,
-        ], $actorId ? (int) $actorId : null, true);
+        ], $actorId ? (int) $actorId : null, false);
 
         return $card;
     }
 
     /**
-     * Cập nhật thông tin thẻ trong DB Transaction và phát Realtime + Cooldown 120s
+     * Cập nhật thông tin thẻ trong DB Transaction và phát Realtime
      */
     public function updateCard(string $id, array $data, ?string $actorId = null): AccessCard
     {
-        QuocTinRealtimeService::assertNotInCooldown('rfid_cards');
-
         $card = AccessCard::find($id);
         if (! $card) {
             throw new AccessCardNotFoundException("Thẻ RFID có ID '{$id}' không tồn tại trong hệ thống.");
@@ -225,7 +221,7 @@ class AccessCardService
             'status' => $fresh->status,
             'assigned_apartment_id' => $fresh->assigned_apartment_id,
             'assigned_user_id' => $fresh->assigned_user_id,
-        ], $actorId ? (int) $actorId : null, true);
+        ], $actorId ? (int) $actorId : null, false);
 
         return $fresh;
     }
@@ -235,8 +231,6 @@ class AccessCardService
      */
     public function toggleStatus(string $id, ?string $actorId = null): AccessCard
     {
-        QuocTinRealtimeService::assertNotInCooldown('rfid_cards');
-
         $card = AccessCard::find($id);
         if (! $card) {
             throw new AccessCardNotFoundException("Thẻ RFID có ID '{$id}' không tồn tại trong hệ thống.");
@@ -260,7 +254,7 @@ class AccessCardService
             'card_type' => $fresh->card_type,
             'status' => $newStatus,
             'is_active' => ($newStatus === 'ACTIVE'),
-        ], $actorId ? (int) $actorId : null, true);
+        ], $actorId ? (int) $actorId : null, false);
 
         return $fresh;
     }
@@ -270,8 +264,6 @@ class AccessCardService
      */
     public function deleteCard(string $id, ?string $actorId = null): array
     {
-        QuocTinRealtimeService::assertNotInCooldown('rfid_cards');
-
         $card = AccessCard::find($id);
         if (! $card) {
             throw new AccessCardNotFoundException("Thẻ RFID có ID '{$id}' không tồn tại trong hệ thống.");
@@ -301,7 +293,7 @@ class AccessCardService
             'status' => 'REVOKED',
             'is_revoked' => $hasLogs,
             'action' => $action,
-        ], $actorId ? (int) $actorId : null, true);
+        ], $actorId ? (int) $actorId : null, false);
 
         return [
             'success' => true,
