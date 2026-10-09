@@ -2,6 +2,7 @@
 
 namespace App\Repositories\Eloquent;
 
+use App\Services\AmenityBookingPaymentService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,8 @@ class DatabaseResidentAmenityBookingRepository
     {
         $query = DB::table('amenity_bookings')->where('amenity_id', $amenityId)
             ->whereDate('booking_date', $date)->whereNull('deleted_at')->whereIn('status', self::HOLDING_STATUSES);
+
+        $query = AmenityBookingPaymentService::holdingQuery($query);
 
         return ($lock ? $query->lockForUpdate() : $query)->get();
     }

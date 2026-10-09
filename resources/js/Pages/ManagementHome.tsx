@@ -64,8 +64,9 @@ import { RevenueAnalyticsDashboard } from './Admin/RevenueAnalyticsDashboard';
 import { FinancialReportManagement } from './Admin/FinancialReportManagement';
 import { InvoiceNavTabs } from '../Components/Admin/InvoiceNavTabs';
 import { AppLayout } from '../Components/Layout/AppLayout';
-import { api } from '../Services/api';
+import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
+import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -447,6 +448,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   });
 
   // Notifications state
+  const notices = useAmenityNotifications('admin');
+  const { items: amenityNotifications, unreadCount: amenityUnreadCount, alert: bookingAlert, setAlert: setBookingAlert } = notices;
   const [notifications, setNotifications] = useState<Array<{
     id: string;
     title: string;
@@ -461,6 +464,21 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     { id: '4', title: 'Lịch bảo trì thang máy', message: 'Đội kỹ thuật Otis tiến hành kiểm định thang T2 Tháp A.', timeAgo: '3 giờ trước', isRead: false },
     { id: '5', title: 'Cư dân đăng ký mới', message: 'Hộ gia đình căn B1405 hoàn tất xác thực eKYC.', timeAgo: '5 giờ trước', isRead: false },
   ]);
+
+  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || ''))];
+  const unreadNotificationCount = amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || '')).length;
+
+  const openBookingNotification = async (notification: AmenityBookingNotification) => {
+    const target = new URL(notification.deepLink, window.location.origin);
+    if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
+    target.pathname = userRole === 'manager' ? '/quan-ly' : '/admin';
+    window.history.pushState({}, '', target.pathname + target.search);
+    setActiveMenuId('amenities');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    setIsNotificationOpen(false);
+    setBookingAlert(null);
+    await notices.markRead(notification);
+  };
 
   // Sidebar Menu Items dynamically bound to Database KPIs and userRole
   const menuItems = useMemo(
@@ -482,7 +500,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'revenue_analytics', label: 'Dashboard Doanh thu', icon: TrendingUp, badge: 'Chart' },
         { id: 'financial_reports', label: 'Báo cáo Tài chính', icon: FileSpreadsheet, badge: 'Excel/PDF' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
-        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${notifications.filter(n => !n.isRead).length || 2} mới` },
+        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${unreadNotificationCount} mới` },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
         { id: 'ekyc', label: 'eKYC & Xác thực CCCD', icon: ShieldCheck, badge: 'AI' },
         { id: 'assets', label: 'Tài sản & Bảo trì thiết bị', icon: ShieldAlert, badge: null },
@@ -511,7 +529,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
       return baseItems;
     },
-    [kpis, notifications, userRole]
+    [kpis, unreadNotificationCount, userRole]
   );
 
   // Ticket Data matching database seed
@@ -768,7 +786,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       onNavigateHome={onNavigateHome}
       onNotificationClick={() => setIsNotificationOpen(!isNotificationOpen)}
       onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
-      unreadNotificationCount={notifications.filter((n) => !n.isRead).length}
+      unreadNotificationCount={unreadNotificationCount}
       extraTopbarActions={
         <>
 
@@ -827,13 +845,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       }
     >
       {/* Notifications Dropdown Panel */}
+      {bookingAlert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{bookingAlert.title}</p><p className="mt-1 text-xs text-neutral-600">{bookingAlert.message}</p></div><button type="button" aria-label="Đóng cảnh báo đăng ký mới" onClick={() => setBookingAlert(null)} className="rounded-lg p-1 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openBookingNotification(bookingAlert)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
       {isNotificationOpen && (
         <div className="fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-semibold">
-                {notifications.filter((n) => !n.isRead).length} mới
+                {unreadNotificationCount} mới
               </span>
             </div>
             <button
@@ -845,8 +864,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </button>
           </div>
           <div className="relative mt-2">
+            <label className="mb-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo tiện ích chưa đọc</label>
+            {notices.error && <p role="alert" className="mb-2 text-xs text-rose-700">Không thể cập nhật thông báo tiện ích. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}
             <div className="space-y-2 max-h-[260px] overflow-y-auto custom-scrollbar pr-1 pb-7">
-              {notifications.map((notif) => {
+              {displayedNotifications.map((notif) => {
                 const isError = notif.category === 'TICKET' || notif.title.includes('Sự cố');
                 const isWarning = notif.category === 'BILLING' || notif.title.includes('quá hạn');
                 const isSuccess = notif.category === 'IOT' || notif.title.includes('Đồng bộ');
@@ -872,10 +893,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                       <span>{notif.timeAgo || 'Vừa xong'}</span>
                     </div>
                     <p className="text-xs text-slate-700 mt-0.5">{notif.message}</p>
+                    {notif.category === 'AMENITY_BOOKING' && <button type="button" onClick={() => void openBookingNotification(notif as AmenityBookingNotification)} className="mt-2 text-xs font-semibold text-emerald-700 underline">{notif.isRead ? 'Xem lại đăng ký' : 'Xem đăng ký'}</button>}
                   </div>
                 );
               })}
             </div>
+            <div className="mt-2 flex items-center justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div>
           </div>
         </div>
       )}

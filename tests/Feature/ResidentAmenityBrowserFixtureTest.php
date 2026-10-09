@@ -52,11 +52,14 @@ class ResidentAmenityBrowserFixtureTest extends TestCase
             $this->assertDatabaseHas('audit_logs', ['record_id' => $booking->id, 'action' => 'INSERT']);
             $this->assertDatabaseHas('audit_logs', ['record_id' => $booking->id, 'action' => 'UPDATE']);
         } finally {
+            DB::table('user_in_app_notifications')->where('category', 'AMENITY_BOOKING')->where('deep_link_url', 'like', '%'.$fixture['amenity_id'].'%')->delete();
+            DB::table('amenity_booking_payments')->whereIn('booking_id', DB::table('amenity_bookings')->where('amenity_id', $fixture['amenity_id'])->select('id'))->delete();
             DB::table('amenity_bookings')->where('amenity_id', $fixture['amenity_id'])->delete();
             DB::table('amenity_time_slots')->where('amenity_id', $fixture['amenity_id'])->delete();
             DB::table('amenities')->where('id', $fixture['amenity_id'])->delete();
             DB::table('amenity_categories')->where('id', $fixture['category_id'])->delete();
             DB::table('audit_logs')->whereIn('performed_by_user_id', $fixture['user_ids'])->delete();
+            DB::table('user_in_app_notifications')->whereIn('recipient_user_id', $fixture['user_ids'])->delete();
             foreach (['residents', 'user_sessions', 'user_roles'] as $table) {
                 DB::table($table)->whereIn('user_id', $fixture['user_ids'])->delete();
             }
