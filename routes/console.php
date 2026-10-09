@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\AmenityBookingPaymentService;
 use App\Services\Freshness\FreshnessService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -13,3 +14,6 @@ Schedule::call(function (FreshnessService $freshness) {
     $freshness->getOverview(true, true);
     $freshness->recordCollectorHeartbeat();
 })->everyMinute()->name('freshness-collector-heartbeat');
+
+Schedule::call(fn () => app(AmenityBookingPaymentService::class)->expire())
+    ->everyMinute()->name('amenity-payment-expiry')->withoutOverlapping();

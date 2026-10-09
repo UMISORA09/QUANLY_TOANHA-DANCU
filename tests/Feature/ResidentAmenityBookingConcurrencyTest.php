@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
@@ -22,11 +23,14 @@ class ResidentAmenityBookingConcurrencyTest extends TestCase
     protected function tearDown(): void
     {
         if (isset($this->amenityId)) {
+            DB::table('user_in_app_notifications')->where('category', 'AMENITY_BOOKING')->where('deep_link_url', 'like', '%'.$this->amenityId.'%')->delete();
+            DB::table('amenity_booking_payments')->whereIn('booking_id', DB::table('amenity_bookings')->where('amenity_id', $this->amenityId)->select('id'))->delete();
             DB::table('amenity_bookings')->where('amenity_id', $this->amenityId)->delete();
             DB::table('amenity_time_slots')->where('amenity_id', $this->amenityId)->delete();
             DB::table('amenities')->where('id', $this->amenityId)->delete();
             DB::table('amenity_categories')->where('id', $this->categoryId)->delete();
             $userIds = [$this->residentUser->id, $this->secondUser->id, $this->adminUser->id];
+            DB::table('user_in_app_notifications')->whereIn('recipient_user_id', $userIds)->delete();
             DB::table('audit_logs')->whereIn('performed_by_user_id', $userIds)->delete();
             foreach (['residents', 'user_sessions', 'user_roles'] as $table) {
                 DB::table($table)->whereIn('user_id', $userIds)->delete();
@@ -50,9 +54,9 @@ class ResidentAmenityBookingConcurrencyTest extends TestCase
         DB::beginTransaction();
         DB::table('amenities')->where('id', $this->amenityId)->lockForUpdate()->first();
         try {
-            foreach ($tokens as $token) {
+            foreach ($tokens as $index => $token) {
                 $handle = curl_init(rtrim(getenv('TEST_HTTP_BASE_URL'), '/').$path);
-                curl_setopt_array($handle, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_HTTPHEADER => ['Authorization: Bearer '.$token, 'Accept: application/json', 'Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]);
+                curl_setopt_array($handle, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_POSTFIELDS => json_encode($payload[$index] ?? $payload), CURLOPT_HTTPHEADER => ['Authorization: Bearer '.$token, 'Accept: application/json', 'Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]);
                 curl_multi_add_handle($multi, $handle);
                 $handles[] = $handle;
             }
@@ -116,6 +120,36 @@ class ResidentAmenityBookingConcurrencyTest extends TestCase
         $this->assertSame([409], $statuses);
     }
 
+    public function test_closure_rechecks_bookings_committed_while_waiting_for_amenity_lock(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+        $url = '/api/v1/admin/amenities/'.$this->amenityId;
+        $token = $this->getJson($url.'/closure-impact')->assertOk()->json('confirmation_token');
+        $payload = ['is_active' => false, 'updated_at' => $this->getJson($url)->json('updated_at'), 'booking_action' => 'cancel', 'reason' => 'Đóng cửa đột xuất', 'confirmation_token' => $token];
+        $statuses = $this->parallelRequests([$this->adminToken], $payload, $url.'/status', function () use ($id): void {
+            $copy = (array) DB::table('amenity_bookings')->where('id', $id)->first();
+            $copy['id'] = (string) Str::uuid();
+            $copy['booking_code'] = 'BK-'.Str::random(12);
+            $copy['checkin_qr_code'] = 'QR-'.Str::random(32);
+            $copy['start_time'] = '13:00';
+            $copy['end_time'] = '14:00';
+            DB::table('amenity_bookings')->insert($copy);
+        }, 'PATCH');
+        $this->assertSame([409], $statuses);
+        $this->assertSame(2, DB::table('amenity_bookings')->where('amenity_id', $this->amenityId)->where('status', 'PENDING')->count());
+        $this->assertDatabaseHas('amenities', ['id' => $this->amenityId, 'is_active' => 1]);
+    }
+
+    public function test_booking_is_blocked_when_pause_commits_while_waiting_for_lock(): void
+    {
+        $this->assertSame([409], $this->parallelRequests([$this->residentToken], $this->bookingPayload(), beforeUnlock: function (): void {
+            DB::table('amenities')->where('id', $this->amenityId)->update(['is_active' => 0]);
+        }));
+        $this->assertSame(0, DB::table('amenity_bookings')->where('amenity_id', $this->amenityId)->count());
+    }
+
     public function test_concurrent_cancellation_succeeds_only_once(): void
     {
         $id = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
@@ -127,5 +161,27 @@ class ResidentAmenityBookingConcurrencyTest extends TestCase
         $timestamp = DB::table('amenities')->where('id', $this->amenityId)->value('updated_at');
         $this->assertSame([200, 409], $this->parallelRequests([$this->adminToken, $this->adminToken], ['amenity_name' => 'Concurrent winner', 'updated_at' => $timestamp], '/api/v1/admin/amenities/'.$this->amenityId, method: 'PUT'));
         $this->assertSame(1, DB::table('audit_logs')->where('record_id', $this->amenityId)->count());
+    }
+
+    public function test_concurrent_payment_confirmations_record_only_one_bank_transaction(): void
+    {
+        DB::table('amenities')->where('id', $this->amenityId)->update(['requires_admin_approval' => 0]);
+        $id = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+        $payloads = array_map(fn (string $reference): array => ['bank_transaction_id' => $reference, 'received_amount' => 200000, 'received_at' => now()->toIso8601String()], ['VCB-RACE-A', 'VCB-RACE-B']);
+        $this->assertSame([200, 409], $this->parallelRequests([$this->adminToken, $this->adminToken], $payloads, '/api/v1/admin/amenities/'.$this->amenityId.'/bookings/'.$id.'/payment/confirm'));
+        $payment = DB::table('amenity_booking_payments')->where('booking_id', $id)->first();
+        $this->assertSame('PAID', $payment->status);
+        $this->assertSame(1, DB::table('audit_logs')->where('table_name', 'amenity_booking_payments')->where('record_id', $payment->id)->count());
+    }
+
+    public function test_payment_confirmation_after_waiting_for_expiry_never_restores_capacity(): void
+    {
+        DB::table('amenities')->where('id', $this->amenityId)->update(['requires_admin_approval' => 0]);
+        $id = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+        $this->assertSame([200], $this->parallelRequests([$this->adminToken], ['bank_transaction_id' => 'VCB-LATE', 'received_amount' => 200000, 'received_at' => now()->toIso8601String()], '/api/v1/admin/amenities/'.$this->amenityId.'/bookings/'.$id.'/payment/confirm', function () use ($id): void {
+            DB::table('amenity_booking_payments')->where('booking_id', $id)->update(['expires_at' => now()->subSecond()]);
+        }));
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'status' => 'CANCELLED', 'is_paid' => 0]);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW', 'refund_required' => 1]);
     }
 }
