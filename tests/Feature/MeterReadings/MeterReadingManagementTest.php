@@ -3,8 +3,11 @@
 namespace Tests\Feature\MeterReadings;
 
 use App\Models\Apartment;
+use App\Models\Block;
+use App\Models\Floor;
 use App\Models\Meter;
 use App\Models\MeterReading;
+use App\Models\Role;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -19,20 +22,76 @@ class MeterReadingManagementTest extends TestCase
     {
         parent::setUp();
 
-        $sqlitePath = database_path('database.sqlite');
-        if (file_exists($sqlitePath)) {
-            config([
-                'database.default' => 'sqlite',
-                'database.connections.sqlite.database' => $sqlitePath,
-            ]);
-            DB::purge();
-            DB::reconnect();
-        }
+        $adminUser = User::firstOrCreate(
+            ['username' => 'admin'],
+            [
+                'phone_number' => '0900000001',
+                'email' => 'admin@cassavas.vn',
+                'password_hash' => bcrypt('password123'),
+                'full_name' => 'System Administrator',
+                'status' => 'ACTIVE',
+            ]
+        );
+        $role = Role::firstOrCreate(
+            ['role_code' => 'SUPER_ADMIN'],
+            ['role_name' => 'Quản trị viên cấp cao', 'status' => 'ACTIVE']
+        );
+        DB::table('user_roles')->updateOrInsert(
+            ['user_id' => $adminUser->id, 'role_id' => $role->id],
+            ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
+        );
+        $this->adminToken = 'smart_token_'.$adminUser->id.'_meter';
 
-        $adminUser = User::where('username', 'admin')->first();
-        if ($adminUser) {
-            $this->adminToken = 'smart_token_'.$adminUser->id.'_meter';
-        }
+        $block = Block::firstOrCreate(
+            ['block_code' => 'T-A'],
+            [
+                'block_name' => 'Tòa Tháp A Sapphire',
+                'total_floors' => 25,
+                'total_apartments' => 100,
+            ]
+        );
+        $floor = Floor::firstOrCreate(
+            ['block_id' => $block->id, 'floor_code' => 'FL-A01'],
+            [
+                'floor_number' => 1,
+                'floor_name' => 'Tầng 1',
+            ]
+        );
+        $apartment = Apartment::firstOrCreate(
+            ['apartment_number' => 'A-101'],
+            [
+                'block_id' => $block->id,
+                'floor_id' => $floor->id,
+                'status' => 'OCCUPIED',
+                'gross_floor_area_sqm' => 85.5,
+                'net_usable_area_sqm' => 80.0,
+            ]
+        );
+
+        Meter::firstOrCreate(
+            ['meter_code' => 'MTR-ELEC-A101'],
+            [
+                'apartment_id' => $apartment->id,
+                'meter_type' => 'ELECTRICITY',
+                'initial_reading' => 100.0,
+                'current_reading' => 200.0,
+                'installation_date' => '2026-01-01',
+                'multiplier_factor' => 1.0,
+                'is_active' => true,
+            ]
+        );
+        Meter::firstOrCreate(
+            ['meter_code' => 'MTR-WAT-A101'],
+            [
+                'apartment_id' => $apartment->id,
+                'meter_type' => 'WATER',
+                'initial_reading' => 10.0,
+                'current_reading' => 50.0,
+                'installation_date' => '2026-01-01',
+                'multiplier_factor' => 1.0,
+                'is_active' => true,
+            ]
+        );
     }
 
     protected function authHeaders(): array
@@ -283,6 +342,21 @@ class MeterReadingManagementTest extends TestCase
     public function test_08_can_update_reading(): void
     {
         $reading = MeterReading::first();
+        if (! $reading) {
+            $meter = Meter::first();
+            $reading = MeterReading::create([
+                'meter_id' => $meter->id,
+                'apartment_id' => $meter->apartment_id,
+                'billing_cycle' => '2026-10',
+                'period_start_date' => '2026-10-01',
+                'period_end_date' => '2026-10-31',
+                'previous_reading' => 100.0,
+                'current_reading' => 150.0,
+                'consumed_units' => 50.0,
+                'reading_source' => 'MANUAL',
+                'is_locked_for_billing' => false,
+            ]);
+        }
         $this->assertNotNull($reading);
 
         $updatedCurrent = (float) $reading->previous_reading + 55.0;
@@ -311,6 +385,21 @@ class MeterReadingManagementTest extends TestCase
     public function test_09_can_lock_cycle_and_prevent_modification(): void
     {
         $reading = MeterReading::first();
+        if (! $reading) {
+            $meter = Meter::first();
+            $reading = MeterReading::create([
+                'meter_id' => $meter->id,
+                'apartment_id' => $meter->apartment_id,
+                'billing_cycle' => '2026-10',
+                'period_start_date' => '2026-10-01',
+                'period_end_date' => '2026-10-31',
+                'previous_reading' => 100.0,
+                'current_reading' => 150.0,
+                'consumed_units' => 50.0,
+                'reading_source' => 'MANUAL',
+                'is_locked_for_billing' => false,
+            ]);
+        }
         $this->assertNotNull($reading);
         $cycle = $reading->billing_cycle;
 

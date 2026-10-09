@@ -40,44 +40,52 @@ class PaymentCollectionTest extends TestCase
 
         $this->token = 'smart_token_'.$this->adminUser->id.'_invoice';
 
-        $this->blockA = Block::create([
-            'block_code' => 'T-A',
-            'block_name' => 'Tòa Tháp A Sapphire',
-            'total_floors' => 25,
-            'total_apartments' => 100,
-        ]);
+        $this->blockA = Block::firstOrCreate(
+            ['block_code' => 'T-A'],
+            [
+                'block_name' => 'Tòa Tháp A Sapphire',
+                'total_floors' => 25,
+                'total_apartments' => 100,
+            ]
+        );
 
-        $this->floor1 = Floor::create([
-            'block_id' => $this->blockA->id,
-            'floor_code' => 'FL-A01',
-            'floor_number' => 1,
-            'floor_name' => 'Tầng 1',
-        ]);
+        $this->floor1 = Floor::firstOrCreate(
+            ['floor_code' => 'FL-A01'],
+            [
+                'block_id' => $this->blockA->id,
+                'floor_number' => 1,
+                'floor_name' => 'Tầng 1',
+            ]
+        );
 
-        $this->apartment = Apartment::create([
-            'block_id' => $this->blockA->id,
-            'floor_id' => $this->floor1->id,
-            'apartment_number' => 'A-101',
-            'net_usable_area_sqm' => 75.5,
-            'gross_floor_area_sqm' => 80.0,
-            'current_resident_user_id' => $this->adminUser->id,
-            'status' => 'OCCUPIED',
-        ]);
+        $this->apartment = Apartment::firstOrCreate(
+            ['apartment_number' => 'A-101'],
+            [
+                'block_id' => $this->blockA->id,
+                'floor_id' => $this->floor1->id,
+                'net_usable_area_sqm' => 75.5,
+                'gross_floor_area_sqm' => 80.0,
+                'current_resident_user_id' => $this->adminUser->id,
+                'status' => 'OCCUPIED',
+            ]
+        );
 
-        $this->invoice = Invoice::create([
-            'invoice_number' => 'INV-202610-001',
-            'apartment_id' => $this->apartment->id,
-            'resident_user_id' => $this->adminUser->id,
-            'billing_period' => '2026-10',
-            'issue_date' => '2026-10-05',
-            'due_date' => '2026-10-25',
-            'subtotal_amount' => 1000000,
-            'tax_amount' => 100000,
-            'total_amount' => 1100000,
-            'paid_amount' => 0,
-            'remaining_balance' => 1100000,
-            'status' => 'ISSUED',
-        ]);
+        $this->invoice = Invoice::firstOrCreate(
+            ['invoice_number' => 'INV-202610-001'],
+            [
+                'apartment_id' => $this->apartment->id,
+                'resident_user_id' => $this->adminUser->id,
+                'billing_period' => '2026-10',
+                'issue_date' => '2026-10-05',
+                'due_date' => '2026-10-25',
+                'subtotal_amount' => 1000000,
+                'tax_amount' => 100000,
+                'total_amount' => 1100000,
+                'paid_amount' => 0,
+                'remaining_balance' => 1100000,
+                'status' => 'ISSUED',
+            ]
+        );
     }
 
     public function test_collect_payment_full_amount_updates_invoice_to_paid_and_creates_receipt(): void

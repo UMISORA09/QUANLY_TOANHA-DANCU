@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Apartment;
+use App\Models\Permission;
 use App\Models\Resident;
 use App\Models\Role;
 use App\Models\User;
@@ -456,6 +457,15 @@ class DatabaseCrudOptimizationTest extends TestCase
         $this->assertNotNull($role->id);
 
         // Gán quyền
+        Permission::firstOrCreate(
+            ['permission_code' => 'RESIDENT:VIEW'],
+            [
+                'module' => 'RESIDENT',
+                'permission_name' => 'Xem danh sách cư dân',
+                'description' => 'Xem danh sách và hồ sơ cư dân',
+            ]
+        );
+
         $rbacService->syncRolePermissions($role, ['RESIDENT:VIEW'], $this->adminUser);
 
         $this->assertTrue(
