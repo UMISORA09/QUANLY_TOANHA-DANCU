@@ -360,9 +360,9 @@ class RfidManagementTest extends TestCase
     // ==========================================
 
     /**
-     * Test 10: Mutation thành công kích hoạt Cooldown 1 phút (60 giây) cho RFID
+     * Test 10: Mutation thành công không kích hoạt Cooldown tạm khóa (cho phép thao tác liên tục)
      */
-    public function test_10_mutation_triggers_60s_cooldown(): void
+    public function test_10_mutation_does_not_trigger_cooldown(): void
     {
         QuocTinRealtimeService::clearModuleCooldown('rfid_cards');
 
@@ -374,20 +374,17 @@ class RfidManagementTest extends TestCase
             'status' => 'ACTIVE',
         ], $this->adminUser->id);
 
-        $this->assertTrue(QuocTinRealtimeService::isModuleInCooldown('rfid_cards'));
-
-        $cdData = QuocTinRealtimeService::getModuleCooldown('rfid_cards');
-        $this->assertNotNull($cdData);
-        $this->assertEquals(60, $cdData['cooldown_seconds']);
-        $this->assertGreaterThan(0, $cdData['retry_after']);
+        $this->assertFalse(QuocTinRealtimeService::isModuleInCooldown('rfid_cards'));
     }
 
     /**
-     * Test 11: Mutation tiếp theo trong thời gian Cooldown bị chặn (409)
+     * Test 11: Mutation tiếp theo được thực hiện liên tục không bị chặn Cooldown
      */
-    public function test_11_subsequent_mutation_blocked_during_cooldown(): void
+    public function test_11_subsequent_mutation_allowed_without_cooldown(): void
     {
-        // 1. Thực hiện mutation đầu tiên
+        QuocTinRealtimeService::clearModuleCooldown('rfid_cards');
+
+        // 1. Thực hiện mutation đầu tiên -> 201
         $first = $this->postJson('/api/v1/rfid-cards', [
             'card_uid' => 'UID-BLOCK-1-'.Str::random(5),
             'card_number' => 'CARD-B1-'.Str::random(4),
@@ -395,20 +392,17 @@ class RfidManagementTest extends TestCase
         ], $this->authHeaders());
         $first->assertStatus(201);
 
-        // 2. Ngay lập tức thực hiện mutation thứ hai -> phải bị chặn HTTP 409
+        // 2. Ngay lập tức thực hiện mutation thứ hai -> vẫn thành công 201
         $second = $this->postJson('/api/v1/rfid-cards', [
             'card_uid' => 'UID-BLOCK-2-'.Str::random(5),
             'card_number' => 'CARD-B2-'.Str::random(4),
             'status' => 'ACTIVE',
         ], $this->authHeaders());
 
-        $second->assertStatus(409)
+        $second->assertStatus(201)
             ->assertJson([
-                'success' => false,
-                'error' => 'COOLDOWN_ACTIVE',
+                'success' => true,
             ]);
-
-        $this->assertGreaterThan(0, $second->json('retry_after'));
     }
 
     /**

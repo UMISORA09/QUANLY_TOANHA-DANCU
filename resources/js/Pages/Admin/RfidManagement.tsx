@@ -33,7 +33,7 @@ import {
   RfidResidentOption,
   RfidCardDetailResponse,
 } from '../../Services/rfidApi';
-import { useRealtimeSync, useModuleCooldown, RealtimeEventPayload } from '../../Hooks/useRealtimeSync';
+import { useRealtimeSync, RealtimeEventPayload } from '../../Hooks/useRealtimeSync';
 
 interface RfidManagementProps {
   embedded?: boolean;
@@ -89,9 +89,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
     deposit_fee: 50000,
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-  // 6. Server-synchronized Cooldown Hook (120s)
-  const { isCooldownActive, remainingSeconds, message: cooldownMessage, checkServerCooldown } = useModuleCooldown('rfid_cards');
 
   const showToast = useCallback((type: 'success' | 'error' | 'info', text: string) => {
     setToastMessage({ type, text });
@@ -200,34 +197,24 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
       }
       showToast('info', `Thẻ RFID đã được cập nhật/thu hồi.`);
     }
-
-    // Refresh server cooldown
-    checkServerCooldown();
-  }, [pagination.currentPage, loadCards, showToast, checkServerCooldown]);
+  }, [pagination.currentPage, loadCards, showToast]);
 
   useRealtimeSync({
     channel: 'quoc-tin.rfid-cards',
     onEvent: handleRealtimeEvent,
     onReconnect: () => {
       loadCards(pagination.currentPage, false);
-      checkServerCooldown();
     },
   });
 
   // 9. Actions
   const handleToggleStatus = async (card: RfidCardItem) => {
-    if (isCooldownActive) {
-      showToast('error', `Chức năng đang tạm khóa trong ${remainingSeconds}s.`);
-      return;
-    }
-
     try {
       setActionLoading(true);
       const res = await rfidApi.toggleStatus(card.id);
       if (res.success) {
         setCards(prev => prev.map(c => (c.id === card.id ? res.data : c)));
         showToast('success', res.message);
-        checkServerCooldown();
       }
     } catch (err: any) {
       showToast('error', err.message || 'Không thể đổi trạng thái thẻ.');
@@ -270,10 +257,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
   };
 
   const handleOpenDelete = (card: RfidCardItem) => {
-    if (isCooldownActive) {
-      showToast('error', `Chức năng đang tạm khóa trong ${remainingSeconds}s.`);
-      return;
-    }
     setSelectedCard(card);
     setIsDeleteModalOpen(true);
   };
@@ -287,7 +270,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
         showToast('success', res.message);
         setIsDeleteModalOpen(false);
         loadCards(pagination.currentPage, false);
-        checkServerCooldown();
       }
     } catch (err: any) {
       showToast('error', err.message || 'Không thể xóa thẻ.');
@@ -298,11 +280,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isCooldownActive) {
-      showToast('error', `Chức năng đang tạm khóa trong ${remainingSeconds}s.`);
-      return;
-    }
-
     setFormErrors({});
     try {
       setActionLoading(true);
@@ -333,7 +310,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
           deposit_fee: 50000,
         });
         loadCards(1, false);
-        checkServerCooldown();
       }
     } catch (err: any) {
       if (err.data?.errors) {
@@ -353,10 +329,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCard) return;
-    if (isCooldownActive) {
-      showToast('error', `Chức năng đang tạm khóa trong ${remainingSeconds}s.`);
-      return;
-    }
 
     setFormErrors({});
     try {
@@ -377,7 +349,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
         showToast('success', res.message);
         setIsEditModalOpen(false);
         setCards(prev => prev.map(c => (c.id === selectedCard.id ? res.data : c)));
-        checkServerCooldown();
       }
     } catch (err: any) {
       if (err.data?.errors) {
@@ -529,10 +500,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
 
           <button
             onClick={() => {
-              if (isCooldownActive) {
-                showToast('error', `Chức năng đang tạm khóa trong ${remainingSeconds}s.`);
-                return;
-              }
               setFormData({
                 card_uid: '',
                 card_number: '',
@@ -547,13 +514,8 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               setFormErrors({});
               setIsCreateModalOpen(true);
             }}
-            disabled={isCooldownActive}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold text-white rounded-lg transition shadow-sm ${
-              isCooldownActive
-                ? 'bg-indigo-400 opacity-60 cursor-not-allowed'
-                : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow'
-            }`}
-            title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Cấp Thẻ Mới'}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 hover:shadow rounded-lg transition shadow-sm"
+            title="Cấp Thẻ Mới"
           >
             <Plus className="w-4 h-4" />
             <span>Cấp Thẻ Mới</span>
@@ -813,12 +775,12 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                           {/* Toggle Active / Lock Button */}
                           <button
                             onClick={() => handleToggleStatus(card)}
-                            disabled={isCooldownActive || actionLoading || card.status === 'REVOKED'}
+                            disabled={actionLoading || card.status === 'REVOKED'}
                             className={`p-1.5 rounded-lg transition ${
                               card.status === 'ACTIVE'
                                 ? 'text-slate-600 hover:text-amber-600 hover:bg-amber-50'
                                 : 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50'
-                            } ${isCooldownActive ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            }`}
                             title={card.status === 'ACTIVE' ? 'Tạm khóa thẻ tức thì' : 'Mở kích hoạt thẻ'}
                           >
                             {card.status === 'ACTIVE' ? (
@@ -837,37 +799,20 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {/* Edit Button with cooldown badge */}
+                          {/* Edit Button */}
                           <button
                             onClick={() => handleOpenEdit(card)}
-                            className={`p-1.5 rounded-lg transition flex items-center gap-1 ${
-                              isCooldownActive
-                                ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                                : 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50'
-                            }`}
-                            title={
-                              isCooldownActive
-                                ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s) - Bấm để xem thông tin`
-                                : 'Chỉnh sửa thông tin thẻ'
-                            }
+                            className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                            title="Chỉnh sửa thông tin thẻ"
                           >
                             <Edit className="w-4 h-4" />
-                            {isCooldownActive && (
-                              <span className="text-[10px] font-mono font-bold text-amber-700 px-1 py-0.2 bg-amber-100/90 rounded border border-amber-300/60">
-                                {remainingSeconds}s
-                              </span>
-                            )}
                           </button>
 
                           {/* Delete Button */}
                           <button
                             onClick={() => handleOpenDelete(card)}
-                            disabled={isCooldownActive}
-                            className={`p-1.5 rounded-lg transition ${
-                              isCooldownActive
-                                ? 'text-slate-300 opacity-40 cursor-not-allowed'
-                                : 'text-slate-600 hover:text-rose-600 hover:bg-rose-50'
-                            }`}
+                            disabled={actionLoading}
+                            className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                             title="Xóa / Thu hồi thẻ"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1090,7 +1035,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={actionLoading || isCooldownActive}
+                  disabled={actionLoading}
                   className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition shadow-sm flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -1123,27 +1068,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
             </div>
 
             <form onSubmit={handleEditSubmit} className="p-5 sm:p-6 space-y-4">
-              {/* Cooldown Alert: Chỉ hiển thị khi đang chỉnh sửa */}
-              {isCooldownActive && (
-                <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-300 rounded-xl flex items-center justify-between gap-3 text-amber-900 animate-fade-in shadow-sm">
-                  <div className="flex items-center gap-2.5">
-                    <Clock className="w-5 h-5 text-amber-600 animate-spin shrink-0" />
-                    <div>
-                      <p className="text-xs sm:text-sm font-bold text-amber-950">
-                        Chức năng đang tạm khóa chỉnh sửa
-                      </p>
-                      <p className="text-xs text-amber-800">
-                        Hệ thống tạm khóa thay đổi trong 1 phút. Nút lưu sẽ mở lại sau:
-                      </p>
-                    </div>
-                  </div>
-                  <div className="px-3 py-1 bg-amber-500 text-white rounded-lg font-mono font-bold text-sm shrink-0 shadow-sm flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{remainingSeconds}s</span>
-                  </div>
-                </div>
-              )}
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Mã UID</label>
@@ -1265,21 +1189,15 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={actionLoading || isCooldownActive}
-                  className={`px-4 py-2 text-xs font-bold text-white rounded-lg transition shadow-sm flex items-center gap-1.5 ${
-                    isCooldownActive
-                      ? 'bg-amber-600/80 cursor-not-allowed opacity-80'
-                      : 'bg-indigo-600 hover:bg-indigo-700'
-                  }`}
+                  disabled={actionLoading}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition shadow-sm flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {actionLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : isCooldownActive ? (
-                    <Clock className="w-4 h-4 animate-spin" />
                   ) : (
                     <Edit className="w-4 h-4" />
                   )}
-                  <span>{isCooldownActive ? `Đang khóa (${remainingSeconds}s)` : 'Lưu Thay Đổi'}</span>
+                  <span>Lưu Thay Đổi</span>
                 </button>
               </div>
             </form>
@@ -1405,7 +1323,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                 <button
                   type="button"
                   onClick={handleDeleteConfirm}
-                  disabled={actionLoading || isCooldownActive}
+                  disabled={actionLoading}
                   className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
