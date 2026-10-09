@@ -129,7 +129,7 @@ jobs:
         run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Download Frontend Build Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: frontend-build-artifacts
           path: public/build
@@ -239,7 +239,7 @@ jobs:
         run: npm ci
 
       - name: Download Frontend Build Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: frontend-build-artifacts
           path: public/build
