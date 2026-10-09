@@ -39,6 +39,13 @@ $sqlitePath = $storagePath.'/database.sqlite';
 if (! file_exists($sqlitePath)) {
     @touch($sqlitePath);
 }
+if (empty($_ENV['DB_CONNECTION']) && empty(getenv('DB_CONNECTION'))) {
+    if (empty($_ENV['DB_HOST']) && empty(getenv('DB_HOST'))) {
+        putenv('DB_CONNECTION=sqlite');
+        $_ENV['DB_CONNECTION'] = 'sqlite';
+        $_SERVER['DB_CONNECTION'] = 'sqlite';
+    }
+}
 // Maintenance check
 if (file_exists($maintenance = $storagePath.'/framework/maintenance.php')) {
     require $maintenance;

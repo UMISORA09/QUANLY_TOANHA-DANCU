@@ -204,7 +204,7 @@ class ResidentAmenityBookingTest extends TestCase
         DB::table('user_sessions')->update(['expires_at' => now()->addDay()]);
         $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertConflict();
         $this->travelBack();
-        DB::table('amenity_time_slots')->where('id', $this->slotId)->update(['day_of_week' => (today()->addDay()->dayOfWeek + 1) % 7]);
+        DB::table('amenity_time_slots')->where('id', $this->slotId)->update(['day_of_week' => (Carbon::parse($this->bookingDate)->dayOfWeek + 1) % 7]);
         $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertUnprocessable();
     }
 

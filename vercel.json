@@ -28,6 +28,7 @@
     "SESSION_DRIVER": "cookie",
     "LOG_CHANNEL": "stderr",
     "LARAVEL_STORAGE_PATH": "/tmp/storage",
+    "DB_CONNECTION": "sqlite",
     "DB_DATABASE": "/tmp/storage/database.sqlite"
   }
 }

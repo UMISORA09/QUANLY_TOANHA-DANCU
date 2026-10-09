@@ -312,6 +312,60 @@ const App: React.FC = () => {
     currentPath === '/admin/phuong-tien' ||
     currentPath.startsWith('/admin/vehicles');
 
+  const isPricingPath =
+    currentPath === '/quan-ly/don-gia' ||
+    currentPath === '/quan-ly/pricing-configs' ||
+    currentPath === '/admin/pricing-configs' ||
+    currentPath.startsWith('/quan-ly/pricing-configs') ||
+    currentPath.startsWith('/quan-ly/don-gia');
+
+  const isMeterReadingPath =
+    currentPath === '/quan-ly/chot-chi-so' ||
+    currentPath === '/quan-ly/meter-readings' ||
+    currentPath === '/admin/meter-readings' ||
+    currentPath.startsWith('/quan-ly/chot-chi-so') ||
+    currentPath.startsWith('/admin/meter-readings');
+
+  const isInvoicePath =
+    currentPath === '/quan-ly/hoa-don' ||
+    currentPath === '/quan-ly/invoices' ||
+    currentPath === '/admin/hoa-don' ||
+    currentPath === '/admin/invoices' ||
+    currentPath.startsWith('/quan-ly/hoa-don') ||
+    currentPath.startsWith('/quan-ly/invoices');
+
+  const isInvoiceGenerationPath =
+    currentPath === '/quan-ly/sinh-hoa-don' ||
+    currentPath === '/quan-ly/invoice-generation' ||
+    currentPath === '/admin/sinh-hoa-don' ||
+    currentPath === '/admin/invoice-generation' ||
+    currentPath.startsWith('/quan-ly/sinh-hoa-don') ||
+    currentPath.startsWith('/quan-ly/invoice-generation');
+
+  const isPaymentHistoryPath =
+    currentPath === '/quan-ly/lich-su-giao-dich' ||
+    currentPath === '/quan-ly/payment-history' ||
+    currentPath === '/admin/lich-su-giao-dich' ||
+    currentPath === '/admin/payment-history' ||
+    currentPath.startsWith('/quan-ly/lich-su-giao-dich') ||
+    currentPath.startsWith('/quan-ly/payment-history');
+
+  const isRevenueAnalyticsPath =
+    currentPath === '/quan-ly/thong-ke-doanh-thu' ||
+    currentPath === '/quan-ly/revenue-analytics' ||
+    currentPath === '/admin/thong-ke-doanh-thu' ||
+    currentPath === '/admin/revenue-analytics' ||
+    currentPath.startsWith('/quan-ly/thong-ke-doanh-thu') ||
+    currentPath.startsWith('/quan-ly/revenue-analytics');
+
+  const isFinancialReportPath =
+    currentPath === '/quan-ly/bao-cao-tai-chinh' ||
+    currentPath === '/quan-ly/financial-reports' ||
+    currentPath === '/admin/bao-cao-tai-chinh' ||
+    currentPath === '/admin/financial-reports' ||
+    currentPath.startsWith('/quan-ly/bao-cao-tai-chinh') ||
+    currentPath.startsWith('/quan-ly/financial-reports');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
@@ -320,7 +374,14 @@ const App: React.FC = () => {
     currentPath === '/dashboard' ||
     isAmenityPath ||
     isAccountProvisioningPath ||
-    isVehiclePath;
+    isVehiclePath ||
+    isPricingPath ||
+    isMeterReadingPath ||
+    isInvoicePath ||
+    isInvoiceGenerationPath ||
+    isPaymentHistoryPath ||
+    isRevenueAnalyticsPath ||
+    isFinancialReportPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -341,8 +402,22 @@ const App: React.FC = () => {
       ? 'amenities'
       : isVehiclePath
       ? 'vehicles'
+      : isPricingPath
+      ? 'pricing_configs'
+      : isMeterReadingPath
+      ? 'meter_readings'
       : isAccountProvisioningPath
       ? 'account_provisioning'
+      : isInvoiceGenerationPath
+      ? 'invoice_generation'
+      : isPaymentHistoryPath
+      ? 'payment_history'
+      : isRevenueAnalyticsPath
+      ? 'revenue_analytics'
+      : isFinancialReportPath
+      ? 'financial_reports'
+      : isInvoicePath
+      ? 'invoices'
       : (managerUrlTab || undefined);
 
     return (
