@@ -5,7 +5,10 @@ namespace Tests\Feature\BuildingStructure;
 use App\Models\Apartment;
 use App\Models\Block;
 use App\Models\Floor;
+use App\Models\Role;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class BuildingApartmentManagementTest extends TestCase
@@ -16,11 +19,25 @@ class BuildingApartmentManagementTest extends TestCase
     {
         parent::setUp();
 
-        // Tạo token admin thử nghiệm nếu cần
-        $adminUser = User::where('username', 'admin')->first();
-        if ($adminUser) {
-            $this->adminToken = 'smart_token_'.$adminUser->id.'_structure';
-        }
+        $adminUser = User::firstOrCreate(
+            ['username' => 'admin'],
+            [
+                'phone_number' => '0900000001',
+                'email' => 'admin@cassavas.vn',
+                'password_hash' => bcrypt('password123'),
+                'full_name' => 'System Administrator',
+                'status' => 'ACTIVE',
+            ]
+        );
+        $role = Role::firstOrCreate(
+            ['role_code' => 'SUPER_ADMIN'],
+            ['role_name' => 'Quản trị viên cấp cao', 'status' => 'ACTIVE']
+        );
+        DB::table('user_roles')->updateOrInsert(
+            ['user_id' => $adminUser->id, 'role_id' => $role->id],
+            ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
+        );
+        $this->adminToken = 'smart_token_'.$adminUser->id.'_structure';
     }
 
     protected function authHeaders(): array
