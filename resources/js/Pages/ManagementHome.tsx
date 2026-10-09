@@ -44,7 +44,8 @@ import {
   Compass,
   Terminal,
   UserPlus,
-  Car
+  Car,
+  CreditCard
 } from 'lucide-react';
 import { Building3DModel } from '../Components/Building3DModel';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
@@ -55,6 +56,7 @@ import { ResidentManagement } from './Admin/ResidentManagement';
 import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
 import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
 import { VehicleManagement } from './Admin/VehicleManagement';
+import { RfidManagement } from './Admin/RfidManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -154,6 +156,13 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.startsWith('/admin/account-provisioning')
     ) {
       return 'account_provisioning';
+    }
+    if (
+      path === '/quan-ly/rfid-cards' ||
+      path === '/admin/rfid-cards' ||
+      path.includes('rfid-cards')
+    ) {
+      return 'rfid_cards';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -393,10 +402,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       const baseItems = [
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
         { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
-        { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'residents', label: 'Chủ hộ & Nhân khẩu căn hộ', icon: Users, badge: kpis.totalResidents },
         { id: 'vehicles', label: 'Phương tiện (Xe)', icon: Car, badge: null },
+        { id: 'rfid_cards', label: 'Quản lý thẻ RFID', icon: CreditCard, badge: null },
         { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto' },
-        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
+        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'CT01' },
         { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: String(kpis.amenityBookings) },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
@@ -647,6 +657,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: id }, '', `${basePath}?tab=temporary_registrations`);
     } else if (id === 'vehicles') {
       window.history.pushState({ tab: id }, '', `${basePath}?tab=vehicles`);
+    } else if (id === 'rfid_cards') {
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=rfid_cards`);
     } else if (id === 'overview') {
       window.history.pushState({ tab: id }, '', basePath);
     } else {
@@ -837,6 +849,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'vehicles' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <VehicleManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'rfid_cards' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <RfidManagement embedded={true} />
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

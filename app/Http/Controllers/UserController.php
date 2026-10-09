@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\QuocTinRealtimeService;
 use App\Services\RbacService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
@@ -24,7 +26,16 @@ class UserController extends Controller
         $statusFilter = trim((string) $request->input('status', ''));
         $perPage = min(max((int) $request->input('limit', 15), 5), 100);
 
-        $query = User::with(['roles' => function ($q) {
+        $query = User::select([
+            'id',
+            'username',
+            'phone_number',
+            'email',
+            'full_name',
+            'avatar_url',
+            'status',
+            'created_at',
+        ])->with(['roles' => function ($q) {
             $q->select('roles.id', 'roles.role_code', 'roles.role_name', 'roles.is_system_role');
         }]);
 
@@ -67,7 +78,20 @@ class UserController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $user = User::with('roles.permissions')->findOrFail($id);
+        $user = User::select([
+            'id',
+            'username',
+            'email',
+            'phone_number',
+            'full_name',
+            'avatar_url',
+            'gender',
+            'date_of_birth',
+            'national_id_number',
+            'status',
+            'created_at',
+            'updated_at',
+        ])->with(['roles:id,role_code,role_name,is_system_role'])->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -90,6 +114,9 @@ class UserController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+        QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
+
         $validated = $request->validate([
             'username' => 'required|string|max:60|unique:users,username',
             'phone_number' => 'required|string|max:20|unique:users,phone_number',
@@ -103,22 +130,28 @@ class UserController extends Controller
 
         $actor = $request->user();
 
-        $user = User::create([
-            'username' => trim($validated['username']),
-            'phone_number' => trim($validated['phone_number']),
-            'email' => strtolower(trim($validated['email'])),
-            'full_name' => trim($validated['full_name']),
-            'password_hash' => Hash::make($validated['password']),
-            'status' => $validated['status'] ?? 'ACTIVE',
-        ]);
+        $user = DB::transaction(function () use ($validated, $actor, $request) {
+            $created = User::create([
+                'username' => trim($validated['username']),
+                'phone_number' => trim($validated['phone_number']),
+                'email' => strtolower(trim($validated['email'])),
+                'full_name' => trim($validated['full_name']),
+                'password_hash' => Hash::make($validated['password']),
+                'status' => $validated['status'] ?? 'ACTIVE',
+            ]);
 
-        // Gán vai trò ban đầu nếu có
-        $roles = $validated['roles'] ?? ['RESIDENT_OWNER'];
-        $this->rbacService->syncUserRoles($user, $roles, null, $actor, $request);
+            // Gán vai trò ban đầu nếu có
+            $roles = $validated['roles'] ?? ['RESIDENT_OWNER'];
+            $this->rbacService->syncUserRoles($created, $roles, null, $actor, $request);
+
+            return $created;
+        });
 
         $this->rbacService->logAudit('users', $user->id, 'INSERT', $actor, null, $user->toArray(), $request);
 
         $user->load('roles');
+        QuocTinRealtimeService::emit('account-provisioning', 'user', 'CREATED', $user->id);
+        QuocTinRealtimeService::emit('rbac', 'user_role', 'ASSIGNED', $user->id);
 
         return response()->json([
             'success' => true,
@@ -132,6 +165,9 @@ class UserController extends Controller
      */
     public function update(Request $request, string $id): JsonResponse
     {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+        QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
+
         $user = User::findOrFail($id);
         $actor = $request->user();
 
@@ -147,31 +183,38 @@ class UserController extends Controller
 
         $oldData = $user->toArray();
 
-        if (! empty($validated['full_name'])) {
-            $user->full_name = trim($validated['full_name']);
-        }
-        if (! empty($validated['phone_number'])) {
-            $user->phone_number = trim($validated['phone_number']);
-        }
-        if (! empty($validated['email'])) {
-            $user->email = strtolower(trim($validated['email']));
-        }
-        if (! empty($validated['status'])) {
-            $user->status = $validated['status'];
-        }
-        if (! empty($validated['password'])) {
-            $user->password_hash = Hash::make($validated['password']);
-        }
+        DB::transaction(function () use ($user, $validated, $actor, $request) {
+            if (! empty($validated['full_name'])) {
+                $user->full_name = trim($validated['full_name']);
+            }
+            if (! empty($validated['phone_number'])) {
+                $user->phone_number = trim($validated['phone_number']);
+            }
+            if (! empty($validated['email'])) {
+                $user->email = strtolower(trim($validated['email']));
+            }
+            if (! empty($validated['status'])) {
+                $user->status = $validated['status'];
+            }
+            if (! empty($validated['password'])) {
+                $user->password_hash = Hash::make($validated['password']);
+            }
 
-        $user->save();
+            $user->save();
+
+            if (isset($validated['roles'])) {
+                $this->rbacService->syncUserRoles($user, $validated['roles'], null, $actor, $request);
+            }
+        });
 
         if (isset($validated['roles'])) {
-            $this->rbacService->syncUserRoles($user, $validated['roles'], null, $actor, $request);
+            QuocTinRealtimeService::emit('rbac', 'user_role', 'ASSIGNED', $user->id);
         }
 
         $this->rbacService->logAudit('users', $user->id, 'UPDATE', $actor, $oldData, $user->toArray(), $request);
 
         $user->load('roles');
+        QuocTinRealtimeService::emit('account-provisioning', 'user', 'UPDATED', $user->id);
 
         return response()->json([
             'success' => true,
@@ -185,6 +228,9 @@ class UserController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+        QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
+
         $user = User::findOrFail($id);
         $actor = $request->user();
 
@@ -206,6 +252,7 @@ class UserController extends Controller
         $user->delete();
 
         $this->rbacService->logAudit('users', $user->id, 'DELETE', $actor, $oldData, null, $request);
+        QuocTinRealtimeService::emit('account-provisioning', 'user', 'DELETED', $id);
 
         return response()->json([
             'success' => true,
@@ -218,11 +265,14 @@ class UserController extends Controller
      */
     public function getUserRoles(string $id): JsonResponse
     {
-        $user = User::with('roles')->findOrFail($id);
+        $user = User::select(['id'])->findOrFail($id);
+        $roles = $user->roles()
+            ->select(['roles.id', 'roles.role_code', 'roles.role_name', 'roles.is_system_role', 'roles.description'])
+            ->get();
 
         return response()->json([
             'success' => true,
-            'data' => $user->roles,
+            'data' => $roles,
         ]);
     }
 
@@ -231,6 +281,8 @@ class UserController extends Controller
      */
     public function assignRoles(Request $request, string $id): JsonResponse
     {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+
         $user = User::findOrFail($id);
         $actor = $request->user();
 
@@ -249,6 +301,7 @@ class UserController extends Controller
         );
 
         $user->load('roles');
+        QuocTinRealtimeService::emit('rbac', 'user_role', 'ASSIGNED', $id, ['user_id' => $id]);
 
         return response()->json([
             'success' => true,

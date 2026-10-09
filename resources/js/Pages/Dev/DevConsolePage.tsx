@@ -18,8 +18,6 @@ import {
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
-import { ResidentManagement } from '../Admin/ResidentManagement';
-import { TemporaryRegistrationManagement } from '../Admin/TemporaryRegistrationManagement';
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -501,17 +499,51 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <RbacManagement embedded={true} />
           </div>
         )}
-        {/* TAB 7: QUẢN LÝ CƯ DÂN & CĂN HỘ */}
+        {/* TAB 7: QUẢN LÝ CHỦ HỘ & NHÂN KHẨU (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
         {activeTab === 'residents' && (
-          <div className="space-y-6">
-            <ResidentManagement embedded={true} />
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Quản Lý Chủ Hộ & Thông Tin Nhân Khẩu</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Quản lý Chủ hộ và Nhân khẩu căn hộ đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác vận hành thường nhật của tòa nhà.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         )}
 
-        {/* TAB 8: ĐĂNG KÝ & DUYỆT TẠM TRÚ / TẠM VẮNG (CÔNG AN) */}
+        {/* TAB 8: ĐĂNG KÝ & QUẢN LÝ TẠM TRÚ / TẠM VẮNG (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
         {activeTab === 'temporary_registrations' && (
-          <div className="space-y-6">
-            <TemporaryRegistrationManagement embedded={true} />
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+              <FileText className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Đăng ký & Quản lý Tạm trú / Tạm vắng đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác hành chính và nhân khẩu với cơ quan Công an.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
