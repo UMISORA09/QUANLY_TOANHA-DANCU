@@ -312,6 +312,14 @@ const App: React.FC = () => {
     currentPath === '/admin/phuong-tien' ||
     currentPath.startsWith('/admin/vehicles');
 
+  const isRfidPath =
+    currentPath === '/quan-ly/rfid-cards' ||
+    currentPath === '/quan-ly/rfid' ||
+    currentPath.startsWith('/quan-ly/rfid') ||
+    currentPath === '/admin/rfid-cards' ||
+    currentPath === '/admin/rfid' ||
+    currentPath.startsWith('/admin/rfid');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
@@ -320,7 +328,8 @@ const App: React.FC = () => {
     currentPath === '/dashboard' ||
     isAmenityPath ||
     isAccountProvisioningPath ||
-    isVehiclePath;
+    isVehiclePath ||
+    isRfidPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -341,6 +350,8 @@ const App: React.FC = () => {
       ? 'amenities'
       : isVehiclePath
       ? 'vehicles'
+      : isRfidPath
+      ? 'rfid_cards'
       : isAccountProvisioningPath
       ? 'account_provisioning'
       : (managerUrlTab || undefined);

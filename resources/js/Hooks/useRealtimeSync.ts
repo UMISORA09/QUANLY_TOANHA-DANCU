@@ -391,9 +391,10 @@ export function useModuleCooldown(module: string): ModuleCooldownState {
       if (modData?.is_in_cooldown) {
         const untilStr = modData.cooldown_until;
         const retrySec = Number(modData.retry_after || 0);
+        const defaultSec = canonicalModule === 'rfid_cards' ? 60 : 120;
         setIsCooldownActive(true);
         setCooldownUntil(untilStr);
-        setRemainingSeconds(retrySec > 0 ? retrySec : 120);
+        setRemainingSeconds(retrySec > 0 ? retrySec : defaultSec);
         setActorId(modData.actor_id || null);
         setMessage('Chức năng đang tạm khóa chỉnh sửa.');
         return true;
@@ -409,12 +410,13 @@ export function useModuleCooldown(module: string): ModuleCooldownState {
   }, [canonicalModule]);
 
   const startCooldown = useCallback((untilStr: string, seconds?: number, msg?: string) => {
-    const sec = seconds || (untilStr ? Math.max(1, Math.ceil((new Date(untilStr).getTime() - Date.now()) / 1000)) : 120);
+    const defaultSec = canonicalModule === 'rfid_cards' ? 60 : 120;
+    const sec = seconds || (untilStr ? Math.max(1, Math.ceil((new Date(untilStr).getTime() - Date.now()) / 1000)) : defaultSec);
     setIsCooldownActive(true);
     setCooldownUntil(untilStr);
     setRemainingSeconds(sec);
     if (msg) setMessage(msg);
-  }, []);
+  }, [canonicalModule]);
 
   // Listen to incoming realtime broadcast cooldown events
   useEffect(() => {
@@ -424,7 +426,8 @@ export function useModuleCooldown(module: string): ModuleCooldownState {
       const targetMod = normalizeModuleKey(detail.module || '');
       if (targetMod === canonicalModule) {
         const untilStr = detail.cooldown_until;
-        const sec = Number(detail.cooldown_seconds || 120);
+        const defaultSec = targetMod === 'rfid_cards' ? 60 : 120;
+        const sec = Number(detail.cooldown_seconds || defaultSec);
         const rem = untilStr ? Math.max(1, Math.ceil((new Date(untilStr).getTime() - Date.now()) / 1000)) : sec;
         setIsCooldownActive(true);
         setCooldownUntil(untilStr || null);

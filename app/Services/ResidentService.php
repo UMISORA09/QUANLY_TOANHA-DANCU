@@ -391,16 +391,23 @@ class ResidentService
      */
     public function getApartmentsForFilter(): Collection
     {
-        return Cache::remember('apartments_resident_filter', 300, function () {
-            return Apartment::query()
-                ->select('id', 'apartment_number', 'block_id', 'status')
-                ->withCount(['residents' => function ($q) {
-                    $q->where('is_active', 1);
-                }])
-                ->with(['headOfHousehold.user:id,full_name,phone_number'])
-                ->orderBy('apartment_number', 'asc')
-                ->get();
-        });
+        $cached = Cache::get('apartments_resident_filter');
+        if ($cached instanceof Collection) {
+            return $cached;
+        }
+
+        $apartments = Apartment::query()
+            ->select('id', 'apartment_number', 'block_id', 'status')
+            ->withCount(['residents' => function ($q) {
+                $q->where('is_active', 1);
+            }])
+            ->with(['headOfHousehold.user:id,full_name,phone_number'])
+            ->orderBy('apartment_number', 'asc')
+            ->get();
+
+        Cache::put('apartments_resident_filter', $apartments, 300);
+
+        return $apartments;
     }
 }
 

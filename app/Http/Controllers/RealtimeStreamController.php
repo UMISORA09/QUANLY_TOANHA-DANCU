@@ -28,6 +28,7 @@ class RealtimeStreamController extends Controller
                 'quoc-tin.temporary-registrations',
                 'quoc-tin.account-provisioning',
                 'quoc-tin.vehicles',
+                'quoc-tin.rfid-cards',
             ];
         }
 
@@ -200,7 +201,7 @@ class RealtimeStreamController extends Controller
     {
         $modulesParam = $request->input('modules', $request->input('module', 'all'));
         $modules = $modulesParam === 'all'
-            ? ['rbac', 'residents', 'temporary_registrations', 'account_provisioning', 'vehicles']
+            ? ['rbac', 'residents', 'temporary_registrations', 'account_provisioning', 'vehicles', 'rfid_cards']
             : explode(',', (string) $modulesParam);
 
         $results = [];

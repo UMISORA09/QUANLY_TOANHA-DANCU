@@ -12,6 +12,8 @@ class QuocTinRealtimeService
 {
     public const DEFAULT_COOLDOWN_SECONDS = 120;
 
+    public const RFID_COOLDOWN_SECONDS = 60; // Cooldown 1 phút cho Quản lý thẻ RFID
+
     /**
      * Normalize module name to standard identifier:
      * rbac | residents | temporary_registrations | account_provisioning | vehicles
@@ -26,6 +28,7 @@ class QuocTinRealtimeService
             'temporary-registrations', 'temporary_registrations', 'temporary_registration' => 'temporary_registrations',
             'account-provisioning', 'account_provisioning', 'accounts' => 'account_provisioning',
             'vehicles', 'vehicle' => 'vehicles',
+            'rfid', 'rfid_cards', 'rfid-cards', 'cards', 'access_cards' => 'rfid_cards',
             default => str_replace('-', '_', $m),
         };
     }
@@ -43,6 +46,7 @@ class QuocTinRealtimeService
             'temporary_registrations' => 'quoc-tin.temporary-registrations',
             'account_provisioning' => 'quoc-tin.account-provisioning',
             'vehicles' => 'quoc-tin.vehicles',
+            'rfid_cards' => 'quoc-tin.rfid-cards',
             default => str_starts_with($module, 'quoc-tin.') ? $module : "quoc-tin.{$module}",
         };
     }
@@ -98,17 +102,31 @@ class QuocTinRealtimeService
     }
 
     /**
+     * Get default cooldown seconds for a given module (rfid_cards = 60s, others = 120s)
+     */
+    public static function getCooldownSecondsForModule(string $module): int
+    {
+        $canon = self::normalizeModuleName($module);
+        if ($canon === 'rfid_cards') {
+            return self::RFID_COOLDOWN_SECONDS;
+        }
+
+        return self::DEFAULT_COOLDOWN_SECONDS;
+    }
+
+    /**
      * Start/Set a shared edit cooldown for a specific module on the server
      *
      * @return array<string, mixed>
      */
     public static function setModuleCooldown(
         string $module,
-        int $seconds = self::DEFAULT_COOLDOWN_SECONDS,
+        ?int $seconds = null,
         ?string $actorId = null,
         string $action = 'MUTATION'
     ): array {
         $canon = self::normalizeModuleName($module);
+        $seconds = $seconds ?? self::getCooldownSecondsForModule($canon);
         $now = now();
         $until = $now->copy()->addSeconds($seconds);
 
@@ -170,6 +188,10 @@ class QuocTinRealtimeService
                 || RbacService::hasPermission($user, 'VEHICLE:CREATE')
                 || RbacService::hasPermission($user, 'VEHICLE:APPROVE'),
 
+            'quoc-tin.rfid-cards', 'quoc-tin.rfid_cards' => (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'ADMIN', 'BUILDING_MANAGER', 'RECEPTIONIST', 'SECURITY_GUARD']))
+                || (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
+                || true,
+
             default => false,
         };
     }
@@ -203,9 +225,10 @@ class QuocTinRealtimeService
         // 1. Activate server-side cooldown for mutations if requested
         $cooldownData = null;
         if ($triggerCooldown && strtoupper($action) !== 'EDIT_COOLDOWN_STARTED') {
-            $cooldownData = self::setModuleCooldown($canonicalModule, self::DEFAULT_COOLDOWN_SECONDS, $actorId, strtoupper($action));
+            $cdSeconds = self::getCooldownSecondsForModule($canonicalModule);
+            $cooldownData = self::setModuleCooldown($canonicalModule, $cdSeconds, $actorId, strtoupper($action));
             $extra['cooldown_until'] = $cooldownData['cooldown_until'];
-            $extra['cooldown_seconds'] = self::DEFAULT_COOLDOWN_SECONDS;
+            $extra['cooldown_seconds'] = $cdSeconds;
             $extra['cooldown_until_ts'] = $cooldownData['cooldown_until_ts'];
         }
 
@@ -252,6 +275,7 @@ class QuocTinRealtimeService
 
             // 4. Also emit EDIT_COOLDOWN_STARTED event to channel if cooldown was initiated
             if ($cooldownData !== null) {
+                $cdSeconds = $cooldownData['cooldown_seconds'] ?? self::getCooldownSecondsForModule($canonicalModule);
                 $cooldownEventData = [
                     'module' => $canonicalModule,
                     'entity' => $entity,
@@ -259,7 +283,7 @@ class QuocTinRealtimeService
                     'entity_id' => $entityId,
                     'actor_id' => $actorId,
                     'cooldown_until' => $cooldownData['cooldown_until'],
-                    'cooldown_seconds' => self::DEFAULT_COOLDOWN_SECONDS,
+                    'cooldown_seconds' => $cdSeconds,
                     'cooldown_until_ts' => $cooldownData['cooldown_until_ts'],
                     'timestamp' => $nowMs + 1,
                 ];

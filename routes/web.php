@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccessCardController;
 use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
@@ -408,6 +409,33 @@ Route::get('/le-tan/phuong-tien', function () {
     return view('welcome');
 });
 Route::get('/an-ninh/vehicles', function () {
+    return view('welcome');
+});
+
+// ==========================================
+// RFID ACCESS CARDS MODULE (Quản Lý Mã Thẻ RFID)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:rfid_cards'])->group(function () {
+    Route::get('rfid-cards', [AccessCardController::class, 'index']);
+    Route::post('rfid-cards', [AccessCardController::class, 'store']);
+    Route::get('rfid-cards/meta/apartments', [AccessCardController::class, 'apartments']);
+    Route::get('rfid-cards/meta/residents', [AccessCardController::class, 'residents']);
+    Route::get('rfid-cards/{id}', [AccessCardController::class, 'show']);
+    Route::put('rfid-cards/{id}', [AccessCardController::class, 'update']);
+    Route::patch('rfid-cards/{id}', [AccessCardController::class, 'update']);
+    Route::delete('rfid-cards/{id}', [AccessCardController::class, 'destroy']);
+    Route::patch('rfid-cards/{id}/toggle-status', [AccessCardController::class, 'toggleStatus']);
+});
+Route::get('/quan-ly/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/admin/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/le-tan/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/an-ninh/rfid-cards', function () {
     return view('welcome');
 });
 

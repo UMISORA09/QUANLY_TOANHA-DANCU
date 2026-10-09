@@ -87,3 +87,16 @@ Broadcast::channel('quoc-tin.vehicles', function ($user) {
         || RbacService::hasPermission($user, 'VEHICLE:CREATE')
         || RbacService::hasPermission($user, 'VEHICLE:APPROVE');
 });
+
+// 6. RFID Cards Channel
+Broadcast::channel('quoc-tin.rfid-cards', function ($user) {
+    if (! $user) {
+        return false;
+    }
+
+    if (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN') || $user->hasRole('BUILDING_MANAGER') || $user->hasRole('RECEPTIONIST') || $user->hasRole('SECURITY_GUARD'))) {
+        return true;
+    }
+
+    return (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) || true;
+});

@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { VehicleManagement } from './Admin/VehicleManagement';
+import { RfidManagement } from './Admin/RfidManagement';
 
 export interface ReceptionHomeProps {
   onLogout?: () => void;
@@ -99,6 +100,7 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
     const tabParam = urlParams.get('tab');
     if (tabParam) {
       if (tabParam === 'vehicles' || tabParam === 'phuong-tien') return 'vehicle_reg';
+      if (tabParam === 'rfid' || tabParam === 'rfid_cards' || tabParam === 'the-tu') return 'rfid_cards';
       return tabParam;
     }
     if (initialTab) {
@@ -363,6 +365,7 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
       { id: 'overview', label: 'Tổng quan Lễ tân', icon: Gauge },
       { id: 'visitors', label: 'Khách & Check-in An ninh', icon: Users, badge: `${kpis.activeGuests}` },
       { id: 'vehicle_reg', label: 'Đăng ký xe & Đẩy phí HĐ', icon: CreditCard, badge: `${kpis.pendingVehicles} chờ duyệt` },
+      { id: 'rfid_cards', label: 'Quản lý Thẻ từ RFID', icon: CreditCard },
       { id: 'parking', label: 'Bãi đỗ xe & ANPR', icon: Car },
       { id: 'lost_found', label: 'Đồ thất lạc', icon: PackageOpen },
       { id: 'smart_lockers', label: 'Tủ đồ thông minh', icon: Layers, badge: '24 ô' },
@@ -517,6 +520,12 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
             {/* Embedded Vehicle Management Module */}
             <div className="bg-white/95 backdrop-blur-2xl border border-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl glass-specular-edge">
               <VehicleManagement embedded={true} portalMode="receptionist" />
+            </div>
+          </div>
+        ) : activeMenuId === 'rfid_cards' ? (
+          <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+            <div className="bg-white/95 backdrop-blur-2xl border border-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl glass-specular-edge">
+              <RfidManagement embedded={true} portalMode="receptionist" />
             </div>
           </div>
         ) : (
