@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, CalendarOff, Check, AlertCircle, Sparkles, Clock } from 'lucide-react';
-import { api, Blackout, Amenity } from '../../Services/api';
+import { api, Blackout, Amenity, AmenityClosureImpact } from '../../Services/api';
+import { ClosureImpactSummary } from './AmenityClosureDialog';
 import { amenityCache } from '../../Services/amenityCache';
 
 interface BlackoutModalProps {
@@ -25,6 +26,10 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('17:00');
   const [reason, setReason] = useState('');
+  const [impact, setImpact] = useState<AmenityClosureImpact | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { setImpact(null); setAcknowledged(false); }, [blackoutDate, isFullDay, startTime, endTime, isOpen]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -45,6 +50,7 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
 
   useEffect(() => {
     if (isOpen && amenity) {
+      dialog.current?.showModal();
       fetchBlackouts();
       // Default to tomorrow's date
       const tomorrow = new Date();
@@ -106,14 +112,18 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
     };
 
     try {
-      await api.createBlackout(amenity.id, payload);
+      if (!impact) { setImpact(await api.getAmenityClosureImpact(amenity.id, payload)); setAcknowledged(false); return; }
+      if (!acknowledged) return;
+      await api.createBlackout(amenity.id, { ...payload, confirmation_token: impact.confirmation_token });
       setSuccessMessage('Đã thêm lịch đóng cửa bảo trì thành công!');
+      setImpact(null); setAcknowledged(false);
       setReason('');
       await fetchBlackouts();
       onChanged();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Đã xảy ra lỗi khi lưu ngày bảo trì.');
+      if (err.status === 409) { setImpact(null); setAcknowledged(false); }
     } finally {
       setIsSubmitting(false);
     }
@@ -139,9 +149,7 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
   if (!isOpen || !amenity) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4">
-      {/* Backdrop */}
-      <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
+    <dialog ref={dialog} aria-label="Ngày Đóng cửa & Bảo trì" onCancel={(event) => { event.preventDefault(); if (!isSubmitting) onClose(); }} className="amenity-booking-controls m-auto w-[calc(100%-2rem)] max-w-2xl rounded-2xl border-0 bg-white p-0 shadow-xl backdrop:bg-neutral-950/50">
 
       {/* Modal Card */}
       <div className="relative w-full max-w-2xl bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 max-h-[90vh] flex flex-col">
@@ -162,6 +170,8 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            disabled={isSubmitting}
+            aria-label="Đóng lịch bảo trì"
             className="p-1.5 text-neutral-400 hover:text-neutral-900 rounded-lg hover:bg-neutral-100 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -196,6 +206,8 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
                 </label>
                 <input
                   type="date"
+                  aria-label="Ngày đóng cửa"
+                  disabled={isSubmitting}
                   required
                   value={blackoutDate}
                   onChange={(e) => setBlackoutDate(e.target.value)}
@@ -210,6 +222,7 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
                     <input
                       type="radio"
                       name="blackoutType"
+                      disabled={isSubmitting}
                       checked={isFullDay}
                       onChange={() => setIsFullDay(true)}
                       className="text-neutral-900 focus:ring-neutral-900"
@@ -220,6 +233,7 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
                     <input
                       type="radio"
                       name="blackoutType"
+                      disabled={isSubmitting}
                       checked={!isFullDay}
                       onChange={() => setIsFullDay(false)}
                       className="text-neutral-900 focus:ring-neutral-900"
@@ -238,6 +252,8 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
                   </label>
                   <input
                     type="time"
+                    aria-label="Giờ bắt đầu đóng cửa"
+                    disabled={isSubmitting}
                     required
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
@@ -250,6 +266,8 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
                   </label>
                   <input
                     type="time"
+                    aria-label="Giờ kết thúc đóng cửa"
+                    disabled={isSubmitting}
                     required
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
@@ -265,6 +283,9 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
               </label>
               <input
                 type="text"
+                aria-label="Lý do đóng cửa / bảo trì"
+                maxLength={255}
+                disabled={isSubmitting}
                 required
                 placeholder="VD: Thay nước hồ bơi định kỳ, Nâng cấp máy tập, Khử khuẩn..."
                 value={reason}
@@ -273,10 +294,11 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
               />
             </div>
 
+            {impact && <><ClosureImpactSummary impact={impact} /><label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={isSubmitting} checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />Tôi xác nhận đóng cửa trong thời gian đã chọn, hủy {impact.count} đơn bị ảnh hưởng và xử lý khoản tiền liên quan.</label></>}
             <div className="flex items-center justify-end pt-2 border-t border-neutral-200/60">
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || Boolean(impact && !acknowledged)}
                 className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
               >
                 {isSubmitting ? (
@@ -284,7 +306,7 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
                 ) : (
                   <Plus className="w-3.5 h-3.5" />
                 )}
-                <span>Lưu lịch bảo trì</span>
+                <span>{impact ? 'Xác nhận đóng cửa và xử lý đăng ký' : 'Xem trước các đơn bị ảnh hưởng'}</span>
               </button>
             </div>
           </form>
@@ -353,6 +375,6 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

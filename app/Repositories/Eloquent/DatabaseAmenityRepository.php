@@ -4,6 +4,7 @@ namespace App\Repositories\Eloquent;
 
 use App\DTOs\AmenityFilterDTO;
 use App\Repositories\Contracts\AmenityRepositoryInterface;
+use App\Services\AmenityBookingPaymentService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -81,7 +82,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
         if (! empty($amenityIds)) {
             $bookingsData = DB::table('amenity_bookings')
                 ->whereIn('amenity_id', $amenityIds)
-                ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
+                ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)->tap([AmenityBookingPaymentService::class, 'holdingQuery'])
                 ->whereNull('deleted_at')
                 ->select('amenity_id', DB::raw('COUNT(*) as active_count'))
                 ->groupBy('amenity_id')
@@ -396,7 +397,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
     {
         return (int) DB::table('amenity_bookings')
             ->where('amenity_id', $amenityId)
-            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
+            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)->tap([AmenityBookingPaymentService::class, 'holdingQuery'])
             ->whereNull('deleted_at')
             ->count();
     }
@@ -405,7 +406,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
     {
         $activeSlotBookings = DB::table('amenity_bookings')
             ->where('amenity_id', $amenityId)
-            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
+            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)->tap([AmenityBookingPaymentService::class, 'holdingQuery'])
             ->whereNull('deleted_at')
             ->select('booking_date', 'start_time', 'end_time', 'attendee_count')
             ->get();
@@ -502,7 +503,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
 
         $bookings = DB::table('amenity_bookings')
             ->whereIn('amenity_id', $amenityIds)
-            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
+            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)->tap([AmenityBookingPaymentService::class, 'holdingQuery'])
             ->whereNull('deleted_at')
             ->select('amenity_id', DB::raw('count(*) as count'))
             ->groupBy('amenity_id')
@@ -538,7 +539,9 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
             ->orderBy('amenity_bookings.start_time', 'desc')
             ->get();
 
-        return $bookings->map(function ($b) {
+        $payments = DB::table('amenity_booking_payments')->whereIn('booking_id', $bookings->pluck('id'))->get()->keyBy('booking_id');
+
+        return $bookings->map(function ($b) use ($payments) {
             return [
                 'id' => $b->id,
                 'booking_code' => $b->booking_code,
@@ -556,6 +559,7 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
                 'total_amount' => (float) $b->total_amount,
                 'deposit_amount' => (float) $b->deposit_amount,
                 'is_paid' => (bool) $b->is_paid,
+                'payment' => app(AmenityBookingPaymentService::class)->format($payments->get($b->id), $b),
                 'status' => $b->status,
                 'checkin_qr_code' => $b->checkin_qr_code,
                 'checked_in_at' => $b->checked_in_at ? Carbon::parse($b->checked_in_at)->toIso8601String() : null,

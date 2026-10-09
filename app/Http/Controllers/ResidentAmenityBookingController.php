@@ -16,6 +16,20 @@ class ResidentAmenityBookingController extends Controller
         return response()->json($this->bookings->catalog($request->user()))->header('Cache-Control', 'private, no-store');
     }
 
+    public function notifications(Request $request): JsonResponse
+    {
+        $data = $request->validate(['page' => 'nullable|integer|min:1', 'unread' => 'nullable|boolean']);
+
+        return response()->json($this->bookings->notifications($request->user(), 'AMENITY', $data))->header('Cache-Control', 'private, no-store');
+    }
+
+    public function readNotification(Request $request, string $id): JsonResponse
+    {
+        $this->bookings->readNotification($request->user(), 'AMENITY', $id);
+
+        return response()->json(['success' => true]);
+    }
+
     public function availability(Request $request, string $id): JsonResponse
     {
         $data = $request->validate(['date' => 'required|date_format:Y-m-d', 'apartment_id' => 'nullable|uuid']);
