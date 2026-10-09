@@ -74,15 +74,21 @@ class VehicleManagementTest extends TestCase
         ]);
 
         $role = Role::where('role_code', 'SUPER_ADMIN')->first();
-        if ($role) {
-            DB::table('user_roles')->insert([
+        if (! $role) {
+            $role = Role::create([
                 'id' => (string) Str::uuid(),
-                'user_id' => $user->id,
-                'role_id' => $role->id,
-                'is_primary' => 1,
-                'assigned_at' => now(),
+                'role_code' => 'SUPER_ADMIN',
+                'role_name' => 'Quản trị viên cấp cao',
+                'status' => 'ACTIVE',
             ]);
         }
+        DB::table('user_roles')->insert([
+            'id' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'is_primary' => 1,
+            'assigned_at' => now(),
+        ]);
 
         $token = 'smart_token_'.$user->id.'_'.Str::random(40);
         $tokenHash = hash('sha256', $token);

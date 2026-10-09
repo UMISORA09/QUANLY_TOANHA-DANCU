@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Database\Seeders\SharedDemoDataSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
@@ -12,6 +13,7 @@ class SharedDemoDataTest extends TestCase
      */
     public function test_demo_verify_command_passes(): void
     {
+        $this->seed(SharedDemoDataSeeder::class);
         $exitCode = Artisan::call('demo:verify');
         $output = Artisan::output();
 

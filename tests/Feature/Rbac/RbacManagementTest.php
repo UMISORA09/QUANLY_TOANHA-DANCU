@@ -5,6 +5,7 @@ namespace Tests\Feature\Rbac;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\RbacSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -12,6 +13,12 @@ use Tests\TestCase;
 
 class RbacManagementTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RbacSeeder::class);
+    }
+
     /**
      * Tạo người dùng test kèm vai trò và token phiên đăng nhập
      */
