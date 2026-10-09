@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AuthenticateBearer;
+use App\Http\Middleware\CheckModuleCooldown;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\LockAmenityConfiguration;
 use App\Http\Middleware\RequestIdMiddleware;
@@ -28,6 +29,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'auth.bearer' => AuthenticateBearer::class,
             'permission' => CheckPermission::class,
             'amenity.lock' => LockAmenityConfiguration::class,
+            'cooldown' => CheckModuleCooldown::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

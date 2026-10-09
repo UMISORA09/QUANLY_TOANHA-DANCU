@@ -6,6 +6,7 @@ use App\Models\Apartment;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Services\QuocTinRealtimeService;
 use App\Services\VehicleConflictException;
 use App\Services\VehicleService;
 use Carbon\Carbon;
@@ -282,6 +283,9 @@ class VehicleManagementTest extends TestCase
             ->postJson('/api/v1/vehicles', $payload);
         $firstRes->assertStatus(201);
 
+        // Reset cooldown để cho phép test validation trùng lặp biển số
+        QuocTinRealtimeService::clearModuleCooldown('vehicles');
+
         // Tạo lần 2 cùng biển số -> Bị chặn
         $secondRes = $this->withHeaders($this->authHeaders())
             ->postJson('/api/v1/vehicles', $payload);
@@ -462,6 +466,8 @@ class VehicleManagementTest extends TestCase
         ]);
         $vehicleId = $createRes['vehicle']->id;
 
+        QuocTinRealtimeService::clearModuleCooldown('vehicles');
+
         $updatePayload = [
             'color' => 'Xám Bạc Kim Loại',
             'brand' => 'Yamaha Grande Hybrid',
@@ -501,6 +507,8 @@ class VehicleManagementTest extends TestCase
         ]);
         $vehicleId = $createRes['vehicle']->id;
 
+        QuocTinRealtimeService::clearModuleCooldown('vehicles');
+
         $response = $this->withHeaders($this->authHeaders())
             ->deleteJson("/api/v1/vehicles/{$vehicleId}");
 
@@ -535,6 +543,8 @@ class VehicleManagementTest extends TestCase
         ]);
         $this->assertNotNull($res1['vehicle']);
 
+        QuocTinRealtimeService::clearModuleCooldown('vehicles');
+
         // Tiến trình 2 gọi trực tiếp service với cùng biển số
         $this->expectException(VehicleConflictException::class);
         $service->createVehicle([
@@ -561,6 +571,8 @@ class VehicleManagementTest extends TestCase
             'monthly_parking_fee' => 1500000.00,
         ]);
         $vehicle = $res['vehicle'];
+
+        QuocTinRealtimeService::clearModuleCooldown('vehicles');
 
         $currentPeriod = Carbon::now()->format('Y-m');
 
@@ -603,6 +615,8 @@ class VehicleManagementTest extends TestCase
             'monthly_parking_fee' => 120000.00,
         ]);
         $vehicleId = $createRes['vehicle']->id;
+
+        QuocTinRealtimeService::clearModuleCooldown('vehicles');
 
         $newPlate = '29A-'.rand(10000, 99999);
         $updatePayload = [

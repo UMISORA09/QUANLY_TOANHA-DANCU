@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccessCardController;
 use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\RealtimeStreamController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
@@ -225,7 +227,7 @@ Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
 // ==========================================
 // HỆ THỐNG PHÂN QUYỀN VAI TRÒ RBAC (RESTful APIs)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:rbac'])->group(function () {
     // 1. Quản lý Người dùng (Users)
     Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
     Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
@@ -258,7 +260,7 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
 });
 
 // Aliases under api/v1/admin for RBAC
-Route::prefix('api/v1/admin')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1/admin')->middleware(['auth.bearer', 'cooldown:rbac'])->group(function () {
     Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
     Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
     Route::get('users/{id}', [UserController::class, 'show'])->middleware('permission:USER:VIEW');
@@ -283,7 +285,7 @@ Route::prefix('api/v1/admin')->middleware(['auth.bearer'])->group(function () {
 });
 
 // Explicit RBAC endpoints under api/v1/rbac
-Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1/rbac')->middleware(['auth.bearer', 'cooldown:rbac'])->group(function () {
     // 1. Quản lý Người dùng (Users)
     Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
     Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
@@ -318,7 +320,7 @@ Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
 // ==========================================
 // ĐĂNG KÝ VÀ DUYỆT TẠM TRÚ / TẠM VẮNG (ADMIN)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:temporary_registrations'])->group(function () {
     Route::get('residents/temporary-registrations', [TemporaryRegistrationController::class, 'index']);
     Route::post('residents/temporary-registrations', [TemporaryRegistrationController::class, 'store']);
     Route::get('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'show']);
@@ -350,17 +352,6 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
 // ==========================================
 // CẤP PHÁT TÀI KHOẢN TỰ ĐỘNG (ACCOUNT PROVISIONING)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
-    Route::get('account-provisioning', [AccountProvisioningController::class, 'index']);
-    Route::post('account-provisioning', [AccountProvisioningController::class, 'store']);
-    Route::post('account-provisioning/import', [AccountProvisioningController::class, 'import']);
-    Route::post('account-provisioning/batch-resend', [AccountProvisioningController::class, 'batchResend']);
-    Route::get('account-provisioning/{id}', [AccountProvisioningController::class, 'show']);
-    Route::put('account-provisioning/{id}', [AccountProvisioningController::class, 'update']);
-    Route::delete('account-provisioning/{id}', [AccountProvisioningController::class, 'destroy']);
-    Route::post('account-provisioning/{id}/resend-activation', [AccountProvisioningController::class, 'resendActivation']);
-    Route::post('account-provisioning/{id}/toggle-lock', [AccountProvisioningController::class, 'toggleLock']);
-});
 Route::get('/api/v1/account-provisioning/status', [AccountProvisioningController::class, 'checkStatus']);
 Route::post('/api/v1/account-provisioning/activate', [AccountProvisioningController::class, 'activate']);
 Route::get('/kich-hoat-tai-khoan', function () {
@@ -370,10 +361,22 @@ Route::get('/activate-account', function () {
     return view('welcome');
 });
 
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('account-provisioning', [AccountProvisioningController::class, 'index']);
+    Route::post('account-provisioning', [AccountProvisioningController::class, 'store']);
+    Route::post('account-provisioning/import', [AccountProvisioningController::class, 'import']);
+    Route::post('account-provisioning/batch-resend', [AccountProvisioningController::class, 'batchResend']);
+    Route::get('account-provisioning/{id}', [AccountProvisioningController::class, 'show'])->whereUuid('id');
+    Route::put('account-provisioning/{id}', [AccountProvisioningController::class, 'update'])->whereUuid('id');
+    Route::delete('account-provisioning/{id}', [AccountProvisioningController::class, 'destroy'])->whereUuid('id');
+    Route::post('account-provisioning/{id}/resend-activation', [AccountProvisioningController::class, 'resendActivation'])->whereUuid('id');
+    Route::post('account-provisioning/{id}/toggle-lock', [AccountProvisioningController::class, 'toggleLock'])->whereUuid('id');
+});
+
 // ==========================================
 // QUẢN LÝ CHỦ HỘ VÀ NHÂN KHẨU CĂN HỘ (ADMIN)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:residents'])->group(function () {
     Route::get('residents', [ResidentController::class, 'index']);
     Route::post('residents', [ResidentController::class, 'store']);
     Route::get('residents/{id}', [ResidentController::class, 'show']);
@@ -386,7 +389,7 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
 // ==========================================
 // ĐĂNG KÝ PHƯƠNG TIỆN & TỰ ĐỘNG ĐẨY PHÍ HÓA ĐƠN (VEHICLES)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:vehicles'])->group(function () {
     Route::get('vehicles', [VehicleController::class, 'index']);
     Route::post('vehicles', [VehicleController::class, 'store']);
     Route::get('vehicles/pricing-config', [VehicleController::class, 'pricingConfig']);
@@ -582,6 +585,33 @@ Route::get('/admin/apartments', function () {
     return view('welcome');
 });
 
+// ==========================================
+// RFID ACCESS CARDS MODULE (Quản Lý Mã Thẻ RFID)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:rfid_cards'])->group(function () {
+    Route::get('rfid-cards', [AccessCardController::class, 'index']);
+    Route::post('rfid-cards', [AccessCardController::class, 'store']);
+    Route::get('rfid-cards/meta/apartments', [AccessCardController::class, 'apartments']);
+    Route::get('rfid-cards/meta/residents', [AccessCardController::class, 'residents']);
+    Route::get('rfid-cards/{id}', [AccessCardController::class, 'show']);
+    Route::put('rfid-cards/{id}', [AccessCardController::class, 'update']);
+    Route::patch('rfid-cards/{id}', [AccessCardController::class, 'update']);
+    Route::delete('rfid-cards/{id}', [AccessCardController::class, 'destroy']);
+    Route::patch('rfid-cards/{id}/toggle-status', [AccessCardController::class, 'toggleStatus']);
+});
+Route::get('/quan-ly/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/admin/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/le-tan/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/an-ninh/rfid-cards', function () {
+    return view('welcome');
+});
+
 // Meta endpoints
 Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);
 Route::get('/meta/blocks', [AmenityController::class, 'getBlocks']);
@@ -706,6 +736,16 @@ Route::prefix('api/public')->group(function () {
     Route::get('status', [DevOpsApiController::class, 'publicStatus']);
     Route::get('incidents', [DevOpsApiController::class, 'publicIncidents']);
 });
+
+// ==========================================
+// REAL-TIME AUTO-SYNC APIS (QUỐC TÍN MODULES)
+// ==========================================
+Route::get('/api/realtime/stream', [RealtimeStreamController::class, 'stream']);
+Route::get('/api/v1/realtime/stream', [RealtimeStreamController::class, 'stream']);
+Route::get('/api/realtime/events', [RealtimeStreamController::class, 'events']);
+Route::get('/api/v1/realtime/events', [RealtimeStreamController::class, 'events']);
+Route::get('/api/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
+Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
 
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);

@@ -366,6 +366,14 @@ const App: React.FC = () => {
     currentPath.startsWith('/quan-ly/bao-cao-tai-chinh') ||
     currentPath.startsWith('/quan-ly/financial-reports');
 
+  const isRfidPath =
+    currentPath === '/quan-ly/rfid-cards' ||
+    currentPath === '/quan-ly/rfid' ||
+    currentPath.startsWith('/quan-ly/rfid') ||
+    currentPath === '/admin/rfid-cards' ||
+    currentPath === '/admin/rfid' ||
+    currentPath.startsWith('/admin/rfid');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
@@ -381,7 +389,8 @@ const App: React.FC = () => {
     isInvoiceGenerationPath ||
     isPaymentHistoryPath ||
     isRevenueAnalyticsPath ||
-    isFinancialReportPath;
+    isFinancialReportPath ||
+    isRfidPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -406,6 +415,8 @@ const App: React.FC = () => {
       ? 'pricing_configs'
       : isMeterReadingPath
       ? 'meter_readings'
+      : isRfidPath
+      ? 'rfid_cards'
       : isAccountProvisioningPath
       ? 'account_provisioning'
       : isInvoiceGenerationPath

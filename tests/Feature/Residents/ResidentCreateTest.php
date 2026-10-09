@@ -6,6 +6,7 @@ use App\Models\Apartment;
 use App\Models\Resident;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\QuocTinRealtimeService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -358,6 +359,9 @@ class ResidentCreateTest extends TestCase
             ->postJson('/api/v1/residents', $payload);
         $firstResponse->assertStatus(201);
 
+        // Reset cooldown để cho phép test validation trùng lặp
+        QuocTinRealtimeService::clearModuleCooldown('residents');
+
         // Lần 2: Thêm lại cùng user và apartment -> phải reject
         $secondResponse = $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/residents', $payload);
@@ -394,6 +398,9 @@ class ResidentCreateTest extends TestCase
         $res1 = $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/residents', $payload1);
         $res1->assertStatus(201);
+
+        // Reset cooldown để cho phép test validation trùng chủ hộ
+        QuocTinRealtimeService::clearModuleCooldown('residents');
 
         // Admin cố thêm R2 làm chủ hộ cho cùng căn hộ
         $payload2 = [

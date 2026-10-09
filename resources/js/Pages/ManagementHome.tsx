@@ -45,7 +45,8 @@ import {
   Terminal,
   UserPlus,
   Car,
-  History
+  History,
+  CreditCard
 } from 'lucide-react';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';
@@ -63,6 +64,7 @@ import { PaymentHistoryManagement } from './Admin/PaymentHistoryManagement';
 import { RevenueAnalyticsDashboard } from './Admin/RevenueAnalyticsDashboard';
 import { FinancialReportManagement } from './Admin/FinancialReportManagement';
 import { InvoiceNavTabs } from '../Components/Admin/InvoiceNavTabs';
+import { RfidManagement } from './Admin/RfidManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -162,6 +164,13 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.startsWith('/admin/account-provisioning')
     ) {
       return 'account_provisioning';
+    }
+    if (
+      path === '/quan-ly/rfid-cards' ||
+      path === '/admin/rfid-cards' ||
+      path.includes('rfid-cards')
+    ) {
+      return 'rfid_cards';
     }
     if (
       path === '/quan-ly/blocks' ||
@@ -487,10 +496,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
         { id: 'blocks', label: 'Khối / Tòa nhà', icon: Building2, badge: null },
         { id: 'apartments', label: 'Tầng & Căn hộ', icon: Layers, badge: null },
-        { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'residents', label: 'Chủ hộ & Nhân khẩu căn hộ', icon: Users, badge: kpis.totalResidents },
         { id: 'vehicles', label: 'Phương tiện (Xe)', icon: Car, badge: null },
+        { id: 'rfid_cards', label: 'Quản lý thẻ RFID', icon: CreditCard, badge: null },
         { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto' },
-        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
+        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'CT01' },
         { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: String(kpis.amenityBookings) },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
@@ -745,6 +755,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: id }, '', `${basePath}?tab=temporary_registrations`);
     } else if (id === 'vehicles') {
       window.history.pushState({ tab: id }, '', `${basePath}?tab=vehicles`);
+    } else if (id === 'rfid_cards') {
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=rfid_cards`);
     } else if (id === 'invoices' || id === 'hoa_don') {
       window.history.pushState({ tab: 'invoices' }, '', `${basePath}/hoa-don`);
     } else if (id === 'invoice_generation' || id === 'sinh_hoa_don') {
@@ -972,6 +984,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <InvoiceNavTabs activeTab="financial_reports" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <FinancialReportManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
+          ) : activeMenuId === 'rfid_cards' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <RfidManagement embedded={true} />
+            </div>
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

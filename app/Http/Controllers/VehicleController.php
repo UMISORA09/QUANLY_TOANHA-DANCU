@@ -378,6 +378,8 @@ class VehicleController extends Controller
     public function allResidents(Request $request): JsonResponse
     {
         $apartmentId = $request->query('apartment_id');
+        $search = trim((string) $request->query('search', ''));
+        $limit = min(max((int) $request->query('limit', 20), 1), 50);
 
         $query = DB::table('residents')
             ->join('users', 'residents.user_id', '=', 'users.id')
@@ -393,15 +395,25 @@ class VehicleController extends Controller
                 'residents.is_head_of_household',
                 'residents.apartment_id',
                 'apartments.apartment_number',
-            ])
-            ->orderBy('apartments.apartment_number')
-            ->orderBy('users.full_name');
+            ]);
 
         if (! empty($apartmentId)) {
             $query->where('residents.apartment_id', $apartmentId);
         }
 
-        $residents = $query->get();
+        if (! empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('users.full_name', 'like', "%{$search}%")
+                    ->orWhere('users.phone_number', 'like', "%{$search}%")
+                    ->orWhere('users.email', 'like', "%{$search}%")
+                    ->orWhere('apartments.apartment_number', 'like', "%{$search}%");
+            });
+        }
+
+        $residents = $query->orderBy('apartments.apartment_number')
+            ->orderBy('users.full_name')
+            ->limit($limit)
+            ->get();
 
         return response()->json([
             'success' => true,

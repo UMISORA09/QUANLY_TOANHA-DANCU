@@ -27,8 +27,8 @@ export const AccountActivationPage: React.FC = () => {
     setToken(tokenParam);
     setUserId(idParam);
 
-    if (!tokenParam) {
-      setError('Không tìm thấy mã kích hoạt (token) trong liên kết. Vui lòng kiểm tra lại liên kết trong email.');
+    if (!tokenParam && !emailParam && !idParam) {
+      setError('Không tìm thấy thông tin kích hoạt trong liên kết. Vui lòng kiểm tra lại liên kết trong email.');
       setCheckingStatus(false);
       return;
     }
@@ -48,15 +48,23 @@ export const AccountActivationPage: React.FC = () => {
             setIsAlreadyActivated(true);
             if (data.username) setActivatedUsername(data.username);
             if (data.full_name) setActivatedFullName(data.full_name);
+          } else if (!tokenParam) {
+            setError('Không tìm thấy mã kích hoạt (token) trong liên kết. Vui lòng kiểm tra lại liên kết trong email.');
           }
         })
         .catch(err => {
           console.error('Lỗi kiểm tra trạng thái kích hoạt:', err);
+          if (!tokenParam) {
+            setError('Không tìm thấy mã kích hoạt (token) trong liên kết. Vui lòng kiểm tra lại liên kết trong email.');
+          }
         })
         .finally(() => {
           setCheckingStatus(false);
         });
     } else {
+      if (!tokenParam) {
+        setError('Không tìm thấy mã kích hoạt (token) trong liên kết. Vui lòng kiểm tra lại liên kết trong email.');
+      }
       setCheckingStatus(false);
     }
   }, []);
@@ -103,7 +111,11 @@ export const AccountActivationPage: React.FC = () => {
         // Nếu tài khoản đã xác nhận rồi hoặc token đã sử dụng (xác nhận lần 2)
         if (
           json.error === 'ALREADY_ACTIVE' ||
-          (json.message && (json.message.includes('đã được kích hoạt') || json.message.includes('đã được sử dụng')))
+          (json.message && (
+            json.message.toLowerCase().includes('đã kích hoạt') ||
+            json.message.toLowerCase().includes('đã được kích hoạt') ||
+            json.message.toLowerCase().includes('đã được sử dụng')
+          ))
         ) {
           setIsAlreadyActivated(true);
           return;
@@ -120,7 +132,7 @@ export const AccountActivationPage: React.FC = () => {
     }
   };
 
-  const isAlreadyActive = error && error.includes('đã được kích hoạt');
+  const isAlreadyActive = error && (error.toLowerCase().includes('kích hoạt') || error.toLowerCase().includes('đã kích hoạt'));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex items-center justify-center p-4">
@@ -133,18 +145,18 @@ export const AccountActivationPage: React.FC = () => {
             <span className="text-xs font-medium">Đang kiểm tra trạng thái tài khoản...</span>
           </div>
         ) : isAlreadyActivated ? (
-          /* Trường hợp 2: Xác nhận lại lần 2 (ĐÃ XÁC NHẬN RỒI -> BỎ HẾT FORM EMAIL/MẬT KHẨU/NÚT XÁC NHẬN) */
+          /* Trường hợp 2: Đã kích hoạt 1 lần rồi, lần 2 báo Đã kích hoạt tài khoản bạn vui lòng đăng nhập */
           <div className="space-y-6 text-center">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
               <CheckCircle2 className="w-8 h-8" />
             </div>
 
             <div>
-              <h1 className="text-xl font-extrabold text-slate-900 tracking-tight uppercase">
-                Tài Khoản Đã Được Xác Nhận
+              <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                Đã kích hoạt tài khoản bạn vui lòng đăng nhập
               </h1>
-              <p className="text-xs text-slate-500 mt-1">
-                Tài khoản này đã được xác nhận và thiết lập mật khẩu thành công rồi.
+              <p className="text-xs text-slate-500 mt-2">
+                Liên kết kích hoạt chỉ có hiệu lực sử dụng 1 lần. Tài khoản của bạn đã được kích hoạt thành công.
               </p>
             </div>
 
@@ -175,8 +187,8 @@ export const AccountActivationPage: React.FC = () => {
                 )}
               </div>
 
-              <p className="text-[11px] text-emerald-700 leading-normal">
-                Liên kết kích hoạt chỉ có hiệu lực sử dụng 1 lần. Vì bạn đã hoàn tất xác nhận rồi, bạn không cần phải xác nhận lại. Vui lòng bấm <strong>Đăng nhập ngay</strong> bằng mật khẩu đã đặt để vào hệ thống.
+              <p className="text-[11px] text-emerald-800 leading-normal font-medium bg-emerald-100/60 p-2.5 rounded-xl border border-emerald-300/40">
+                Tài khoản đã sẵn sàng hoạt động. Quý cư dân / nhân viên vui lòng bấm nút <strong>ĐĂNG NHẬP NGAY</strong> để đăng nhập bằng mật khẩu đã thiết lập.
               </p>
             </div>
 

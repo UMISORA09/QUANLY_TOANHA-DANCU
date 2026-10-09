@@ -8,19 +8,37 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  errorInfo?: ErrorInfo;
+  isChunkError: boolean;
+  showDetails: boolean;
 }
 
 export class ChunkErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
+    isChunkError: false,
+    showDetails: false,
   };
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  public static getDerivedStateFromError(error: Error): Partial<State> {
+    const chunkFailedMessages = [
+      'Failed to fetch dynamically imported module',
+      'Importing a module script failed',
+      'error loading dynamically imported module',
+      'Loading chunk',
+      'chunk load failed',
+    ];
+
+    const isChunk = chunkFailedMessages.some((msg) =>
+      error?.message?.toLowerCase().includes(msg.toLowerCase())
+    );
+
+    return { hasError: true, error, isChunkError: isChunk };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Unhandled UI/Chunk error caught by ChunkErrorBoundary:', error, errorInfo);
+    this.setState({ errorInfo });
 
     // Phát hiện lỗi tải file chunk (thường xảy ra khi cập nhật phiên bản mới)
     const chunkFailedMessages = [
@@ -32,7 +50,7 @@ export class ChunkErrorBoundary extends Component<Props, State> {
     ];
 
     const isChunkError = chunkFailedMessages.some((msg) =>
-      error.message?.toLowerCase().includes(msg.toLowerCase())
+      error?.message?.toLowerCase().includes(msg.toLowerCase())
     );
 
     if (isChunkError) {
@@ -51,6 +69,23 @@ export class ChunkErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private handleClearCacheReload = () => {
+    try {
+      sessionStorage.clear();
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('smartcassavas_') || k.includes('_cache'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  };
+
   private handleGoHome = () => {
     sessionStorage.removeItem('smartcassavas_chunk_retry');
     window.location.href = '/home';
@@ -62,9 +97,11 @@ export class ChunkErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
+      const { isChunkError, error, showDetails } = this.state;
+
       return (
         <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 px-4 py-12 text-slate-100">
-          <div className="w-full max-w-md bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-md text-center">
+          <div className="w-full max-w-lg bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-md text-center">
             <div className="w-14 h-14 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <svg
                 className="w-7 h-7"
@@ -82,17 +119,40 @@ export class ChunkErrorBoundary extends Component<Props, State> {
             </div>
 
             <h3 className="text-xl font-bold text-white mb-2">
-              Không thể tải tài nguyên giao diện
+              {isChunkError ? 'Không thể tải tài nguyên giao diện' : 'Đã xảy ra lỗi giao diện'}
             </h3>
             <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-              Hệ thống có thể vừa được cập nhật phiên bản mới hoặc kết nối mạng bị gián đoạn. Vui lòng tải lại trang để tiếp tục.
+              {isChunkError
+                ? 'Hệ thống có thể vừa được cập nhật phiên bản mới hoặc kết nối mạng bị gián đoạn. Vui lòng tải lại trang để tiếp tục.'
+                : 'Ứng dụng gặp sự cố khi hiển thị dữ liệu. Vui lòng tải lại trang hoặc làm mới bộ nhớ đệm để tiếp tục.'}
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {error && (
+              <div className="mb-6 text-left">
+                <button
+                  type="button"
+                  onClick={() => this.setState({ showDetails: !showDetails })}
+                  className="text-xs text-sky-400 hover:text-sky-300 underline font-mono flex items-center gap-1 mx-auto"
+                >
+                  <span>{showDetails ? 'Ẩn chi tiết kỹ thuật' : 'Xem chi tiết kỹ thuật'}</span>
+                </button>
+
+                {showDetails && (
+                  <div className="mt-3 p-3 bg-slate-950/80 border border-slate-700 rounded-xl text-xs font-mono text-red-300 max-h-48 overflow-y-auto break-all leading-normal">
+                    <p className="font-bold text-red-400 mb-1">{error.name}: {error.message}</p>
+                    {error.stack && (
+                      <pre className="text-[10px] text-slate-400 whitespace-pre-wrap">{error.stack}</pre>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-2.5 justify-center">
               <button
                 type="button"
                 onClick={this.handleManualReload}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-medium rounded-xl text-sm transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-medium rounded-xl text-sm transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <svg
                   className="w-4 h-4"
@@ -112,8 +172,17 @@ export class ChunkErrorBoundary extends Component<Props, State> {
 
               <button
                 type="button"
+                onClick={this.handleClearCacheReload}
+                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-medium rounded-xl text-sm transition shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 cursor-pointer"
+                title="Xóa bộ nhớ đệm dữ liệu cũ và tải lại"
+              >
+                Xóa bộ nhớ đệm & Tải lại
+              </button>
+
+              <button
+                type="button"
                 onClick={this.handleGoHome}
-                className="px-5 py-2.5 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-200 font-medium rounded-xl text-sm transition"
+                className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-200 font-medium rounded-xl text-sm transition cursor-pointer"
               >
                 Về trang chủ
               </button>

@@ -33,11 +33,28 @@ class TemporaryRegistrationService
         $sortOrder = strtolower((string) ($params['sort_order'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
         $perPage = min(max((int) ($params['limit'] ?? 15), 5), 100);
 
-        $query = TemporaryRegistration::query()->with([
-            'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url,gender,date_of_birth,status',
-            'apartment:id,apartment_number,block_id,floor_id,room_type,status',
-            'reviewer:id,username,full_name,phone_number,email',
-        ]);
+        $query = TemporaryRegistration::query()
+            ->select([
+                'id',
+                'resident_id',
+                'apartment_id',
+                'registration_type',
+                'start_date',
+                'end_date',
+                'reason',
+                'police_status',
+                'police_reference_code',
+                'reviewed_by',
+                'reviewed_at',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'resident:id,user_id,apartment_id,resident_type,is_head_of_household,relationship_to_head,occupation',
+                'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url,status',
+                'apartment:id,apartment_number,block_id,floor_id,room_type,status',
+                'reviewer:id,username,full_name,phone_number,email',
+            ]);
 
         // 1. Tìm kiếm theo Tên cư dân, Số điện thoại, CCCD/CMND, Số căn hộ, Mã hồ sơ Công An, Lý do
         if ($search !== '') {
@@ -119,46 +136,57 @@ class TemporaryRegistrationService
      */
     public function create(array $data): TemporaryRegistration
     {
+        QuocTinRealtimeService::assertNotInCooldown('temporary_registrations');
+
         $residentId = $data['resident_id'];
         $apartmentId = $data['apartment_id'];
 
-        // 1. Kiểm tra cư dân tồn tại
-        $resident = Resident::find($residentId);
-        if (! $resident) {
+        // 1. Kiểm tra cư dân tồn tại và thuộc căn hộ bằng index seek chỉ đọc apartment_id
+        $residentAptId = Resident::where('id', $residentId)->value('apartment_id');
+        if (! $residentAptId) {
             throw ValidationException::withMessages([
                 'resident_id' => 'Cư dân được chọn không tồn tại trong hệ thống.',
             ]);
         }
 
-        // 2. Kiểm tra căn hộ tồn tại
-        $apartment = Apartment::find($apartmentId);
-        if (! $apartment) {
-            throw ValidationException::withMessages([
-                'apartment_id' => 'Căn hộ được chọn không tồn tại trong hệ thống.',
-            ]);
-        }
-
-        // 3. Kiểm tra tính phù hợp giữa cư dân và căn hộ
-        if ($resident->apartment_id !== $apartmentId) {
+        if ($residentAptId !== $apartmentId) {
             throw ValidationException::withMessages([
                 'resident_id' => 'Cư dân được chọn không thuộc căn hộ này.',
             ]);
         }
 
-        // 4. Các trường do hệ thống kiểm soát khi tạo mới
+        // 2. Kiểm tra căn hộ tồn tại bằng exists() siêu nhẹ
+        $apartmentExists = Apartment::where('id', $apartmentId)->exists();
+        if (! $apartmentExists) {
+            throw ValidationException::withMessages([
+                'apartment_id' => 'Căn hộ được chọn không tồn tại trong hệ thống.',
+            ]);
+        }
+
+        // 3. Các trường do hệ thống kiểm soát khi tạo mới
         $data['police_status'] = 'PENDING_POLICE_SUBMISSION';
         $data['reviewed_by'] = null;
         $data['reviewed_at'] = null;
 
-        return DB::transaction(function () use ($data) {
-            $registration = TemporaryRegistration::create($data);
-
-            return $registration->load([
-                'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
-                'apartment:id,apartment_number,block_id',
-                'reviewer:id,username,full_name',
-            ]);
+        $registration = DB::transaction(function () use ($data) {
+            return TemporaryRegistration::create($data);
         });
+
+        // Nạp relations SAU KHI commit transaction để giải phóng khóa CSDL lập tức
+        $created = $registration->load([
+            'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+            'reviewer:id,username,full_name',
+        ]);
+
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'CREATED', $created->id, [
+            'police_status' => $created->police_status,
+            'registration_type' => $created->registration_type,
+            'apartment_id' => $created->apartment_id,
+            'updated_at' => $created->updated_at?->toIso8601String(),
+        ]);
+
+        return $created;
     }
 
     /**
@@ -170,7 +198,9 @@ class TemporaryRegistrationService
      */
     public function update(string $id, array $data): TemporaryRegistration
     {
-        return DB::transaction(function () use ($id, $data) {
+        QuocTinRealtimeService::assertNotInCooldown('temporary_registrations');
+
+        $updated = DB::transaction(function () use ($id, $data) {
             $locked = TemporaryRegistration::where('id', $id)
                 ->lockForUpdate()
                 ->first();
@@ -210,12 +240,24 @@ class TemporaryRegistrationService
             $locked->fill($data);
             $locked->save();
 
-            return $locked->load([
-                'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
-                'apartment:id,apartment_number,block_id',
-                'reviewer:id,username,full_name',
-            ]);
+            return $locked;
         });
+
+        // Nạp relations SAU KHI commit transaction để giải phóng khóa giao dịch lập tức
+        $updated->load([
+            'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+            'reviewer:id,username,full_name',
+        ]);
+
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'UPDATED', $updated->id, [
+            'police_status' => $updated->police_status,
+            'registration_type' => $updated->registration_type,
+            'apartment_id' => $updated->apartment_id,
+            'updated_at' => $updated->updated_at?->toIso8601String(),
+        ]);
+
+        return $updated;
     }
 
     /**
@@ -225,7 +267,9 @@ class TemporaryRegistrationService
      */
     public function delete(string $id): bool
     {
-        return DB::transaction(function () use ($id) {
+        QuocTinRealtimeService::assertNotInCooldown('temporary_registrations');
+
+        $deleted = DB::transaction(function () use ($id) {
             $locked = TemporaryRegistration::where('id', $id)
                 ->lockForUpdate()
                 ->first();
@@ -239,13 +283,14 @@ class TemporaryRegistrationService
                 throw new TemporaryRegistrationConflictException('Không thể xóa hồ sơ đã được xử lý hoặc đã gửi Công An.', 409);
             }
 
-            $affected = TemporaryRegistration::where('id', $id)->delete();
-            if ($affected === 0) {
-                throw new TemporaryRegistrationNotFoundException('Hồ sơ đã được Admin khác xóa hoặc không còn tồn tại.');
-            }
-
-            return true;
+            return (bool) $locked->delete();
         });
+
+        if ($deleted) {
+            QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'DELETED', $id);
+        }
+
+        return $deleted;
     }
 
     /**
@@ -255,7 +300,9 @@ class TemporaryRegistrationService
      */
     public function approve(string $id, User $admin, ?string $notes = null, ?string $policeReferenceCode = null): TemporaryRegistration
     {
-        return DB::transaction(function () use ($id, $admin, $notes, $policeReferenceCode) {
+        QuocTinRealtimeService::assertNotInCooldown('temporary_registrations');
+
+        $approved = DB::transaction(function () use ($id, $admin, $notes, $policeReferenceCode) {
             $locked = TemporaryRegistration::where('id', $id)
                 ->lockForUpdate()
                 ->first();
@@ -286,12 +333,24 @@ class TemporaryRegistrationService
 
             $locked->save();
 
-            return $locked->load([
-                'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
-                'apartment:id,apartment_number,block_id',
-                'reviewer:id,username,full_name',
-            ]);
+            return $locked;
         });
+
+        // Nạp relations SAU KHI commit transaction để giải phóng khóa hàng ngay lập tức
+        $approved->load([
+            'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+            'reviewer:id,username,full_name',
+        ]);
+
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'APPROVED', $approved->id, [
+            'police_status' => 'APPROVED',
+            'registration_type' => $approved->registration_type,
+            'apartment_id' => $approved->apartment_id,
+            'updated_at' => $approved->updated_at?->toIso8601String(),
+        ]);
+
+        return $approved;
     }
 
     /**
@@ -301,7 +360,9 @@ class TemporaryRegistrationService
      */
     public function reject(string $id, User $admin, string $reason): TemporaryRegistration
     {
-        return DB::transaction(function () use ($id, $admin, $reason) {
+        QuocTinRealtimeService::assertNotInCooldown('temporary_registrations');
+
+        $rejected = DB::transaction(function () use ($id, $admin, $reason) {
             $locked = TemporaryRegistration::where('id', $id)
                 ->lockForUpdate()
                 ->first();
@@ -325,12 +386,24 @@ class TemporaryRegistrationService
 
             $locked->save();
 
-            return $locked->load([
-                'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
-                'apartment:id,apartment_number,block_id',
-                'reviewer:id,username,full_name',
-            ]);
+            return $locked;
         });
+
+        // Nạp relations SAU KHI commit transaction
+        $rejected->load([
+            'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+            'reviewer:id,username,full_name',
+        ]);
+
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'REJECTED', $rejected->id, [
+            'police_status' => 'REJECTED',
+            'registration_type' => $rejected->registration_type,
+            'apartment_id' => $rejected->apartment_id,
+            'updated_at' => $rejected->updated_at?->toIso8601String(),
+        ]);
+
+        return $rejected;
     }
 
     /**
@@ -340,7 +413,9 @@ class TemporaryRegistrationService
      */
     public function submitToPolice(string $id, User $admin, ?string $referenceCode = null, ?string $notes = null): TemporaryRegistration
     {
-        return DB::transaction(function () use ($id, $referenceCode, $notes) {
+        QuocTinRealtimeService::assertNotInCooldown('temporary_registrations');
+
+        $submitted = DB::transaction(function () use ($id, $referenceCode, $notes) {
             $locked = TemporaryRegistration::where('id', $id)
                 ->lockForUpdate()
                 ->first();
@@ -365,12 +440,24 @@ class TemporaryRegistrationService
 
             $locked->save();
 
-            return $locked->load([
-                'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
-                'apartment:id,apartment_number,block_id',
-                'reviewer:id,username,full_name',
-            ]);
+            return $locked;
         });
+
+        // Nạp relations SAU KHI commit transaction
+        $submitted->load([
+            'resident.user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+            'reviewer:id,username,full_name',
+        ]);
+
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'SUBMITTED', $submitted->id, [
+            'police_status' => 'SUBMITTED_TO_POLICE',
+            'registration_type' => $submitted->registration_type,
+            'apartment_id' => $submitted->apartment_id,
+            'updated_at' => $submitted->updated_at?->toIso8601String(),
+        ]);
+
+        return $submitted;
     }
 
     /**
