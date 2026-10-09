@@ -18,28 +18,48 @@ import {
 } from 'lucide-react';
 import { api, Amenity, AmenityBooking } from '../../Services/api';
 import { amenityCache } from '../../Services/amenityCache';
+import { AmenityPaymentDialog, paymentStatusNames } from '../AmenityPaymentDialog';
 
 interface AmenityBookingsModalProps {
   isOpen: boolean;
   amenity: Amenity | null;
   onClose: () => void;
+  initialSearch?: string;
 }
 
 export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   isOpen,
   amenity,
   onClose,
+  initialSearch = '',
 }) => {
   const [bookings, setBookings] = useState<AmenityBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const bookingRequest = useRef<AbortController | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [paymentFilter, setPaymentFilter] = useState('ALL');
+  const [paymentBooking, setPaymentBooking] = useState<AmenityBooking | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const rejectionDialog = useRef<HTMLDialogElement>(null);
+  const cancellationDialog = useRef<HTMLDialogElement>(null);
+  const bookingsDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (isOpen && amenity) bookingsDialog.current?.showModal();
+    else bookingsDialog.current?.close();
+  }, [isOpen, amenity]);
+  const [cancellation, setCancellation] = useState<AmenityBooking | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  useEffect(() => {
+    if (isOpen && cancellation) cancellationDialog.current?.showModal();
+    else cancellationDialog.current?.close();
+    if (!isOpen) setCancellation(null);
+  }, [isOpen, cancellation]);
 
   useEffect(() => {
     if (isOpen && rejectingId) rejectionDialog.current?.showModal();
@@ -49,29 +69,43 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
   const fetchBookings = useCallback(async (force = true) => {
     if (!amenity) return;
+    bookingRequest.current?.abort();
+    const controller = new AbortController();
+    bookingRequest.current = controller;
+    const cached = amenityCache.get<AmenityBooking[]>(`amenity:${amenity.id}:bookings`);
+    if (cached.exists && cached.data) setBookings(cached.data);
     try {
-      setLoading(true);
+      setLoading(!cached.exists);
+      setSyncing(true);
       setError(null);
-      const data = await api.getAmenityBookings(amenity.id, force);
-      setBookings(data);
+      const data = await api.getAmenityBookings(amenity.id, force, controller.signal);
+      if (!controller.signal.aborted) setBookings(data);
     } catch (err: any) {
-      setError(err?.message || 'Không thể tải danh sách đặt chỗ từ cơ sở dữ liệu.');
+      if (!controller.signal.aborted) {
+        if ([401, 403].includes(err?.status)) setBookings([]);
+        setError(err?.message || 'Không thể tải danh sách đặt chỗ từ cơ sở dữ liệu.');
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) { setLoading(false); setSyncing(false); }
     }
   }, [amenity]);
 
   useEffect(() => {
     if (isOpen && amenity) {
+      setSearch(initialSearch);
+      if (initialSearch) { setStatusFilter('ALL'); setPaymentFilter('ALL'); }
       setSuccessMessage(null);
       fetchBookings(true);
     } else {
       setBookings([]);
       setSearch('');
       setStatusFilter('ALL');
+      setPaymentFilter('ALL');
+      setPaymentBooking(null);
       setError(null);
     }
-  }, [isOpen, amenity, fetchBookings]);
+    return () => bookingRequest.current?.abort();
+  }, [isOpen, amenity, fetchBookings, initialSearch]);
 
   // Lắng nghe sự kiện đồng bộ đặt chỗ từ tab khác (Cross-Tab Synchronization)
   useEffect(() => {
@@ -98,9 +132,11 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
       setUpdatingId(bookingId);
       setError(null);
       setSuccessMessage(null);
-      await api.patchAmenityBookingStatus(amenity.id, bookingId, status, reason);
+      if (status === 'CANCELLED') await api.cancelAmenityBooking(amenity.id, bookingId, reason);
+      else await api.patchAmenityBookingStatus(amenity.id, bookingId, status, reason);
       setSuccessMessage(status === 'APPROVED' ? 'Đã duyệt đăng ký tiện ích thành công.' : status === 'REJECTED' ? 'Đã từ chối đăng ký tiện ích.' : status === 'CANCELLED' ? 'Đã hủy đăng ký tiện ích thành công.' : 'Đã cập nhật trạng thái đăng ký thành công.');
       if (status === 'REJECTED') setRejectingId(null);
+      if (status === 'CANCELLED') setCancellation(null);
       await fetchBookings(true);
     } catch (err: any) {
       setError(err?.message || 'Không thể cập nhật trạng thái đặt chỗ.');
@@ -120,25 +156,30 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
         b.resident_name.toLowerCase().includes(term) ||
         (b.apartment_number && b.apartment_number.toLowerCase().includes(term)) ||
         (b.resident_phone && b.resident_phone.includes(term));
-      return matchStatus && matchSearch;
+      return matchStatus && matchSearch && (paymentFilter === 'ALL' || b.payment?.status === paymentFilter);
     });
-  }, [bookings, search, statusFilter]);
+  }, [bookings, search, statusFilter, paymentFilter]);
 
   const stats = useMemo(() => {
     const total = bookings.length;
     const active = bookings.filter((b) =>
-      ['PENDING', 'APPROVED', 'CONFIRMED'].includes(b.status?.toUpperCase())
+      ['PENDING', 'APPROVED', 'CONFIRMED', 'CHECKED_IN'].includes(b.status?.toUpperCase())
     ).length;
     const totalAttendees = bookings.reduce((sum, b) => sum + (b.attendee_count || 1), 0);
-    const totalRevenue = bookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
-    return { total, active, totalAttendees, totalRevenue };
+    const totalReceived = bookings.reduce((sum, b) => sum + (b.payment?.received_amount ?? (b.is_paid ? b.total_amount + b.deposit_amount : 0)), 0);
+    const retained = bookings.filter((b) => b.is_paid && !b.payment?.refund_required && !['CANCELLED', 'REJECTED'].includes(b.status));
+    const feeReceived = retained.reduce((sum, b) => sum + b.total_amount, 0);
+    const depositsHeld = retained.reduce((sum, b) => sum + b.deposit_amount, 0);
+    const refundPending = bookings.filter((b) => b.payment?.refund_required || (!b.payment && b.is_paid && ['CANCELLED', 'REJECTED'].includes(b.status))).reduce((sum, b) => sum + (b.payment?.received_amount ?? b.total_amount + b.deposit_amount), 0);
+    const pending = bookings.filter((b) => b.status?.toUpperCase() === 'PENDING').length;
+    const bookingValue = bookings.filter((b) => !['CANCELLED', 'REJECTED'].includes(b.status)).reduce((sum, b) => sum + b.total_amount + b.deposit_amount, 0);
+    return { total, active, totalAttendees, totalReceived, feeReceived, depositsHeld, refundPending, pending, bookingValue };
   }, [bookings]);
 
   if (!isOpen || !amenity) return null;
 
   const formatCurrency = (val?: number | string) => {
     const num = Number(val) || 0;
-    if (num === 0) return 'Miễn phí';
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
 
@@ -185,17 +226,17 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-5xl bg-white/95 backdrop-blur-2xl border border-white/90 rounded-3xl shadow-2xl p-6 flex flex-col max-h-[92vh] overflow-hidden text-neutral-900 animate-in zoom-in-95">
+    <dialog ref={bookingsDialog} aria-labelledby="amenity-bookings-title" onCancel={(event) => { event.preventDefault(); if (!updatingId) onClose(); }} className="amenity-booking-controls m-auto w-[calc(100%-2rem)] max-w-5xl max-h-[92vh] rounded-3xl border-0 p-0 shadow-2xl backdrop:bg-slate-950/50">
+      <div className="relative w-full bg-white p-4 sm:p-6 flex flex-col max-h-[92vh] overflow-y-auto text-neutral-900">
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-neutral-200/80 gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-sky-50 border border-sky-200 text-sky-600 flex items-center justify-center shrink-0 shadow-xs">
               <Ticket className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-neutral-900">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 id="amenity-bookings-title" className="text-base sm:text-lg font-bold text-neutral-900">
                   Thông tin đặt chỗ: {amenity.amenity_name}
                 </h2>
                 <span className="font-mono text-xs px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 font-bold text-neutral-700">
@@ -214,15 +255,17 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
             <button
               type="button"
               onClick={() => fetchBookings()}
-              disabled={loading}
+              disabled={loading || syncing}
               className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 transition-all cursor-pointer"
               title="Làm mới dữ liệu từ Database"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading || syncing ? 'animate-spin' : ''}`} />
             </button>
             <button
               type="button"
               onClick={onClose}
+              aria-label="Đóng danh sách đăng ký"
+              disabled={Boolean(updatingId)}
               className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-all cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -245,14 +288,20 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
             <span className="text-lg font-extrabold text-emerald-900 mt-0.5 block">{stats.totalAttendees}</span>
           </div>
           <div className="p-3 bg-purple-50/80 border border-purple-100 rounded-2xl">
-            <span className="text-[11px] font-medium text-purple-600 block">Doanh thu ghi nhận</span>
+            <span className="text-[11px] font-medium text-purple-600 block">Đã nhận phí và cọc</span>
             <span className="text-sm font-extrabold text-purple-900 mt-1 block truncate">
-              {formatCurrency(stats.totalRevenue)}
+              {formatCurrency(stats.totalReceived)}
             </span>
           </div>
         </div>
 
         {successMessage && <p role="status" className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{successMessage}</p>}
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <button type="button" aria-pressed={statusFilter === 'PENDING'} onClick={() => { setStatusFilter(statusFilter === 'PENDING' ? 'ALL' : 'PENDING'); setPaymentFilter('ALL'); setSearch(''); }} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">Chờ duyệt ({stats.pending})</button>
+          <p className="text-xs text-neutral-500">Duyệt đăng ký trước, sau đó đối soát khoản thanh toán của cư dân.</p>
+        </div>
+        <dl className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-2 lg:grid-cols-4"><div><dt>Giá trị đăng ký chưa hủy (phí và cọc)</dt><dd className="mt-1 font-bold">{formatCurrency(stats.bookingValue)}</dd></div><div><dt>Phí đã thanh toán, còn hiệu lực</dt><dd className="mt-1 font-bold">{formatCurrency(stats.feeReceived)}</dd></div><div><dt>Tiền cọc đang giữ</dt><dd className="mt-1 font-bold">{formatCurrency(stats.depositsHeld)}</dd></div><div><dt>Cần xử lý hoàn tiền</dt><dd className="mt-1 font-bold text-amber-800">{formatCurrency(stats.refundPending)}</dd></div></dl>
+        {syncing && !loading && <p role="status" className="mb-2 text-xs text-neutral-500">Đang cập nhật dữ liệu từ máy chủ…</p>}
         {/* Filter Toolbar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-3">
           <div className="relative w-full sm:w-72">
@@ -266,18 +315,23 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <Filter className="w-3.5 h-3.5 text-neutral-400" />
+            <select aria-label="Lọc thanh toán tiện ích" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)} className="amenity-booking-select rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-1.5 text-xs"><option value="ALL">Tất cả thanh toán</option>{Object.entries(paymentStatusNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select
+              aria-label="Lọc trạng thái đăng ký"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-1.5 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
+              className="amenity-booking-select text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-1.5 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
             >
               <option value="ALL">Tất cả trạng thái</option>
               <option value="PENDING">Chờ duyệt</option>
               <option value="APPROVED">Đã duyệt</option>
+              <option value="CONFIRMED">Đã xác nhận</option>
+              <option value="CHECKED_IN">Đang sử dụng</option>
               <option value="COMPLETED">Hoàn tất</option>
               <option value="CANCELLED">Đã hủy</option>
+              <option value="REJECTED">Bị từ chối</option>
             </select>
           </div>
         </div>
@@ -291,8 +345,8 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
         )}
 
         {/* Bookings Table Body */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar border border-neutral-200/80 rounded-2xl bg-white">
-          <table className="w-full text-left border-collapse text-xs">
+        <div role="region" aria-label="Bảng đăng ký tiện ích" tabIndex={0} className="amenity-booking-table min-h-[180px] max-h-[55vh] flex-1 overflow-auto border border-neutral-200/80 rounded-2xl bg-white">
+          <table className="w-full min-w-[1100px] text-left border-collapse text-xs">
             <thead className="sticky top-0 bg-neutral-50/95 backdrop-blur-xs border-b border-neutral-200/80 text-[11px] font-bold text-neutral-600 uppercase tracking-wider z-10">
               <tr>
                 <th className="py-3 px-3.5">Mã Booking</th>
@@ -394,6 +448,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                     {/* Trạng thái */}
                     <td className="py-3 px-3 text-center whitespace-nowrap">
                       {getStatusBadge(b.status)}
+                      {b.payment && <p className="mt-2 text-[11px] text-neutral-600">{paymentStatusNames[b.payment.status]}</p>}
                     </td>
 
                     {/* Ghi chú */}
@@ -403,7 +458,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
                     {/* Thao tác */}
                     <td className="py-3 px-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex items-center justify-end gap-1.5">{b.payment && <button type="button" onClick={() => setPaymentBooking(b)} className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">Đối soát</button>}
                         {['PENDING'].includes(b.status?.toUpperCase()) && (
                           <button
                             type="button"
@@ -421,7 +476,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                           <button
                             type="button"
                             disabled={updatingId === b.id}
-                            onClick={() => handleUpdateStatus(b.id, 'CANCELLED')}
+                            onClick={() => { setCancellation(b); setCancelReason(''); setError(null); }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-[11px] transition-colors cursor-pointer disabled:opacity-50"
                             title="Hủy đặt chỗ này"
                           >
@@ -446,7 +501,9 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
             <div className="flex justify-end gap-2"><button type="button" disabled={Boolean(updatingId)} onClick={() => setRejectingId(null)} className="rounded-lg border px-3 py-2 text-sm">Đóng</button><button type="submit" disabled={Boolean(updatingId) || !rejectionReason.trim()} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{updatingId ? 'Đang xử lý…' : 'Xác nhận từ chối'}</button></div>
           </form>
         </dialog>
+        <dialog ref={cancellationDialog} aria-labelledby="amenity-cancellation-title" onCancel={(event) => { if (updatingId) event.preventDefault(); else setCancellation(null); }} onClose={() => setCancellation(null)} className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50"><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (cancellation && !updatingId) void handleUpdateStatus(cancellation.id, 'CANCELLED', cancelReason.trim()); }}><h3 id="amenity-cancellation-title" className="font-bold">Hủy đăng ký tiện ích</h3><p className="text-sm">Hủy {cancellation?.booking_code}? Chỗ đã đăng ký sẽ được giải phóng.</p>{(cancellation?.is_paid || cancellation?.payment?.received_amount || cancellation?.payment?.status === 'REPORTED') && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Cư dân đã thanh toán hoặc báo chuyển khoản. Bạn cần đối soát và xử lý hoàn tiền sau khi hủy.</p>}<label className="block space-y-2 text-sm">Lý do hủy của quản lý<textarea required maxLength={500} disabled={Boolean(updatingId)} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="w-full rounded-xl border border-neutral-200 p-3" /></label>{error && <p role="alert" className="text-sm text-rose-700">{error}</p>}<div className="flex justify-end gap-2"><button type="button" disabled={Boolean(updatingId)} onClick={() => setCancellation(null)} className="rounded-xl border px-3 py-2 text-sm">Giữ đăng ký</button><button type="submit" disabled={Boolean(updatingId) || !cancelReason.trim()} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{updatingId ? 'Đang hủy…' : 'Xác nhận hủy'}</button></div></form></dialog>
         {/* Footer */}
+        {paymentBooking && <AmenityPaymentDialog key={paymentBooking.id} manager booking={paymentBooking} onClose={() => setPaymentBooking(null)} onChanged={() => void fetchBookings(true)} />}
         <div className="mt-4 pt-3 border-t border-neutral-200/80 flex items-center justify-between text-xs text-neutral-500">
           <span>
             Hiển thị <strong className="text-neutral-900">{filteredBookings.length}</strong> / {bookings.length} lượt đặt chỗ
@@ -454,12 +511,13 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            disabled={Boolean(updatingId)}
             className="px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold transition-all cursor-pointer shadow-xs"
           >
             Đóng
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

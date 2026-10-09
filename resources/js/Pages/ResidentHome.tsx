@@ -32,7 +32,8 @@ import {
   Check,
   Compass
 } from 'lucide-react';
-import { api } from '../Services/api';
+import { api, AmenityBookingNotification } from '../Services/api';
+import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 
@@ -61,6 +62,18 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   userRole,
   residentType = 'OWNER',
 }) => {
+  const notices = useAmenityNotifications('resident');
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const openAmenityNotice = async (item: AmenityBookingNotification) => {
+    const target = new URL(item.deepLink, window.location.origin);
+    if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
+    window.history.pushState({}, '', '/cu-dan' + target.search);
+    setActiveMenuId('amenities');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    setIsNotificationOpen(false);
+    notices.setAlert(null);
+    await notices.markRead(item);
+  };
   const [activeMenuId, setActiveMenuId] = useState<string>(() => {
     try {
       const urlTab = new URLSearchParams(window.location.search).get('tab');
@@ -225,6 +238,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText={residentType === 'TENANT' ? 'Cổng khách thuê & tìm căn hộ' : 'Cổng dịch vụ cư dân trực tuyến'}
+      unreadNotificationCount={notices.unreadCount}
+      onNotificationClick={() => { setIsNotificationOpen((value) => !value); notices.retry(); }}
       extraTopbarActions={
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200/80 text-xs font-medium text-neutral-800 bg-white/85 backdrop-blur-md shadow-xs hover:border-sky-300 transition-colors">
           <Building className="w-3.5 h-3.5 text-sky-600" />
@@ -240,6 +255,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
         </div>
       }
     >
+      {notices.alert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{notices.alert.title}</p><p className="mt-1 text-xs text-neutral-600">{notices.alert.message}</p></div><button type="button" aria-label="Đóng cảnh báo tiện ích" onClick={() => notices.setAlert(null)} className="rounded-lg p-1"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openAmenityNotice(notices.alert!)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
+      {isNotificationOpen && <section aria-label="Thông báo tiện ích cư dân" className="fixed top-20 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-neutral-200 bg-white p-4 shadow-lg"><div className="flex justify-between"><h2 className="font-bold text-sm">Thông báo tiện ích · {notices.unreadCount} chưa đọc</h2><button type="button" aria-label="Đóng thông báo cư dân" onClick={() => setIsNotificationOpen(false)}><X className="h-4 w-4" /></button></div><label className="my-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo chưa đọc</label><div className="max-h-[45vh] space-y-2 overflow-y-auto">{notices.loading && <p role="status" className="text-xs">Đang tải thông báo…</p>}{notices.error && <p role="alert" className="text-xs text-rose-700">Không thể tải thông báo. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}{!notices.loading && !notices.error && notices.items.length === 0 && <p className="text-xs text-neutral-500">Chưa có thông báo tiện ích.</p>}{notices.items.map((item) => <button type="button" key={item.id} onClick={() => void openAmenityNotice(item)} className={`w-full rounded-xl border p-3 text-left text-xs ${item.isRead ? 'border-neutral-200' : 'border-emerald-200 bg-emerald-50'}`}><span className="block font-semibold">{item.title}</span><span className="mt-1 block">{item.message}</span><span className="mt-1 block text-neutral-500">{item.timeAgo}</span></button>)}</div><div className="mt-3 flex justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div></section>}
       <div className="p-6 sm:p-8 lg:p-10">
         {/* ================= VIEW 1: TÒA NHÀ & CĂN HỘ CHO THUÊ ================= */}
         {activeMenuId === 'rentals' ? (

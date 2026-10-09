@@ -75,6 +75,63 @@ export interface AmenityBooking {
   resident_notes?: string | null;
   admin_notes?: string | null;
   created_at: string;
+  payment?: AmenityBookingPayment | null;
+}
+
+export interface AmenityBookingPayment {
+  id: string;
+  booking_id: string;
+  reference: string;
+  amount: number;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  status: 'WAITING_APPROVAL' | 'PENDING' | 'REPORTED' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'REVIEW';
+  expires_at: string | null;
+  qr_url: string | null;
+  can_pay: boolean;
+  can_confirm: boolean;
+  refund_required: boolean;
+  bank_transaction_id: string | null;
+  received_amount: number | null;
+  received_at: string | null;
+  confirmed_at: string | null;
+  review_reason: string | null;
+  review_due_at?: string | null;
+  review_overdue?: boolean;
+}
+
+export interface AmenityBookingNotification {
+  id: string;
+  title: string;
+  message: string;
+  category: 'AMENITY_BOOKING' | 'AMENITY';
+  timeAgo: string;
+  isRead: boolean;
+  deepLink: string;
+}
+
+export interface AmenityNotificationFeed {
+  items: AmenityBookingNotification[];
+  unread_count: number;
+  page: number;
+  total_pages: number;
+  latest_unread?: AmenityBookingNotification | null;
+}
+
+export interface AmenityClosureImpact {
+  count: number;
+  received_amount: number;
+  reported_count: number;
+  confirmation_token: string;
+  items: { booking_code: string; booking_date: string; start_time: string; end_time: string }[];
+}
+
+export interface AmenityBookingWorklist {
+  items: Array<{ id: string; booking_code: string; amenity_id: string; amenity_name: string; resident_name: string; apartment_number: string; booking_date: string; start_time: string; end_time: string; review_overdue: boolean }>;
+  counts: Record<'PENDING' | 'REPORTED' | 'REVIEW', number>;
+  page: number;
+  total_pages: number;
 }
 
 export interface AmenityListResponse {
@@ -809,14 +866,21 @@ class ApiService {
     return result;
   }
 
-  async patchAmenityStatus(id: string, is_active: boolean, updated_at: string): Promise<Amenity> {
+  async getAmenityClosureImpact(id: string, period: { blackout_date?: string; start_time?: string | null; end_time?: string | null } = {}): Promise<AmenityClosureImpact> {
+    const query = new URLSearchParams();
+    Object.entries(period).forEach(([key, value]) => { if (value) query.set(key, value); });
+    return this.request(`/admin/amenities/${id}/closure-impact?${query}`, { cache: 'no-store' });
+  }
+
+  async patchAmenityStatus(id: string, is_active: boolean, updated_at: string, closure: { booking_action?: 'keep' | 'cancel'; reason?: string; confirmation_token?: string } = {}): Promise<Amenity> {
     const result = await this.request<Amenity>(`/admin/amenities/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active, updated_at }),
+      body: JSON.stringify({ is_active, updated_at, ...closure }),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
     amenityCache.broadcastMutation('AMENITY_STATUS_CHANGED', id);
+    if (closure.booking_action === 'cancel') { amenityCache.invalidateBookings(id); amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', id); }
     return result;
   }
 
@@ -927,6 +991,7 @@ class ApiService {
       start_time?: string | null;
       end_time?: string | null;
       reason: string;
+      confirmation_token?: string;
     }
   ): Promise<Blackout> {
     const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts`, {
@@ -934,6 +999,8 @@ class ApiService {
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, result.id);
     return result;
   }
@@ -946,6 +1013,7 @@ class ApiService {
       start_time?: string | null;
       end_time?: string | null;
       reason: string;
+      confirmation_token?: string;
     }
   ): Promise<Blackout> {
     const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
@@ -953,6 +1021,8 @@ class ApiService {
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
     return result;
   }
@@ -967,15 +1037,15 @@ class ApiService {
   }
 
   // ================= BOOKINGS =================
-  async getAmenityBookings(amenityId: string, forceRefresh: boolean = false): Promise<AmenityBooking[]> {
+  async getAmenityBookings(amenityId: string, forceRefresh: boolean = false, signal?: AbortSignal): Promise<AmenityBooking[]> {
     const key = `amenity:${amenityId}:bookings`;
     const lookup = amenityCache.get<AmenityBooking[]>(key);
     if (!forceRefresh && lookup.exists && lookup.data && lookup.isFresh) {
       return lookup.data;
     }
 
-    const bookings = await this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`);
-    amenityCache.set(key, bookings, null, 2 * 60 * 1000);
+    const bookings = await this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`, { signal, cache: 'no-store' });
+    if (!signal?.aborted) amenityCache.set(key, bookings, null, 2 * 60 * 1000);
     return bookings;
   }
 
@@ -1088,6 +1158,40 @@ class ApiService {
 
   async getResidentBooking(id: string, signal?: AbortSignal): Promise<ResidentAmenityBooking> {
     return this.request(`/resident/amenity-bookings/${id}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentBookingPayment(id: string, signal?: AbortSignal): Promise<{ payment: AmenityBookingPayment | null }> {
+    return this.request(`/resident/amenity-bookings/${id}/payment`, { signal, cache: 'no-store' });
+  }
+
+  async getAmenityNotifications(audience: 'resident' | 'admin', page: number, unread: boolean, signal?: AbortSignal): Promise<AmenityNotificationFeed> {
+    const path = audience === 'resident' ? '/resident/amenity-notifications' : '/admin/amenity-booking-notifications';
+    return this.request(`${path}?page=${page}&unread=${unread ? 1 : 0}`, { signal, cache: 'no-store' });
+  }
+
+  async readAmenityNotification(audience: 'resident' | 'admin', id: string): Promise<{ success: boolean }> {
+    const path = audience === 'resident' ? '/resident/amenity-notifications' : '/admin/amenity-booking-notifications';
+    return this.request(`${path}/${encodeURIComponent(id)}/read`, { method: 'POST' });
+  }
+
+  async getAmenityBookingWorklist(bucket: string, page: number, signal?: AbortSignal): Promise<AmenityBookingWorklist> {
+    return this.request(`/admin/amenity-booking-worklist?bucket=${encodeURIComponent(bucket)}&page=${page}`, { signal, cache: 'no-store' });
+  }
+
+  async reportResidentBookingPayment(booking: Pick<AmenityBooking, 'id' | 'amenity_id'>): Promise<{ payment: AmenityBookingPayment }> {
+    const result = await this.request<{ payment: AmenityBookingPayment }>(`/resident/amenity-bookings/${booking.id}/payment/report`, { method: 'POST' });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
+  }
+
+  async decideAmenityBookingPayment(booking: Pick<AmenityBooking, 'id' | 'amenity_id'>, payload: { bank_transaction_id: string; received_amount: number; received_at: string } | { reason: string }): Promise<{ payment: AmenityBookingPayment }> {
+    const action = 'reason' in payload ? 'reject' : 'confirm';
+    const result = await this.request<{ payment: AmenityBookingPayment }>(`/admin/amenities/${booking.amenity_id}/bookings/${booking.id}/payment/${action}`, { method: 'POST', body: JSON.stringify(payload) });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
   }
 
   async cancelResidentBooking(booking: ResidentAmenityBooking, reason: string): Promise<{ success: boolean; booking: ResidentAmenityBooking }> {
