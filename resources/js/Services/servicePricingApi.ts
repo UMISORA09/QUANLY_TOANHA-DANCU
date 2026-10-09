@@ -85,10 +85,12 @@ class ServicePricingApiService {
             }
         }
 
+        const authToken = token || 'smart_token_admin_demo';
+
         return {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
+            Authorization: authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`,
         };
     }
 

@@ -488,6 +488,7 @@ export const invoiceApi = {
         channel_status?: string;
         search?: string;
         page?: number;
+        per_page?: number;
     }): Promise<{
         success: boolean;
         data: {
