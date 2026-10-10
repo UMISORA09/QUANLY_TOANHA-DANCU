@@ -29,6 +29,8 @@ import {
   Trash2
 } from 'lucide-react';
 import { api, TemporaryRegistrationItem, ApartmentSummaryItem, ResidentItem } from '../../Services/api';
+import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
+import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
 
 interface TemporaryRegistrationManagementProps {
   embedded?: boolean;
@@ -37,12 +39,25 @@ interface TemporaryRegistrationManagementProps {
 export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationManagementProps> = ({
   embedded = false,
 }) => {
+  const { isCooldownActive, remainingSeconds, message: cooldownMessage, startCooldown } = useModuleCooldown('temporary_registrations');
+
+  // Đọc snapshot lưu trong sessionStorage để hiển thị tức thì (0ms) cho lần tải thứ 2
+  const getCachedData = () => {
+    try {
+      const raw = sessionStorage.getItem('smartcassavas_tempreg_list_cache');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const cachedData = getCachedData();
+
   // State danh sách & phân trang
-  const [registrations, setRegistrations] = useState<TemporaryRegistrationItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [registrations, setRegistrations] = useState<TemporaryRegistrationItem[]>(() => (Array.isArray(cachedData?.data) ? cachedData.data : []));
+  const [loading, setLoading] = useState<boolean>(() => !cachedData);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages, setTotalPages] = useState<number>(1);
-  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(() => cachedData?.meta?.last_page || 1);
+  const [totalCount, setTotalCount] = useState<number>(() => cachedData?.meta?.total || 0);
   const [perPage, setPerPage] = useState<number>(15);
 
   // State bộ lọc & tìm kiếm
@@ -107,24 +122,30 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Search Debounce State
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const searchAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setCurrentPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const showToast = (type: 'success' | 'error', text: string) => {
     setToastMessage({ type, text });
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // 1. Tải danh sách căn hộ & cư dân phục vụ lọc và tạo mới
+  // 1. Tải danh sách căn hộ phục vụ bộ lọc (KHÔNG tải cư dân khi mở trang để tối ưu tốc độ)
   useEffect(() => {
     api.getApartmentsForFilter()
       .then((res) => {
         if (res.data) setApartments(res.data);
       })
       .catch((err) => console.error('Lỗi tải danh sách căn hộ:', err));
-
-    api.getResidents({ limit: 100 })
-      .then((res) => {
-        if (res.data) setAllResidents(res.data);
-      })
-      .catch((err) => console.error('Lỗi tải danh sách cư dân:', err));
   }, []);
 
   // Ref lưu ID request mới nhất để chống Race Condition khi chuyển trang / tìm kiếm nhanh
@@ -134,17 +155,24 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
   const fetchRegistrations = useCallback(async (pageOverride?: number) => {
     const pageToFetch = pageOverride ?? currentPage;
     const currentRequestId = ++latestRequestIdRef.current;
+
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     setLoading(true);
 
     try {
       const res = await api.getTemporaryRegistrations({
         page: pageToFetch,
         limit: perPage,
-        search: search.trim(),
+        search: debouncedSearch.trim(),
         registration_type: filterType,
         police_status: filterStatus,
         apartment_id: filterApartmentId,
-      });
+      }, { signal: controller.signal });
 
       // Kiểm tra Race condition: Chỉ cập nhật state nếu đây là response của request mới nhất
       if (currentRequestId !== latestRequestIdRef.current) {
@@ -162,10 +190,18 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
           if (res.meta.total > 0 && pageToFetch > lastPage) {
             setCurrentPage(lastPage);
           }
+
+          if (pageToFetch === 1 && !debouncedSearch.trim() && !filterType && !filterStatus && !filterApartmentId) {
+            try {
+              sessionStorage.setItem('smartcassavas_tempreg_list_cache', JSON.stringify({ data: res.data, meta: res.meta }));
+            } catch {
+              // ignore
+            }
+          }
         }
       }
     } catch (err: any) {
-      if (currentRequestId === latestRequestIdRef.current) {
+      if (err?.name !== 'AbortError' && currentRequestId === latestRequestIdRef.current) {
         showToast('error', err.message || 'Không thể tải danh sách hồ sơ.');
       }
     } finally {
@@ -173,11 +209,59 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
         setLoading(false);
       }
     }
-  }, [currentPage, perPage, search, filterType, filterStatus, filterApartmentId]);
+  }, [currentPage, perPage, debouncedSearch, filterType, filterStatus, filterApartmentId]);
 
   useEffect(() => {
     fetchRegistrations();
   }, [fetchRegistrations]);
+
+  // Realtime Auto-Sync Listener (Quốc Tín - Temporary Registration)
+  useRealtimeSync({
+    channel: 'quoc-tin.temporary-registrations',
+    onEvent: (event) => {
+      // 0. Cập nhật state in-memory ngay lập tức
+      if (event.action === 'DELETED' && event.entity_id) {
+        setRegistrations((prev) => prev.filter((item) => item.id !== event.entity_id));
+        setTotalCount((prev) => Math.max(0, prev - 1));
+      } else if ((event.action === 'APPROVED' || event.action === 'REJECTED') && event.entity_id) {
+        setRegistrations((prev) =>
+          prev.map((item) =>
+            item.id === event.entity_id
+              ? {
+                  ...item,
+                  police_status: event.police_status || (event.action === 'APPROVED' ? 'APPROVED' : 'REJECTED'),
+                  approval_status: event.action,
+                }
+              : item
+          )
+        );
+      }
+
+      // 1. Invalidate cache
+      try {
+        sessionStorage.removeItem('smartcassavas_tempreg_list_cache');
+      } catch {
+        // ignore
+      }
+
+      // 2. Refetch danh sách hồ sơ (bảo toàn filter, search, page)
+      fetchRegistrations();
+
+      // 3. Nếu đang mở modal chi tiết của hồ sơ vừa cập nhật/duyệt/từ chối -> cập nhật modal ngay
+      if (selectedItem && selectedItem.id === event.entity_id) {
+        api.getTemporaryRegistrationById(selectedItem.id)
+          .then((res: any) => {
+            if (res && res.data) {
+              setSelectedItem(res.data);
+            }
+          })
+          .catch(() => {});
+      }
+    },
+    onReconnect: () => {
+      fetchRegistrations();
+    },
+  });
 
   // Khi chọn căn hộ trong modal tạo mới -> Tải danh sách cư dân của căn hộ đó
   useEffect(() => {
@@ -199,12 +283,25 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
       .finally(() => setLoadingResidents(false));
   }, [createForm.apartment_id]);
 
+  // Lazy load cư dân chỉ khi mở modal tạo mới mà chưa chọn căn hộ (KHÔNG tải khi mở trang)
+  useEffect(() => {
+    if (isCreateModalOpen && allResidents.length === 0 && !createForm.apartment_id) {
+      setLoadingResidents(true);
+      api.getResidents({ limit: 50 })
+        .then((res) => {
+          if (res.data) setAllResidents(res.data);
+        })
+        .catch((err) => console.error('Lỗi tải cư dân:', err))
+        .finally(() => setLoadingResidents(false));
+    }
+  }, [isCreateModalOpen, allResidents.length, createForm.apartment_id]);
+
   // Danh sách cư dân khả dụng để chọn trong modal tạo mới (hỗ trợ lọc theo căn hộ và tìm kiếm nhanh)
   const availableResidents = useMemo(() => {
-    let list = createForm.apartment_id ? apartmentResidents : allResidents;
+    let list: ResidentItem[] = createForm.apartment_id ? apartmentResidents : allResidents;
     if (residentSearchKeyword.trim()) {
       const kw = residentSearchKeyword.trim().toLowerCase();
-      list = list.filter((r) => {
+      list = list.filter((r: ResidentItem) => {
         const name = r.user?.full_name?.toLowerCase() || '';
         const phone = r.user?.phone_number?.toLowerCase() || '';
         const cccd = r.user?.national_id_number?.toLowerCase() || '';
@@ -217,7 +314,7 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
 
   // Xử lý khi chọn cư dân -> Tự động điền căn hộ tương ứng nếu chưa chọn
   const handleSelectResident = (residentId: string) => {
-    const found = allResidents.find((r) => r.id === residentId) || apartmentResidents.find((r) => r.id === residentId);
+    const found = allResidents.find((r: ResidentItem) => r.id === residentId) || apartmentResidents.find((r: ResidentItem) => r.id === residentId);
     if (found) {
       setCreateForm((prev) => ({
         ...prev,
@@ -581,13 +678,26 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
               setFormErrors({});
               setIsCreateModalOpen(true);
             }}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 hover:from-indigo-600 hover:to-sky-600 text-white font-bold shadow-lg shadow-indigo-500/25 transition active:scale-95"
+            disabled={isCooldownActive}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition shadow-lg ${
+              isCooldownActive
+                ? 'bg-indigo-900/60 opacity-60 cursor-not-allowed text-slate-300'
+                : 'bg-gradient-to-r from-indigo-500 to-sky-500 hover:from-indigo-600 hover:to-sky-600 text-white shadow-indigo-500/25 active:scale-95'
+            }`}
+            title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Tạo Hồ Sơ Mới'}
           >
             <Plus className="w-4 h-4" />
             <span>Tạo Hồ Sơ Mới</span>
           </button>
         </div>
       </div>
+
+      {/* Cooldown Banner */}
+      <CooldownBanner
+        isCooldownActive={isCooldownActive}
+        remainingSeconds={remainingSeconds}
+        customMessage={cooldownMessage}
+      />
 
       {/* Metric Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -651,10 +761,7 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
             <input
               type="text"
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm theo Tên cư dân, CCCD/CMND, SĐT, Căn hộ, Mã tham chiếu CA..."
               className="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
             />
@@ -872,15 +979,25 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
                             <>
                               <button
                                 onClick={() => handleOpenEdit(item)}
-                                className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-600 hover:text-amber-600 transition"
-                                title="Chỉnh sửa hồ sơ"
+                                disabled={isCooldownActive}
+                                className={`p-1.5 rounded-lg transition ${
+                                  isCooldownActive
+                                    ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                                    : 'hover:bg-amber-50 text-slate-600 hover:text-amber-600'
+                                }`}
+                                title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Chỉnh sửa hồ sơ'}
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleOpenDelete(item)}
-                                className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition"
-                                title="Xóa hồ sơ"
+                                disabled={isCooldownActive}
+                                className={`p-1.5 rounded-lg transition ${
+                                  isCooldownActive
+                                    ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                                    : 'hover:bg-rose-50 text-slate-600 hover:text-rose-600'
+                                }`}
+                                title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Xóa hồ sơ'}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -1078,7 +1195,7 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
                           : `-- Chọn cư dân (${availableResidents.length} người, tự điền căn hộ) --`}
                       </option>
                     )}
-                    {availableResidents.map((r) => (
+                    {availableResidents.map((r: ResidentItem) => (
                       <option key={r.id} value={r.id}>
                         {r.user?.full_name || 'N/A'} {r.apartment?.apartment_number ? `(Căn ${r.apartment.apartment_number})` : ''} - CCCD: {r.user?.national_id_number || 'Chưa có'} {r.user?.phone_number ? `- SĐT: ${r.user.phone_number}` : ''}
                       </option>

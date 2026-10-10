@@ -44,9 +44,10 @@ import {
   Compass,
   Terminal,
   UserPlus,
-  Car
+  Car,
+  History,
+  CreditCard
 } from 'lucide-react';
-import { Building3DModel } from '../Components/Building3DModel';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';
 import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
@@ -55,6 +56,15 @@ import { ResidentManagement } from './Admin/ResidentManagement';
 import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
 import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
 import { VehicleManagement } from './Admin/VehicleManagement';
+import { ServicePricingManagement } from './Admin/ServicePricingManagement';
+import { MeterReadingManagement } from './Admin/MeterReadingManagement';
+import { InvoiceBatchGeneration } from './Admin/InvoiceBatchGeneration';
+import { InvoiceManagement } from './Admin/InvoiceManagement';
+import { PaymentHistoryManagement } from './Admin/PaymentHistoryManagement';
+import { RevenueAnalyticsDashboard } from './Admin/RevenueAnalyticsDashboard';
+import { FinancialReportManagement } from './Admin/FinancialReportManagement';
+import { InvoiceNavTabs } from '../Components/Admin/InvoiceNavTabs';
+import { RfidManagement } from './Admin/RfidManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -155,11 +165,104 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     ) {
       return 'account_provisioning';
     }
+    if (
+      path === '/quan-ly/rfid-cards' ||
+      path === '/admin/rfid-cards' ||
+      path.includes('rfid-cards')
+    ) {
+      return 'rfid_cards';
+    }
+    if (
+      path === '/quan-ly/blocks' ||
+      path === '/admin/blocks' ||
+      path === '/quan-ly/khoi-toa-nha' ||
+      path === '/admin/khoi-toa-nha' ||
+      path.startsWith('/quan-ly/blocks') ||
+      path.startsWith('/admin/blocks')
+    ) {
+      return 'blocks';
+    }
+    if (
+      path === '/quan-ly/apartments' ||
+      path === '/admin/apartments' ||
+      path === '/quan-ly/can-ho' ||
+      path === '/admin/can-ho' ||
+      path === '/quan-ly/floors' ||
+      path === '/admin/floors' ||
+      path.startsWith('/quan-ly/apartments') ||
+      path.startsWith('/admin/apartments')
+    ) {
+      return 'apartments';
+    }
+    if (
+      path === '/quan-ly/buildings' ||
+      path === '/admin/buildings' ||
+      path.startsWith('/quan-ly/buildings') ||
+      path.startsWith('/admin/buildings')
+    ) {
+      return 'blocks';
+    }
+    if (
+      path === '/quan-ly/chot-chi-so' ||
+      path === '/admin/meter-readings' ||
+      path === '/quan-ly/meter-readings' ||
+      path.startsWith('/quan-ly/chot-chi-so') ||
+      path.startsWith('/admin/meter-readings')
+    ) {
+      return 'meter_readings';
+    }
+    if (
+      path === '/quan-ly/hoa-don' ||
+      path === '/admin/hoa-don' ||
+      path === '/quan-ly/invoices' ||
+      path === '/admin/invoices' ||
+      path.startsWith('/quan-ly/hoa-don') ||
+      path.startsWith('/quan-ly/invoices')
+    ) {
+      return 'invoices';
+    }
+    if (
+      path === '/quan-ly/sinh-hoa-don' ||
+      path === '/admin/sinh-hoa-don' ||
+      path === '/quan-ly/invoice-generation' ||
+      path === '/admin/invoice-generation' ||
+      path.startsWith('/quan-ly/sinh-hoa-don')
+    ) {
+      return 'invoice_generation';
+    }
+    if (
+      path === '/quan-ly/lich-su-giao-dich' ||
+      path === '/admin/lich-su-giao-dich' ||
+      path === '/quan-ly/payment-history' ||
+      path === '/admin/payment-history' ||
+      path.startsWith('/quan-ly/lich-su-giao-dich')
+    ) {
+      return 'payment_history';
+    }
+    if (
+      path === '/quan-ly/thong-ke-doanh-thu' ||
+      path === '/admin/thong-ke-doanh-thu' ||
+      path === '/quan-ly/revenue-analytics' ||
+      path === '/admin/revenue-analytics' ||
+      path.startsWith('/quan-ly/thong-ke-doanh-thu')
+    ) {
+      return 'revenue_analytics';
+    }
+    if (
+      path === '/quan-ly/bao-cao-tai-chinh' ||
+      path === '/admin/bao-cao-tai-chinh' ||
+      path === '/quan-ly/financial-reports' ||
+      path === '/admin/financial-reports' ||
+      path.startsWith('/quan-ly/bao-cao-tai-chinh')
+    ) {
+      return 'financial_reports';
+    }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
     if (tabParam) {
+      if (tabParam === 'buildings') return 'blocks';
       return tabParam;
     }
 
@@ -194,7 +297,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
-  const [is3DModelOpen, setIs3DModelOpen] = useState<boolean>(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketItem | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [chartActiveBar, setChartActiveBar] = useState<number | null>(5); // Default to T8
@@ -392,15 +494,21 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     () => {
       const baseItems = [
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
-        { id: 'buildings', label: 'Khối / Tòa nhà & Căn hộ', icon: Building2, badge: null },
-        { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'blocks', label: 'Khối / Tòa nhà', icon: Building2, badge: null },
+        { id: 'apartments', label: 'Tầng & Căn hộ', icon: Layers, badge: null },
+        { id: 'residents', label: 'Chủ hộ & Nhân khẩu căn hộ', icon: Users, badge: kpis.totalResidents },
         { id: 'vehicles', label: 'Phương tiện (Xe)', icon: Car, badge: null },
+        { id: 'rfid_cards', label: 'Quản lý thẻ RFID', icon: CreditCard, badge: null },
         { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto' },
-        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
+        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'CT01' },
         { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: String(kpis.amenityBookings) },
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
-        { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
+        { id: 'invoices', label: 'Quản lý Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
+        { id: 'invoice_generation', label: 'Sinh Hóa đơn Tự động', icon: Layers, badge: 'Auto' },
+        { id: 'payment_history', label: 'Lịch sử Giao dịch', icon: History, badge: null },
+        { id: 'revenue_analytics', label: 'Dashboard Doanh thu', icon: TrendingUp, badge: 'Chart' },
+        { id: 'financial_reports', label: 'Báo cáo Tài chính', icon: FileSpreadsheet, badge: 'Excel/PDF' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
         { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${unreadNotificationCount} mới` },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
@@ -647,14 +755,24 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: id }, '', `${basePath}?tab=temporary_registrations`);
     } else if (id === 'vehicles') {
       window.history.pushState({ tab: id }, '', `${basePath}?tab=vehicles`);
+    } else if (id === 'rfid_cards') {
+      window.history.pushState({ tab: id }, '', `${basePath}?tab=rfid_cards`);
+    } else if (id === 'invoices' || id === 'hoa_don') {
+      window.history.pushState({ tab: 'invoices' }, '', `${basePath}/hoa-don`);
+    } else if (id === 'invoice_generation' || id === 'sinh_hoa_don') {
+      window.history.pushState({ tab: 'invoice_generation' }, '', `${basePath}/sinh-hoa-don`);
+    } else if (id === 'payment_history' || id === 'lich_su_giao_dich') {
+      window.history.pushState({ tab: 'payment_history' }, '', `${basePath}/lich-su-giao-dich`);
+    } else if (id === 'revenue_analytics' || id === 'thong_ke_doanh_thu') {
+      window.history.pushState({ tab: 'revenue_analytics' }, '', `${basePath}/thong-ke-doanh-thu`);
+    } else if (id === 'financial_reports' || id === 'bao_cao_tai_chinh') {
+      window.history.pushState({ tab: 'financial_reports' }, '', `${basePath}/bao-cao-tai-chinh`);
     } else if (id === 'overview') {
       window.history.pushState({ tab: id }, '', basePath);
     } else {
       window.history.pushState({ tab: id }, '', `${basePath}?tab=${id}`);
     }
-    if (id === 'buildings') {
-      setIs3DModelOpen(true);
-    } else if (id !== 'overview') {
+    if (id !== 'overview') {
       showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === id)?.label}`);
     }
   };
@@ -683,16 +801,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       unreadNotificationCount={unreadNotificationCount}
       extraTopbarActions={
         <>
-          {/* Quick 3D Building Toggle */}
-          <button
-            type="button"
-            onClick={() => setIs3DModelOpen(true)}
-            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-sky-700 border border-sky-100 shadow-xs hover:shadow-sm transition-all cursor-pointer"
-            title="Xem mô hình 3D tòa nhà"
-          >
-            <Layers className="w-3.5 h-3.5 text-sky-500 animate-pulse-subtle" />
-            <span>Mô hình 3D</span>
-          </button>
 
           {/* Building Selector Dropdown */}
           <div className="relative">
@@ -822,9 +930,15 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ResidentManagement embedded={true} />
             </div>
-          ) : activeMenuId === 'buildings' ? (
+          ) : activeMenuId === 'blocks' || activeMenuId === 'apartments' || activeMenuId === 'buildings' ? (
             <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
-              <BuildingListManagement />
+              <BuildingListManagement
+                activeSection={activeMenuId === 'apartments' ? 'apartments' : 'blocks'}
+                onNavigateSection={(sec) => {
+                  setActiveMenuId(sec);
+                  window.history.pushState({ tab: sec }, '', `${window.location.pathname}?tab=${sec}`);
+                }}
+              />
             </div>
           ) : activeMenuId === 'temporary_registrations' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
@@ -837,6 +951,43 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'vehicles' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <VehicleManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'don_gia' || activeMenuId === 'pricing' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <ServicePricingManagement />
+            </div>
+          ) : activeMenuId === 'meter_readings' || activeMenuId === 'chot_chi_so' || activeMenuId === 'metering' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <MeterReadingManagement />
+            </div>
+          ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="invoices" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <InvoiceManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
+            </div>
+          ) : activeMenuId === 'sinh_hoa_don' || activeMenuId === 'invoice_generation' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="invoice_generation" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <InvoiceBatchGeneration />
+            </div>
+          ) : activeMenuId === 'payment_history' || activeMenuId === 'lich_su_giao_dich' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="payment_history" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <PaymentHistoryManagement />
+            </div>
+          ) : activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="revenue_analytics" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <RevenueAnalyticsDashboard onBackToList={() => handleMenuClick('invoices')} />
+            </div>
+          ) : activeMenuId === 'financial_reports' || activeMenuId === 'bao_cao_tai_chinh' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="financial_reports" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <FinancialReportManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
+          ) : activeMenuId === 'rfid_cards' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <RfidManagement embedded={true} />
+            </div>
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">
@@ -1479,36 +1630,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: MÔ HÌNH 3D TÒA NHÀ (INTERACTIVE 3D VIEWER)
-          ======================================================== */}
-      {is3DModelOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-5xl h-[85vh] rounded-3xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl overflow-hidden flex flex-col relative">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-sky-500 text-white flex items-center justify-center shadow-sm">
-                  <Layers className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-neutral-900">Mô hình phân tầng 3D Tòa nhà</h3>
-                  <p className="text-[11px] text-slate-400">Khối / Tòa nhà & Căn hộ trực quan</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIs3DModelOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 custom-scrollbar">
-              <Building3DModel />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ================= TOAST NOTIFICATION ================= */}
       {toastMessage && (

@@ -101,7 +101,7 @@ class AmenityClosureTest extends TestCase
         $id = $this->booking();
         $edge = $this->copyBooking($id, ['start_time' => '09:00', 'end_time' => '10:30']);
         $outside = $this->copyBooking($id, ['start_time' => '12:00', 'end_time' => '13:00']);
-        $otherDay = $this->copyBooking($id, ['booking_date' => today()->addDays(2)->toDateString()]);
+        $otherDay = $this->copyBooking($id, ['booking_date' => today()->addDays(3)->toDateString()]);
         $period = ['blackout_date' => $this->bookingDate, 'start_time' => '10:30', 'end_time' => '12:00', 'reason' => 'Thay thiết bị'];
         $token = $this->getJson($this->url().'/closure-impact?'.http_build_query($period))->assertOk()->assertJsonPath('count', 1)->json('confirmation_token');
         $this->postJson($this->url().'/blackouts', $period)->assertConflict();

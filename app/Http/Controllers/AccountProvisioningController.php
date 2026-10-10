@@ -262,7 +262,7 @@ class AccountProvisioningController extends Controller
             'full_name' => $user->full_name,
             'email' => $user->email,
             'message' => $isActivated
-                ? 'Tài khoản này đã được xác nhận và kích hoạt thành công trước đó.'
+                ? 'Đã kích hoạt tài khoản bạn vui lòng đăng nhập.'
                 : 'Tài khoản đang chờ thiết lập mật khẩu.',
         ], Response::HTTP_OK);
     }

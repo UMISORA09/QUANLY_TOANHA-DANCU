@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\Models\Apartment;
 use App\Models\Resident;
+use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -28,10 +31,28 @@ class ResidentService
         $sortOrder = strtolower((string) ($params['sort_order'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
         $perPage = min(max((int) ($params['limit'] ?? 15), 5), 100);
 
-        $query = Resident::query()->with([
-            'user:id,username,full_name,phone_number,email,national_id_number,avatar_url,status',
-            'apartment:id,apartment_number,block_id,floor_id,status',
-        ]);
+        $columns = [
+            'residents.id',
+            'residents.user_id',
+            'residents.apartment_id',
+            'residents.resident_type',
+            'residents.is_head_of_household',
+            'residents.stay_start_date',
+            'residents.stay_end_date',
+            'residents.relationship_to_head',
+            'residents.occupation',
+            'residents.vehicle_count',
+            'residents.is_active',
+            'residents.created_at',
+            'residents.updated_at',
+        ];
+
+        $query = Resident::query()
+            ->select($columns)
+            ->with([
+                'user:id,username,full_name,phone_number,email,national_id_number,avatar_url,status',
+                'apartment:id,apartment_number,block_id,floor_id,status',
+            ]);
 
         // 1. Tìm kiếm theo Họ tên, Số điện thoại, CCCD/CMND, Email hoặc Số căn hộ
         if ($search !== '') {
@@ -49,37 +70,37 @@ class ResidentService
 
         // 2. Lọc theo căn hộ
         if ($apartmentId !== '') {
-            $query->where('apartment_id', $apartmentId);
+            $query->where('residents.apartment_id', $apartmentId);
         }
 
         // 3. Lọc theo loại cư dân (OWNER, TENANT, FAMILY_MEMBER)
         if ($residentType !== '') {
-            $query->where('resident_type', strtoupper($residentType));
+            $query->where('residents.resident_type', strtoupper($residentType));
         }
 
         // 4. Lọc theo trạng thái hoạt động (Active/Inactive)
         if ($isActive !== null) {
-            $query->where('is_active', $isActive ? 1 : 0);
+            $query->where('residents.is_active', $isActive ? 1 : 0);
         }
 
         // 5. Lọc theo vai trò chủ hộ
         if ($isHead !== null) {
-            $query->where('is_head_of_household', $isHead ? 1 : 0);
+            $query->where('residents.is_head_of_household', $isHead ? 1 : 0);
         }
 
         // 6. Sắp xếp
         if ($sortBy === 'full_name') {
             $query->join('users', 'residents.user_id', '=', 'users.id')
                 ->orderBy('users.full_name', $sortOrder)
-                ->select('residents.*');
+                ->select($columns);
         } elseif ($sortBy === 'apartment_number') {
             $query->join('apartments', 'residents.apartment_id', '=', 'apartments.id')
                 ->orderBy('apartments.apartment_number', $sortOrder)
-                ->select('residents.*');
+                ->select($columns);
         } elseif (in_array($sortBy, ['created_at', 'stay_start_date', 'stay_end_date', 'vehicle_count'], true)) {
-            $query->orderBy($sortBy, $sortOrder);
+            $query->orderBy('residents.'.$sortBy, $sortOrder);
         } else {
-            $query->orderBy('stay_start_date', 'desc');
+            $query->orderBy('residents.stay_start_date', 'desc');
         }
 
         return $query->paginate($perPage);
@@ -131,53 +152,92 @@ class ResidentService
      */
     public function create(array $data): Resident
     {
+        QuocTinRealtimeService::assertNotInCooldown('residents');
+
         $apartmentId = $data['apartment_id'];
         $userId = $data['user_id'];
         $isHead = ! empty($data['is_head_of_household']);
 
-        // 1. Kiểm tra cư dân đã tồn tại trong căn hộ chưa (tránh trùng lặp)
-        $existingResident = Resident::where('apartment_id', $apartmentId)
+        // 1. Kiểm tra cư dân đã tồn tại trong căn hộ chưa bằng index seek siêu nhẹ (không hydrate model)
+        $alreadyExists = Resident::where('apartment_id', $apartmentId)
             ->where('user_id', $userId)
-            ->first();
+            ->exists();
 
-        if ($existingResident) {
+        if ($alreadyExists) {
             throw ValidationException::withMessages([
                 'user_id' => 'Người dùng này đã được đăng ký cư trú tại căn hộ này.',
             ]);
         }
 
-        // 2. Kiểm tra quy tắc Chủ hộ: Một căn hộ chỉ có duy nhất 1 chủ hộ active
+        // 2. Kiểm tra quy tắc Chủ hộ: Chỉ đọc user_id qua composite index idx_residents_apt_active_head
         if ($isHead) {
-            $existingHead = Resident::with('user')
-                ->where('apartment_id', $apartmentId)
-                ->where('is_head_of_household', 1)
+            $existingHeadUserId = Resident::where('apartment_id', $apartmentId)
                 ->where('is_active', 1)
-                ->first();
+                ->where('is_head_of_household', 1)
+                ->value('user_id');
 
-            if ($existingHead) {
-                $headName = $existingHead->user?->full_name ?? 'Cư dân hiện tại';
+            if ($existingHeadUserId) {
+                $headName = User::where('id', $existingHeadUserId)->value('full_name') ?? 'Cư dân hiện tại';
                 throw ValidationException::withMessages([
                     'is_head_of_household' => "Căn hộ này đã có Chủ hộ đang hoạt động ({$headName}). Mỗi căn hộ chỉ được có duy nhất một chủ hộ.",
                 ]);
             }
         }
 
-        return DB::transaction(function () use ($data, $isHead) {
-            if ($isHead && empty($data['relationship_to_head'])) {
-                $data['relationship_to_head'] = 'SELF';
+        $resident = DB::transaction(function () use ($data, $isHead, $apartmentId) {
+            if ($isHead) {
+                // Khóa căn hộ để chống race condition khi 2 admin cùng thêm chủ hộ đồng thời
+                DB::table('apartments')->where('id', $apartmentId)->lockForUpdate()->first();
+
+                $existingHeadUserId = Resident::where('apartment_id', $apartmentId)
+                    ->where('is_active', 1)
+                    ->where('is_head_of_household', 1)
+                    ->value('user_id');
+
+                if ($existingHeadUserId) {
+                    $headName = User::where('id', $existingHeadUserId)->value('full_name') ?? 'Cư dân hiện tại';
+                    throw ValidationException::withMessages([
+                        'is_head_of_household' => "Căn hộ này đã có Chủ hộ đang hoạt động ({$headName}). Mỗi căn hộ chỉ được có duy nhất một chủ hộ.",
+                    ]);
+                }
+
+                if (empty($data['relationship_to_head'])) {
+                    $data['relationship_to_head'] = 'SELF';
+                }
             }
 
             if (! isset($data['is_active'])) {
                 $data['is_active'] = true;
             }
 
-            $resident = Resident::create($data);
+            try {
+                $res = Resident::create($data);
+            } catch (QueryException $e) {
+                if (isset($e->errorInfo[1]) && $e->errorInfo[1] == 1062) {
+                    throw new ResidentConflictException('Cư dân này đã được thêm vào căn hộ bởi quản trị viên khác.', 409);
+                }
+                throw $e;
+            }
 
-            return $resident->load([
-                'user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
-                'apartment:id,apartment_number,block_id',
-            ]);
+            Cache::forget('apartments_resident_filter');
+
+            return $res;
         });
+
+        // Tải các quan hệ cần thiết SAU KHI commit transaction để thời gian giữ lock là ngắn nhất
+        $created = $resident->load([
+            'user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+        ]);
+
+        QuocTinRealtimeService::emit('residents', 'resident', 'CREATED', $created->id, [
+            'apartment_id' => $created->apartment_id,
+            'user_id' => $created->user_id,
+            'is_head_of_household' => (bool) $created->is_head_of_household,
+            'updated_at' => $created->updated_at?->toIso8601String(),
+        ]);
+
+        return $created;
     }
 
     /**
@@ -189,39 +249,24 @@ class ResidentService
      */
     public function update(string $id, array $data): Resident
     {
-        // 1. Kiểm tra bản ghi active
-        $resident = Resident::find($id);
+        QuocTinRealtimeService::assertNotInCooldown('residents');
 
-        if (! $resident) {
-            // Kiểm tra xem đã bị xóa mềm trước đó chưa
-            $softDeleted = Resident::withTrashed()->find($id);
-            if ($softDeleted && $softDeleted->trashed()) {
-                throw new ResidentConflictException('Cư dân đã được xóa hoặc không còn khả dụng.', 409);
-            }
-
-            throw new ResidentNotFoundException('Cư dân không tồn tại trong hệ thống.', 404);
-        }
-
-        // 2. Kiểm tra Optimistic Concurrency sơ bộ nếu client truyền updated_at
-        if (! empty($data['updated_at'])) {
-            $clientTime = Carbon::parse($data['updated_at'])->timestamp;
-            $dbTime = $resident->updated_at ? $resident->updated_at->timestamp : 0;
-            if ($clientTime !== $dbTime) {
-                throw new ResidentConflictException('Thông tin cư dân đã được Admin khác cập nhật. Vui lòng tải lại dữ liệu mới nhất.', 409);
-            }
-        }
-
-        return DB::transaction(function () use ($id, $data) {
-            // Khóa dòng với lockForUpdate để tránh race condition
+        $updated = DB::transaction(function () use ($id, $data) {
+            // Khóa dòng trực tiếp trong transaction để tránh SELECT dư thừa trước đó
             $lockedResident = Resident::where('id', $id)
                 ->lockForUpdate()
                 ->first();
 
             if (! $lockedResident) {
-                throw new ResidentConflictException('Cư dân đã được xóa hoặc không còn khả dụng.', 409);
+                $softDeleted = Resident::withTrashed()->find($id);
+                if ($softDeleted && $softDeleted->trashed()) {
+                    throw new ResidentConflictException('Cư dân đã được xóa hoặc không còn khả dụng.', 409);
+                }
+
+                throw new ResidentNotFoundException('Cư dân không tồn tại trong hệ thống.', 404);
             }
 
-            // Tái kiểm tra phiên bản updated_at dưới lock giao dịch
+            // Kiểm tra Optimistic Concurrency dưới lock giao dịch
             if (! empty($data['updated_at'])) {
                 $clientTime = Carbon::parse($data['updated_at'])->timestamp;
                 $dbTime = $lockedResident->updated_at ? $lockedResident->updated_at->timestamp : 0;
@@ -230,17 +275,18 @@ class ResidentService
                 }
             }
 
-            // Kiểm tra phân định chủ hộ: Khóa cư dân trong căn hộ để đảm bảo chỉ có tối đa 1 chủ hộ active
+            // Kiểm tra phân định chủ hộ: chỉ truy vấn user_id qua index khi thiết lập chủ hộ mới
             if (isset($data['is_head_of_household']) && (bool) $data['is_head_of_household'] === true) {
-                $otherHead = Resident::where('apartment_id', $lockedResident->apartment_id)
-                    ->where('id', '!=', $lockedResident->id)
-                    ->where('is_head_of_household', 1)
-                    ->where('is_active', 1)
-                    ->lockForUpdate()
-                    ->first();
+                DB::table('apartments')->where('id', $lockedResident->apartment_id)->lockForUpdate()->first();
 
-                if ($otherHead) {
-                    $headName = $otherHead->user?->full_name ?? 'Cư dân hiện tại';
+                $otherHeadUserId = Resident::where('apartment_id', $lockedResident->apartment_id)
+                    ->where('id', '!=', $lockedResident->id)
+                    ->where('is_active', 1)
+                    ->where('is_head_of_household', 1)
+                    ->value('user_id');
+
+                if ($otherHeadUserId) {
+                    $headName = User::where('id', $otherHeadUserId)->value('full_name') ?? 'Cư dân hiện tại';
                     throw ValidationException::withMessages([
                         'is_head_of_household' => "Căn hộ này đã có Chủ hộ đang hoạt động ({$headName}). Vui lòng hủy chủ hộ cũ trước khi thiết lập chủ hộ mới.",
                     ]);
@@ -252,20 +298,43 @@ class ResidentService
             $currentUpdatedAt = $lockedResident->updated_at;
             unset($data['updated_at']);
 
+            $newUpdatedAt = now();
+            if ($currentUpdatedAt && $newUpdatedAt->timestamp <= $currentUpdatedAt->timestamp) {
+                $newUpdatedAt = $currentUpdatedAt->copy()->addSecond();
+            }
+
             // Cập nhật an toàn với điều kiện WHERE id = ? AND updated_at = ?
             $affected = Resident::where('id', $lockedResident->id)
                 ->where('updated_at', $currentUpdatedAt)
-                ->update(array_merge($data, ['updated_at' => now()]));
+                ->update(array_merge($data, ['updated_at' => $newUpdatedAt]));
 
             if ($affected === 0) {
                 throw new ResidentConflictException('Thông tin cư dân đã được Admin khác cập nhật. Vui lòng tải lại dữ liệu mới nhất.', 409);
             }
 
-            return $lockedResident->fresh([
-                'user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
-                'apartment:id,apartment_number,block_id',
-            ]);
+            Cache::forget('apartments_resident_filter');
+
+            // Cập nhật thuộc tính trên đối tượng trong bộ nhớ, không cần gọi fresh() tốn query
+            $lockedResident->fill($data);
+            $lockedResident->updated_at = $newUpdatedAt;
+
+            return $lockedResident;
         });
+
+        // Nạp relations SAU KHI commit transaction để giải phóng khóa giao dịch lập tức
+        $updated->load([
+            'user:id,username,full_name,phone_number,email,national_id_number,avatar_url',
+            'apartment:id,apartment_number,block_id',
+        ]);
+
+        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', $updated->id, [
+            'apartment_id' => $updated->apartment_id,
+            'user_id' => $updated->user_id,
+            'is_head_of_household' => (bool) $updated->is_head_of_household,
+            'updated_at' => $updated->updated_at?->toIso8601String(),
+        ]);
+
+        return $updated;
     }
 
     /**
@@ -275,35 +344,44 @@ class ResidentService
      */
     public function delete(string $id): bool
     {
-        $resident = Resident::find($id);
+        QuocTinRealtimeService::assertNotInCooldown('residents');
 
-        if (! $resident) {
-            // Kiểm tra xem đã bị xóa mềm trước đó chưa
-            $softDeleted = Resident::withTrashed()->find($id);
-            if ($softDeleted && $softDeleted->trashed()) {
-                throw new ResidentConflictException('Cư dân đã được Admin khác xóa hoặc không còn tồn tại.', 409);
-            }
-
-            throw new ResidentNotFoundException('Cư dân không tồn tại trong hệ thống.', 404);
-        }
-
-        return DB::transaction(function () use ($id) {
+        $deletedData = DB::transaction(function () use ($id) {
             $lockedResident = Resident::where('id', $id)
                 ->lockForUpdate()
                 ->first();
 
             if (! $lockedResident) {
-                throw new ResidentConflictException('Cư dân đã được Admin khác xóa hoặc không còn tồn tại.', 409);
+                $softDeleted = Resident::withTrashed()->find($id);
+                if ($softDeleted && $softDeleted->trashed()) {
+                    throw new ResidentConflictException('Cư dân đã được Admin khác xóa hoặc không còn tồn tại.', 409);
+                }
+
+                throw new ResidentNotFoundException('Cư dân không tồn tại trong hệ thống.', 404);
             }
 
-            // Đánh dấu không còn hoạt động trước khi xóa mềm
-            $lockedResident->update([
+            $apartmentId = $lockedResident->apartment_id;
+
+            // Tối ưu: Gộp vô hiệu hóa và xóa mềm vào DUY NHẤT 1 câu lệnh UPDATE thay vì 2 lần update riêng
+            $lockedResident->forceFill([
                 'is_active' => false,
                 'is_head_of_household' => false,
-            ]);
+                'deleted_at' => now(),
+                'updated_at' => now(),
+            ])->save();
 
-            return (bool) $lockedResident->delete();
+            Cache::forget('apartments_resident_filter');
+
+            return ['deleted' => true, 'apartment_id' => $apartmentId];
         });
+
+        if ($deletedData['deleted']) {
+            QuocTinRealtimeService::emit('residents', 'resident', 'DELETED', $id, [
+                'apartment_id' => $deletedData['apartment_id'],
+            ]);
+        }
+
+        return $deletedData['deleted'];
     }
 
     /**
@@ -313,7 +391,12 @@ class ResidentService
      */
     public function getApartmentsForFilter(): Collection
     {
-        return Apartment::query()
+        $cached = Cache::get('apartments_resident_filter');
+        if ($cached instanceof Collection) {
+            return $cached;
+        }
+
+        $apartments = Apartment::query()
             ->select('id', 'apartment_number', 'block_id', 'status')
             ->withCount(['residents' => function ($q) {
                 $q->where('is_active', 1);
@@ -321,6 +404,10 @@ class ResidentService
             ->with(['headOfHousehold.user:id,full_name,phone_number'])
             ->orderBy('apartment_number', 'asc')
             ->get();
+
+        Cache::put('apartments_resident_filter', $apartments, 300);
+
+        return $apartments;
     }
 }
 
