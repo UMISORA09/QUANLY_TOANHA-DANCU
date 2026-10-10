@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Middleware\AuthenticateBearer;
 use App\Models\User;
 use App\Services\Cicd\GitHubActionsService;
+use App\Services\Freshness\FreshnessService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -52,6 +53,15 @@ class CicdAuthorizationTest extends TestCase
             $mock->shouldReceive('getOverview')->once()->andReturn(['total_pipelines' => 5]);
         });
         $this->getJson('/api/admin/cicd/overview')->assertOk()->assertJsonPath('data.total_pipelines', 5);
+    }
+
+    public function test_authorized_admin_can_read_freshness_alias(): void
+    {
+        $this->authenticateWithPermissions([], true);
+        $this->mock(FreshnessService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getOverview')->once()->with(false)->andReturn(['overall_state' => 'FRESH']);
+        });
+        $this->getJson('/api/admin/cicd/freshness')->assertOk()->assertJsonPath('overall_state', 'FRESH');
     }
 
     /** @param list<string> $permissions */
