@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\Cicd\GitHubActionsService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -212,5 +213,37 @@ class GitHubActionsServiceTest extends TestCase
         $this->assertSame('down', $production['status']);
         $this->assertSame('abc1234', $production['commit_sha']);
         $this->assertSame('N/A', $production['last_deployment']);
+    }
+
+    public function test_pipeline_api_reports_missing_token_empty_runs_http_errors_and_timeout(): void
+    {
+        $status = 200;
+        Http::fake(function () use (&$status) {
+            if ($status === 0) {
+                throw new ConnectionException('Request timed out');
+            }
+
+            return Http::response(['workflow_runs' => []], $status);
+        });
+        config(['services.github.token' => null]);
+        $this->assertSame('token_missing', (new GitHubActionsService)->getPipelinesWithStatus()['status']);
+        Http::assertNothingSent();
+
+        config(['services.github.token' => 'test-token']);
+        foreach ([401, 403, 500, 200, 0] as $status) {
+            $result = (new GitHubActionsService)->getPipelinesWithStatus();
+            $this->assertSame($status === 200 ? 'empty_runs' : 'api_unavailable', $result['status']);
+            if ($status >= 400) {
+                $this->assertStringContainsString((string) $status, $result['reason']);
+            }
+        }
+    }
+
+    public function test_unknown_pipeline_id_does_not_return_a_different_run(): void
+    {
+        $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods(['getPipelines'])->getMock();
+        $service->method('getPipelines')->willReturn([['id' => '123', 'name' => 'Actual run']]);
+        $this->assertNull($service->getPipelineDetail('999'));
+        $this->assertSame('123', $service->getPipelineDetail('123')['id']);
     }
 }

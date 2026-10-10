@@ -229,7 +229,7 @@ class GitHubActionsService
             }
         }
 
-        return $pipelines[0] ?? null;
+        return null;
     }
 
     /**
