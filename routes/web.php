@@ -673,7 +673,7 @@ Route::post('/api/v1/amenities/{id}/bookings', [ResidentAmenityBookingController
 Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [ResidentAmenityBookingController::class, 'cancelAlias'])->middleware('auth.bearer:strict');
 
 // Phân hệ Quản trị CI/CD & DevOps Dashboard APIs
-Route::prefix('api/admin/cicd')->group(function () {
+Route::prefix('api/admin/cicd')->middleware(['auth.bearer:strict', 'permission:CICD:VIEW'])->group(function () {
     Route::get('bundle', [CicdDashboardController::class, 'bundle']);
     Route::get('overview', [CicdDashboardController::class, 'overview']);
     Route::get('pipelines', [CicdDashboardController::class, 'pipelines']);
@@ -687,11 +687,11 @@ Route::prefix('api/admin/cicd')->group(function () {
     Route::get('security', [CicdDashboardController::class, 'security']);
     Route::get('activities', [CicdDashboardController::class, 'activities']);
     Route::get('freshness', [FreshnessController::class, 'index']);
-    Route::post('pipelines/run', [CicdDashboardController::class, 'runPipeline']);
-    Route::post('pipelines/{id}/retry', [CicdDashboardController::class, 'retryPipeline']);
-    Route::post('pipelines/{id}/cancel', [CicdDashboardController::class, 'cancelPipeline']);
-    Route::post('deploy', [CicdDashboardController::class, 'deploy']);
-    Route::post('rollback', [CicdDashboardController::class, 'rollback']);
+    Route::post('pipelines/run', [CicdDashboardController::class, 'runPipeline'])->middleware('permission:CICD:RUN');
+    Route::post('pipelines/{id}/retry', [CicdDashboardController::class, 'retryPipeline'])->middleware('permission:CICD:RUN');
+    Route::post('pipelines/{id}/cancel', [CicdDashboardController::class, 'cancelPipeline'])->middleware('permission:CICD:RUN');
+    Route::post('deploy', [CicdDashboardController::class, 'deploy'])->middleware('permission:CICD:DEPLOY');
+    Route::post('rollback', [CicdDashboardController::class, 'rollback'])->middleware('permission:CICD:ROLLBACK');
 });
 
 // DevOps & Public Status SPA Pages
