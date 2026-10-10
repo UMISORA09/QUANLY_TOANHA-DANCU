@@ -73,10 +73,15 @@ jobs:
           PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://quanly-toanha-dancu.vercel.app' }}
         run: |
           if [ "$EVENT_NAME" = "push" ]; then TARGET_URL="${PRODUCTION_URL%/}"; fi
-          ROOT_CODE=$(curl -sS --max-time 30 -o /tmp/root.html -w '%{http_code}' "$TARGET_URL/home")
-          if [ "$ROOT_CODE" = "401" ] && [ "$EVENT_NAME" = "pull_request" ]; then
+          ROOT_CODE=$(curl -sS --max-time 30 -D /tmp/root.headers -o /tmp/root.html -w '%{http_code}' "$TARGET_URL/home")
+          PROTECTED=false
+          if [ "$ROOT_CODE" = "401" ]; then PROTECTED=true; fi
+          if { [ "$ROOT_CODE" = "302" ] || [ "$ROOT_CODE" = "307" ]; } && grep -qiE '^location: https://vercel.com/sso-api\?' /tmp/root.headers; then
+            PROTECTED=true
+          fi
+          if [ "$PROTECTED" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
             echo "::notice ::Preview is protected by Vercel Authentication. Application verification is BLOCKED, not passed."
-            echo "Application verification: BLOCKED (Preview Deployment Protection HTTP 401)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Application verification: BLOCKED (Preview Deployment Protection HTTP 401 / SSO redirect)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           test "$ROOT_CODE" = "200"
