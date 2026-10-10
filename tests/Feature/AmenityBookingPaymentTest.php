@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Services\AmenityBookingPaymentService;
+use App\Services\ResidentAmenityBookingService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
@@ -26,6 +28,390 @@ class AmenityBookingPaymentTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
 
         return $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+    }
+
+    private function configureCheckout(): void
+    {
+        config(['amenity_payments.checkout_environment' => 'sandbox', 'amenity_payments.checkout_merchant_id' => 'SP-TEST-QA',
+            'amenity_payments.checkout_secret' => 'qa-checkout-secret', 'amenity_payments.checkout_ipn_secret' => 'qa-ipn-secret']);
+    }
+
+    public function test_booking_failure_after_payment_insert_rolls_back_all_writes(): void
+    {
+        $payments = app(AmenityBookingPaymentService::class);
+        $bookingId = null;
+        $this->partialMock(AmenityBookingPaymentService::class, function ($mock) use ($payments, &$bookingId): void {
+            $mock->shouldReceive('initialize')->once()->andReturnUsing(function (array $booking) use ($payments, &$bookingId): void {
+                $bookingId = $booking['id'];
+                $payments->initialize($booking);
+                throw new \RuntimeException('QA failure after payment insert');
+            });
+        });
+        $auditCount = DB::table('audit_logs')->count();
+        $noticeCount = DB::table('user_in_app_notifications')->count();
+        $this->withoutExceptionHandling();
+        try {
+            $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
+                ->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload());
+            $this->fail('Expected injected failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('QA failure after payment insert', $exception->getMessage());
+        }
+        $this->assertDatabaseMissing('amenity_bookings', ['amenity_id' => $this->amenityId]);
+        $this->assertNotNull($bookingId);
+        $this->assertDatabaseMissing('amenity_booking_payments', ['booking_id' => $bookingId]);
+        $this->assertSame($auditCount, DB::table('audit_logs')->count());
+        $this->assertSame($noticeCount, DB::table('user_in_app_notifications')->count());
+        $this->getJson($this->availabilityUrl())->assertOk()->assertJsonPath('slots.0.remaining_attendees', 4);
+    }
+
+    public function test_webhook_failure_after_credit_rolls_back_and_retry_credits_once(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $id = $this->createPaidAmenityBooking();
+        $payload = $this->webhookPayload($id);
+        $service = app(ResidentAmenityBookingService::class);
+        $this->partialMock(ResidentAmenityBookingService::class, function ($mock): void {
+            $mock->shouldReceive('notifyManagers')->once()->andThrow(new \RuntimeException('QA failure after credit'));
+        });
+        $auditCount = DB::table('audit_logs')->count();
+        $noticeCount = DB::table('user_in_app_notifications')->count();
+        $this->withoutExceptionHandling();
+        try {
+            $this->sendWebhook($payload);
+            $this->fail('Expected injected failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('QA failure after credit', $exception->getMessage());
+        }
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0]);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'PENDING', 'bank_transaction_id' => null]);
+        $this->assertSame($auditCount, DB::table('audit_logs')->count());
+        $this->assertSame($noticeCount, DB::table('user_in_app_notifications')->count());
+        $this->app->instance(ResidentAmenityBookingService::class, $service);
+        $this->sendWebhook($payload)->assertOk();
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'PAID', 'received_amount' => 200000]);
+        $auditCount = DB::table('audit_logs')->count();
+        $this->sendWebhook($payload)->assertOk();
+        $this->assertSame($auditCount, DB::table('audit_logs')->count());
+    }
+
+    /** @return array<string, mixed> */
+    private function ipnPayload(string $invoice): array
+    {
+        return ['timestamp' => now()->timestamp, 'notification_type' => 'ORDER_PAID',
+            'order' => ['id' => 'order-qa', 'order_invoice_number' => $invoice, 'order_status' => 'CAPTURED', 'order_currency' => 'VND', 'order_amount' => '200000.00'],
+            'transaction' => ['id' => 'transaction-qa', 'transaction_id' => 'bank-qa', 'payment_method' => 'BANK_TRANSFER', 'transaction_type' => 'PAYMENT',
+                'transaction_status' => 'APPROVED', 'transaction_currency' => 'VND', 'transaction_amount' => '200000', 'transaction_date' => now()->format('Y-m-d H:i:s')]];
+    }
+
+    public function test_checkout_uses_server_invoice_and_amount_and_never_exposes_secret(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $url = $this->paymentUrl($id).'/checkout';
+        $response = $this->postJson($url, ['amount' => 1, 'merchant' => 'FAKE', 'payment_method' => 'CARD'])->assertOk()
+            ->assertJsonPath('action', 'https://pay-sandbox.sepay.vn/v1/checkout/init')
+            ->assertJsonPath('fields.order_amount', '200000')->assertJsonPath('fields.merchant', 'SP-TEST-QA')
+            ->assertJsonPath('fields.payment_method', 'BANK_TRANSFER');
+        $fields = $response->json('fields');
+        $invoice = 'SBX-'.DB::table('amenity_booking_payments')->where('booking_id', $id)->value('reference');
+        $returnUrl = url('/cu-dan').'?tab=amenities&booking_id='.$id;
+        $code = DB::table('amenity_bookings')->where('id', $id)->value('booking_code');
+        $signed = 'merchant=SP-TEST-QA,currency=VND,order_amount=200000,operation=PURCHASE,order_description=Thanh toan tien ich '.$code.',payment_method=BANK_TRANSFER,order_invoice_number='.$invoice.',success_url='.$returnUrl.',error_url='.$returnUrl.',cancel_url='.$returnUrl;
+        $this->assertSame(base64_encode(hash_hmac('sha256', $signed, 'qa-checkout-secret', true)), $fields['signature']);
+        $this->assertStringNotContainsString('qa-checkout-secret', $response->getContent());
+        $this->assertSame($fields, $this->postJson($url)->assertOk()->json('fields'));
+        $this->assertSame(1, DB::table('audit_logs')->where('table_name', 'amenity_payment_checkouts')->count());
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0]);
+        $this->getJson('/cu-dan?tab=amenities&booking_id='.$id.'&payment=success')->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0]);
+    }
+
+    public function test_checkout_checks_ownership_configuration_approval_and_expiry(): void
+    {
+        $id = $this->createPaidAmenityBooking();
+        config(['amenity_payments.checkout_secret' => null]);
+        $url = $this->paymentUrl($id).'/checkout';
+        $this->postJson($url)->assertStatus(503);
+        $this->configureCheckout();
+        $this->withHeader('Authorization', 'Bearer '.$this->secondToken)->postJson($url)->assertNotFound();
+        $this->withHeader('Authorization', 'Bearer invalid')->postJson($url)->assertUnauthorized();
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        DB::table('amenity_booking_payments')->where('booking_id', $id)->update(['status' => 'WAITING_APPROVAL']);
+        $this->postJson($url)->assertConflict();
+        DB::table('amenity_booking_payments')->where('booking_id', $id)->update(['status' => 'PENDING', 'expires_at' => now()->subMinute()]);
+        $this->postJson($url)->assertConflict();
+    }
+
+    public function test_ipn_requires_its_own_secret_and_updates_only_issued_checkout_once(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $invoice = $this->postJson($this->paymentUrl($id).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        $payload = $this->ipnPayload($invoice);
+        $url = '/api/v1/amenity-payments/sepay/ipn';
+        $this->withHeader('X-Secret-Key', 'qa-checkout-secret')->postJson($url, $payload)->assertUnauthorized();
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson($url, $payload)->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 1]);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'PAID', 'bank_transaction_id' => 'BANK-QA', 'confirmed_by_user_id' => null]);
+        $count = DB::table('audit_logs')->count();
+        $this->postJson($url, $payload)->assertOk();
+        $this->assertSame($count, DB::table('audit_logs')->count());
+    }
+
+    public function test_ipn_cannot_match_checkout_from_another_environment_or_unknown_invoice(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $invoice = $this->postJson($this->paymentUrl($id).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        config(['amenity_payments.checkout_environment' => 'production']);
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson('/api/v1/amenity-payments/sepay/ipn', $this->ipnPayload($invoice))->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0]);
+    }
+
+    public function test_void_before_paid_never_credits_or_restores_booking(): void
+    {
+        $this->assertVoidedCheckout(true);
+    }
+
+    public function test_void_after_paid_removes_paid_flag_and_preserves_receipt_history(): void
+    {
+        $id = $this->assertVoidedCheckout(false);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'received_amount' => 200000, 'bank_transaction_id' => 'BANK-QA']);
+    }
+
+    private function assertVoidedCheckout(bool $voidFirst): string
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $invoice = $this->postJson($this->paymentUrl($id).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        $paid = $this->ipnPayload($invoice);
+        $void = $paid;
+        $void['notification_type'] = 'TRANSACTION_VOID';
+        $void['transaction']['transaction_status'] = 'VOID';
+        $void['transaction']['transaction_amount'] = '0';
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret');
+        foreach ($voidFirst ? [$void, $paid] : [$paid, $void] as $payload) {
+            $this->postJson('/api/v1/amenity-payments/sepay/ipn', $payload)->assertOk();
+        }
+        $count = DB::table('audit_logs')->count();
+        $this->postJson('/api/v1/amenity-payments/sepay/ipn', $void)->assertOk();
+        $this->assertSame($count, DB::table('audit_logs')->count());
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0, 'status' => 'CANCELLED']);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW']);
+
+        return $id;
+    }
+
+    public function test_void_for_another_transaction_does_not_revoke_valid_manual_receipt(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $invoice = $this->postJson($this->paymentUrl($id).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken)->postJson($this->confirmUrl($id), $this->receipt())->assertOk();
+        $void = $this->ipnPayload($invoice);
+        $void['notification_type'] = 'TRANSACTION_VOID';
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson('/api/v1/amenity-payments/sepay/ipn', $void)->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 1]);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'PAID', 'bank_transaction_id' => 'VCB-TEST-001']);
+    }
+
+    public function test_gateway_receipt_cannot_be_reused_manually_including_legacy_prefix(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $invoice = $this->postJson($this->paymentUrl($id).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson('/api/v1/amenity-payments/sepay/ipn', $this->ipnPayload($invoice))->assertOk();
+        $second = $this->withHeader('Authorization', 'Bearer '.$this->secondToken)->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+        foreach (['bank-qa', 'PG-BANK-QA'] as $reference) {
+            $this->postJson($this->confirmUrl($second), $this->receipt($reference))->assertUnprocessable()->assertJsonValidationErrors('bank_transaction_id');
+        }
+        DB::table('amenity_booking_payments')->where('booking_id', $id)->update(['bank_transaction_id' => 'PG-BANK-QA']);
+        $this->postJson($this->confirmUrl($second), $this->receipt('bank-qa'))->assertUnprocessable()->assertJsonValidationErrors('bank_transaction_id');
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $second, 'is_paid' => 0]);
+    }
+
+    public function test_manual_receipt_cannot_be_reused_by_gateway_ipn(): void
+    {
+        $this->configureCheckout();
+        $first = $this->createPaidAmenityBooking();
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken)->postJson($this->confirmUrl($first), $this->receipt('bank-qa'))->assertOk();
+        $this->withHeader('Authorization', 'Bearer '.$this->secondToken);
+        $second = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+        $invoice = $this->postJson($this->paymentUrl($second).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson('/api/v1/amenity-payments/sepay/ipn', $this->ipnPayload($invoice))->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $second, 'is_paid' => 0]);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $second, 'bank_transaction_id' => null]);
+    }
+
+    public function test_ipn_mismatched_money_requires_review(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $invoice = $this->postJson($this->paymentUrl($id).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        $payload = $this->ipnPayload($invoice);
+        $payload['transaction']['transaction_amount'] = '100000';
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson('/api/v1/amenity-payments/sepay/ipn', $payload)->assertOk();
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW', 'received_amount' => 100000, 'refund_required' => 1]);
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0, 'status' => 'CANCELLED']);
+    }
+
+    public function test_late_checkout_ipn_does_not_restore_booking(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $invoice = $this->postJson($this->paymentUrl($id).'/checkout')->assertOk()->json('fields.order_invoice_number');
+        $this->travel(16)->minutes();
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson('/api/v1/amenity-payments/sepay/ipn', $this->ipnPayload($invoice))->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0, 'status' => 'CANCELLED']);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW', 'refund_required' => 1]);
+    }
+
+    public function test_sandbox_checkout_is_disabled_in_production_application(): void
+    {
+        $this->configureCheckout();
+        $id = $this->createPaidAmenityBooking();
+        $this->app['env'] = 'production';
+        $this->postJson($this->paymentUrl($id).'/checkout')->assertStatus(503);
+        $this->withHeader('X-Secret-Key', 'qa-ipn-secret')->postJson('/api/v1/amenity-payments/sepay/ipn', $this->ipnPayload('SBX-FAKE'))->assertStatus(503);
+    }
+
+    /** @return array<string, mixed> */
+    private function webhookPayload(string $bookingId): array
+    {
+        return ['id' => 92704, 'gateway' => 'Vietcombank', 'accountNumber' => '1037900935',
+            'transactionDate' => now()->format('Y-m-d H:i:s'), 'transferType' => 'in', 'transferAmount' => 200000,
+            'content' => 'Thanh toan '.DB::table('amenity_booking_payments')->where('booking_id', $bookingId)->value('reference'),
+            'referenceCode' => 'VCB-AUTO-001'];
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function sendWebhook(array $payload, ?int $timestamp = null, string $signingSecret = 'qa-secret'): TestResponse
+    {
+        $body = json_encode($payload, JSON_THROW_ON_ERROR);
+        $timestamp ??= now()->timestamp;
+
+        return $this->call('POST', '/api/v1/amenity-payments/sepay/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json',
+            'HTTP_X_SEPAY_TIMESTAMP' => (string) $timestamp,
+            'HTTP_X_SEPAY_SIGNATURE' => 'sha256='.hash_hmac('sha256', $timestamp.'.'.$body, $signingSecret),
+        ], $body);
+    }
+
+    public function test_webhook_requires_configuration_valid_signature_and_fresh_timestamp(): void
+    {
+        $payload = $this->webhookPayload($this->createPaidAmenityBooking());
+        config(['amenity_payments.sepay_webhook_secret' => null]);
+        $this->sendWebhook($payload)->assertStatus(503);
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $this->sendWebhook($payload, signingSecret: 'wrong')->assertUnauthorized();
+        $this->sendWebhook($payload, now()->timestamp - 301)->assertUnauthorized();
+        $this->assertDatabaseCount('amenity_booking_payments', 1);
+        $this->assertSame(0, DB::table('audit_logs')->where('table_name', 'amenity_payment_webhooks')->count());
+    }
+
+    public function test_signed_dashboard_webhook_test_never_credits_booking(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $id = $this->createPaidAmenityBooking();
+        foreach ([0, '0'] as $testId) {
+            $this->sendWebhook(array_replace($this->webhookPayload($id), ['id' => $testId]))->assertOk()->assertJsonPath('success', true);
+        }
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'PENDING', 'bank_transaction_id' => null]);
+        $this->assertSame(0, DB::table('audit_logs')->where('table_name', 'amenity_payment_webhooks')->count());
+    }
+
+    public function test_webhook_marks_paid_without_resident_report_and_replay_has_no_side_effects(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $id = $this->createPaidAmenityBooking();
+        $payload = $this->webhookPayload($id);
+        $this->sendWebhook($payload)->assertOk()->assertExactJson(['success' => true]);
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 1, 'status' => 'APPROVED']);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'PAID', 'confirmed_by_user_id' => null, 'received_amount' => 200000]);
+        $auditCount = DB::table('audit_logs')->count();
+        $noticeCount = DB::table('user_in_app_notifications')->count();
+        $this->sendWebhook($payload)->assertOk();
+        $this->assertSame($auditCount, DB::table('audit_logs')->count());
+        $this->assertSame($noticeCount, DB::table('user_in_app_notifications')->count());
+        $payload['id']++;
+        $this->sendWebhook($payload)->assertOk();
+        $this->assertSame($noticeCount, DB::table('user_in_app_notifications')->count());
+    }
+
+    public function test_webhook_ignores_outgoing_wrong_receiver_and_unmatched_reference_but_keeps_audit(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $id = $this->createPaidAmenityBooking();
+        foreach ([['transferType' => 'out'], ['accountNumber' => 'wrong'], ['gateway' => 'BIDV'], ['content' => 'Khong co ma']] as $index => $change) {
+            $payload = array_replace($this->webhookPayload($id), $change, ['id' => 100 + $index]);
+            $this->sendWebhook($payload)->assertOk();
+        }
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0]);
+        $this->assertSame(4, DB::table('audit_logs')->where('table_name', 'amenity_payment_webhooks')->count());
+    }
+
+    public function test_wrong_amount_webhook_records_actual_money_for_review_without_marking_paid(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $id = $this->createPaidAmenityBooking();
+        $this->sendWebhook(array_replace($this->webhookPayload($id), ['transferAmount' => 100000]))->assertOk();
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW', 'received_amount' => 100000, 'refund_required' => 1]);
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0, 'status' => 'CANCELLED']);
+    }
+
+    public function test_late_webhook_does_not_restore_expired_booking(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $id = $this->createPaidAmenityBooking();
+        $this->travel(16)->minutes();
+        $this->sendWebhook($this->webhookPayload($id))->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'status' => 'CANCELLED', 'is_paid' => 0]);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW', 'refund_required' => 1]);
+    }
+
+    public function test_payment_before_approval_is_recorded_for_review(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        DB::table('amenities')->where('id', $this->amenityId)->update(['requires_admin_approval' => 1]);
+        $id = $this->createPaidAmenityBooking();
+        $this->sendWebhook($this->webhookPayload($id))->assertOk();
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW', 'refund_required' => 1]);
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'is_paid' => 0, 'status' => 'CANCELLED']);
+    }
+
+    public function test_additional_transfer_preserves_first_receipt_and_notifies_managers(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $id = $this->createPaidAmenityBooking();
+        $payload = $this->webhookPayload($id);
+        $this->sendWebhook($payload)->assertOk();
+        $this->sendWebhook(array_replace($payload, ['id' => 92705, 'referenceCode' => 'VCB-EXTRA']))->assertOk();
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'PAID', 'bank_transaction_id' => 'VCB-AUTO-001']);
+        $this->assertTrue(DB::table('user_in_app_notifications')->where('title', 'like', 'Có thêm giao dịch%')->exists());
+    }
+
+    public function test_webhook_rejects_fractional_amount_and_future_transaction(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $payload = $this->webhookPayload($this->createPaidAmenityBooking());
+        $this->sendWebhook(array_replace($payload, ['transferAmount' => 1.5]))->assertUnprocessable();
+        $this->sendWebhook(array_replace($payload, ['transactionDate' => now()->addMinute()->format('Y-m-d H:i:s')]))->assertUnprocessable();
+    }
+
+    public function test_webhook_does_not_assign_one_bank_transaction_to_two_bookings(): void
+    {
+        config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
+        $first = $this->createPaidAmenityBooking();
+        $this->sendWebhook($this->webhookPayload($first))->assertOk();
+        $this->withHeader('Authorization', 'Bearer '.$this->secondToken);
+        $second = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking.id');
+        $this->sendWebhook(array_replace($this->webhookPayload($second), ['id' => 92705]))->assertOk();
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $second, 'is_paid' => 0]);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $second, 'bank_transaction_id' => null]);
+        $this->assertTrue(DB::table('user_in_app_notifications')->where('title', 'Giao dịch trùng cần đối soát')->exists());
+        $this->assertSame(2, DB::table('audit_logs')->where('table_name', 'amenity_payment_webhooks')->count());
     }
 
     public function test_reconciliation_preserves_rejected_booking_history(): void
@@ -115,9 +501,17 @@ class AmenityBookingPaymentTest extends TestCase
 
     public function test_fractional_vnd_is_rejected_instead_of_silently_changing_the_charge(): void
     {
-        DB::table('amenities')->where('id', $this->amenityId)->update(['hourly_rate' => 1, 'security_deposit_required' => 0]);
-        $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertUnprocessable()->assertJsonValidationErrors('amenity_id');
+        $timestamp = DB::table('amenities')->where('id', $this->amenityId)->value('updated_at');
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken)
+            ->putJson('/api/v1/admin/amenities/'.$this->amenityId, ['hourly_rate' => 1, 'security_deposit_required' => 0, 'updated_at' => $timestamp])->assertOk();
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
+            ->getJson($this->availabilityUrl())->assertOk()->assertJsonPath('slots.0.available', false)->assertJsonPath('slots.0.total_amount', 1.5)
+            ->assertJsonPath('slots.0.reason', 'Phí và cọc thanh toán QR phải có tổng là số đồng nguyên. Vui lòng liên hệ ban quản lý để kiểm tra cấu hình.');
+        $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertConflict();
         $this->assertSame(0, DB::table('amenity_bookings')->where('amenity_id', $this->amenityId)->count());
+        DB::table('amenities')->where('id', $this->amenityId)->update(['hourly_rate' => 2]);
+        $this->getJson($this->availabilityUrl())->assertOk()->assertJsonPath('slots.0.available', true)->assertJsonPath('slots.0.total_amount', 3);
+        $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->assertJsonPath('booking.payment.amount', 3);
     }
 
     public function test_report_keeps_capacity_after_review_deadline_until_booking_start(): void
