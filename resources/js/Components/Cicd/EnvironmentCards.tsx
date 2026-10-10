@@ -103,7 +103,7 @@ export const EnvironmentCards: React.FC<EnvironmentCardsProps> = ({ environments
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">Thời gian đáp ứng:</span>
                 <span className="font-mono font-bold text-emerald-700">
-                  {env.response_time_ms} ms
+                  {env.response_time_ms > 0 ? `${env.response_time_ms} ms` : 'Chưa đo'}
                 </span>
               </div>
 

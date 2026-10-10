@@ -28,6 +28,71 @@ permissions:
   deployments: write
 
 jobs:
+  verify-git-deployment:
+    name: Verify Vercel Git Deployment (Exact Commit)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    timeout-minutes: 10
+    steps:
+      - name: Resolve deployment from Git Integration
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          for attempt in {1..30}; do
+            DEPLOYMENTS=$(gh api "repos/$REPOSITORY/deployments?sha=$EXPECTED_SHA&per_page=10")
+            DEPLOYMENT_ID=$(echo "$DEPLOYMENTS" | jq -r '.[0].id // empty')
+            if [ -n "$DEPLOYMENT_ID" ]; then
+              STATUSES=$(gh api "repos/$REPOSITORY/deployments/$DEPLOYMENT_ID/statuses")
+              STATE=$(echo "$STATUSES" | jq -r '.[0].state // "pending"')
+              if [ "$STATE" = "success" ]; then
+                URL=$(echo "$STATUSES" | jq -r '.[0].environment_url // empty')
+                URL="${URL%/}"
+                case "$URL" in https://*.vercel.app) ;; *) echo "::error ::No valid Vercel deployment URL"; exit 1 ;; esac
+                echo "url=$URL" >> "$GITHUB_OUTPUT"
+                echo "Git Integration deployment $DEPLOYMENT_ID matches $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
+                echo "::error ::Vercel deployment failed for $EXPECTED_SHA"
+                exit 1
+              fi
+            fi
+            sleep 15
+          done
+          echo "::error ::No successful Git Integration deployment found for $EXPECTED_SHA"
+          exit 1
+
+      - name: Verify deployed frontend and API
+        env:
+          TARGET_URL: ${{ steps.deployment.outputs.url }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://quanly-toanha-dancu.vercel.app' }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then TARGET_URL="${PRODUCTION_URL%/}"; fi
+          ROOT_CODE=$(curl -sS --max-time 30 -D /tmp/root.headers -o /tmp/root.html -w '%{http_code}' "$TARGET_URL/home")
+          PROTECTED=false
+          if [ "$ROOT_CODE" = "401" ]; then PROTECTED=true; fi
+          if { [ "$ROOT_CODE" = "302" ] || [ "$ROOT_CODE" = "307" ]; } && grep -qiE '^location: https://vercel.com/sso-api\?' /tmp/root.headers; then
+            PROTECTED=true
+          fi
+          if [ "$PROTECTED" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "::notice ::Preview is protected by Vercel Authentication. Application verification is BLOCKED, not passed."
+            echo "Application verification: BLOCKED (Preview Deployment Protection HTTP 401 / SSO redirect)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          test "$ROOT_CODE" = "200"
+          ASSET=$(grep -oE '/build/[^" ]+\.js' /tmp/root.html | head -1)
+          test -n "$ASSET"
+          curl --fail --silent --show-error --max-time 30 "$TARGET_URL$ASSET" -o /dev/null
+          HEALTH=$(curl --fail --silent --show-error --max-time 30 "$TARGET_URL/health")
+          echo "$HEALTH" | jq -e --arg sha "${EXPECTED_SHA:0:7}" '.status == "healthy" and .database == "healthy" and .commit_sha == $sha'
+          curl --fail --silent --show-error --max-time 30 "$TARGET_URL/api/db-health" | jq -e '.status == "healthy" and .connection == "established"'
+          echo "Application verification: PASS (frontend asset, API, database and expected SHA)" >> "$GITHUB_STEP_SUMMARY"
+
   ci-gate:
     name: Deployment Quality Gate (Lint, Build & Unit Tests)
     runs-on: ubuntu-latest
@@ -47,6 +112,12 @@ jobs:
           --health-retries=5
 
     steps:
+      - name: Reject production deployment from non-master branches
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'production' && github.ref != 'refs/heads/master'
+        run: |
+          echo "::error ::Manual production deployment must run from master."
+          exit 1
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -130,7 +201,7 @@ jobs:
     name: Production Database Migration Gate
     runs-on: ubuntu-latest
     needs: [ci-gate]
-    if: github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'production')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'production' && github.ref == 'refs/heads/master'
     outputs:
       configured: ${{ steps.check-db-config.outputs.configured }}
     steps:
@@ -151,8 +222,8 @@ jobs:
             echo "✅ Production database secrets configured."
           else
             echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::notice ::PRODUCTION MIGRATION GATE: DB NOT CONFIGURED. Production database credentials are not configured in GitHub Secrets. Database migrations skipped and unmigrated deployment will be blocked."
-            echo "Final Status: NOT_CONFIGURED"
+            echo "::error ::Production database credentials are missing. Manual production deployment is blocked."
+            exit 1
           fi
 
       - name: Setup PHP for Migration
@@ -189,10 +260,11 @@ jobs:
     needs: [ci-gate, production-migration]
     if: |
       always() &&
+      github.event_name == 'workflow_dispatch' &&
       needs.ci-gate.result == 'success' &&
       (
         (needs.production-migration.result == 'success') ||
-        (needs.production-migration.result == 'skipped' && github.ref != 'refs/heads/master' && (github.event_name != 'workflow_dispatch' || github.event.inputs.target_env != 'production'))
+        (needs.production-migration.result == 'skipped' && github.event.inputs.target_env == 'preview')
       )
     outputs:
       deploy_url: ${{ steps.deploy.outputs.url }}
@@ -206,7 +278,7 @@ jobs:
       - name: Determine Deployment Target
         id: target
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/master" ] || [ "${{ github.event.inputs.target_env }}" = "production" ]; then
+          if [ "${{ github.event.inputs.target_env }}" = "production" ]; then
             echo "is_production=true" >> $GITHUB_OUTPUT
             echo "target=production" >> $GITHUB_OUTPUT
           else
@@ -218,10 +290,15 @@ jobs:
         id: check-db-gate
         run: |
           if [ "${{ steps.target.outputs.is_production }}" = "true" ]; then
+            if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+              echo "::error ::Production deployment is restricted to master."
+              exit 1
+            fi
             DB_CONFIGURED="${{ needs.production-migration.outputs.configured }}"
             if [ "$DB_CONFIGURED" != "true" ]; then
               echo "blocked=true" >> $GITHUB_OUTPUT
               echo "::notice ::PRODUCTION DEPLOYMENT BLOCKED: Production database is not configured in GitHub Secrets. Unmigrated code is blocked from deployment."
+              exit 1
             else
               echo "blocked=false" >> $GITHUB_OUTPUT
             fi
@@ -242,6 +319,7 @@ jobs:
           elif [ -z "$VERCEL_TOKEN" ] || [ "$VERCEL_TOKEN" = "not_configured" ] || [ -z "$VERCEL_ORG_ID" ] || [ "$VERCEL_ORG_ID" = "not_configured" ] || [ -z "$VERCEL_PROJECT_ID" ] || [ "$VERCEL_PROJECT_ID" = "not_configured" ]; then
             echo "is_configured=false" >> $GITHUB_OUTPUT
             echo "::notice ::VERCEL DEPLOYMENT STATUS: NOT CONFIGURED. Awaiting VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID in GitHub Secrets."
+            exit 1
           else
             echo "is_configured=true" >> $GITHUB_OUTPUT
           fi
@@ -259,7 +337,6 @@ jobs:
       - name: Pull Vercel Environment Information
         id: pull-env
         if: steps.check-secrets.outputs.is_configured == 'true'
-        continue-on-error: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -268,14 +345,14 @@ jobs:
           mkdir -p .vercel
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
           if [ "${{ steps.target.outputs.is_production }}" = "true" ]; then
-            vercel pull --yes --environment=production --token=$VERCEL_TOKEN || { echo "pull_failed=true" >> $GITHUB_OUTPUT; }
+            vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           else
-            vercel pull --yes --environment=preview --token=$VERCEL_TOKEN || { echo "pull_failed=true" >> $GITHUB_OUTPUT; }
+            vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
           fi
 
       - name: Deploy to Vercel
         id: deploy
-        if: steps.check-secrets.outputs.is_configured == 'true' && steps.pull-env.outputs.pull_failed != 'true'
+        if: steps.check-secrets.outputs.is_configured == 'true' && steps.pull-env.outcome == 'success'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -284,15 +361,16 @@ jobs:
           mkdir -p .vercel
           echo "{\"projectId\":\"${VERCEL_PROJECT_ID}\",\"orgId\":\"${VERCEL_ORG_ID}\"}" > .vercel/project.json
           if [ "${{ steps.target.outputs.is_production }}" = "true" ]; then
-            DEPLOY_URL=$(vercel deploy --prod --token=$VERCEL_TOKEN || echo "")
+            DEPLOY_URL=$(vercel deploy --prod --token="$VERCEL_TOKEN")
           else
-            DEPLOY_URL=$(vercel deploy --token=$VERCEL_TOKEN || echo "")
+            DEPLOY_URL=$(vercel deploy --token="$VERCEL_TOKEN")
           fi
           echo "url=${DEPLOY_URL}" >> $GITHUB_OUTPUT
           if [ -n "$DEPLOY_URL" ]; then
             echo "🚀 Deployed URL: ${DEPLOY_URL}"
           else
-            echo "::warning ::Vercel deployment failed to return a valid URL."
+            echo "::error ::Vercel deployment did not return a URL."
+            exit 1
           fi
 
       - name: Vercel Deployment Summary Report
@@ -309,23 +387,23 @@ jobs:
             echo "2. Migration Gate:     NOT CONFIGURED (Production DB secrets missing)"
             echo "3. Deployment Status:  BLOCKED (Cannot deploy unmigrated code)"
             echo "ℹ️ OVERALL RESULT: CI PASSED & DEPLOYMENT BLOCKED (Awaiting production DB configuration)"
-            exit 0
+            exit 1
           elif [ "$IS_CONFIGURED" != "true" ]; then
             echo "2. Deployment Status:  SKIPPED (Vercel credentials not configured)"
             echo "ℹ️ OVERALL RESULT: CI PASSED & DEPLOYMENT SKIPPED (Awaiting Vercel credentials)"
-            exit 0
+            exit 1
           elif [ -n "$DEPLOY_URL" ]; then
             echo "2. Deployment Status:  SUCCESS (${DEPLOY_URL})"
             echo "🚀 OVERALL RESULT: DEPLOYED TO VERCEL"
             exit 0
           elif [ "${{ steps.target.outputs.is_production }}" != "true" ]; then
-            echo "2. Deployment Status:  PREVIEW SKIPPED (Preview deployment non-blocking on PR)"
-            echo "ℹ️ OVERALL RESULT: CI QUALITY GATE PASSED (Non-blocking preview)"
-            exit 0
+            echo "2. Deployment Status:  PREVIEW FAILED (No deployment URL)"
+            echo "ℹ️ OVERALL RESULT: DEPLOYMENT FAILED"
+            exit 1
           else
             echo "2. Deployment Status:  WARNING (Vercel credentials invalid or deployment unlinked)"
             echo "ℹ️ OVERALL RESULT: CI QUALITY GATES PASSED (Vercel deployment skipped or credentials unlinked)"
-            exit 0
+            exit 1
           fi
           echo "========================================================================"
 
