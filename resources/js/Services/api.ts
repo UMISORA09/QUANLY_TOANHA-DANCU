@@ -90,6 +90,8 @@ export interface AmenityBookingPayment {
   expires_at: string | null;
   qr_url: string | null;
   can_pay: boolean;
+  checkout_available?: boolean;
+  checkout_environment?: 'sandbox' | 'production';
   can_confirm: boolean;
   refund_required: boolean;
   bank_transaction_id: string | null;
@@ -1162,6 +1164,10 @@ class ApiService {
 
   async getResidentBookingPayment(id: string, signal?: AbortSignal): Promise<{ payment: AmenityBookingPayment | null }> {
     return this.request(`/resident/amenity-bookings/${id}/payment`, { signal, cache: 'no-store' });
+  }
+
+  async createResidentPaymentCheckout(id: string): Promise<{ environment: 'sandbox' | 'production'; action: string; fields: Record<string, string> }> {
+    return this.request(`/resident/amenity-bookings/${id}/payment/checkout`, { method: 'POST', cache: 'no-store' });
   }
 
   async getAmenityNotifications(audience: 'resident' | 'admin', page: number, unread: boolean, signal?: AbortSignal): Promise<AmenityNotificationFeed> {

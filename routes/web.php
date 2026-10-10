@@ -165,6 +165,9 @@ Route::get('/security/{any}', function () {
 })->where('any', '.*');
 
 // API Management Dashboard
+Route::post('/api/v1/amenity-payments/sepay/webhook', [AmenityBookingPaymentController::class, 'webhook'])->middleware('throttle:120,1');
+Route::post('/api/v1/amenity-payments/sepay/ipn', [AmenityBookingPaymentController::class, 'ipn'])->middleware('throttle:120,1');
+
 Route::get('/api/management/overview', [ManagementDashboardController::class, 'overview']);
 
 // API Reception Portal
@@ -183,6 +186,7 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::get('amenity-bookings/{id}', [ResidentAmenityBookingController::class, 'show']);
     Route::post('amenity-bookings/{id}/cancel', [ResidentAmenityBookingController::class, 'cancel']);
     Route::get('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
+    Route::post('amenity-bookings/{id}/payment/checkout', [AmenityBookingPaymentController::class, 'checkout'])->middleware('throttle:10,1');
     Route::post('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
     Route::post('amenity-bookings/{id}/payment/report', [AmenityBookingPaymentController::class, 'report'])->middleware('throttle:10,1');
 });
