@@ -112,6 +112,12 @@ jobs:
           --health-retries=5
 
     steps:
+      - name: Reject production deployment from non-master branches
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'production' && github.ref != 'refs/heads/master'
+        run: |
+          echo "::error ::Manual production deployment must run from master."
+          exit 1
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
