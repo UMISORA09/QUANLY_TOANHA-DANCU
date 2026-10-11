@@ -17,6 +17,7 @@ use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\ResidentVisitorController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TemporaryRegistrationController;
@@ -188,7 +189,16 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::post('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
     Route::post('amenity-bookings/{id}/payment/report', [AmenityBookingPaymentController::class, 'report'])->middleware('throttle:10,1');
 });
-Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
+
+// API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)
+Route::get('/api/v1/resident/visitors', [ResidentVisitorController::class, 'index']);
+Route::post('/api/v1/resident/visitors', [ResidentVisitorController::class, 'store']);
+Route::get('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'show']);
+Route::put('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+Route::patch('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController::class, 'cancel']);
+Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
+
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
 
 // API Auth (Có Throttle Rate Limiting chống Brute-Force)

@@ -29,6 +29,7 @@ class QuocTinRealtimeService
             'account-provisioning', 'account_provisioning', 'accounts' => 'account_provisioning',
             'vehicles', 'vehicle' => 'vehicles',
             'rfid', 'rfid_cards', 'rfid-cards', 'cards', 'access_cards' => 'rfid_cards',
+            'visitors', 'visitor', 'visitor_registrations', 'visitor-registrations' => 'visitors',
             default => str_replace('-', '_', $m),
         };
     }
@@ -47,6 +48,7 @@ class QuocTinRealtimeService
             'account_provisioning' => 'quoc-tin.account-provisioning',
             'vehicles' => 'quoc-tin.vehicles',
             'rfid_cards' => 'quoc-tin.rfid-cards',
+            'visitors' => 'quoc-tin.visitors',
             default => str_starts_with($module, 'quoc-tin.') ? $module : "quoc-tin.{$module}",
         };
     }
@@ -192,8 +194,69 @@ class QuocTinRealtimeService
                 || (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
                 || true,
 
+            'quoc-tin.visitors' => true,
+
             default => false,
         };
+    }
+
+    /**
+     * Check if a specific visitor registration record is currently locked in an edit cooldown
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function getVisitorRecordCooldown(string $recordId): ?array
+    {
+        $key = "realtime_cooldown:visitor_record:{$recordId}";
+        $data = Cache::get($key);
+        if (! is_array($data)) {
+            return null;
+        }
+
+        $untilTs = (int) ($data['cooldown_until_ts'] ?? 0);
+        $now = time();
+
+        if ($untilTs <= $now) {
+            Cache::forget($key);
+
+            return null;
+        }
+
+        $data['retry_after'] = max(1, $untilTs - $now);
+
+        return $data;
+    }
+
+    /**
+     * Set a record-level cooldown for a visitor registration (defaults to 60 seconds)
+     *
+     * @return array<string, mixed>
+     */
+    public static function setVisitorRecordCooldown(string $recordId, ?string $actorId = null, int $seconds = 60): array
+    {
+        $now = now();
+        $until = $now->copy()->addSeconds($seconds);
+
+        $data = [
+            'record_id' => $recordId,
+            'actor_id' => $actorId,
+            'cooldown_seconds' => $seconds,
+            'cooldown_started_at' => $now->toIso8601String(),
+            'cooldown_until' => $until->toIso8601String(),
+            'cooldown_until_ts' => $until->timestamp,
+        ];
+
+        Cache::put("realtime_cooldown:visitor_record:{$recordId}", $data, $seconds);
+
+        return $data;
+    }
+
+    /**
+     * Clear record-level cooldown for a visitor registration
+     */
+    public static function clearVisitorRecordCooldown(string $recordId): void
+    {
+        Cache::forget("realtime_cooldown:visitor_record:{$recordId}");
     }
 
     /**
