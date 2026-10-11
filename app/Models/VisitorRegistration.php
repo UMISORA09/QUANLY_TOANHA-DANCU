@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class VisitorRegistration extends Model
@@ -69,5 +71,21 @@ class VisitorRegistration extends Model
     public function apartment(): BelongsTo
     {
         return $this->belongsTo(Apartment::class, 'apartment_id');
+    }
+
+    /**
+     * Lịch sử các lần check-in / check-out của lượt khách này
+     */
+    public function checkinLogs(): HasMany
+    {
+        return $this->hasMany(VisitorCheckinLog::class, 'registration_id');
+    }
+
+    /**
+     * Lượt check-in mới nhất
+     */
+    public function latestCheckinLog(): HasOne
+    {
+        return $this->hasOne(VisitorCheckinLog::class, 'registration_id')->latestOfMany('checkin_time');
     }
 }

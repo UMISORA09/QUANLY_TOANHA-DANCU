@@ -21,6 +21,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\RealtimeStreamController;
 use App\Http\Controllers\ReceptionPortalController;
+use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
@@ -184,6 +185,12 @@ Route::get('/api/management/overview', [ManagementDashboardController::class, 'o
 
 // API Reception Portal
 Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
+
+// API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
+Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
+Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
+Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
+Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
