@@ -217,6 +217,50 @@ test('quản lý đối soát tiền thực nhận và xác nhận thủ công',
   await expect(page.getByRole('cell', { name: 'Đã duyệt Đã thanh toán' })).toBeVisible();
 });
 
+test('hộp đối soát đang mở cập nhật khi tiền được xác nhận từ tab khác', async ({ page }) => {
+  let paid = false;
+  let loads = 0;
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'Quản lý QA' }));
+    localStorage.setItem('smart_cassavas_token', 'test-admin-token');
+  });
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/bookings')) {
+      loads++;
+      return route.fulfill({ json: [{ ...booking, resident_name: 'Cư dân QA', status: 'APPROVED', is_paid: paid, payment: { ...paymentFixture(), status: paid ? 'PAID' : 'REPORTED', can_confirm: !paid, can_pay: false } }] });
+    }
+    if (url.pathname.endsWith('/amenities')) return route.fulfill({ json: { items: [{ ...amenity, amenity_code: 'BBQ-QA', active_bookings_count: 1 }], total: 1, page: 1, limit: 10, total_pages: 1 } });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto('/quan-ly?tab=amenities');
+  await page.getByRole('button', { name: 'Duyệt đăng ký', exact: true }).click();
+  await page.getByRole('button', { name: 'Đối soát', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Đối soát thanh toán tiện ích' });
+  await expect(dialog.getByRole('status').filter({ hasText: /^Chờ đối soát$/ })).toBeVisible();
+  const before = loads;
+  paid = true;
+  await page.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'smart_amenity_sync_event', newValue: JSON.stringify({ type: 'AMENITY_BOOKING_CHANGED', amenityId: 'amenity-test', timestamp: Date.now() }) })));
+  await expect.poll(() => loads).toBeGreaterThan(before);
+  await expect(dialog.getByRole('status').filter({ hasText: /^Đã thanh toán$/ })).toBeVisible({ timeout: 5000 });
+  await expect(dialog.getByRole('button', { name: 'Xác nhận nhận tiền' })).toHaveCount(0);
+});
+
+test('khung giờ có tổng phí không hợp lệ bị khóa trước khi cư dân xác nhận', async ({ page }) => {
+  await fixture(page);
+  const reason = 'Phí và cọc thanh toán QR phải có tổng là số đồng nguyên. Vui lòng liên hệ ban quản lý để kiểm tra cấu hình.';
+  await page.route('**/resident/amenities/*/availability?*', (route) => route.fulfill({ json: {
+    date: today, amenity_id: amenity.id, slots: [{ ...availableSlot, available: false, reason, total_amount: 1.5, deposit_amount: 0 }],
+  } }));
+  await page.goto('/cu-dan?tab=amenities');
+  await page.getByRole('button', { name: /Vườn BBQ/ }).click();
+  const slot = page.getByRole('button', { name: /10:00.*11:30/ });
+  await expect(slot).toBeDisabled();
+  await expect(slot).toContainText(reason);
+  await page.getByRole('checkbox').check();
+  await expect(page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true })).toBeDisabled();
+});
+
 for (const width of [1366, 390]) {
 test(`cư dân nhận thông báo duyệt và mở đúng QR từ cổng cư dân trên ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 844 });
@@ -467,6 +511,52 @@ test('thanh toán lỗi mạng có thử lại và hết hạn không còn nút 
   await expect(dialog.getByText('Hết hạn thanh toán', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Đã chuyển khoản', exact: true })).toHaveCount(0);
   await expect(dialog.getByText(/Không chuyển tiền thêm cho yêu cầu này/)).toBeVisible();
+  await expect(dialog.getByText(/Số tiền của đăng ký/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /Sao chép/ })).toHaveCount(0);
+});
+
+test('cư dân tự nhận trạng thái đã thanh toán mà không cần bấm báo chuyển khoản', async ({ page }) => {
+  await page.clock.install();
+  const backend = await fixture(page, { qrPayment: true });
+  await chooseSlot(page);
+  await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Thanh toán tiện ích', exact: true });
+  await expect(dialog.getByRole('button', { name: 'Đã chuyển khoản', exact: true })).toBeEnabled();
+  backend.confirmPayment();
+  await page.clock.fastForward(10000);
+  await expect(dialog.getByRole('status').filter({ hasText: /^Đã thanh toán$/ })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Đã chuyển khoản', exact: true })).toHaveCount(0);
+});
+
+test('checkout SePay gửi form POST có chữ ký tới đúng sandbox', async ({ page }) => {
+  await fixture(page, { qrPayment: true });
+  await page.route('**/resident/amenity-bookings/booking-test/payment', (route) => route.fulfill({ json: { payment: { ...paymentFixture(), checkout_available: true, checkout_environment: 'sandbox' } } }));
+  await page.route('**/resident/amenity-bookings/booking-test/payment/checkout', (route) => {
+    expect(route.request().method()).toBe('POST');
+    return route.fulfill({ json: { environment: 'sandbox', action: 'https://pay-sandbox.sepay.vn/v1/checkout/init', fields: { merchant: 'SP-TEST-QA', currency: 'VND', order_amount: '200000', operation: 'PURCHASE', payment_method: 'BANK_TRANSFER', order_invoice_number: 'SBX-TI-TEST', signature: 'signed-by-server' } } });
+  });
+  await page.route('https://pay-sandbox.sepay.vn/v1/checkout/init', (route) => {
+    expect(route.request().method()).toBe('POST');
+    const fields = new URLSearchParams(route.request().postData()!);
+    expect(fields.get('order_amount')).toBe('200000');
+    expect(fields.get('signature')).toBe('signed-by-server');
+    expect(fields.has('secret_key')).toBeFalsy();
+    return route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<meta charset="utf-8"><h1>Checkout sandbox kiểm thử</h1>' });
+  });
+  await chooseSlot(page);
+  await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
+  await page.getByRole('button', { name: 'Thử thanh toán SePay (Sandbox)', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Checkout sandbox kiểm thử' })).toBeVisible();
+});
+
+test('checkout SePay bị chặn khi đơn vừa hết hạn vẫn giữ hộp thoại và báo lỗi', async ({ page }) => {
+  await fixture(page, { qrPayment: true });
+  await page.route('**/resident/amenity-bookings/booking-test/payment', (route) => route.fulfill({ json: { payment: { ...paymentFixture(), checkout_available: true, checkout_environment: 'sandbox' } } }));
+  await page.route('**/resident/amenity-bookings/booking-test/payment/checkout', (route) => route.fulfill({ status: 409, json: { message: 'Đăng ký đã hết hạn thanh toán.' } }));
+  await chooseSlot(page);
+  await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
+  await page.getByRole('button', { name: 'Thử thanh toán SePay (Sandbox)', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Đăng ký đã hết hạn thanh toán.');
 });
 
 for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 }]) {

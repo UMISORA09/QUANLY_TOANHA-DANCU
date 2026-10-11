@@ -108,13 +108,18 @@ class ResidentAmenityBookingService
             $reason = 'Khung giờ đã hết chỗ.';
         }
         $minutes = Carbon::parse($start)->diffInMinutes(Carbon::parse($end));
+        $totalAmount = round((float) $amenity->hourly_rate * $minutes / 60, 2);
+        $depositAmount = (float) $amenity->security_deposit_required;
+        if ($reason === null && ! AmenityBookingPaymentService::hasWholeVndTotal($totalAmount, $depositAmount)) {
+            $reason = 'Phí và cọc thanh toán QR phải có tổng là số đồng nguyên. Vui lòng liên hệ ban quản lý để kiểm tra cấu hình.';
+        }
 
         return [
             'slot_id' => $slot->id, 'start_time' => $start, 'end_time' => $end,
             'slot_label' => $slot->slot_label, 'remaining_bookings' => $remainingBookings,
             'remaining_attendees' => $remainingAttendees, 'available' => $reason === null, 'reason' => $reason,
-            'total_amount' => round((float) $amenity->hourly_rate * $minutes / 60, 2),
-            'deposit_amount' => (float) $amenity->security_deposit_required,
+            'total_amount' => $totalAmount,
+            'deposit_amount' => $depositAmount,
         ];
     }
 

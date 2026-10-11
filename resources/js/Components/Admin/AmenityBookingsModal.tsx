@@ -40,7 +40,8 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
-  const [paymentBooking, setPaymentBooking] = useState<AmenityBooking | null>(null);
+  const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
+  const paymentBooking = bookings.find((booking) => booking.id === paymentBookingId) ?? null;
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -101,7 +102,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
       setSearch('');
       setStatusFilter('ALL');
       setPaymentFilter('ALL');
-      setPaymentBooking(null);
+      setPaymentBookingId(null);
       setError(null);
     }
     return () => bookingRequest.current?.abort();
@@ -458,7 +459,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
                     {/* Thao tác */}
                     <td className="py-3 px-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">{b.payment && <button type="button" onClick={() => setPaymentBooking(b)} className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">Đối soát</button>}
+                      <div className="flex items-center justify-end gap-1.5">{b.payment && <button type="button" onClick={() => setPaymentBookingId(b.id)} className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">Đối soát</button>}
                         {['PENDING'].includes(b.status?.toUpperCase()) && (
                           <button
                             type="button"
@@ -503,7 +504,10 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
         </dialog>
         <dialog ref={cancellationDialog} aria-labelledby="amenity-cancellation-title" onCancel={(event) => { if (updatingId) event.preventDefault(); else setCancellation(null); }} onClose={() => setCancellation(null)} className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50"><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (cancellation && !updatingId) void handleUpdateStatus(cancellation.id, 'CANCELLED', cancelReason.trim()); }}><h3 id="amenity-cancellation-title" className="font-bold">Hủy đăng ký tiện ích</h3><p className="text-sm">Hủy {cancellation?.booking_code}? Chỗ đã đăng ký sẽ được giải phóng.</p>{(cancellation?.is_paid || cancellation?.payment?.received_amount || cancellation?.payment?.status === 'REPORTED') && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Cư dân đã thanh toán hoặc báo chuyển khoản. Bạn cần đối soát và xử lý hoàn tiền sau khi hủy.</p>}<label className="block space-y-2 text-sm">Lý do hủy của quản lý<textarea required maxLength={500} disabled={Boolean(updatingId)} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="w-full rounded-xl border border-neutral-200 p-3" /></label>{error && <p role="alert" className="text-sm text-rose-700">{error}</p>}<div className="flex justify-end gap-2"><button type="button" disabled={Boolean(updatingId)} onClick={() => setCancellation(null)} className="rounded-xl border px-3 py-2 text-sm">Giữ đăng ký</button><button type="submit" disabled={Boolean(updatingId) || !cancelReason.trim()} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{updatingId ? 'Đang hủy…' : 'Xác nhận hủy'}</button></div></form></dialog>
         {/* Footer */}
-        {paymentBooking && <AmenityPaymentDialog key={paymentBooking.id} manager booking={paymentBooking} onClose={() => setPaymentBooking(null)} onChanged={() => void fetchBookings(true)} />}
+        {paymentBooking && <AmenityPaymentDialog key={paymentBooking.id} manager booking={paymentBooking} onClose={() => setPaymentBookingId(null)} onChanged={(payment) => {
+          setBookings((current) => current.map((booking) => booking.id === paymentBookingId ? { ...booking, payment } : booking));
+          void fetchBookings(true);
+        }} />}
         <div className="mt-4 pt-3 border-t border-neutral-200/80 flex items-center justify-between text-xs text-neutral-500">
           <span>
             Hiển thị <strong className="text-neutral-900">{filteredBookings.length}</strong> / {bookings.length} lượt đặt chỗ

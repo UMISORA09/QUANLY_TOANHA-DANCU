@@ -36,6 +36,6 @@
         "react-dom": "^19.3.0"
     },
     "overrides": {
-        "shell-quote": "^1.11.0"
+        "shell-quote": "^1.12.0"
     }
 }
