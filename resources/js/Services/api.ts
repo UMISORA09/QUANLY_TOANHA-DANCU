@@ -203,6 +203,58 @@ export interface ApiError extends Error {
   errors?: Record<string, string[]>;
 }
 
+export interface ResidentVisitorItem {
+  id: string;
+  registration_code: string;
+  host_resident_user_id: string;
+  apartment_id: string;
+  visitor_name: string;
+  visitor_phone: string;
+  visitor_national_id?: string | null;
+  expected_arrival_time: string;
+  expected_departure_time?: string | null;
+  visit_purpose: string;
+  visitor_count: number;
+  vehicle_license_plate?: string | null;
+  qr_access_pass_code: string;
+  qr_pass_status: 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED';
+  is_pre_approved_by_resident: boolean;
+  created_at: string;
+  updated_at: string;
+  apartment_number?: string;
+  block_name?: string;
+  block_code?: string;
+}
+
+export interface ResidentVisitorListResponse {
+  success: boolean;
+  data: ResidentVisitorItem[];
+  kpis: {
+    total: number;
+    active: number;
+    used: number;
+    cancelled: number;
+    expired: number;
+  };
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+  };
+}
+
+export interface ResidentVisitorDetailResponse {
+  success: boolean;
+  data: ResidentVisitorItem;
+  checkin_log?: any | null;
+  cooldown?: {
+    cooldown_seconds: number;
+    retry_after: number;
+    cooldown_until: string;
+  } | null;
+}
+
 export interface TimeSlot {
   id: string;
   amenity_id: string;
@@ -1221,18 +1273,78 @@ class ApiService {
     return result;
   }
 
+  // ================= MODULE #7: KHAI BÁO KHÁCH VIẾNG THĂM (CƯ DÂN) =================
+  async getResidentVisitors(params: {
+    search?: string;
+    status?: string;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<ResidentVisitorListResponse> {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.status) q.append('status', params.status);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit) q.append('limit', String(params.limit));
+
+    const qs = q.toString();
+    return this.request<ResidentVisitorListResponse>(`/resident/visitors${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    });
+  }
+
+  async getResidentVisitorDetail(id: string): Promise<ResidentVisitorDetailResponse> {
+    return this.request<ResidentVisitorDetailResponse>(`/resident/visitors/${id}`, {
+      method: 'GET',
+    });
+  }
+
   async createResidentVisitor(payload: {
     visitor_name: string;
-    visitor_phone?: string;
-    visit_purpose?: string;
+    visitor_phone: string;
+    visitor_national_id?: string;
     expected_arrival_time: string;
+    expected_departure_time?: string;
+    visit_purpose?: string;
+    visitor_count?: number;
     vehicle_license_plate?: string;
     apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    return this.request<any>('/resident/visitors', {
+  }): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>('/resident/visitors', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  }
+
+  async updateResidentVisitor(
+    id: string,
+    payload: {
+      visitor_name?: string;
+      visitor_phone?: string;
+      visitor_national_id?: string;
+      expected_arrival_time?: string;
+      expected_departure_time?: string;
+      visit_purpose?: string;
+      visitor_count?: number;
+      vehicle_license_plate?: string;
+    }
+  ): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>(`/resident/visitors/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async cancelResidentVisitor(
+    id: string,
+    reason?: string
+  ): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>(`/resident/visitors/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   }
 

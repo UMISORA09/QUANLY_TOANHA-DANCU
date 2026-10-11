@@ -36,6 +36,7 @@ import { api, AmenityBookingNotification } from '../Services/api';
 import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
+import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -516,6 +517,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           </div>
         ) : activeMenuId === 'amenities' ? (
           <ResidentAmenityBookingPanel />
+        ) : activeMenuId === 'visitors' ? (
+          <ResidentVisitorRegistrationPanel />
         ) : activeMenuId === 'overview' ? (
           /* ================= VIEW 2: TỔNG QUAN CƯ DÂN ================= */
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
@@ -605,10 +608,14 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
+              <div
+                onClick={() => setActiveMenuId('visitors')}
+                className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between cursor-pointer group"
+                title="Bấm để mở Quản lý khai báo khách viếng thăm"
+              >
                 <div className="flex items-center justify-between text-xs text-neutral-500 font-medium">
-                  <span>Khách đã khai báo</span>
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                  <span className="group-hover:text-neutral-900 transition-colors">Khách đã khai báo</span>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100 group-hover:bg-indigo-600 group-hover:text-white transition-all">
                     <Users className="w-3.5 h-3.5" />
                   </div>
                 </div>
@@ -619,7 +626,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 </div>
                 <div className="text-xs text-neutral-400 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                  <span>Trong tháng này</span>
+                  <span>Trong tháng này · Xem chi tiết →</span>
                 </div>
               </div>
             </div>

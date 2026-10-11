@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\RbacService;
+use App\Services\ResidentVisitorService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -332,50 +335,24 @@ class ResidentPortalController extends Controller
             'user_id' => 'nullable|string',
         ]);
 
-        $userId = $validated['user_id'] ?? null;
-        if (! $userId) {
-            $user = DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
-            $userId = $user ? $user->id : (string) Str::uuid();
-        }
-
-        $apartmentId = $validated['apartment_id'] ?? null;
-        if (! $apartmentId) {
-            $resident = DB::table('residents')->where('user_id', $userId)->first();
-            $apartmentId = $resident ? $resident->apartment_id : null;
-            if (! $apartmentId) {
-                $apt = DB::table('apartments')->where('apartment_number', 'A1-05')->first();
-                $apartmentId = $apt ? $apt->id : (string) Str::uuid();
+        $user = $request->user() ?? RbacService::resolveUser($request);
+        if (! $user) {
+            $userId = $validated['user_id'] ?? null;
+            if ($userId) {
+                $user = User::find($userId) ?? DB::table('users')->where('id', $userId)->first();
+            }
+            if (! $user) {
+                $user = DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
             }
         }
 
-        $visitorId = (string) Str::uuid();
-        $code = 'VIS-'.date('Ymd').'-'.rand(100, 999);
-        $qrPass = 'PASS_'.Str::upper(Str::random(18));
-        $now = Carbon::now();
-
-        DB::table('visitor_registrations')->insert([
-            'id' => $visitorId,
-            'registration_code' => $code,
-            'host_resident_user_id' => $userId,
-            'apartment_id' => $apartmentId,
-            'visitor_name' => $validated['visitor_name'],
-            'visitor_phone' => $validated['visitor_phone'] ?? '',
-            'visit_purpose' => $validated['visit_purpose'] ?? 'Thăm cư dân',
-            'expected_arrival_time' => Carbon::parse($validated['expected_arrival_time']),
-            'vehicle_license_plate' => $validated['vehicle_license_plate'] ?? null,
-            'qr_access_pass_code' => $qrPass,
-            'qr_pass_status' => 'ACTIVE',
-            'is_pre_approved_by_resident' => 1,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-
-        $visitor = DB::table('visitor_registrations')->where('id', $visitorId)->first();
+        $result = app(ResidentVisitorService::class)->createVisitor($user, $validated);
 
         return response()->json([
             'success' => true,
             'message' => 'Đăng ký khách thành công! Đã tạo thẻ QR Pass thông hành.',
-            'visitor' => $visitor,
+            'visitor' => $result['data'] ?? null,
+            'data' => $result['data'] ?? null,
         ], 201);
     }
 
