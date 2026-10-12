@@ -142,9 +142,21 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
 
   // Filter apartment residents when apartment changes in form
   const filteredFormResidents = useMemo(() => {
-    if (!formData.assigned_apartment_id) return residents;
-    return residents.filter(r => !r.apartment_id || r.apartment_id === formData.assigned_apartment_id);
-  }, [residents, formData.assigned_apartment_id]);
+    if (!formData.assigned_apartment_id) return [];
+    const list = residents.filter(r => String(r.apartment_id) === String(formData.assigned_apartment_id));
+    if (selectedCard?.assigned_user && formData.assigned_user_id === selectedCard.assigned_user.id) {
+      const exists = list.some(r => r.user_id === selectedCard.assigned_user!.id);
+      if (!exists) {
+        list.unshift({
+          user_id: selectedCard.assigned_user.id,
+          full_name: selectedCard.assigned_user.full_name,
+          phone_number: selectedCard.assigned_user.phone_number,
+          apartment_id: formData.assigned_apartment_id,
+        });
+      }
+    }
+    return list;
+  }, [residents, formData.assigned_apartment_id, selectedCard, formData.assigned_user_id]);
 
   // Debounced search
   const searchTimeoutRef = useRef<any>(null);
@@ -954,7 +966,14 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                     </label>
                     <select
                       value={formData.assigned_apartment_id}
-                      onChange={e => setFormData({ ...formData, assigned_apartment_id: e.target.value })}
+                      onChange={e => {
+                        const newApartmentId = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          assigned_apartment_id: newApartmentId,
+                          assigned_user_id: '',
+                        }));
+                      }}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
                     >
                       <option value="">-- Chưa gán căn hộ --</option>
@@ -968,20 +987,40 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
 
                   {/* Resident */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Gán Cư Dân
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        Gán Cư Dân
+                      </label>
+                      {!formData.assigned_apartment_id && (
+                        <span className="text-[10px] text-amber-600 font-medium">
+                          (Chọn căn hộ trước)
+                        </span>
+                      )}
+                    </div>
                     <select
+                      disabled={!formData.assigned_apartment_id}
                       value={formData.assigned_user_id}
                       onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                      className={`w-full px-3 py-2 rounded-lg border text-xs focus:ring-2 focus:ring-indigo-500 transition ${
+                        !formData.assigned_apartment_id
+                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed select-none'
+                          : 'bg-slate-50/50 text-slate-800 border-slate-200 cursor-pointer'
+                      }`}
                     >
-                      <option value="">-- Chưa gán cư dân --</option>
-                      {filteredFormResidents.map(res => (
-                        <option key={res.user_id} value={res.user_id}>
-                          {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
-                        </option>
-                      ))}
+                      {!formData.assigned_apartment_id ? (
+                        <option value="">-- Vui lòng chọn căn hộ trước --</option>
+                      ) : filteredFormResidents.length === 0 ? (
+                        <option value="">-- Căn hộ chưa có dữ liệu cư dân --</option>
+                      ) : (
+                        <>
+                          <option value="">-- Chưa gán cư dân --</option>
+                          {filteredFormResidents.map(res => (
+                            <option key={res.user_id} value={res.user_id}>
+                              {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
+                            </option>
+                          ))}
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -1135,7 +1174,14 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                     <label className="block text-xs font-bold text-slate-700 mb-1">Căn Hộ</label>
                     <select
                       value={formData.assigned_apartment_id}
-                      onChange={e => setFormData({ ...formData, assigned_apartment_id: e.target.value })}
+                      onChange={e => {
+                        const newApartmentId = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          assigned_apartment_id: newApartmentId,
+                          assigned_user_id: '',
+                        }));
+                      }}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
                     >
                       <option value="">-- Chưa gán căn hộ --</option>
@@ -1146,18 +1192,38 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Cư Dân</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">Cư Dân</label>
+                      {!formData.assigned_apartment_id && (
+                        <span className="text-[10px] text-amber-600 font-medium">
+                          (Chọn căn hộ trước)
+                        </span>
+                      )}
+                    </div>
                     <select
+                      disabled={!formData.assigned_apartment_id}
                       value={formData.assigned_user_id}
                       onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                      className={`w-full px-3 py-2 rounded-lg border text-xs focus:ring-2 focus:ring-indigo-500 transition ${
+                        !formData.assigned_apartment_id
+                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed select-none'
+                          : 'bg-slate-50/50 text-slate-800 border-slate-200 cursor-pointer'
+                      }`}
                     >
-                      <option value="">-- Chưa gán cư dân --</option>
-                      {filteredFormResidents.map(res => (
-                        <option key={res.user_id} value={res.user_id}>
-                          {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
-                        </option>
-                      ))}
+                      {!formData.assigned_apartment_id ? (
+                        <option value="">-- Vui lòng chọn căn hộ trước --</option>
+                      ) : filteredFormResidents.length === 0 ? (
+                        <option value="">-- Căn hộ chưa có dữ liệu cư dân --</option>
+                      ) : (
+                        <>
+                          <option value="">-- Chưa gán cư dân --</option>
+                          {filteredFormResidents.map(res => (
+                            <option key={res.user_id} value={res.user_id}>
+                              {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
+                            </option>
+                          ))}
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
