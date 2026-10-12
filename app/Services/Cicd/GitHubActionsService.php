@@ -4,6 +4,7 @@ namespace App\Services\Cicd;
 
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -57,7 +58,7 @@ class GitHubActionsService
             Cache::forget('cicd_security_audit');
         }
 
-        return Cache::remember($cacheKey, 30, function () use ($filters, $force) {
+        return Cache::remember($cacheKey, 60, function () use ($filters, $force) {
             $health = $this->getSystemHealth();
             $branches = $this->getGitBranches();
             $pipelines = $this->getPipelines($filters, $force);
@@ -148,7 +149,7 @@ class GitHubActionsService
 
                     $response = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(4.0)
+                        ->timeout(15.0)
                         ->get("{$this->apiBase}/actions/runs", $queryParams);
 
                     if ($response->successful()) {
@@ -217,11 +218,100 @@ class GitHubActionsService
         return $this->getPipelinesWithStatus($filters, $force)['runs'];
     }
 
+    /** @return array{pipelines: list<array>, activities: list<array>, has_more: bool, total_pipelines: int} */
+    public function getHistoryPage(int $page, bool $force = false): array
+    {
+        abort_unless($this->isLiveGitHubAvailable(), 503, 'Chưa cấu hình kết nối GitHub.');
+        $cacheKey = 'cicd_history_'.md5($this->apiBase.($this->token ?? ''))."_{$page}";
+        if ($force) {
+            Cache::forget($cacheKey);
+        }
+
+        $ttl = $page === 1 ? 60 : 1800;
+
+        return Cache::remember($cacheKey, $ttl, function () use ($page): array {
+            $query = ['per_page' => 100, 'page' => $page];
+            $responses = Http::pool(fn (Pool $pool) => [
+                $pool->as('runs')->withToken($this->token)
+                    ->withHeaders(['Accept' => 'application/vnd.github+json'])
+                    ->timeout(20)
+                    ->get("{$this->apiBase}/actions/runs", $query),
+                $pool->as('commits')->withToken($this->token)
+                    ->withHeaders(['Accept' => 'application/vnd.github+json'])
+                    ->timeout(20)
+                    ->get("{$this->apiBase}/commits", $query),
+            ]);
+
+            $runs = $responses['runs'];
+            $commits = $responses['commits'];
+
+            if ($runs instanceof \Throwable) {
+                throw $runs;
+            }
+            if ($commits instanceof \Throwable) {
+                throw $commits;
+            }
+
+            $runs->throw();
+            $commits->throw();
+            $pipelines = array_map([$this, 'formatGitHubRun'], $runs->json('workflow_runs') ?? []);
+            $activities = [];
+            foreach ($pipelines as $pipeline) {
+                $workflow = strtolower($pipeline['workflow_file']);
+                $type = match (true) {
+                    str_contains($workflow, 'rollback') => 'rollback',
+                    str_contains($workflow, 'security') => 'security',
+                    str_contains($workflow, 'vercel'), str_contains($workflow, 'staging'), str_contains($workflow, 'production'), str_contains($workflow, 'deploy') => 'deploy',
+                    str_contains($workflow, 'ci'), str_contains($workflow, 'test') => 'test',
+                    default => 'build',
+                };
+                $activities[] = [
+                    'id' => 'act-run-'.$pipeline['id'],
+                    'type' => $type,
+                    'title' => $pipeline['name'].' #'.$pipeline['run_number'],
+                    'description' => '['.$pipeline['branch'].'] '.$pipeline['commit_message'].' ('.$pipeline['commit_sha'].')',
+                    'status' => $pipeline['status'],
+                    'actor' => $pipeline['author'],
+                    'timestamp' => $pipeline['created_at'],
+                    'url' => $pipeline['url'],
+                ];
+            }
+            foreach ($commits->json() ?? [] as $commit) {
+                $author = $this->resolveMemberName($commit['author']['login'] ?? null, $commit['commit']['author']['name'] ?? null);
+                $activities[] = [
+                    'id' => 'act-gh-'.$commit['sha'],
+                    'type' => 'commit',
+                    'title' => $commit['commit']['message'],
+                    'description' => 'Commit '.substr($commit['sha'], 0, 7).' bởi '.$author,
+                    'status' => 'recorded',
+                    'actor' => $author,
+                    'timestamp' => $commit['commit']['committer']['date'] ?? $commit['commit']['author']['date'],
+                    'url' => $commit['html_url'] ?? null,
+                ];
+            }
+
+            return [
+                'pipelines' => $pipelines,
+                'activities' => $activities,
+                'has_more' => $page * 100 < (int) $runs->json('total_count') || count($commits->json() ?? []) === 100 || str_contains($commits->header('Link') ?? '', 'rel="next"'),
+                'total_pipelines' => (int) $runs->json('total_count'),
+            ];
+        });
+    }
+
     /**
      * Lấy chi tiết một pipeline
      */
     public function getPipelineDetail(string $id): ?array
     {
+        if ($this->isLiveGitHubAvailable() && ctype_digit($id)) {
+            $response = Http::withToken($this->token)->timeout(10)->get("{$this->apiBase}/actions/runs/{$id}");
+            if ($response->status() === 404) {
+                return null;
+            }
+
+            return $this->formatGitHubRun($response->throw()->json());
+        }
         $pipelines = $this->getPipelines();
         foreach ($pipelines as $p) {
             if ((string) $p['id'] === (string) $id) {
@@ -354,7 +444,7 @@ class GitHubActionsService
                 try {
                     $response = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(4)
+                        ->timeout(12)
                         ->get("{$this->apiBase}/deployments", ['per_page' => 10]);
 
                     if ($response->successful()) {
@@ -597,7 +687,7 @@ class GitHubActionsService
                 try {
                     $res = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(4)
+                        ->timeout(12)
                         ->get("{$this->apiBase}/actions/workflows/security.yml/runs", ['per_page' => 1]);
 
                     if ($res->successful()) {
@@ -608,7 +698,7 @@ class GitHubActionsService
 
                             $jobsRes = Http::withToken($this->token)
                                 ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                                ->timeout(4)
+                                ->timeout(12)
                                 ->get("{$this->apiBase}/actions/runs/{$runId}/jobs");
 
                             $jobs = $jobsRes->successful() ? ($jobsRes->json('jobs') ?? []) : [];
@@ -972,7 +1062,7 @@ class GitHubActionsService
                     $lines = explode("\n", trim($output));
                     $branches = [];
                     foreach ($lines as $line) {
-                        $clean = trim(str_replace('*', '', $line));
+                        $clean = trim(preg_replace('/^[*+]\s+/', '', trim($line)));
                         if (empty($clean) || str_contains($clean, '->')) {
                             continue;
                         }
@@ -1339,7 +1429,7 @@ class GitHubActionsService
         $gitAuthor = $headCommit['author']['name'] ?? null;
         $gitCommitter = $headCommit['committer']['name'] ?? null;
 
-        $displayName = $this->resolveMemberName($login, $gitAuthor ?: $gitCommitter);
+        $displayName = $this->resolveMemberName($login, $login ?: ($gitAuthor ?: $gitCommitter));
 
         return [
             'author' => $displayName,

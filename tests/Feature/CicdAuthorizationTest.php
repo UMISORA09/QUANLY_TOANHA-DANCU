@@ -19,6 +19,7 @@ class CicdAuthorizationTest extends TestCase
     {
         Http::fake();
         $this->getJson('/api/admin/cicd/overview')->assertUnauthorized();
+        $this->getJson('/api/admin/cicd/history?page=1')->assertUnauthorized();
         foreach (['pipelines/run', 'pipelines/123/retry', 'pipelines/123/cancel', 'deploy', 'rollback'] as $path) {
             $this->postJson('/api/admin/cicd/'.$path)->assertUnauthorized();
         }
@@ -30,6 +31,7 @@ class CicdAuthorizationTest extends TestCase
         Http::fake();
         $this->authenticateWithPermissions([]);
         $this->withHeader('X-User-Role', 'admin')->getJson('/api/admin/cicd/overview')->assertForbidden();
+        $this->getJson('/api/admin/cicd/history?page=1')->assertForbidden();
         foreach (['pipelines/run', 'pipelines/123/retry', 'pipelines/123/cancel', 'deploy', 'rollback'] as $path) {
             $this->postJson('/api/admin/cicd/'.$path)->assertForbidden();
         }
@@ -53,6 +55,16 @@ class CicdAuthorizationTest extends TestCase
             $mock->shouldReceive('getOverview')->once()->andReturn(['total_pipelines' => 5]);
         });
         $this->getJson('/api/admin/cicd/overview')->assertOk()->assertJsonPath('data.total_pipelines', 5);
+    }
+
+    public function test_history_validates_pages_and_allows_viewers(): void
+    {
+        $this->authenticateWithPermissions(['CICD:VIEW']);
+        $this->mock(GitHubActionsService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getHistoryPage')->once()->with(2, false)->andReturn(['pipelines' => [], 'activities' => [], 'has_more' => false, 'total_pipelines' => 0]);
+        });
+        $this->getJson('/api/admin/cicd/history?page=0')->assertUnprocessable();
+        $this->getJson('/api/admin/cicd/history?page=2')->assertOk()->assertJsonPath('data.has_more', false);
     }
 
     public function test_authorized_admin_can_read_freshness_alias(): void

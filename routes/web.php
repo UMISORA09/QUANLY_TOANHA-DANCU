@@ -691,6 +691,7 @@ Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [Reside
 
 // Phân hệ Quản trị CI/CD & DevOps Dashboard APIs
 Route::prefix('api/admin/cicd')->middleware(['auth.bearer:strict', 'permission:CICD:VIEW'])->group(function () {
+    Route::get('history', [CicdDashboardController::class, 'history']);
     Route::get('bundle', [CicdDashboardController::class, 'bundle']);
     Route::get('overview', [CicdDashboardController::class, 'overview']);
     Route::get('pipelines', [CicdDashboardController::class, 'pipelines']);
