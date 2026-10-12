@@ -18,6 +18,7 @@ import {
   Clock,
   Radio,
   Building,
+  Building2,
   User,
   Calendar,
   X,
@@ -25,6 +26,8 @@ import {
   DollarSign,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Check,
   Loader2,
 } from 'lucide-react';
 import {
@@ -35,6 +38,316 @@ import {
   RfidCardDetailResponse,
 } from '../../Services/rfidApi';
 import { useRealtimeSync, RealtimeEventPayload } from '../../Hooks/useRealtimeSync';
+
+interface ApartmentComboboxProps {
+  value: string;
+  onChange: (apartmentId: string) => void;
+  apartments: RfidApartmentOption[];
+  placeholder?: string;
+}
+
+const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
+  value,
+  onChange,
+  apartments,
+  placeholder = '-- Chưa gán căn hộ --',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedApartment = useMemo(() => {
+    if (!value) return null;
+    return apartments.find((a) => a.id === value) || null;
+  }, [value, apartments]);
+
+  const filteredApartments = useMemo(() => {
+    if (!searchQuery.trim()) return apartments;
+    const q = searchQuery.toLowerCase().trim();
+    return apartments.filter((a) =>
+      a.apartment_number.toLowerCase().includes(q)
+    );
+  }, [apartments, searchQuery]);
+
+  const handleSelect = (apartmentId: string) => {
+    onChange(apartmentId);
+    setIsOpen(false);
+    setSearchQuery('');
+  };
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-30' : ''}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
+          isOpen
+            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+            : 'border-slate-200 hover:border-slate-300'
+        }`}
+      >
+        <span className="truncate pr-2">
+          {selectedApartment ? (
+            <span className="text-slate-900 font-bold flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span>Căn hộ {selectedApartment.apartment_number}</span>
+            </span>
+          ) : (
+            <span className="text-slate-400">{placeholder}</span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
+            isOpen ? 'rotate-180 text-indigo-600' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+          <div className="p-2 border-b border-slate-100 bg-slate-50/90">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm số căn hộ..."
+                className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+
+          <div className="max-h-44 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
+            <button
+              type="button"
+              onClick={() => handleSelect('')}
+              className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                !value
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-slate-100 text-slate-600 italic'
+              }`}
+            >
+              <span>-- Chưa gán căn hộ --</span>
+              {!value && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+            </button>
+
+            {filteredApartments.length === 0 ? (
+              <div className="p-3 text-center text-slate-400 text-xs">
+                Không tìm thấy căn hộ phù hợp
+              </div>
+            ) : (
+              filteredApartments.map((a) => {
+                const isSelected = a.id === value;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => handleSelect(a.id)}
+                    className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white font-bold'
+                        : 'hover:bg-slate-100 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <Building2
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isSelected ? 'text-white' : 'text-slate-400'
+                        }`}
+                      />
+                      <span className="truncate">Căn hộ {a.apartment_number}</span>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface ResidentComboboxProps {
+  value: string;
+  onChange: (userId: string) => void;
+  residents: RfidResidentOption[];
+  disabled?: boolean;
+  disabledPlaceholder?: string;
+  placeholder?: string;
+}
+
+const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
+  value,
+  onChange,
+  residents,
+  disabled = false,
+  disabledPlaceholder = '-- Vui lòng chọn căn hộ trước --',
+  placeholder = '-- Chưa gán cư dân --',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedResident = useMemo(() => {
+    if (!value) return null;
+    return residents.find((r) => r.user_id === value) || null;
+  }, [value, residents]);
+
+  const filteredResidents = useMemo(() => {
+    if (!searchQuery.trim()) return residents;
+    const q = searchQuery.toLowerCase().trim();
+    return residents.filter((r) =>
+      r.full_name.toLowerCase().includes(q) || (r.phone_number && r.phone_number.includes(q))
+    );
+  }, [residents, searchQuery]);
+
+  const handleSelect = (userId: string) => {
+    onChange(userId);
+    setIsOpen(false);
+    setSearchQuery('');
+  };
+
+  if (disabled) {
+    return (
+      <div className="w-full px-3 py-2 border rounded-lg bg-slate-100 text-slate-400 text-xs font-medium cursor-not-allowed border-slate-200 select-none">
+        {disabledPlaceholder}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-30' : ''}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
+          isOpen
+            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+            : 'border-slate-200 hover:border-slate-300'
+        }`}
+      >
+        <span className="truncate pr-2">
+          {selectedResident ? (
+            <span className="text-slate-900 font-bold flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span>{selectedResident.full_name} {selectedResident.phone_number ? `(${selectedResident.phone_number})` : ''}</span>
+            </span>
+          ) : (
+            <span className="text-slate-400">{placeholder}</span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
+            isOpen ? 'rotate-180 text-indigo-600' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+          {residents.length >= 4 && (
+            <div className="p-2 border-b border-slate-100 bg-slate-50/90">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Tìm tên hoặc SĐT..."
+                  className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="max-h-44 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
+            <button
+              type="button"
+              onClick={() => handleSelect('')}
+              className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                !value
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-slate-100 text-slate-600 italic'
+              }`}
+            >
+              <span>-- Chưa gán cư dân --</span>
+              {!value && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+            </button>
+
+            {filteredResidents.length === 0 ? (
+              <div className="p-3 text-center text-slate-400 text-xs">
+                Căn hộ chưa có cư dân đã kích hoạt
+              </div>
+            ) : (
+              filteredResidents.map((r) => {
+                const isSelected = r.user_id === value;
+                return (
+                  <button
+                    key={r.user_id}
+                    type="button"
+                    onClick={() => handleSelect(r.user_id)}
+                    className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white font-bold'
+                        : 'hover:bg-slate-100 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <User
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isSelected ? 'text-white' : 'text-slate-400'
+                        }`}
+                      />
+                      <span className="truncate">
+                        {r.full_name} {r.phone_number ? `(${r.phone_number})` : ''}
+                      </span>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface RfidManagementProps {
   embedded?: boolean;
@@ -959,33 +1272,25 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Apartment */}
+                  {/* Apartment Combobox */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
                       Gán Căn Hộ
                     </label>
-                    <select
+                    <ApartmentCombobox
                       value={formData.assigned_apartment_id}
-                      onChange={e => {
-                        const newApartmentId = e.target.value;
+                      onChange={apartmentId => {
                         setFormData(prev => ({
                           ...prev,
-                          assigned_apartment_id: newApartmentId,
+                          assigned_apartment_id: apartmentId,
                           assigned_user_id: '',
                         }));
                       }}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                    >
-                      <option value="">-- Chưa gán căn hộ --</option>
-                      {apartments.map(apt => (
-                        <option key={apt.id} value={apt.id}>
-                          Căn hộ {apt.apartment_number}
-                        </option>
-                      ))}
-                    </select>
+                      apartments={apartments}
+                    />
                   </div>
 
-                  {/* Resident */}
+                  {/* Resident Combobox */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-bold text-slate-700">
@@ -997,31 +1302,12 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                         </span>
                       )}
                     </div>
-                    <select
-                      disabled={!formData.assigned_apartment_id}
+                    <ResidentCombobox
                       value={formData.assigned_user_id}
-                      onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-lg border text-xs focus:ring-2 focus:ring-indigo-500 transition ${
-                        !formData.assigned_apartment_id
-                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed select-none'
-                          : 'bg-slate-50/50 text-slate-800 border-slate-200 cursor-pointer'
-                      }`}
-                    >
-                      {!formData.assigned_apartment_id ? (
-                        <option value="">-- Vui lòng chọn căn hộ trước --</option>
-                      ) : filteredFormResidents.length === 0 ? (
-                        <option value="">-- Căn hộ chưa có dữ liệu cư dân --</option>
-                      ) : (
-                        <>
-                          <option value="">-- Chưa gán cư dân --</option>
-                          {filteredFormResidents.map(res => (
-                            <option key={res.user_id} value={res.user_id}>
-                              {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
-                            </option>
-                          ))}
-                        </>
-                      )}
-                    </select>
+                      onChange={userId => setFormData(prev => ({ ...prev, assigned_user_id: userId }))}
+                      residents={filteredFormResidents}
+                      disabled={!formData.assigned_apartment_id}
+                    />
                   </div>
                 </div>
 
@@ -1170,27 +1456,23 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Apartment Combobox */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Căn Hộ</label>
-                    <select
+                    <ApartmentCombobox
                       value={formData.assigned_apartment_id}
-                      onChange={e => {
-                        const newApartmentId = e.target.value;
+                      onChange={apartmentId => {
                         setFormData(prev => ({
                           ...prev,
-                          assigned_apartment_id: newApartmentId,
+                          assigned_apartment_id: apartmentId,
                           assigned_user_id: '',
                         }));
                       }}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                    >
-                      <option value="">-- Chưa gán căn hộ --</option>
-                      {apartments.map(apt => (
-                        <option key={apt.id} value={apt.id}>Căn hộ {apt.apartment_number}</option>
-                      ))}
-                    </select>
+                      apartments={apartments}
+                    />
                   </div>
 
+                  {/* Resident Combobox */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-bold text-slate-700">Cư Dân</label>
@@ -1200,31 +1482,12 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                         </span>
                       )}
                     </div>
-                    <select
-                      disabled={!formData.assigned_apartment_id}
+                    <ResidentCombobox
                       value={formData.assigned_user_id}
-                      onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
-                      className={`w-full px-3 py-2 rounded-lg border text-xs focus:ring-2 focus:ring-indigo-500 transition ${
-                        !formData.assigned_apartment_id
-                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed select-none'
-                          : 'bg-slate-50/50 text-slate-800 border-slate-200 cursor-pointer'
-                      }`}
-                    >
-                      {!formData.assigned_apartment_id ? (
-                        <option value="">-- Vui lòng chọn căn hộ trước --</option>
-                      ) : filteredFormResidents.length === 0 ? (
-                        <option value="">-- Căn hộ chưa có dữ liệu cư dân --</option>
-                      ) : (
-                        <>
-                          <option value="">-- Chưa gán cư dân --</option>
-                          {filteredFormResidents.map(res => (
-                            <option key={res.user_id} value={res.user_id}>
-                              {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
-                            </option>
-                          ))}
-                        </>
-                      )}
-                    </select>
+                      onChange={userId => setFormData(prev => ({ ...prev, assigned_user_id: userId }))}
+                      residents={filteredFormResidents}
+                      disabled={!formData.assigned_apartment_id}
+                    />
                   </div>
                 </div>
 
