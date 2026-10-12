@@ -21,9 +21,11 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\RealtimeStreamController;
 use App\Http\Controllers\ReceptionPortalController;
+use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\ResidentVisitorController;
 use App\Http\Controllers\RevenueAnalyticsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
@@ -184,6 +186,12 @@ Route::get('/api/management/overview', [ManagementDashboardController::class, 'o
 // API Reception Portal
 Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
 
+// API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
+Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
+Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
+Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
+Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
+
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
 Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket'])->middleware('auth.bearer:strict');
@@ -201,7 +209,16 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::post('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
     Route::post('amenity-bookings/{id}/payment/report', [AmenityBookingPaymentController::class, 'report'])->middleware('throttle:10,1');
 });
-Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
+
+// API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)
+Route::get('/api/v1/resident/visitors', [ResidentVisitorController::class, 'index']);
+Route::post('/api/v1/resident/visitors', [ResidentVisitorController::class, 'store']);
+Route::get('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'show']);
+Route::put('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+Route::patch('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController::class, 'cancel']);
+Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
+
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
 
 // API Auth (Có Throttle Rate Limiting chống Brute-Force)
