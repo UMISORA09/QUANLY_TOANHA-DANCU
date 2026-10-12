@@ -33,6 +33,7 @@ import {
   Briefcase,
   HelpCircle,
   Loader2,
+  Download,
 } from 'lucide-react';
 import {
   api,
@@ -699,6 +700,8 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [cancelReason, setCancelReason] = useState<string>('');
   const [copiedPassCode, setCopiedPassCode] = useState<boolean>(false);
+  const [qrServerFailed, setQrServerFailed] = useState<boolean>(false);
+  const [isDownloadingQr, setIsDownloadingQr] = useState<boolean>(false);
 
   // Debounce search
   useEffect(() => {
@@ -827,6 +830,7 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
     setIsDetailModalOpen(true);
     setIsDetailLoading(true);
     setCopiedPassCode(false);
+    setQrServerFailed(false);
     try {
       const res = await api.getResidentVisitorDetail(item.id);
       setDetailData(res);
@@ -842,6 +846,30 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
     setSelectedVisitor(item);
     setCancelReason('');
     setIsCancelModalOpen(true);
+  };
+
+  // Download QR Code Image
+  const handleDownloadQrCode = async (passCode: string, visitorName: string) => {
+    setIsDownloadingQr(true);
+    try {
+      const url = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=16&data=${encodeURIComponent(passCode)}`;
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      const safeName = (visitorName || 'Khach').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_');
+      a.download = `QR_PASS_${safeName}_${passCode}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      triggerToast('Đã tải hình ảnh mã QR thành công!');
+    } catch {
+      window.open(`https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=16&data=${encodeURIComponent(passCode)}`, '_blank');
+    } finally {
+      setIsDownloadingQr(false);
+    }
   };
 
   // Submit Create
@@ -1788,68 +1816,93 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
                 <button
                   type="button"
                   onClick={() => setIsDetailModalOpen(false)}
-                  className="text-neutral-400 hover:text-white p-1 rounded-lg"
+                  className="text-neutral-400 hover:text-white p-1 rounded-lg cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* QR Code Graphic Mockup */}
+              {/* QR Code Real & Scannable */}
               <div className="bg-white rounded-2xl p-5 text-neutral-900 flex flex-col items-center justify-center text-center space-y-3 shadow-inner my-2">
-                {/* SVG QR Code Simulation */}
-                <div className="w-40 h-40 bg-neutral-900 p-2 rounded-xl flex items-center justify-center relative">
-                  <div className="w-full h-full bg-white rounded-lg p-2 flex flex-col justify-between items-center">
-                    <div className="w-full flex justify-between">
-                      <div className="w-8 h-8 border-4 border-neutral-900 rounded-sm p-1 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-neutral-900" />
-                      </div>
-                      <div className="w-8 h-8 border-4 border-neutral-900 rounded-sm p-1 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-neutral-900" />
-                      </div>
-                    </div>
-                    <div className="my-auto flex flex-col items-center">
-                      <QrCode className="w-12 h-12 text-neutral-900" />
-                      <span className="text-[9px] font-mono font-bold tracking-widest text-neutral-500">
-                        VERIFIED PASS
-                      </span>
-                    </div>
-                    <div className="w-full flex justify-between">
-                      <div className="w-8 h-8 border-4 border-neutral-900 rounded-sm p-1 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-neutral-900" />
-                      </div>
-                      <div className="w-8 h-8 border-2 border-dashed border-neutral-400 rounded-sm flex items-center justify-center">
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-                      </div>
-                    </div>
-                  </div>
+                {/* Real Scannable QR Code */}
+                <div className="relative p-2.5 bg-white rounded-2xl border-2 border-neutral-900 shadow-md flex items-center justify-center group">
+                  {/* Modern scanner corner accents */}
+                  <span className="absolute -top-1 -left-1 w-3.5 h-3.5 border-t-2 border-l-2 border-emerald-500 rounded-tl-sm pointer-events-none" />
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 border-t-2 border-r-2 border-emerald-500 rounded-tr-sm pointer-events-none" />
+                  <span className="absolute -bottom-1 -left-1 w-3.5 h-3.5 border-b-2 border-l-2 border-emerald-500 rounded-bl-sm pointer-events-none" />
+                  <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-b-2 border-r-2 border-emerald-500 rounded-br-sm pointer-events-none" />
+
+                  <img
+                    src={
+                      qrServerFailed
+                        ? `https://quickchart.io/qr?text=${encodeURIComponent(selectedVisitor.qr_access_pass_code || selectedVisitor.registration_code || '')}&size=320&margin=2`
+                        : `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(selectedVisitor.qr_access_pass_code || selectedVisitor.registration_code || '')}`
+                    }
+                    alt={`Mã QR ${selectedVisitor.qr_access_pass_code}`}
+                    className="w-44 h-44 object-contain rounded-lg transition-transform duration-200 group-hover:scale-[1.02]"
+                    onError={() => setQrServerFailed(true)}
+                    loading="eager"
+                  />
+                </div>
+
+                {/* Scan instruction badge */}
+                <div className="inline-flex items-center gap-1.5 text-[10px] text-emerald-700 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>Quét mã tại cổng an ninh & quầy lễ tân</span>
                 </div>
 
                 {/* Pass Code */}
                 <div>
-                  <div className="text-[11px] text-neutral-400 font-semibold uppercase">Mã thông hành QR</div>
-                  <div className="font-mono font-extrabold text-sm text-neutral-900 tracking-wider">
+                  <div className="text-[11px] text-neutral-400 font-semibold uppercase tracking-wider">Mã thông hành QR</div>
+                  <div className="font-mono font-extrabold text-sm text-neutral-900 tracking-wider select-all">
                     {selectedVisitor.qr_access_pass_code}
                   </div>
                 </div>
 
-                {/* Copy button */}
-                <button
-                  type="button"
-                  onClick={() => handleCopyPassCode(selectedVisitor.qr_access_pass_code)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition-all cursor-pointer"
-                >
-                  {copiedPassCode ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-emerald-700">Đã sao chép mã!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5 text-neutral-500" />
-                      <span>Sao chép mã cho khách</span>
-                    </>
-                  )}
-                </button>
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyPassCode(selectedVisitor.qr_access_pass_code)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    {copiedPassCode ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">Đã sao chép!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-neutral-500" />
+                        <span>Sao chép mã</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDownloadQrCode(
+                        selectedVisitor.qr_access_pass_code || selectedVisitor.registration_code || '',
+                        selectedVisitor.visitor_name
+                      )
+                    }
+                    disabled={isDownloadingQr}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    {isDownloadingQr ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
+                        <span>Đang tải...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Tải ảnh QR</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
