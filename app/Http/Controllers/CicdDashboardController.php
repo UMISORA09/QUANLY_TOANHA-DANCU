@@ -23,8 +23,10 @@ class CicdDashboardController extends Controller
         ]);
         try {
             $history = $this->cicdService->getHistoryPage((int) ($validated['page'] ?? 1), $request->boolean('force'));
-        } catch (RequestException|ConnectionException) {
-            return response()->json(['message' => 'Không thể đồng bộ lịch sử GitHub. Vui lòng thử lại sau.'], 502);
+        } catch (RequestException $exception) {
+            return response()->json(['message' => 'Không thể đồng bộ lịch sử GitHub (HTTP '.$exception->response->status().'). Vui lòng thử lại sau.'], 502);
+        } catch (ConnectionException) {
+            return response()->json(['message' => 'Kết nối GitHub quá thời gian chờ. Vui lòng thử đồng bộ lại.'], 504);
         }
 
         return response()->json(['data' => $history]);

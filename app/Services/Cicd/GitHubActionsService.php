@@ -227,9 +227,7 @@ class GitHubActionsService
             Cache::forget($cacheKey);
         }
 
-        $ttl = $page === 1 ? 60 : 1800;
-
-        return Cache::remember($cacheKey, $ttl, function () use ($page): array {
+        return Cache::remember($cacheKey, 15, function () use ($page): array {
             $query = ['per_page' => 100, 'page' => $page];
             $responses = Http::pool(fn (Pool $pool) => [
                 $pool->as('runs')->withToken($this->token)

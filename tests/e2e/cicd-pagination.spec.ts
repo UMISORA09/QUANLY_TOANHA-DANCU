@@ -48,8 +48,8 @@ test('pipeline pages contain at most 15 rows and reset after filtering', async (
   const appHtml = await getSyncedAppHtml();
   await page.route('**/admin/cicd', route => route.fulfill({ contentType: 'text/html', body: appHtml }));
   await page.goto('/admin/cicd');
-  await expect(page.getByText('Unit & Feature')).toBeVisible();
-  await expect(page.getByText('Vite Build')).toBeVisible();
+  await expect(page.getByText('Trạng thái workflow từ GitHub')).toBeVisible();
+  await expect(page.getByText('26/26 passed', { exact: false })).toHaveCount(0);
   await page.getByRole('button', { name: /Triển khai & Bản phát hành/ }).click();
   await expect(page.getByText('Actual deployment')).toBeVisible();
   await expect(page.getByText('61bc9af', { exact: false })).toHaveCount(0);
@@ -127,6 +127,7 @@ test('full GitHub history, author filtering, sliders and live updates preserve 1
   const activities = pipelines.map(item => ({ id: `act-${item.id}`, title: `Activity ${item.id}`, description: 'Old GitHub activity',
     actor: item.author, timestamp: item.created_at, status: 'success', type: 'test' }));
   let unavailable = false;
+  let failOlderPages = false;
   let headRequests = 0;
   await page.addInitScript(() => {
     localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'QA', email: 'qa@example.test' }));
@@ -142,6 +143,7 @@ test('full GitHub history, author filtering, sliders and live updates preserve 1
   await page.route('**/api/admin/cicd/history?*', route => {
     const number = Number(new URL(route.request().url()).searchParams.get('page'));
     if (number === 1) headRequests++;
+    if (number > 1 && failOlderPages) return route.fulfill({ status: 502, json: { message: 'Older GitHub page unavailable in QA' } });
     if (unavailable) return route.fulfill({ status: 502, json: { message: 'GitHub unavailable in QA' } });
     return route.fulfill({ json: { data: { pipelines: pipelines.slice((number - 1) * 100, number * 100),
       activities: activities.slice((number - 1) * 100, number * 100), total_pipelines: pipelines.length, has_more: number * 100 < pipelines.length } } });
@@ -188,5 +190,13 @@ test('full GitHub history, author filtering, sliders and live updates preserve 1
   await expect(rows.first()).toContainText('Realtime pipeline');
   await nav.scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'test-results/cicd-history-pagination.png' });
+  failOlderPages = true;
+  await page.getByRole('button', { name: 'Làm mới', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Older GitHub page unavailable in QA');
+  await expect(nav).toContainText('/ 151 pipelines');
+  await expect(rows).toHaveCount(15);
+  failOlderPages = false;
+  await page.getByRole('button', { name: 'Thử đồng bộ lại' }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 

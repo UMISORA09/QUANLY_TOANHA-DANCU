@@ -257,11 +257,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
             if (page === 1) throw pageErr;
             await new Promise(r => setTimeout(r, 800));
             if (controller.signal.aborted) return;
-            try {
-              result = await cicdApi.getHistoryPage(page, force, controller.signal);
-            } catch {
-              break;
-            }
+            result = await cicdApi.getHistoryPage(page, force, controller.signal);
           }
           if (controller.signal.aborted) return;
           if (page === 1) {

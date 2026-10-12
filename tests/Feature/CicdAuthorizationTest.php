@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Cicd\GitHubActionsService;
 use App\Services\Freshness\FreshnessService;
 use Closure;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Mockery;
@@ -65,6 +66,17 @@ class CicdAuthorizationTest extends TestCase
         });
         $this->getJson('/api/admin/cicd/history?page=0')->assertUnprocessable();
         $this->getJson('/api/admin/cicd/history?page=2')->assertOk()->assertJsonPath('data.has_more', false);
+    }
+
+    public function test_history_reports_github_failures_without_exposing_credentials(): void
+    {
+        $this->authenticateWithPermissions(['CICD:VIEW']);
+        config(['services.github.token' => 'test-history-token']);
+        Http::fake(['*' => Http::response(['message' => 'Rate limited'], 403)]);
+        $this->getJson('/api/admin/cicd/history?page=1&force=1')
+            ->assertStatus(502)->assertSee('HTTP 403')->assertDontSee('test-history-token');
+        Http::fake(fn () => throw new ConnectionException('Timed out'));
+        $this->getJson('/api/admin/cicd/history?page=2&force=1')->assertStatus(504);
     }
 
     public function test_authorized_admin_can_read_freshness_alias(): void
