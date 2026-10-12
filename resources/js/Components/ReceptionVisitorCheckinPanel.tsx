@@ -3,17 +3,13 @@ import { createPortal } from 'react-dom';
 import {
   Users,
   UserCheck,
-  UserX,
   Clock,
   Search,
   RefreshCw,
   QrCode,
-  Calendar,
   Phone,
   Car,
-  Home,
   CheckCircle2,
-  XCircle,
   AlertCircle,
   Eye,
   Copy,
@@ -21,24 +17,19 @@ import {
   Building,
   ShieldCheck,
   X,
-  FileText,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Filter,
   Loader2,
   LogOut,
-  ArrowRight,
-  CreditCard,
-  Hash,
   User,
-  Sparkles,
-  Zap,
 } from 'lucide-react';
 import {
   api,
   ReceptionVisitorItem,
-  ReceptionVisitorListResponse,
   ReceptionVisitorLookupResponse,
-  ApiError,
 } from '../Services/api';
 import { useRealtimeSync, RealtimeEventPayload } from '../Hooks/useRealtimeSync';
 
@@ -60,7 +51,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // Bộ nhớ đệm Client (In-memory SWR Cache) cho các tab và trang (Chuyển tab 0ms)
   const tabCacheRef = useRef<Map<string, {
@@ -74,7 +65,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [perPage] = useState<number>(15);
+  const [perPage, setPerPage] = useState<number>(15);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
 
@@ -83,6 +74,28 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [lookupResult, setLookupResult] = useState<ReceptionVisitorLookupResponse['data'] | null>(null);
   const [isLookupModalOpen, setIsLookupModalOpen] = useState<boolean>(false);
+
+  // Custom Dropdown Open States (Chuẩn Ảnh 2)
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState<boolean>(false);
+  const [isPerPageDropdownOpen, setIsPerPageDropdownOpen] = useState<boolean>(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const perPageDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false);
+      }
+      if (perPageDropdownRef.current && !perPageDropdownRef.current.contains(event.target as Node)) {
+        setIsPerPageDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // 4. Modal Check-in
   const [isCheckinModalOpen, setIsCheckinModalOpen] = useState<boolean>(false);
@@ -129,8 +142,8 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
     }
   }, [isCheckinModalOpen, isCheckoutModalOpen, isLookupModalOpen, isDetailModalOpen]);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
+  const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -138,7 +151,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
-    showToast(`Đã sao chép mã: ${code}`);
+    showToast(`Đã sao chép mã: ${code}`, 'info');
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
@@ -148,6 +161,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       targetStatus: string = statusFilter,
       targetPage: number = currentPage,
       targetSearch: string = debouncedSearch,
+      targetLimit: number = perPage,
       isSilent: boolean = false
     ) => {
       if (searchAbortControllerRef.current) {
@@ -156,7 +170,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       const abortController = new AbortController();
       searchAbortControllerRef.current = abortController;
 
-      const cacheKey = `${targetStatus}_${targetSearch}_${targetPage}`;
+      const cacheKey = `${targetStatus}_${targetSearch}_${targetPage}_${targetLimit}`;
       const cached = tabCacheRef.current.get(cacheKey);
 
       if (!isSilent && !cached) {
@@ -171,7 +185,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
             search: targetSearch,
             status: targetStatus,
             page: targetPage,
-            limit: perPage,
+            limit: targetLimit,
           },
           { signal: abortController.signal }
         );
@@ -207,8 +221,10 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         console.error('Lỗi khi tải danh sách khách:', err);
         setErrorMsg(err.message || 'Không thể tải danh sách khách viếng thăm.');
       } finally {
-        setIsLoading(false);
-        setIsFetching(false);
+        if (!abortController.signal.aborted) {
+          setIsLoading(false);
+          setIsFetching(false);
+        }
       }
     },
     [statusFilter, currentPage, debouncedSearch, perPage]
@@ -222,7 +238,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       setStatusFilter(newStatus);
       setCurrentPage(1);
 
-      const cacheKey = `${newStatus}_${debouncedSearch}_1`;
+      const cacheKey = `${newStatus}_${debouncedSearch}_1_${perPage}`;
       const cached = tabCacheRef.current.get(cacheKey);
 
       if (cached) {
@@ -231,50 +247,55 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         setTotalPages(cached.pagination.total_pages);
         setTotalCount(cached.pagination.total_items);
         // Đồng bộ ngầm trong nền
-        fetchVisitors(newStatus, 1, debouncedSearch, true);
+        fetchVisitors(newStatus, 1, debouncedSearch, perPage, true);
       } else {
-        // 2. Chưa có trong cache -> hiện skeleton loading ngay và fetch dữ liệu thực từ Server
+        // 2. Chưa có trong cache -> hiện loading và fetch dữ liệu thực từ Server
         setVisitors([]);
         setIsLoading(true);
-        fetchVisitors(newStatus, 1, debouncedSearch, false);
+        fetchVisitors(newStatus, 1, debouncedSearch, perPage, false);
       }
     },
-    [statusFilter, debouncedSearch, fetchVisitors]
+    [statusFilter, debouncedSearch, perPage, fetchVisitors]
   );
 
   // Chuyển trang siêu tốc tận dụng cache
   const handlePageChange = useCallback(
     (newPage: number) => {
       setCurrentPage(newPage);
-      const cacheKey = `${statusFilter}_${debouncedSearch}_${newPage}`;
+      const cacheKey = `${statusFilter}_${debouncedSearch}_${newPage}_${perPage}`;
       const cached = tabCacheRef.current.get(cacheKey);
 
       if (cached) {
         setVisitors(cached.data);
         setTotalPages(cached.pagination.total_pages);
         setTotalCount(cached.pagination.total_items);
-        fetchVisitors(statusFilter, newPage, debouncedSearch, true);
+        fetchVisitors(statusFilter, newPage, debouncedSearch, perPage, true);
       } else {
         setIsLoading(true);
-        fetchVisitors(statusFilter, newPage, debouncedSearch, false);
+        fetchVisitors(statusFilter, newPage, debouncedSearch, perPage, false);
       }
     },
-    [statusFilter, debouncedSearch, fetchVisitors]
+    [statusFilter, debouncedSearch, perPage, fetchVisitors]
   );
 
-  // Tải dữ liệu ban đầu
-  useEffect(() => {
-    fetchVisitors('ALL', 1, '', false);
-  }, []);
+  // Thay đổi số dòng trên 1 trang
+  const handlePerPageChange = (newLimit: number) => {
+    setPerPage(newLimit);
+    setCurrentPage(1);
+    tabCacheRef.current.clear();
+    fetchVisitors(statusFilter, 1, debouncedSearch, newLimit, false);
+  };
 
-  // Khi từ khóa tìm kiếm thay đổi (sau 350ms debounce)
+  const isFirstMountRef = useRef<boolean>(true);
+
+  // Khi mount hoặc từ khóa tìm kiếm thay đổi (sau 350ms debounce)
   useEffect(() => {
-    if (debouncedSearch !== '') {
-      fetchVisitors(statusFilter, 1, debouncedSearch, false);
-    } else {
-      // Khi xóa ô tìm kiếm, nạp lại theo tab hiện tại
-      fetchVisitors(statusFilter, 1, '', false);
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      fetchVisitors('ALL', 1, '', perPage, false);
+      return;
     }
+    fetchVisitors(statusFilter, 1, debouncedSearch, perPage, false);
   }, [debouncedSearch]);
 
   // Realtime Live Sync: Khi có bất kỳ mutation nào (A check-in / B check-out)
@@ -282,16 +303,16 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
     (event: RealtimeEventPayload) => {
       if (event.module === 'visitors' || event.entity === 'visitor_checkin' || event.entity === 'visitor_registration') {
         tabCacheRef.current.clear();
-        fetchVisitors(statusFilter, currentPage, debouncedSearch, true);
+        fetchVisitors(statusFilter, currentPage, debouncedSearch, perPage, true);
 
         if (event.action === 'CHECKED_IN') {
-          showToast(`⚡ Realtime: Khách ${event.visitor_name || ''} vừa check-in vào tòa nhà!`);
+          showToast(`⚡ Realtime: Khách ${event.visitor_name || ''} vừa check-in vào tòa nhà!`, 'info');
         } else if (event.action === 'CHECKED_OUT') {
-          showToast(`⚡ Realtime: Khách ${event.visitor_name || ''} vừa check-out khỏi tòa nhà!`);
+          showToast(`⚡ Realtime: Khách ${event.visitor_name || ''} vừa check-out khỏi tòa nhà!`, 'info');
         }
       }
     },
-    [statusFilter, currentPage, debouncedSearch, fetchVisitors]
+    [statusFilter, currentPage, debouncedSearch, perPage, fetchVisitors]
   );
 
   useRealtimeSync({
@@ -299,7 +320,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
     onEvent: handleRealtimeEvent,
     onReconnect: () => {
       tabCacheRef.current.clear();
-      fetchVisitors(statusFilter, currentPage, debouncedSearch, true);
+      fetchVisitors(statusFilter, currentPage, debouncedSearch, perPage, true);
     },
   });
 
@@ -308,7 +329,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
     if (e) e.preventDefault();
     const code = quickScanCode.trim();
     if (!code) {
-      showToast('Vui lòng nhập hoặc quét mã QR Pass Code / Mã đăng ký');
+      showToast('Vui lòng nhập hoặc quét mã QR Pass Code / Mã đăng ký', 'error');
       return;
     }
 
@@ -320,7 +341,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         setIsLookupModalOpen(true);
       }
     } catch (err: any) {
-      showToast(err.message || `Không tìm thấy lượt khách với mã: ${code}`);
+      showToast(err.message || `Không tìm thấy lượt khách với mã: ${code}`, 'error');
     } finally {
       setIsScanning(false);
     }
@@ -351,7 +372,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       });
 
       if (res.success) {
-        showToast(res.message || `Check-in thành công cho khách ${checkinTarget.visitor_name}!`);
+        showToast(res.message || `Check-in thành công cho khách ${checkinTarget.visitor_name}!`, 'success');
         setIsCheckinModalOpen(false);
         setCheckinTarget(null);
         if (isLookupModalOpen) setIsLookupModalOpen(false);
@@ -360,9 +381,9 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       }
     } catch (err: any) {
       if (err.status === 409) {
-        showToast(`⚠️ Xung đột: ${err.message}`);
+        showToast(`⚠️ Xung đột: ${err.message}`, 'error');
       } else {
-        showToast(err.message || 'Lỗi khi thực hiện check-in.');
+        showToast(err.message || 'Lỗi khi thực hiện check-in.', 'error');
       }
       tabCacheRef.current.clear();
       fetchVisitors();
@@ -391,7 +412,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       });
 
       if (res.success) {
-        showToast(res.message || `Check-out thành công cho khách ${checkoutTarget.visitor_name}!`);
+        showToast(res.message || `Check-out thành công cho khách ${checkoutTarget.visitor_name}!`, 'success');
         setIsCheckoutModalOpen(false);
         setCheckoutTarget(null);
         if (isLookupModalOpen) setIsLookupModalOpen(false);
@@ -400,9 +421,9 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       }
     } catch (err: any) {
       if (err.status === 409) {
-        showToast(`⚠️ Xung đột: ${err.message}`);
+        showToast(`⚠️ Xung đột: ${err.message}`, 'error');
       } else {
-        showToast(err.message || 'Lỗi khi thực hiện check-out.');
+        showToast(err.message || 'Lỗi khi thực hiện check-out.', 'error');
       }
       tabCacheRef.current.clear();
       fetchVisitors();
@@ -422,40 +443,89 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
     }
   };
 
+  // Badge trạng thái chuẩn phong cách RFID Management
+  const getStatusBadge = (status: string, statusLabel: string) => {
+    switch (status) {
+      case 'INSIDE':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping" />
+            <span>{statusLabel || 'ĐANG TRONG TÒA'}</span>
+          </span>
+        );
+      case 'EXPECTED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+            <Clock className="w-3 h-3 text-indigo-600" />
+            <span>{statusLabel || 'CHỜ CHECK-IN'}</span>
+          </span>
+        );
+      case 'CHECKED_OUT':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+            <span>{statusLabel || 'ĐÃ CHECK-OUT'}</span>
+          </span>
+        );
+      case 'CANCELLED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+            <span>{statusLabel || 'ĐÃ HỦY / HẾT HẠN'}</span>
+          </span>
+        );
+      default:
+        return (
+          <span className="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700">
+            {statusLabel || status}
+          </span>
+        );
+    }
+  };
+
   return (
-    <div className="w-full space-y-6">
-      {/* Toast Notification */}
+    <div className={`space-y-6 ${embedded ? '' : 'p-6 max-w-7xl mx-auto'}`}>
+      {/* Toast Notification (Chuẩn phong cách RFID Management) */}
       {toastMessage && typeof document !== 'undefined' && createPortal(
-        <div className="fixed bottom-6 right-6 z-[9999] flex items-center gap-3 bg-neutral-900/95 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-5 duration-300">
-          <Sparkles className="w-4 h-4 text-sky-400 shrink-0 animate-spin" />
-          <span className="text-xs sm:text-sm font-medium">{toastMessage}</span>
+        <div
+          className={`fixed top-5 right-5 z-[9999] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border transition-all duration-300 ${
+            toastMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+              : toastMessage.type === 'error'
+              ? 'bg-rose-50 text-rose-900 border-rose-300'
+              : 'bg-sky-50 text-sky-900 border-sky-300'
+          }`}
+        >
+          {toastMessage.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+          ) : toastMessage.type === 'error' ? (
+            <AlertCircle className="w-5 h-5 text-rose-600" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 text-sky-600 animate-pulse" />
+          )}
+          <span>{toastMessage.text}</span>
           <button
+            type="button"
             onClick={() => setToastMessage(null)}
-            className="ml-2 text-slate-400 hover:text-white p-1 cursor-pointer"
+            className="ml-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>,
         document.body
       )}
 
-      {/* Header & Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* 1. Header & Title (Đồng bộ chuẩn RFID Management) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-sky-600 uppercase tracking-wider font-mono">
-            <ShieldCheck className="w-4 h-4" />
-            <span>CỔNG TIẾP ĐÓN LỄ TÂN & BẢO VỆ</span>
-            <span>•</span>
-            <span className="text-emerald-600 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              REALTIME LIVE
-            </span>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider font-mono text-indigo-600">
+            <Users className="w-4 h-4 text-indigo-600" />
+            <span>CỔNG TIẾP ĐÓN LỄ TÂN · KHÁCH VIẾNG THĂM</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight mt-1">
-            Tra cứu & Check-in / Check-out Khách viếng thăm
+            Tra Cứu & Check-in / Check-out Khách Viếng Thăm
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Kiểm soát khách vào/ra tòa nhà tức thời, tra cứu mã QR Pass và đồng bộ thời gian thực giữa các máy trực.
+            Kiểm soát khách vào/ra tòa nhà tức thời, tra cứu mã QR Pass và đồng bộ thời gian thực giữa các quầy tiếp đón.
           </p>
         </div>
 
@@ -464,428 +534,481 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
             type="button"
             onClick={() => {
               tabCacheRef.current.clear();
-              fetchVisitors();
+              fetchVisitors(statusFilter, currentPage, debouncedSearch, perPage, false);
             }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold shadow-xs hover:shadow-sm transition-all cursor-pointer group"
-            title="Đồng bộ lại danh sách từ server"
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition shadow-sm cursor-pointer"
+            title="Làm mới dữ liệu từ server"
           >
-            <RefreshCw className={`w-4 h-4 text-slate-500 group-hover:rotate-180 transition-transform duration-500 ${isFetching ? 'animate-spin text-sky-600' : ''}`} />
-            <span>Làm mới</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin text-indigo-600' : ''}`} />
+            <span>Tải lại</span>
           </button>
         </div>
       </div>
 
-      {/* 4 Cards Thống kê KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 2. KPI Statistics Cards (Đồng bộ 100% chuẩn RFID Management) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Chờ check-in hôm nay */}
         <div
           onClick={() => handleTabChange('EXPECTED')}
-          className={`bg-white/80 backdrop-blur-xl border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden ${
-            statusFilter === 'EXPECTED' ? 'border-indigo-400 ring-2 ring-indigo-200 bg-indigo-50/40' : 'border-white/80 hover:border-indigo-200'
+          className={`bg-white p-4 sm:p-5 rounded-2xl border shadow-sm flex items-center gap-4 cursor-pointer transition ${
+            statusFilter === 'EXPECTED'
+              ? 'border-blue-400 ring-2 ring-blue-100'
+              : 'border-slate-200/80 hover:border-blue-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">Chờ check-in hôm nay</span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Clock className="w-4 h-4" />
-            </div>
+          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <Clock className="w-6 h-6" />
           </div>
-          <div className="text-3xl font-black text-neutral-950 mt-3 tracking-tight">
-            {kpis.expected_today}
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Chờ check-in hôm nay</div>
+            <div className="text-2xl font-black text-slate-900">{kpis.expected_today}</div>
+            <div className="text-[11px] text-blue-600 font-semibold mt-0.5">Khách đã hẹn trước</div>
           </div>
-          <div className="text-[11px] text-indigo-600 mt-2 font-medium flex items-center gap-1">
-            <span>Khách đã khai báo trước</span>
-            <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-          <div className="absolute -right-6 -bottom-6 w-20 h-20 bg-indigo-400/10 rounded-full blur-xl pointer-events-none" />
         </div>
 
-        {/* KPI 2: Đang ở trong tòa nhà */}
+        {/* KPI 2: Đang trong tòa nhà */}
         <div
           onClick={() => handleTabChange('INSIDE')}
-          className={`bg-white/80 backdrop-blur-xl border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden ${
-            statusFilter === 'INSIDE' ? 'border-sky-400 ring-2 ring-sky-200 bg-sky-50/40' : 'border-white/80 hover:border-sky-200'
+          className={`bg-white p-4 sm:p-5 rounded-2xl border shadow-sm flex items-center gap-4 cursor-pointer transition ${
+            statusFilter === 'INSIDE'
+              ? 'border-emerald-400 ring-2 ring-emerald-100'
+              : 'border-slate-200/80 hover:border-emerald-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">Đang ở trong tòa nhà</span>
-            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Users className="w-4 h-4" />
-            </div>
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+            <UserCheck className="w-6 h-6" />
           </div>
-          <div className="text-3xl font-black text-neutral-950 mt-3 tracking-tight">
-            {kpis.currently_inside}
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Đang trong tòa nhà</div>
+            <div className="text-2xl font-black text-emerald-700">{kpis.currently_inside}</div>
+            <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">Cần check-out khi về</div>
           </div>
-          <div className="text-[11px] text-sky-600 mt-2 font-medium flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Cần check-out khi rời đi</span>
-          </div>
-          <div className="absolute -right-6 -bottom-6 w-20 h-20 bg-sky-400/10 rounded-full blur-xl pointer-events-none" />
         </div>
 
         {/* KPI 3: Đã check-out hôm nay */}
         <div
           onClick={() => handleTabChange('CHECKED_OUT')}
-          className={`bg-white/80 backdrop-blur-xl border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden ${
-            statusFilter === 'CHECKED_OUT' ? 'border-emerald-400 ring-2 ring-emerald-200 bg-emerald-50/40' : 'border-white/80 hover:border-emerald-200'
+          className={`bg-white p-4 sm:p-5 rounded-2xl border shadow-sm flex items-center gap-4 cursor-pointer transition ${
+            statusFilter === 'CHECKED_OUT'
+              ? 'border-amber-400 ring-2 ring-amber-100'
+              : 'border-slate-200/80 hover:border-amber-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">Đã check-out hôm nay</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
+          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+            <LogOut className="w-6 h-6" />
           </div>
-          <div className="text-3xl font-black text-neutral-950 mt-3 tracking-tight">
-            {kpis.checked_out_today}
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Đã check-out hôm nay</div>
+            <div className="text-2xl font-black text-amber-700">{kpis.checked_out_today}</div>
+            <div className="text-[11px] text-amber-600 font-semibold mt-0.5">Đã rời khỏi tòa nhà</div>
           </div>
-          <div className="text-[11px] text-emerald-600 mt-2 font-medium">
-            <span>Hoàn thành lịch thăm</span>
-          </div>
-          <div className="absolute -right-6 -bottom-6 w-20 h-20 bg-emerald-400/10 rounded-full blur-xl pointer-events-none" />
         </div>
 
         {/* KPI 4: Tổng lượt khai báo */}
         <div
           onClick={() => handleTabChange('ALL')}
-          className={`bg-white/80 backdrop-blur-xl border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden ${
-            statusFilter === 'ALL' ? 'border-slate-400 ring-2 ring-slate-200 bg-slate-50/40' : 'border-white/80 hover:border-slate-300'
+          className={`bg-white p-4 sm:p-5 rounded-2xl border shadow-sm flex items-center gap-4 cursor-pointer transition ${
+            statusFilter === 'ALL'
+              ? 'border-purple-400 ring-2 ring-purple-100'
+              : 'border-slate-200/80 hover:border-purple-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">Tổng lượt khai báo</span>
-            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Building className="w-4 h-4" />
-            </div>
+          <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+            <Building className="w-6 h-6" />
           </div>
-          <div className="text-3xl font-black text-neutral-950 mt-3 tracking-tight">
-            {kpis.total_registrations}
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Tổng lượt khai báo</div>
+            <div className="text-2xl font-black text-purple-700">{kpis.total_registrations}</div>
+            <div className="text-[11px] text-purple-600 font-semibold mt-0.5">Tất cả hồ sơ đăng ký</div>
           </div>
-          <div className="text-[11px] text-slate-500 mt-2 font-medium">
-            <span>Tất cả hồ sơ cư dân tạo</span>
-          </div>
-          <div className="absolute -right-6 -bottom-6 w-20 h-20 bg-slate-400/10 rounded-full blur-xl pointer-events-none" />
         </div>
       </div>
 
-      {/* Prominent Quick QR / Barcode Scanner Input */}
-      <div className="bg-gradient-to-r from-sky-900 via-indigo-900 to-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-xl relative overflow-hidden">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-          <div className="max-w-xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 text-xs font-semibold mb-2 border border-sky-400/30">
-              <Zap className="w-3.5 h-3.5 text-sky-400" />
-              <span>MÁY QUÉT MÃ QR & TIẾP ĐÓN NHANH TẠI QUẦY</span>
-            </div>
-            <h2 className="text-lg sm:text-xl font-bold tracking-tight">
-              Tra cứu tức thì bằng Mã QR Pass hoặc Mã đăng ký
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">
-              Hỗ trợ máy quét mã vạch USB / Barcode scanner, hoặc nhập trực tiếp mã 8 ký tự hoặc số điện thoại khách.
-            </p>
+      {/* 3. Quick QR Pass / Barcode Scanner Panel (Phong cách Card sạch sẽ, hiện đại) */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider font-mono text-indigo-600">
+            <QrCode className="w-4 h-4 text-indigo-600" />
+            <span>MÁY QUÉT MÃ QR & TIẾP ĐÓN NHANH TẠI QUẦY</span>
+          </div>
+          <div className="text-sm font-bold text-slate-900 mt-1">
+            Tra cứu tức thì bằng Mã QR Pass hoặc Mã đăng ký
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Hỗ trợ máy quét mã vạch USB, súng quét QR hoặc nhập trực tiếp mã số (VD: VR-XXXXXXXX hoặc SĐT).
+          </p>
+        </div>
+
+        <form
+          onSubmit={handleQuickLookup}
+          className="flex items-center gap-2 w-full md:w-auto"
+        >
+          <div className="relative flex-1 md:w-80">
+            <QrCode className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={quickScanCode}
+              onChange={(e) => setQuickScanCode(e.target.value)}
+              placeholder="Quét mã QR hoặc nhập VR-XXXX..."
+              className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-mono text-slate-800 placeholder-slate-400"
+            />
+            {quickScanCode && (
+              <button
+                type="button"
+                onClick={() => setQuickScanCode('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          <form
-            onSubmit={handleQuickLookup}
-            className="flex items-center gap-2 w-full md:w-auto min-w-[320px] sm:min-w-[420px]"
+          <button
+            type="submit"
+            disabled={isScanning || !quickScanCode.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg transition shadow-sm cursor-pointer shrink-0"
           >
-            <div className="relative flex-1">
-              <QrCode className="w-5 h-5 text-sky-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={quickScanCode}
-                onChange={(e) => setQuickScanCode(e.target.value)}
-                placeholder="Quét mã QR hoặc nhập VR-XXXX..."
-                className="w-full pl-11 pr-4 py-3 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:bg-white/15 transition-all font-mono"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isScanning || !quickScanCode.trim()}
-              className="px-5 py-3 rounded-2xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white font-bold text-sm shadow-lg shadow-sky-500/30 hover:shadow-sky-500/50 transition-all flex items-center gap-2 shrink-0 cursor-pointer"
-            >
-              {isScanning ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Search className="w-4 h-4" />
-              )}
-              <span>Tra cứu</span>
-            </button>
-          </form>
-        </div>
-        <div className="absolute right-0 top-0 w-80 h-80 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+            {isScanning ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Search className="w-3.5 h-3.5" />
+            )}
+            <span>Tra cứu</span>
+          </button>
+        </form>
       </div>
 
-      {/* Search & Filter Bar */}
-      <div className="bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Search Input with Debounce */}
-          <div className="relative flex-1">
+      {/* 4. Filter & Search Bar (Đồng bộ chuẩn RFID Management) */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Search Input */}
+          <div className="relative lg:col-span-2">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm kiếm theo Tên khách, SĐT, Mã khai báo, Căn hộ, Chủ hộ, Biển số xe..."
-              className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white transition-all"
+              placeholder="Tìm theo tên khách, SĐT, mã QR, căn hộ, biển số..."
+              className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-slate-800 placeholder-slate-400"
             />
-            {searchQuery !== debouncedSearch && (
-              <Loader2 className="w-4 h-4 animate-spin text-sky-500 absolute right-10 top-1/2 -translate-y-1/2 pointer-events-none" />
-            )}
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Xóa tìm kiếm"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Status Tabs - Hiển thị tức thời 0ms & Count badges */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-            {[
-              { id: 'ALL', label: 'Tất cả', count: kpis.total_registrations },
-              { id: 'EXPECTED', label: 'Chờ check-in', count: kpis.expected_today },
-              { id: 'INSIDE', label: 'Đang ở trong tòa', count: kpis.currently_inside },
-              { id: 'CHECKED_OUT', label: 'Đã check-out', count: kpis.checked_out_today },
-              { id: 'CANCELLED', label: 'Đã hủy / Hết hạn' },
-            ].map((tab) => {
-              const isActive = statusFilter === tab.id;
+          {/* Trạng thái filter dropdown chuẩn 100% Ảnh 2 */}
+          <div className="relative" ref={statusDropdownRef}>
+            {(() => {
+              const statusOptions = [
+                { id: 'ALL', label: '-- Tất cả trạng thái --', isAll: true },
+                { id: 'EXPECTED', label: 'Đang hiệu lực (Chờ đến)', dotColor: 'bg-emerald-500' },
+                { id: 'INSIDE', label: 'Đã tiếp đón (Đã check-in)', dotColor: 'bg-blue-500' },
+                { id: 'CHECKED_OUT', label: 'Đã check-out (Đã rời đi)', dotColor: 'bg-amber-500' },
+                { id: 'CANCELLED', label: 'Đã hủy', dotColor: 'bg-rose-500' },
+                { id: 'EXPIRED', label: 'Quá hạn', dotColor: 'bg-slate-400' },
+              ];
+              const selectedOption = statusOptions.find((opt) => opt.id === statusFilter) || statusOptions[0];
+
               return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 sm:px-3.5 sm:py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
-                    isActive
-                      ? 'bg-neutral-900 text-white shadow-sm ring-1 ring-neutral-800'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  {tab.count !== undefined && (
-                    <span
-                      className={`text-[10px] sm:text-[11px] px-1.5 py-0.2 rounded-full font-bold tabular-nums transition-colors ${
-                        isActive
-                          ? 'bg-white/20 text-white'
-                          : 'bg-slate-200/90 text-slate-700'
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsStatusDropdownOpen((prev) => !prev);
+                      setIsPerPageDropdownOpen(false);
+                    }}
+                    className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                      isStatusDropdownOpen
+                        ? 'border-indigo-500 ring-2 ring-indigo-200 bg-white text-indigo-900 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      {selectedOption.isAll ? (
+                        <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      ) : (
+                        <span className={`w-2 h-2 rounded-full ${selectedOption.dotColor} shrink-0`} />
+                      )}
+                      <span className="truncate">{selectedOption.label}</span>
+                    </div>
+                    {isStatusDropdownOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+                    )}
+                  </button>
+
+                  {/* Dropdown Menu Popup (Chuẩn 100% Ảnh 2) */}
+                  {isStatusDropdownOpen && (
+                    <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[220px] animate-in fade-in zoom-in-95 duration-100">
+                      {statusOptions.map((opt) => {
+                        const isSelected = statusFilter === opt.id;
+                        return (
+                          <div
+                            key={opt.id}
+                            onClick={() => {
+                              handleTabChange(opt.id);
+                              setIsStatusDropdownOpen(false);
+                            }}
+                            className={`rounded-xl px-3 py-2 text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                                : 'hover:bg-slate-50 text-slate-700 font-medium'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              {opt.isAll ? (
+                                <Filter
+                                  className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-slate-400'}`}
+                                />
+                              ) : (
+                                <span
+                                  className={`w-2 h-2 rounded-full shrink-0 ${
+                                    isSelected ? 'bg-white ring-2 ring-white/30' : opt.dotColor
+                                  }`}
+                                />
+                              )}
+                              <span className="truncate">{opt.label}</span>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-white shrink-0 ml-2" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Số dòng trên 1 trang dropdown tùy chỉnh */}
+          <div className="relative" ref={perPageDropdownRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsPerPageDropdownOpen((prev) => !prev);
+                setIsStatusDropdownOpen(false);
+              }}
+              className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                isPerPageDropdownOpen
+                  ? 'border-indigo-500 ring-2 ring-indigo-200 bg-white text-indigo-900 shadow-xs'
+                  : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+              }`}
+            >
+              <span>{perPage} dòng / trang</span>
+              {isPerPageDropdownOpen ? (
+                <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+              )}
+            </button>
+
+            {isPerPageDropdownOpen && (
+              <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
+                {[10, 15, 25, 50].map((limit) => {
+                  const isSelected = perPage === limit;
+                  return (
+                    <div
+                      key={limit}
+                      onClick={() => {
+                        handlePerPageChange(limit);
+                        setIsPerPageDropdownOpen(false);
+                      }}
+                      className={`rounded-xl px-3 py-2 text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                          : 'hover:bg-slate-50 text-slate-700 font-medium'
                       }`}
                     >
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                      <span>{limit} dòng / trang</span>
+                      {isSelected && <Check className="w-4 h-4 text-white shrink-0 ml-2" />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Nút Đặt lại bộ lọc */}
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                handleTabChange('ALL');
+              }}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Đặt lại bộ lọc</span>
+            </button>
           </div>
         </div>
+
+        {/* Clear filters row if active */}
+        {(searchQuery || statusFilter !== 'ALL') && (
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
+            <span>Đang áp dụng bộ lọc tùy chỉnh</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                handleTabChange('ALL');
+              }}
+              className="text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Xóa bộ lọc</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Bảng Dữ liệu Khách viếng thăm */}
-      <div className="bg-white/90 backdrop-blur-2xl border border-white/80 rounded-3xl shadow-sm overflow-hidden relative">
-        {/* Subtle accent live-sync line */}
+      {/* 5. RFID / Visitor Table (Đồng bộ 100% chuẩn RFID Management) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative">
         {isFetching && (
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-sky-400 via-indigo-500 to-sky-400 animate-pulse z-20" />
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 via-sky-500 to-indigo-500 animate-pulse z-10" />
         )}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4 sm:px-6">Khách viếng thăm</th>
-                <th className="py-3.5 px-4">Căn hộ & Chủ hộ</th>
-                <th className="py-3.5 px-4">Thời gian</th>
-                <th className="py-3.5 px-4">Mã QR Pass</th>
-                <th className="py-3.5 px-4 text-center">Trạng thái</th>
-                <th className="py-3.5 px-4 sm:px-6 text-right">Thao tác tại quầy</th>
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider font-mono">
+                <th className="py-3 px-4">Khách Viếng Thăm</th>
+                <th className="py-3 px-4">Căn Hộ & Chủ Hộ</th>
+                <th className="py-3 px-4">Thời Gian Ra Vào</th>
+                <th className="py-3 px-4">Mã QR Pass</th>
+                <th className="py-3 px-4 text-center">Trạng Thái</th>
+                <th className="py-3 px-4 text-right">Thao Tác Tại Quầy</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-              {isLoading && visitors.length === 0 ? (
-                // Skeleton loading rows for ultra-clean perceived speed
-                [1, 2, 3, 4, 5].map((idx) => (
-                  <tr key={`skeleton-${idx}`} className="animate-pulse">
-                    <td className="py-4 px-4 sm:px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-slate-200 shrink-0" />
-                        <div className="space-y-1.5 w-32">
-                          <div className="h-3.5 bg-slate-200 rounded w-28" />
-                          <div className="h-2.5 bg-slate-100 rounded w-20" />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="h-3.5 bg-slate-200 rounded w-24 mb-1.5" />
-                      <div className="h-2.5 bg-slate-100 rounded w-16" />
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="h-3 bg-slate-200 rounded w-28" />
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="h-6 bg-slate-100 rounded-lg w-24" />
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <div className="h-6 bg-slate-100 rounded-full w-24 mx-auto" />
-                    </td>
-                    <td className="py-4 px-4 sm:px-6 text-right">
-                      <div className="h-8 bg-slate-200 rounded-xl w-24 ml-auto" />
-                    </td>
-                  </tr>
-                ))
+            <tbody className="divide-y divide-slate-100">
+              {(isLoading || isFetching) && visitors.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                      <span className="font-medium text-slate-600">Đang tải...</span>
+                    </div>
+                  </td>
+                </tr>
               ) : visitors.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-                      <Users className="w-6 h-6" />
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                      <span className="font-medium text-slate-600">Đang tải...</span>
                     </div>
-                    <div className="text-sm font-semibold text-neutral-800">
-                      Không tìm thấy khách viếng thăm phù hợp
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                      Vui lòng thử tìm kiếm với từ khóa khác, hoặc kiểm tra lại bộ lọc trạng thái.
-                    </p>
                   </td>
                 </tr>
               ) : (
                 visitors.map((item) => {
                   const isExpected = item.status === 'EXPECTED';
                   const isInside = item.status === 'INSIDE';
-                  const isCheckedOut = item.status === 'CHECKED_OUT';
 
                   return (
-                    <tr
-                      key={item.id}
-                      className="hover:bg-slate-50/80 transition-colors group"
-                    >
+                    <tr key={item.id} className="hover:bg-slate-50/70 transition">
                       {/* Cột 1: Thông tin khách */}
-                      <td className="py-4 px-4 sm:px-6">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs ${
-                            isInside
-                              ? 'bg-sky-100 text-sky-700 ring-2 ring-sky-300'
-                              : isCheckedOut
-                              ? 'bg-slate-100 text-slate-600'
-                              : 'bg-indigo-50 text-indigo-700'
-                          }`}>
-                            <User className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-bold text-neutral-900 group-hover:text-sky-600 transition-colors">
-                              {item.visitor_name}
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                              <span className="flex items-center gap-1 font-mono">
-                                <Phone className="w-3 h-3 text-slate-400" />
-                                {item.visitor_phone}
-                              </span>
-                              {item.visitor_count > 1 && (
-                                <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-medium text-[10px]">
-                                  +{item.visitor_count - 1} người
-                                </span>
-                              )}
-                            </div>
-                            {item.vehicle_license_plate && (
-                              <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1 font-mono">
-                                <Car className="w-3 h-3 text-slate-400" />
-                                <span>{item.vehicle_license_plate}</span>
-                              </div>
-                            )}
-                          </div>
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="font-bold">{item.visitor_name}</span>
                         </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5 font-mono flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          <span>{item.visitor_phone}</span>
+                          {item.visitor_count > 1 && (
+                            <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-medium text-[10px]">
+                              +{item.visitor_count - 1} người
+                            </span>
+                          )}
+                        </div>
+                        {item.vehicle_license_plate && (
+                          <div className="text-[11px] text-slate-400 mt-0.5 font-mono flex items-center gap-1">
+                            <Car className="w-3 h-3 text-slate-400" />
+                            <span>{item.vehicle_license_plate}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Cột 2: Căn hộ & Chủ hộ */}
-                      <td className="py-4 px-4">
-                        <div className="font-semibold text-neutral-800 flex items-center gap-1.5">
-                          <Home className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                          <span>P.{item.apartment.number}</span>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                          <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>Căn {item.apartment.number}</span>
                           {item.apartment.block_name && (
-                            <span className="text-slate-400 text-xs">({item.apartment.block_name})</span>
+                            <span className="text-slate-400 text-xs font-normal">({item.apartment.block_name})</span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          Chủ hộ: <strong className="text-slate-700">{item.host.name || 'Cư dân'}</strong>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Chủ hộ: <span className="font-medium text-slate-700">{item.host.name}</span>
                         </div>
                         {item.visit_purpose && (
-                          <div className="text-[11px] text-slate-400 truncate max-w-[180px] mt-0.5">
-                            Mục đích: {item.visit_purpose}
+                          <div className="text-[11px] text-slate-400 italic mt-0.5 truncate max-w-[180px]">
+                            {item.visit_purpose}
                           </div>
                         )}
                       </td>
 
                       {/* Cột 3: Thời gian */}
-                      <td className="py-4 px-4">
-                        <div className="text-xs space-y-1">
-                          <div className="text-slate-600 flex items-center gap-1">
-                            <span className="text-slate-400 text-[11px]">Dự kiến:</span>
-                            <span className="font-medium">{formatDateTime(item.expected_arrival_time)}</span>
-                          </div>
-                          {item.checkin_log?.checkin_time && (
-                            <div className="text-sky-700 font-semibold flex items-center gap-1 text-[11px]">
-                              <span className="text-sky-500">Check-in:</span>
-                              <span>{formatDateTime(item.checkin_log.checkin_time)}</span>
-                            </div>
-                          )}
-                          {item.checkin_log?.checkout_time && (
-                            <div className="text-emerald-700 font-semibold flex items-center gap-1 text-[11px]">
-                              <span className="text-emerald-500">Check-out:</span>
-                              <span>{formatDateTime(item.checkin_log.checkout_time)}</span>
-                            </div>
-                          )}
+                      <td className="py-3 px-4 text-slate-600">
+                        <div>
+                          Dự kiến: <span className="font-medium text-slate-700">{formatDateTime(item.expected_arrival_time)}</span>
                         </div>
+                        {item.checkin_log?.checkin_time && (
+                          <div className="text-[11px] text-sky-700 font-semibold mt-0.5">
+                            Vào: {formatDateTime(item.checkin_log.checkin_time)}
+                          </div>
+                        )}
+                        {item.checkin_log?.checkout_time && (
+                          <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                            Ra: {formatDateTime(item.checkin_log.checkout_time)}
+                          </div>
+                        )}
                       </td>
 
                       {/* Cột 4: Mã QR Access Pass */}
-                      <td className="py-4 px-4">
-                        <div className="font-mono text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <span className="bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
-                            {item.qr_access_pass_code}
-                          </span>
+                      <td className="py-3 px-4 font-mono">
+                        <div className="font-extrabold text-slate-900 tracking-wider text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-300 inline-flex items-center gap-1.5">
+                          <span>{item.qr_access_pass_code}</span>
                           <button
                             type="button"
                             onClick={() => handleCopyCode(item.qr_access_pass_code)}
-                            className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
                             title="Sao chép mã QR Pass"
                           >
                             {copiedCode === item.qr_access_pass_code ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <Check className="w-3 h-3 text-emerald-600" />
                             ) : (
-                              <Copy className="w-3.5 h-3.5" />
+                              <Copy className="w-3 h-3" />
                             )}
                           </button>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-1">
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
                           {item.registration_code}
                         </div>
                       </td>
 
                       {/* Cột 5: Trạng thái */}
-                      <td className="py-4 px-4 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                            isInside
-                              ? 'bg-sky-100 text-sky-800 border border-sky-300'
-                              : isExpected
-                              ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                              : isCheckedOut
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-slate-100 text-slate-700 border border-slate-200'
-                          }`}
-                        >
-                          {isInside && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping" />}
-                          <span>{item.status_label}</span>
-                        </span>
+                      <td className="py-3 px-4 text-center">
+                        {getStatusBadge(item.status, item.status_label)}
                       </td>
 
                       {/* Cột 6: Thao tác tại quầy */}
-                      <td className="py-4 px-4 sm:px-6 text-right">
+                      <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* Nút Check-in: Chỉ hiển thị khi trạng thái là Chờ check-in */}
                           {isExpected && (
                             <button
                               type="button"
                               onClick={() => handleOpenCheckinModal(item)}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs hover:shadow-md transition-all flex items-center gap-1 cursor-pointer"
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition shadow-sm cursor-pointer"
                               title="Thực hiện check-in cho khách vào tòa nhà"
                             >
                               <UserCheck className="w-3.5 h-3.5" />
@@ -898,7 +1021,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                             <button
                               type="button"
                               onClick={() => handleOpenCheckoutModal(item)}
-                              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-xs hover:shadow-md transition-all flex items-center gap-1 cursor-pointer"
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition shadow-sm cursor-pointer"
                               title="Thực hiện check-out khi khách rời tòa nhà"
                             >
                               <LogOut className="w-3.5 h-3.5" />
@@ -913,7 +1036,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                               setSelectedVisitor(item);
                               setIsDetailModalOpen(true);
                             }}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                            className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
                             title="Xem chi tiết hồ sơ khách"
                           >
                             <Eye className="w-4 h-4" />
@@ -928,65 +1051,66 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
           </table>
         </div>
 
-        {/* Phân trang phía Server */}
-        {totalPages > 1 && (
-          <div className="p-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <div>
-              Hiển thị trang <strong>{currentPage}</strong> trên <strong>{totalPages}</strong> ({totalCount} lượt khách)
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-                disabled={currentPage <= 1 || isLoading}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-2 font-semibold text-slate-700">
-                {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage >= totalPages || isLoading}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+        {/* 6. Phân trang (Đồng bộ 100% chuẩn RFID Management) */}
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
+          <div>
+            Hiển thị trang <span className="font-bold text-slate-700">{currentPage}</span> / {totalPages} (Tổng{' '}
+            <span className="font-bold text-slate-700">{totalCount}</span> lượt khách)
           </div>
-        )}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1 || isLoading}
+              className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-40 hover:bg-slate-100 transition cursor-pointer"
+              title="Trang trước"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="px-2 font-semibold text-slate-700">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages || isLoading}
+              className="p-1.5 border border-slate-200 rounded-lg bg-white disabled:opacity-40 hover:bg-slate-100 transition cursor-pointer"
+              title="Trang sau"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* MODAL 1: CHECK-IN XÁC NHẬN */}
+      {/* MODAL 1: CHECK-IN XÁC NHẬN (Chuẩn form RFID Management) */}
       {isCheckinModalOpen && checkinTarget && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-white/80 space-y-5 animate-in zoom-in-95 duration-150 my-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                  <UserCheck className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <UserCheck className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-neutral-900 text-base">Xác nhận Check-in khách</h3>
-                  <p className="text-xs text-slate-400">Ghi nhận giờ vào bằng Server Time</p>
+                  <h3 className="text-base font-extrabold text-slate-900">Xác Nhận Check-in Khách</h3>
+                  <p className="text-xs text-slate-500">Ghi nhận giờ vào bằng máy chủ hệ thống</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCheckinModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Thông tin đối chiếu */}
-            <div className="bg-slate-50 p-4 rounded-2xl space-y-2 text-xs">
+            <div className="bg-slate-50 p-3.5 rounded-xl space-y-1.5 text-xs border border-slate-200/80">
               <div className="flex justify-between">
                 <span className="text-slate-500">Khách viếng thăm:</span>
-                <strong className="text-neutral-900">{checkinTarget.visitor_name}</strong>
+                <span className="font-bold text-slate-900">{checkinTarget.visitor_name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Số điện thoại:</span>
@@ -994,7 +1118,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Căn hộ đón tiếp:</span>
-                <span className="font-bold text-sky-700">P.{checkinTarget.apartment.number}</span>
+                <span className="font-semibold text-slate-800">Căn {checkinTarget.apartment.number}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Chủ hộ bảo lãnh:</span>
@@ -1017,7 +1141,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                   value={checkinFormData.national_id_number}
                   onChange={(e) => setCheckinFormData({ ...checkinFormData, national_id_number: e.target.value })}
                   placeholder="Nhập số CCCD xác minh..."
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-mono text-slate-800"
                 />
               </div>
 
@@ -1030,7 +1154,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                   value={checkinFormData.temp_card_id}
                   onChange={(e) => setCheckinFormData({ ...checkinFormData, temp_card_id: e.target.value })}
                   placeholder="VD: RFID-TEMP-04..."
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-mono text-slate-800"
                 />
               </div>
 
@@ -1043,18 +1167,18 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                   onChange={(e) => setCheckinFormData({ ...checkinFormData, notes: e.target.value })}
                   placeholder="Ghi chú về đồ mang theo, hướng dẫn..."
                   rows={2}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-800"
                 />
               </div>
             </div>
 
             {/* Nút hành động */}
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsCheckinModalOpen(false)}
                 disabled={isSubmittingCheckin}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer"
               >
                 Hủy bỏ
               </button>
@@ -1062,12 +1186,12 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                 type="button"
                 onClick={handleConfirmCheckin}
                 disabled={isSubmittingCheckin}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingCheckin ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <UserCheck className="w-4 h-4" />
+                  <UserCheck className="w-3.5 h-3.5" />
                 )}
                 <span>Xác nhận Check-in ngay</span>
               </button>
@@ -1077,46 +1201,46 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         document.body
       )}
 
-      {/* MODAL 2: CHECK-OUT XÁC NHẬN */}
+      {/* MODAL 2: CHECK-OUT XÁC NHẬN (Chuẩn form RFID Management) */}
       {isCheckoutModalOpen && checkoutTarget && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-white/80 space-y-5 animate-in zoom-in-95 duration-150 my-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <LogOut className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <LogOut className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-neutral-900 text-base">Xác nhận Check-out khách</h3>
-                  <p className="text-xs text-slate-400">Ghi nhận giờ rời tòa nhà bằng Server Time</p>
+                  <h3 className="text-base font-extrabold text-slate-900">Xác Nhận Check-out Khách</h3>
+                  <p className="text-xs text-slate-500">Ghi nhận giờ rời tòa nhà bằng máy chủ</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCheckoutModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-2xl space-y-2 text-xs">
+            <div className="bg-slate-50 p-3.5 rounded-xl space-y-1.5 text-xs border border-slate-200/80">
               <div className="flex justify-between">
                 <span className="text-slate-500">Khách rời đi:</span>
-                <strong className="text-neutral-900">{checkoutTarget.visitor_name}</strong>
+                <span className="font-bold text-slate-900">{checkoutTarget.visitor_name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Thời gian Check-in:</span>
-                <span className="font-semibold text-sky-700">
+                <span className="font-semibold text-slate-800">
                   {formatDateTime(checkoutTarget.checkin_log?.checkin_time)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Căn hộ đã thăm:</span>
-                <span className="font-bold text-slate-800">P.{checkoutTarget.apartment.number}</span>
+                <span className="font-semibold text-slate-800">Căn {checkoutTarget.apartment.number}</span>
               </div>
               {checkoutTarget.checkin_log?.temp_card_id && (
-                <div className="flex justify-between text-amber-700 bg-amber-50 p-2 rounded-lg font-medium">
+                <div className="flex justify-between text-amber-800 bg-amber-50 p-2 rounded-lg font-medium border border-amber-200">
                   <span>Lưu ý thu hồi thẻ tạm:</span>
                   <span className="font-mono font-bold">{checkoutTarget.checkin_log.temp_card_id}</span>
                 </div>
@@ -1132,16 +1256,16 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                 onChange={(e) => setCheckoutNotes(e.target.value)}
                 placeholder="Đã thu hồi thẻ tạm, không có sự cố phát sinh..."
                 rows={2}
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-800"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsCheckoutModalOpen(false)}
                 disabled={isSubmittingCheckout}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer"
               >
                 Hủy bỏ
               </button>
@@ -1149,12 +1273,12 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                 type="button"
                 onClick={handleConfirmCheckout}
                 disabled={isSubmittingCheckout}
-                className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingCheckout ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5" />
                 )}
                 <span>Xác nhận Check-out ngay</span>
               </button>
@@ -1164,72 +1288,66 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         document.body
       )}
 
-      {/* MODAL 3: KẾT QUẢ QUÉT MÃ QR / TRA CỨU NHANH */}
+      {/* MODAL 3: KẾT QUẢ QUÉT MÃ QR / TRA CỨU NHANH (Chuẩn form RFID Management) */}
       {isLookupModalOpen && lookupResult && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-white/80 space-y-5 animate-in zoom-in-95 duration-150 my-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
-                  <QrCode className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <QrCode className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-neutral-900 text-base">Kết quả Quét mã QR Pass</h3>
-                  <p className="text-xs text-slate-400">Đối chiếu thông tin tức thời</p>
+                  <h3 className="text-base font-extrabold text-slate-900">Kết Quả Quét Mã QR Pass</h3>
+                  <p className="text-xs text-slate-500">Đối chiếu thông tin tức thời</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsLookupModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Thông tin thẻ khách */}
-            <div className="bg-gradient-to-br from-slate-900 to-sky-950 text-white p-5 rounded-2xl space-y-3 relative overflow-hidden">
+            {/* Thẻ thông tin khách */}
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-[10px] text-sky-300 font-mono uppercase tracking-wider">
+                  <div className="text-[11px] text-slate-500 font-mono">
                     {lookupResult.registration.registration_code}
                   </div>
-                  <div className="text-lg font-black text-white mt-0.5">
+                  <div className="text-base font-black text-slate-900 mt-0.5">
                     {lookupResult.registration.visitor_name}
                   </div>
-                  <div className="text-xs text-slate-300 font-mono">
+                  <div className="text-xs text-slate-600 font-mono">
                     {lookupResult.registration.visitor_phone}
                   </div>
                 </div>
-                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                  lookupResult.status === 'INSIDE'
-                    ? 'bg-sky-500 text-white'
-                    : lookupResult.status === 'EXPECTED'
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-slate-700 text-slate-300'
-                }`}>
-                  {lookupResult.status_label}
-                </span>
+                <div>
+                  {getStatusBadge(lookupResult.status, lookupResult.status_label)}
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10 text-xs">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 text-xs">
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Căn hộ đến thăm:</span>
-                  <strong className="text-sky-300">P.{lookupResult.registration.apartment.number}</strong>
+                  <span className="text-slate-400 text-[11px] block">Căn hộ đến thăm:</span>
+                  <span className="font-bold text-slate-800">Căn {lookupResult.registration.apartment.number}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[10px] block">Chủ hộ đón tiếp:</span>
-                  <strong className="text-white">{lookupResult.registration.host.name}</strong>
+                  <span className="text-slate-400 text-[11px] block">Chủ hộ đón tiếp:</span>
+                  <span className="font-semibold text-slate-800">{lookupResult.registration.host.name}</span>
                 </div>
               </div>
             </div>
 
             {/* Nút thao tác tương ứng */}
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsLookupModalOpen(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer"
               >
                 Đóng
               </button>
@@ -1253,9 +1371,9 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                     });
                     setIsCheckinModalOpen(true);
                   }}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2 cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition shadow-sm cursor-pointer"
                 >
-                  <UserCheck className="w-4 h-4" />
+                  <UserCheck className="w-3.5 h-3.5" />
                   <span>Tiến hành Check-in</span>
                 </button>
               )}
@@ -1276,9 +1394,9 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                     setCheckoutNotes('');
                     setIsCheckoutModalOpen(true);
                   }}
-                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-600/30 transition-all flex items-center gap-2 cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition shadow-sm cursor-pointer"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5" />
                   <span>Tiến hành Check-out</span>
                 </button>
               )}
@@ -1288,33 +1406,33 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         document.body
       )}
 
-      {/* MODAL 4: CHI TIẾT HỒ SƠ LƯỢT KHÁCH */}
+      {/* MODAL 4: CHI TIẾT HỒ SƠ LƯỢT KHÁCH (Chuẩn form RFID Management) */}
       {isDetailModalOpen && selectedVisitor && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-white/80 space-y-4 animate-in zoom-in-95 duration-150 my-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
-                <h3 className="font-extrabold text-neutral-900 text-base">Chi tiết lượt khách viếng thăm</h3>
-                <p className="text-xs text-slate-400 font-mono">{selectedVisitor.registration_code}</p>
+                <h3 className="text-base font-extrabold text-slate-900">Chi Tiết Khách Viếng Thăm</h3>
+                <p className="text-xs text-slate-500 font-mono">{selectedVisitor.registration_code}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsDetailModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
                 <div>
                   <span className="text-slate-400 text-[11px] block">Họ tên khách:</span>
-                  <strong className="text-slate-800 text-sm">{selectedVisitor.visitor_name}</strong>
+                  <span className="text-slate-900 font-bold text-sm">{selectedVisitor.visitor_name}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px] block">Số điện thoại:</span>
-                  <span className="font-mono text-slate-800">{selectedVisitor.visitor_phone}</span>
+                  <span className="font-mono text-slate-800 font-semibold">{selectedVisitor.visitor_phone}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px] block">Số CCCD / CMND:</span>
@@ -1322,18 +1440,18 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px] block">Số người đi cùng:</span>
-                  <span className="text-slate-800">{selectedVisitor.visitor_count} người</span>
+                  <span className="text-slate-800 font-medium">{selectedVisitor.visitor_count} người</span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
                 <div>
                   <span className="text-slate-400 text-[11px] block">Căn hộ:</span>
-                  <strong className="text-sky-700">P.{selectedVisitor.apartment.number}</strong>
+                  <span className="font-bold text-slate-800">Căn {selectedVisitor.apartment.number}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px] block">Cư dân bảo lãnh:</span>
-                  <strong className="text-slate-800">{selectedVisitor.host.name}</strong>
+                  <span className="text-slate-800 font-medium">{selectedVisitor.host.name}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px] block">Mục đích thăm:</span>
@@ -1346,8 +1464,8 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
               </div>
 
               {/* Lịch sử check-in / check-out */}
-              <div className="border border-slate-200 p-4 rounded-2xl space-y-2">
-                <div className="font-bold text-slate-800 text-xs">Nhật ký ra vào</div>
+              <div className="border border-slate-200 p-3.5 rounded-xl space-y-2">
+                <div className="font-bold text-slate-800 text-xs">Nhật Ký Ra Vào</div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Dự kiến đến:</span>
                   <span className="font-medium text-slate-700">{formatDateTime(selectedVisitor.expected_arrival_time)}</span>
@@ -1374,11 +1492,11 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsDetailModalOpen(false)}
-                className="px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer"
               >
                 Đóng
               </button>
