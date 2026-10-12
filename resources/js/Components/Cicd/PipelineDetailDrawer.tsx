@@ -22,6 +22,8 @@ import { LogViewer } from './LogViewer';
 import { ConfirmDialog } from '../Admin/ConfirmDialog';
 
 interface PipelineDetailDrawerProps {
+  initialJobId?: string;
+  initialStepNumber?: number;
   pipeline: PipelineItem | null;
   isOpen: boolean;
   onClose: () => void;
@@ -35,9 +37,13 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
   onClose,
   onPipelineUpdated,
   canManage = true,
+  initialJobId,
+  initialStepNumber,
 }) => {
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedStepNumber, setSelectedStepNumber] = useState<number | undefined>();
+  const [jobsError, setJobsError] = useState('');
   const [logs, setLogs] = useState<string>('');
   const [isLoadingJobs, setIsLoadingJobs] = useState<boolean>(false);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
@@ -79,44 +85,44 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
   }, [isOpen, isRetryDialogOpen, isCancelDialogOpen, onClose]);
 
   useEffect(() => {
-    if (isOpen && pipeline) {
-      loadJobs(pipeline.id);
-      loadLogs(pipeline.id);
-    }
-  }, [isOpen, pipeline]);
-
-  const loadJobs = async (pipelineId: string) => {
+    setJobs([]);
+    setJobsError('');
+    setSelectedJobId(null);
+    setSelectedStepNumber(initialStepNumber);
+    if (!isOpen || !pipeline) return;
+    const controller = new AbortController();
     setIsLoadingJobs(true);
-    try {
-      const data = await cicdApi.getPipelineJobs(pipelineId);
+    cicdApi.getPipelineJobs(pipeline.id, controller.signal).then(data => {
+      if (controller.signal.aborted) return;
       setJobs(data);
-      if (data.length > 0) {
-        setSelectedJobId(data[0].id);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoadingJobs(false);
-    }
-  };
+      setSelectedJobId(data.find(job => job.id === initialJobId)?.id ?? data[0]?.id ?? null);
+    }).catch(err => {
+      if (!controller.signal.aborted) setJobsError((err as Error).message);
+    }).finally(() => {
+      if (!controller.signal.aborted) setIsLoadingJobs(false);
+    });
+    return () => controller.abort();
+  }, [isOpen, pipeline?.id, initialJobId, initialStepNumber]);
 
-  const loadLogs = async (pipelineId: string, jobId?: string) => {
+  useEffect(() => {
+    setLogs('');
+    setIsLoadingLogs(false);
+    if (!isOpen || !pipeline || !selectedJobId) return;
+    const controller = new AbortController();
     setIsLoadingLogs(true);
-    try {
-      const logText = await cicdApi.getPipelineLogs(pipelineId, jobId);
-      setLogs(logText);
-    } catch (err) {
-      setLogs('Không thể tải dữ liệu log từ máy chủ.');
-    } finally {
-      setIsLoadingLogs(false);
-    }
-  };
+    cicdApi.getPipelineLogs(pipeline.id, selectedJobId, selectedStepNumber, controller.signal).then(logText => {
+      if (!controller.signal.aborted) setLogs(logText);
+    }).catch(() => {
+      if (!controller.signal.aborted) setLogs('Không thể tải dữ liệu log từ máy chủ.');
+    }).finally(() => {
+      if (!controller.signal.aborted) setIsLoadingLogs(false);
+    });
+    return () => controller.abort();
+  }, [isOpen, pipeline?.id, selectedJobId, selectedStepNumber]);
 
   const handleJobClick = (jobId: string) => {
     setSelectedJobId(jobId);
-    if (pipeline) {
-      loadLogs(pipeline.id, jobId);
-    }
+    setSelectedStepNumber(undefined);
   };
 
   const handleConfirmRetry = async () => {
@@ -298,6 +304,8 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {isLoadingJobs && <p className="text-xs text-slate-500" role="status">Đang tải danh sách jobs...</p>}
+                  {jobsError && <p role="alert" className="text-xs text-rose-700">{jobsError}</p>}
+                  {!isLoadingJobs && !jobsError && !jobs.length && <p className="text-xs text-slate-500">Workflow chưa có jobs để tải log.</p>}
                   {jobs.map((job) => {
                     const isSelected = selectedJobId === job.id;
                     return (
@@ -316,8 +324,10 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
                             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                           ) : job.status === 'failed' ? (
                             <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                          ) : (
+                          ) : job.status === 'running' ? (
                             <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
+                          ) : (
+                            <Clock className="w-4 h-4 text-slate-400 shrink-0" />
                           )}
                           <div className="min-w-0">
                             <span className="text-xs font-bold truncate block">{job.name}</span>
@@ -345,7 +355,7 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
               {/* Terminal Logs */}
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-mono flex items-center justify-between">
-                  <span>Terminal Console Log</span>
+                  <span>Terminal Console Log{selectedStepNumber !== undefined ? ` · Bước: ${jobs.find(job => job.id === selectedJobId)?.steps[selectedStepNumber]?.name ?? selectedStepNumber + 1}` : ''}</span>
                   {pipeline.url && (
                     <a
                       href={pipeline.url}

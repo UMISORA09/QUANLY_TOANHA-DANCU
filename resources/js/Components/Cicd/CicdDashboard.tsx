@@ -104,6 +104,8 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
 
   // Interactive drawer & modal states
   const [selectedPipeline, setSelectedPipeline] = useState<PipelineItem | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | undefined>();
+  const [selectedStepNumber, setSelectedStepNumber] = useState<number | undefined>();
   const [isDetailOpen, setIsDetailOpen] = useState<boolean>(false);
   const [isRunModalOpen, setIsRunModalOpen] = useState<boolean>(false);
   const [isRollbackModalOpen, setIsRollbackModalOpen] = useState<boolean>(false);
@@ -314,6 +316,8 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
   };
 
   const handleSelectPipeline = (pipeline: PipelineItem) => {
+    setSelectedJobId(undefined);
+    setSelectedStepNumber(undefined);
     setSelectedPipeline(pipeline);
     setIsDetailOpen(true);
   };
@@ -480,7 +484,11 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
           </div>
           <PipelineFlow
             pipeline={overview.latest_pipeline}
-            onSelect={() => handleSelectPipeline(overview.latest_pipeline!)}
+            onSelect={(jobId, stepNumber) => {
+              handleSelectPipeline(overview.latest_pipeline!);
+              setSelectedJobId(jobId);
+              setSelectedStepNumber(stepNumber);
+            }}
           />
         </div>
       )}
@@ -734,6 +742,8 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       {/* PIPELINE DETAIL DRAWER */}
       <PipelineDetailDrawer
         pipeline={selectedPipeline}
+        initialJobId={selectedJobId}
+        initialStepNumber={selectedStepNumber}
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
         onPipelineUpdated={() => fetchData(true)}

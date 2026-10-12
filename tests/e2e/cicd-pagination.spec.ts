@@ -34,8 +34,18 @@ test('pipeline pages contain at most 15 rows and reset after filtering', async (
     const historyPage = Number(new URL(route.request().url()).searchParams.get('page'));
     return route.fulfill({ json: { data: { pipelines: pipelines.slice((historyPage - 1) * 16, historyPage * 16), activities: [], has_more: historyPage * 16 < pipelines.length, total_pipelines: pipelines.length } } });
   });
-  await page.route('**/api/admin/cicd/pipelines/*/jobs', route => route.fulfill({ json: { data: [] } }));
-  await page.route('**/api/admin/cicd/pipelines/*/logs', route => route.fulfill({ json: { data: { logs: 'QA pipeline log' } } }));
+  const jobs = [
+    { id: '101', name: 'Build', status: 'running', duration: '--', started_at: null, steps: Array.from({ length: 5 }, (_, index) => ({ name: `Build step ${index + 1}`, number: index + 1, status: index === 4 ? 'running' : 'success' })) },
+    { id: '102', name: 'Deploy', status: 'skipped', duration: '--', started_at: null, steps: Array.from({ length: 4 }, (_, index) => ({ name: `Deploy step ${index + 1}`, number: index + 1, status: 'skipped' })) },
+  ];
+  let jobsUnavailable = false;
+  await page.route('**/api/admin/cicd/pipelines/*/jobs', route => jobsUnavailable
+    ? route.fulfill({ status: 502, json: { message: 'Jobs unavailable' } })
+    : route.fulfill({ json: { data: jobs } }));
+  await page.route('**/api/admin/cicd/pipelines/*/logs?*', route => {
+    const params = new URL(route.request().url()).searchParams;
+    return route.fulfill({ json: { data: { logs: params.has('step_number') ? `Job ${params.get('job_id')} step ${params.get('step_number')} log` : 'QA pipeline log' } } });
+  });
   await page.route('**/api/admin/cicd/bundle?*', route => route.fulfill({ json: { data: {
     overview: { total_pipelines: pipelines.length, success_count: pipelines.length, failed_count: 0, running_count: 0,
       success_rate: 100, latest_pipeline: pipelines[0], production_status: 'healthy', production_version: 'prod-abc1234',
@@ -48,7 +58,26 @@ test('pipeline pages contain at most 15 rows and reset after filtering', async (
   const appHtml = await getSyncedAppHtml();
   await page.route('**/admin/cicd', route => route.fulfill({ contentType: 'text/html', body: appHtml }));
   await page.goto('/admin/cicd');
-  await expect(page.getByText('Trạng thái workflow từ GitHub')).toBeVisible();
+  const flow = page.getByRole('region', { name: 'Jobs và steps của pipeline mới nhất' });
+  await expect(flow.getByRole('listitem')).toHaveCount(9);
+  await expect(flow.getByText('Running', { exact: true })).toBeVisible();
+  await expect(flow.getByText('Skipped', { exact: true })).toHaveCount(4);
+  await flow.getByRole('button', { name: 'Xem log Deploy, bước 1: Deploy step 1', exact: true }).click();
+  await expect(page.getByText('Job 102 step 0 log', { exact: true })).toBeVisible();
+  await expect(page.getByText('Terminal Console Log · Bước: Deploy step 1')).toBeVisible();
+  await page.getByRole('button', { name: 'Đóng chi tiết pipeline' }).click();
+  jobs[0].steps[4].status = 'success';
+  jobs[0].status = 'success';
+  await page.clock.fastForward(15000);
+  await expect(flow.getByText('Running', { exact: true })).toHaveCount(0);
+  jobsUnavailable = true;
+  await page.clock.fastForward(15000);
+  await expect(flow.getByRole('alert')).toContainText('Không thể tải jobs');
+  await expect(flow.getByRole('listitem')).toHaveCount(9);
+  jobsUnavailable = false;
+  await flow.getByRole('button', { name: 'Thử lại jobs' }).click();
+  await expect(flow.getByRole('alert')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/cicd-real-jobs-flow.png' });
   await expect(page.getByText('26/26 passed', { exact: false })).toHaveCount(0);
   await page.getByRole('button', { name: /Triển khai & Bản phát hành/ }).click();
   await expect(page.getByText('Actual deployment')).toBeVisible();
