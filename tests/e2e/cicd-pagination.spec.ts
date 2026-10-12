@@ -2,6 +2,21 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import type { PipelineItem } from '../../resources/js/Services/cicdApi';
 
+async function getSyncedAppHtml(): Promise<string> {
+  let appHtml = await readFile('public/index.html', 'utf8');
+  try {
+    const manifestRaw = await readFile('public/build/manifest.json', 'utf8');
+    const manifest = JSON.parse(manifestRaw);
+    if (manifest['resources/css/app.css']?.file) {
+      appHtml = appHtml.replace(/\/build\/assets\/app-[^"]+\.css/, `/build/${manifest['resources/css/app.css'].file}`);
+    }
+    if (manifest['resources/js/app.tsx']?.file) {
+      appHtml = appHtml.replace(/\/build\/assets\/app-[^"]+\.js/, `/build/${manifest['resources/js/app.tsx'].file}`);
+    }
+  } catch {}
+  return appHtml;
+}
+
 test('pipeline pages contain at most 15 rows and reset after filtering', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-12T10:00:00Z') });
   let pipelines: PipelineItem[] = Array.from({ length: 32 }, (_, index) => ({
@@ -30,7 +45,7 @@ test('pipeline pages contain at most 15 rows and reset after filtering', async (
       response_time_ms: 0, release_notes: 'Actual deployment' }], environments: [], health: null,
     activities: [], branches: ['master', 'feature/test', 'DangNguyen/a-very-long-feature-branch-name-for-layout-regression'],
   } } }));
-  const appHtml = await readFile('public/index.html', 'utf8');
+  const appHtml = await getSyncedAppHtml();
   await page.route('**/admin/cicd', route => route.fulfill({ contentType: 'text/html', body: appHtml }));
   await page.goto('/admin/cicd');
   await expect(page.getByText('Unit & Feature')).toBeVisible();
@@ -131,7 +146,7 @@ test('full GitHub history, author filtering, sliders and live updates preserve 1
     return route.fulfill({ json: { data: { pipelines: pipelines.slice((number - 1) * 100, number * 100),
       activities: activities.slice((number - 1) * 100, number * 100), total_pipelines: pipelines.length, has_more: number * 100 < pipelines.length } } });
   });
-  const appHtml = await readFile('public/index.html', 'utf8');
+  const appHtml = await getSyncedAppHtml();
   await page.route('**/admin/cicd', route => route.fulfill({ contentType: 'text/html', body: appHtml }));
   await page.goto('/admin/cicd');
   const nav = page.getByRole('navigation', { name: 'Phân trang pipelines' });
