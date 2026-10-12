@@ -62,11 +62,18 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
         setIsOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen]);
 
@@ -90,7 +97,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
   };
 
   return (
-    <div className={`relative w-full ${isOpen ? 'z-30' : ''}`} ref={dropdownRef}>
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -118,7 +125,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -127,14 +134,14 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Tìm số căn hộ..."
-                className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
               />
             </div>
           </div>
 
-          <div className="max-h-44 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
+          <div className="max-h-48 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
             <button
               type="button"
               onClick={() => handleSelect('')}
@@ -213,11 +220,18 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
         setIsOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen]);
 
@@ -249,7 +263,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
   }
 
   return (
-    <div className={`relative w-full ${isOpen ? 'z-30' : ''}`} ref={dropdownRef}>
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -277,7 +291,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
           {residents.length >= 4 && (
             <div className="p-2 border-b border-slate-100 bg-slate-50/90">
               <div className="relative">
@@ -287,7 +301,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tìm tên hoặc SĐT..."
-                  className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   autoFocus
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -295,7 +309,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
             </div>
           )}
 
-          <div className="max-h-44 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
+          <div className="max-h-48 overflow-y-auto custom-scrollbar p-1 text-xs space-y-0.5">
             <button
               type="button"
               onClick={() => handleSelect('')}
@@ -1183,9 +1197,9 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
 
       {/* Modal: Create Card */}
       {isCreateModalOpen && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in py-6 sm:py-8">
+          <div className="bg-white rounded-2xl max-w-xl w-full flex flex-col shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150 relative">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 rounded-t-2xl shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
                   <CreditCard className="w-4 h-4" />
@@ -1201,9 +1215,9 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleCreateSubmit} className="flex flex-col">
+              <div className="p-5 sm:p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
                   {/* UID */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1237,7 +1251,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
                   {/* Card Type */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1271,7 +1285,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-30">
                   {/* Apartment Combobox */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1311,7 +1325,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
                   {/* Issued Date */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1354,7 +1368,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                 </div>
               </div>
 
-              <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
+              <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 rounded-b-2xl shrink-0 relative z-0">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
@@ -1379,9 +1393,9 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
 
       {/* Modal: Edit Card */}
       {isEditModalOpen && selectedCard && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in py-6 sm:py-8">
+          <div className="bg-white rounded-2xl max-w-xl w-full flex flex-col shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150 relative">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 rounded-t-2xl shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
                   <Edit className="w-4 h-4" />
@@ -1397,9 +1411,9 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleEditSubmit} className="flex flex-col">
+              <div className="p-5 sm:p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Mã UID</label>
                     <input
@@ -1425,7 +1439,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Loại Thẻ</label>
                     <select
@@ -1455,7 +1469,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-30">
                   {/* Apartment Combobox */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Căn Hộ</label>
@@ -1491,7 +1505,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Hạn Sử Dụng</label>
                     <input
@@ -1515,7 +1529,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                 </div>
               </div>
 
-              <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
+              <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 rounded-b-2xl shrink-0 relative z-0">
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
