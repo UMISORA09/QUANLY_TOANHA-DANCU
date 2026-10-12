@@ -105,12 +105,12 @@ export const PipelineFilters: React.FC<PipelineFiltersProps> = ({
       {/* Dropdown Filters: 5 columns filling 100% width evenly */}
       <div className="grid min-w-0 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 w-full">
         {/* Author Filter */}
-        <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 max-w-full items-center">
           <select
             aria-label="Lọc tác giả pipeline"
             value={author}
             onChange={(event) => setAuthor(event.target.value)}
-            className="w-full min-w-0 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
+            className="w-full min-w-0 max-w-full truncate text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
           >
             <option value="all">Tác giả: Tất cả</option>
             {availableAuthors.map((item) => (
@@ -122,12 +122,12 @@ export const PipelineFilters: React.FC<PipelineFiltersProps> = ({
         </div>
 
         {/* Status Filter */}
-        <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 max-w-full items-center">
           <select
             value={status}
             aria-label="Lọc trạng thái pipeline"
             onChange={(e) => setStatus(e.target.value)}
-            className="w-full min-w-0 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
+            className="w-full min-w-0 max-w-full truncate text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
           >
             <option value="all">Trạng thái: Tất cả</option>
             <option value="success">Thành công (Success)</option>
@@ -138,12 +138,12 @@ export const PipelineFilters: React.FC<PipelineFiltersProps> = ({
         </div>
 
         {/* Branch Filter */}
-        <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 max-w-full items-center">
           <select
             value={branch}
             aria-label="Lọc nhánh pipeline"
             onChange={(e) => setBranch(e.target.value)}
-            className="w-full min-w-0 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
+            className="w-full min-w-0 max-w-full truncate text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
           >
             <option value="all">Nhánh: Tất cả</option>
             {availableBranches
@@ -157,12 +157,12 @@ export const PipelineFilters: React.FC<PipelineFiltersProps> = ({
         </div>
 
         {/* Workflow Filter */}
-        <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 max-w-full items-center">
           <select
             value={workflow}
             aria-label="Lọc workflow"
             onChange={(e) => setWorkflow(e.target.value)}
-            className="w-full min-w-0 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
+            className="w-full min-w-0 max-w-full truncate text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
           >
             <option value="all">Workflow: Tất cả</option>
             {availableWorkflows.map((item) => (
@@ -174,12 +174,12 @@ export const PipelineFilters: React.FC<PipelineFiltersProps> = ({
         </div>
 
         {/* Date Filter */}
-        <div className="flex min-w-0 items-center col-span-2 sm:col-span-1 lg:col-span-1">
+        <div className="flex min-w-0 max-w-full items-center col-span-2 sm:col-span-1 lg:col-span-1">
           <select
             value={dateRange}
             aria-label="Lọc thời gian pipeline"
             onChange={(e) => setDateRange(e.target.value)}
-            className="w-full min-w-0 text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
+            className="w-full min-w-0 max-w-full truncate text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-sky-100 cursor-pointer"
           >
             <option value="all">Thời gian: Tất cả</option>
             <option value="today">Hôm nay</option>
