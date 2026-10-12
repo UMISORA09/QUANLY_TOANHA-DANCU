@@ -37,69 +37,37 @@ interface ReceptionVisitorCheckinPanelProps {
   embedded?: boolean;
 }
 
-// Persistent in-memory & localStorage cache across unmounts/tab switching (0ms instant display - Hiện liền)
-const VISITOR_CACHE_STORAGE_KEY = 'smartcassavas_reception_visitors_cache_v1';
-
-const globalVisitorTabCache = new Map<string, {
-  data: ReceptionVisitorItem[];
-  pagination: { current_page: number; total_pages: number; total_items: number };
-  kpis: { expected_today: number; currently_inside: number; checked_out_today: number; total_registrations: number };
-}>();
-
-const getInitialVisitorCache = () => {
-  const memCached = globalVisitorTabCache.get('ALL__1');
-  if (memCached && memCached.data && memCached.data.length > 0) {
-    return memCached;
-  }
-  try {
-    const raw = localStorage.getItem(VISITOR_CACHE_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
-        return parsed;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-};
-
 export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanelProps> = ({
   embedded = false,
 }) => {
-  const initialCache = useMemo(() => getInitialVisitorCache(), []);
-
-  // 1. Dữ liệu chính & KPIs (Hiện liền tức thời 0ms từ cache)
-  const [visitors, setVisitors] = useState<ReceptionVisitorItem[]>(() => initialCache?.data ?? []);
-  const [kpis, setKpis] = useState(() => initialCache?.kpis ?? {
+  // 1. Dữ liệu chính & KPIs
+  const [visitors, setVisitors] = useState<ReceptionVisitorItem[]>([]);
+  const [kpis, setKpis] = useState({
     expected_today: 0,
     currently_inside: 0,
     checked_out_today: 0,
     total_registrations: 0,
   });
-  const [isLoading, setIsLoading] = useState<boolean>(() => !initialCache);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // Bộ nhớ đệm Client (In-memory SWR Cache) cho các tab và trang (Chuyển tab 0ms)
-  const tabCacheRef = useRef(globalVisitorTabCache);
+  const tabCacheRef = useRef<Map<string, {
+    data: ReceptionVisitorItem[];
+    pagination: { current_page: number; total_pages: number; total_items: number };
+    kpis: { expected_today: number; currently_inside: number; checked_out_today: number; total_registrations: number };
+  }>>(new Map());
 
   // 2. Bộ lọc & Phân trang
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState<number>(1);
-<<<<<<< HEAD
   const [perPage, setPerPage] = useState<number>(15);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
-=======
-  const [perPage] = useState<number>(15);
-  const [totalPages, setTotalPages] = useState<number>(() => initialCache?.pagination?.total_pages ?? 1);
-  const [totalCount, setTotalCount] = useState<number>(() => initialCache?.pagination?.total_items ?? 0);
->>>>>>> origin/master
 
   // 3. Tra cứu nhanh / Quét mã QR
   const [quickScanCode, setQuickScanCode] = useState<string>('');
@@ -150,25 +118,8 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  // AbortController ref và requestId để hủy request cũ an toàn, không bị tắt nhầm trạng thái đang tải
+  // AbortController ref để hủy các request cũ khi người dùng gõ tìm kiếm liên tục
   const searchAbortControllerRef = useRef<AbortController | null>(null);
-  const requestIdRef = useRef<number>(0);
-
-  const statusFilterRef = useRef<string>(statusFilter);
-  const currentPageRef = useRef<number>(currentPage);
-  const debouncedSearchRef = useRef<string>(debouncedSearch);
-
-  useEffect(() => {
-    statusFilterRef.current = statusFilter;
-  }, [statusFilter]);
-
-  useEffect(() => {
-    currentPageRef.current = currentPage;
-  }, [currentPage]);
-
-  useEffect(() => {
-    debouncedSearchRef.current = debouncedSearch;
-  }, [debouncedSearch]);
 
   // Debounce tìm kiếm 350ms
   useEffect(() => {
@@ -207,20 +158,12 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   // Fetch danh sách khách từ Server (SWR pattern)
   const fetchVisitors = useCallback(
     async (
-<<<<<<< HEAD
       targetStatus: string = statusFilter,
       targetPage: number = currentPage,
       targetSearch: string = debouncedSearch,
       targetLimit: number = perPage,
-=======
-      targetStatus: string = statusFilterRef.current,
-      targetPage: number = currentPageRef.current,
-      targetSearch: string = debouncedSearchRef.current,
->>>>>>> origin/master
       isSilent: boolean = false
     ) => {
-      const currentRequestId = ++requestIdRef.current;
-
       if (searchAbortControllerRef.current) {
         searchAbortControllerRef.current.abort();
       }
@@ -247,12 +190,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
           { signal: abortController.signal }
         );
 
-        // Bỏ qua nếu đã có request mới hơn được gửi đi
-        if (currentRequestId !== requestIdRef.current) {
-          return;
-        }
-
-        if (res && res.success) {
+        if (res.success) {
           const fetchedData = res.data || [];
           setVisitors(fetchedData);
 
@@ -261,12 +199,12 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
           }
           if (res.pagination) {
             setCurrentPage(res.pagination.current_page);
-            currentPageRef.current = res.pagination.current_page;
             setTotalPages(res.pagination.total_pages);
             setTotalCount(res.pagination.total_items);
           }
 
-          const cacheItem = {
+          // Lưu vào cache để chuyển tab/trang 0ms
+          tabCacheRef.current.set(cacheKey, {
             data: fetchedData,
             pagination: {
               current_page: res.pagination?.current_page || targetPage,
@@ -274,56 +212,33 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
               total_items: res.pagination?.total_items || fetchedData.length,
             },
             kpis: res.kpis || kpis,
-          };
-
-          // Lưu vào cache để chuyển tab/trang 0ms
-          tabCacheRef.current.set(cacheKey, cacheItem);
-
-          // Nếu là tab ALL mặc định, lưu localStorage để lần sau vào lại là hiện liền tức thì (0ms)
-          if (targetStatus === 'ALL' && !targetSearch && targetPage === 1) {
-            try {
-              localStorage.setItem(VISITOR_CACHE_STORAGE_KEY, JSON.stringify(cacheItem));
-            } catch {
-              // ignore
-            }
-          }
+          });
         }
       } catch (err: any) {
-        if (err?.name === 'AbortError' || currentRequestId !== requestIdRef.current) {
+        if (err?.name === 'AbortError') {
           return;
         }
         console.error('Lỗi khi tải danh sách khách:', err);
         setErrorMsg(err.message || 'Không thể tải danh sách khách viếng thăm.');
       } finally {
-<<<<<<< HEAD
         if (!abortController.signal.aborted) {
-=======
-        // Chỉ tắt loading nếu đây chính là request mới nhất đang chạy
-        if (currentRequestId === requestIdRef.current) {
->>>>>>> origin/master
           setIsLoading(false);
           setIsFetching(false);
         }
       }
     },
-    [perPage, kpis]
+    [statusFilter, currentPage, debouncedSearch, perPage]
   );
 
   // Chuyển tab: Chuyển ngay và nạp dữ liệu chuẩn xác cho từng tab
   const handleTabChange = useCallback(
     (newStatus: string) => {
-      if (newStatus === statusFilterRef.current) return;
+      if (newStatus === statusFilter) return;
 
       setStatusFilter(newStatus);
-      statusFilterRef.current = newStatus;
       setCurrentPage(1);
-      currentPageRef.current = 1;
 
-<<<<<<< HEAD
       const cacheKey = `${newStatus}_${debouncedSearch}_1_${perPage}`;
-=======
-      const cacheKey = `${newStatus}_${debouncedSearchRef.current}_1`;
->>>>>>> origin/master
       const cached = tabCacheRef.current.get(cacheKey);
 
       if (cached) {
@@ -331,9 +246,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         setVisitors(cached.data);
         setTotalPages(cached.pagination.total_pages);
         setTotalCount(cached.pagination.total_items);
-        setIsLoading(false);
         // Đồng bộ ngầm trong nền
-<<<<<<< HEAD
         fetchVisitors(newStatus, 1, debouncedSearch, perPage, true);
       } else {
         // 2. Chưa có trong cache -> hiện loading và fetch dữ liệu thực từ Server
@@ -343,45 +256,22 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       }
     },
     [statusFilter, debouncedSearch, perPage, fetchVisitors]
-=======
-        fetchVisitors(newStatus, 1, debouncedSearchRef.current, true);
-      } else {
-        // 2. Chưa có trong cache -> hiện "Đang tải..." ngay lập tức
-        setVisitors([]);
-        setIsLoading(true);
-        fetchVisitors(newStatus, 1, debouncedSearchRef.current, false);
-      }
-    },
-    [fetchVisitors]
->>>>>>> origin/master
   );
 
   // Chuyển trang siêu tốc tận dụng cache
   const handlePageChange = useCallback(
     (newPage: number) => {
       setCurrentPage(newPage);
-<<<<<<< HEAD
       const cacheKey = `${statusFilter}_${debouncedSearch}_${newPage}_${perPage}`;
-=======
-      currentPageRef.current = newPage;
-      const cacheKey = `${statusFilterRef.current}_${debouncedSearchRef.current}_${newPage}`;
->>>>>>> origin/master
       const cached = tabCacheRef.current.get(cacheKey);
 
       if (cached) {
         setVisitors(cached.data);
         setTotalPages(cached.pagination.total_pages);
         setTotalCount(cached.pagination.total_items);
-<<<<<<< HEAD
         fetchVisitors(statusFilter, newPage, debouncedSearch, perPage, true);
-=======
-        setIsLoading(false);
-        fetchVisitors(statusFilterRef.current, newPage, debouncedSearchRef.current, true);
->>>>>>> origin/master
       } else {
-        setVisitors([]);
         setIsLoading(true);
-<<<<<<< HEAD
         fetchVisitors(statusFilter, newPage, debouncedSearch, perPage, false);
       }
     },
@@ -406,28 +296,6 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
       return;
     }
     fetchVisitors(statusFilter, 1, debouncedSearch, perPage, false);
-=======
-        fetchVisitors(statusFilterRef.current, newPage, debouncedSearchRef.current, false);
-      }
-    },
-    [fetchVisitors]
-  );
-
-  const isInitialDebounceMounted = useRef(false);
-
-  // Tải dữ liệu ban đầu (nếu đã có cache thì tải ngầm silent để hiện liền tức thời)
-  useEffect(() => {
-    fetchVisitors('ALL', 1, '', !!initialCache);
-  }, []);
-
-  // Khi từ khóa tìm kiếm thay đổi (sau 350ms debounce, không kích hoạt lần render đầu tiên)
-  useEffect(() => {
-    if (!isInitialDebounceMounted.current) {
-      isInitialDebounceMounted.current = true;
-      return;
-    }
-    fetchVisitors(statusFilterRef.current, 1, debouncedSearch, false);
->>>>>>> origin/master
   }, [debouncedSearch]);
 
   // Realtime Live Sync: Khi có bất kỳ mutation nào (A check-in / B check-out)
@@ -435,11 +303,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
     (event: RealtimeEventPayload) => {
       if (event.module === 'visitors' || event.entity === 'visitor_checkin' || event.entity === 'visitor_registration') {
         tabCacheRef.current.clear();
-<<<<<<< HEAD
         fetchVisitors(statusFilter, currentPage, debouncedSearch, perPage, true);
-=======
-        fetchVisitors(statusFilterRef.current, currentPageRef.current, debouncedSearchRef.current, true);
->>>>>>> origin/master
 
         if (event.action === 'CHECKED_IN') {
           showToast(`⚡ Realtime: Khách ${event.visitor_name || ''} vừa check-in vào tòa nhà!`, 'info');
@@ -448,11 +312,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         }
       }
     },
-<<<<<<< HEAD
     [statusFilter, currentPage, debouncedSearch, perPage, fetchVisitors]
-=======
-    [fetchVisitors]
->>>>>>> origin/master
   );
 
   useRealtimeSync({
