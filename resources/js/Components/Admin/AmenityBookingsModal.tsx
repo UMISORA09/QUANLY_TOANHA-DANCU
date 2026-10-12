@@ -153,8 +153,8 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
       if (status === 'CANCELLED') setCancellation(null);
       await fetchBookings(true);
     } catch (err: any) {
-      setError(err?.message || 'Không thể cập nhật trạng thái đặt chỗ.');
       await fetchBookings(true);
+      setError(err?.message || 'Không thể cập nhật trạng thái đặt chỗ.');
     } finally {
       setUpdatingId(null);
     }
