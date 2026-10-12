@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CreditCard,
   Plus,
@@ -444,9 +445,9 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
   return (
     <div className={`space-y-6 ${embedded ? '' : 'p-6 max-w-7xl mx-auto'}`}>
       {/* Toast Notification */}
-      {toastMessage && (
+      {toastMessage && typeof document !== 'undefined' && createPortal(
         <div
-          className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border transition-all duration-300 ${
+          className={`fixed top-5 right-5 z-[10000] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border transition-all duration-300 ${
             toastMessage.type === 'success'
               ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
               : toastMessage.type === 'error'
@@ -462,7 +463,8 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
             <Radio className="w-5 h-5 text-sky-600 animate-pulse" />
           )}
           <span>{toastMessage.text}</span>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 1. Header & Title */}
@@ -855,9 +857,9 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
       </div>
 
       {/* Modal: Create Card */}
-      {isCreateModalOpen && (
+      {isCreateModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
@@ -874,158 +876,160 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="p-5 sm:p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* UID */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Mã Chip RFID (UID) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="VD: RFID-ELEV-9901"
-                    value={formData.card_uid}
-                    onChange={e => setFormData({ ...formData, card_uid: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
-                  />
-                  {formErrors.card_uid && <p className="text-xs text-rose-500 mt-1">{formErrors.card_uid}</p>}
+            <form onSubmit={handleCreateSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* UID */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Mã Chip RFID (UID) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="VD: RFID-ELEV-9901"
+                      value={formData.card_uid}
+                      onChange={e => setFormData({ ...formData, card_uid: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
+                    />
+                    {formErrors.card_uid && <p className="text-xs text-rose-500 mt-1">{formErrors.card_uid}</p>}
+                  </div>
+
+                  {/* Card Number */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Số In Trên Mặt Thẻ <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="VD: CARD-9901"
+                      value={formData.card_number}
+                      onChange={e => setFormData({ ...formData, card_number: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
+                    />
+                    {formErrors.card_number && <p className="text-xs text-rose-500 mt-1">{formErrors.card_number}</p>}
+                  </div>
                 </div>
 
-                {/* Card Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Số In Trên Mặt Thẻ <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="VD: CARD-9901"
-                    value={formData.card_number}
-                    onChange={e => setFormData({ ...formData, card_number: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
-                  />
-                  {formErrors.card_number && <p className="text-xs text-rose-500 mt-1">{formErrors.card_number}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Card Type */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Loại Thẻ
+                    </label>
+                    <select
+                      value={formData.card_type}
+                      onChange={e => setFormData({ ...formData, card_type: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
+                    >
+                      <option value="RESIDENT_ALL_ACCESS">Thẻ Toàn Quyền (Thang máy + Gửi xe)</option>
+                      <option value="ELEVATOR_ONLY">Thẻ Thang Máy Tòa Nhà</option>
+                      <option value="PARKING_ONLY">Thẻ Bãi Gửi Xe</option>
+                      <option value="VISITOR_PASS">Thẻ Khách Thăm Tạm Thời</option>
+                    </select>
+                  </div>
+
+                  {/* Initial Status */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Trạng Thái Ban Đầu
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={e => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
+                    >
+                      <option value="ACTIVE">ACTIVE (Kích hoạt ngay)</option>
+                      <option value="LOCKED_TEMPORARY">LOCKED (Tạm khóa)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Apartment */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Gán Căn Hộ
+                    </label>
+                    <select
+                      value={formData.assigned_apartment_id}
+                      onChange={e => setFormData({ ...formData, assigned_apartment_id: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    >
+                      <option value="">-- Chưa gán căn hộ --</option>
+                      {apartments.map(apt => (
+                        <option key={apt.id} value={apt.id}>
+                          Căn hộ {apt.apartment_number}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Resident */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Gán Cư Dân
+                    </label>
+                    <select
+                      value={formData.assigned_user_id}
+                      onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    >
+                      <option value="">-- Chưa gán cư dân --</option>
+                      {filteredFormResidents.map(res => (
+                        <option key={res.user_id} value={res.user_id}>
+                          {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Issued Date */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Ngày Cấp
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.issued_date}
+                      onChange={e => setFormData({ ...formData, issued_date: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    />
+                  </div>
+
+                  {/* Expiry Date */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Hạn Sử Dụng
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.expiry_date}
+                      onChange={e => setFormData({ ...formData, expiry_date: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    />
+                  </div>
+
+                  {/* Deposit Fee */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Tiền Cọc (VND)
+                    </label>
+                    <input
+                      type="number"
+                      step="1000"
+                      value={formData.deposit_fee}
+                      onChange={e => setFormData({ ...formData, deposit_fee: Number(e.target.value) })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Card Type */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Loại Thẻ
-                  </label>
-                  <select
-                    value={formData.card_type}
-                    onChange={e => setFormData({ ...formData, card_type: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
-                  >
-                    <option value="RESIDENT_ALL_ACCESS">Thẻ Toàn Quyền (Thang máy + Gửi xe)</option>
-                    <option value="ELEVATOR_ONLY">Thẻ Thang Máy Tòa Nhà</option>
-                    <option value="PARKING_ONLY">Thẻ Bãi Gửi Xe</option>
-                    <option value="VISITOR_PASS">Thẻ Khách Thăm Tạm Thời</option>
-                  </select>
-                </div>
-
-                {/* Initial Status */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Trạng Thái Ban Đầu
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={e => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
-                  >
-                    <option value="ACTIVE">ACTIVE (Kích hoạt ngay)</option>
-                    <option value="LOCKED_TEMPORARY">LOCKED (Tạm khóa)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Apartment */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Gán Căn Hộ
-                  </label>
-                  <select
-                    value={formData.assigned_apartment_id}
-                    onChange={e => setFormData({ ...formData, assigned_apartment_id: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  >
-                    <option value="">-- Chưa gán căn hộ --</option>
-                    {apartments.map(apt => (
-                      <option key={apt.id} value={apt.id}>
-                        Căn hộ {apt.apartment_number}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Resident */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Gán Cư Dân
-                  </label>
-                  <select
-                    value={formData.assigned_user_id}
-                    onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  >
-                    <option value="">-- Chưa gán cư dân --</option>
-                    {filteredFormResidents.map(res => (
-                      <option key={res.user_id} value={res.user_id}>
-                        {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Issued Date */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Ngày Cấp
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.issued_date}
-                    onChange={e => setFormData({ ...formData, issued_date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Expiry Date */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Hạn Sử Dụng
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.expiry_date}
-                    onChange={e => setFormData({ ...formData, expiry_date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Deposit Fee */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Tiền Cọc (VND)
-                  </label>
-                  <input
-                    type="number"
-                    step="1000"
-                    value={formData.deposit_fee}
-                    onChange={e => setFormData({ ...formData, deposit_fee: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
@@ -1044,13 +1048,14 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: Edit Card */}
-      {isEditModalOpen && selectedCard && (
+      {isEditModalOpen && selectedCard && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
@@ -1067,119 +1072,121 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="p-5 sm:p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Mã UID</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.card_uid}
-                    onChange={e => setFormData({ ...formData, card_uid: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
-                  />
-                  {formErrors.card_uid && <p className="text-xs text-rose-500 mt-1">{formErrors.card_uid}</p>}
+            <form onSubmit={handleEditSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Mã UID</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.card_uid}
+                      onChange={e => setFormData({ ...formData, card_uid: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
+                    />
+                    {formErrors.card_uid && <p className="text-xs text-rose-500 mt-1">{formErrors.card_uid}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Số Thẻ</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.card_number}
+                      onChange={e => setFormData({ ...formData, card_number: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
+                    />
+                    {formErrors.card_number && <p className="text-xs text-rose-500 mt-1">{formErrors.card_number}</p>}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Số Thẻ</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.card_number}
-                    onChange={e => setFormData({ ...formData, card_number: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 uppercase"
-                  />
-                  {formErrors.card_number && <p className="text-xs text-rose-500 mt-1">{formErrors.card_number}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Loại Thẻ</label>
+                    <select
+                      value={formData.card_type}
+                      onChange={e => setFormData({ ...formData, card_type: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
+                    >
+                      <option value="RESIDENT_ALL_ACCESS">Thẻ Toàn Quyền</option>
+                      <option value="ELEVATOR_ONLY">Thẻ Thang Máy</option>
+                      <option value="PARKING_ONLY">Thẻ Gửi Xe</option>
+                      <option value="VISITOR_PASS">Thẻ Khách Thăm</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Trạng Thái</label>
+                    <select
+                      value={formData.status}
+                      onChange={e => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
+                    >
+                      <option value="ACTIVE">ACTIVE (Hoạt động)</option>
+                      <option value="LOCKED_TEMPORARY">LOCKED (Tạm khóa)</option>
+                      <option value="LOST_REPORTED">BÁO MẤT</option>
+                      <option value="REVOKED">THU HỒI</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Căn Hộ</label>
+                    <select
+                      value={formData.assigned_apartment_id}
+                      onChange={e => setFormData({ ...formData, assigned_apartment_id: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    >
+                      <option value="">-- Chưa gán căn hộ --</option>
+                      {apartments.map(apt => (
+                        <option key={apt.id} value={apt.id}>Căn hộ {apt.apartment_number}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Cư Dân</label>
+                    <select
+                      value={formData.assigned_user_id}
+                      onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    >
+                      <option value="">-- Chưa gán cư dân --</option>
+                      {filteredFormResidents.map(res => (
+                        <option key={res.user_id} value={res.user_id}>
+                          {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Hạn Sử Dụng</label>
+                    <input
+                      type="date"
+                      value={formData.expiry_date}
+                      onChange={e => setFormData({ ...formData, expiry_date: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Tiền Cọc (VND)</label>
+                    <input
+                      type="number"
+                      step="1000"
+                      value={formData.deposit_fee}
+                      onChange={e => setFormData({ ...formData, deposit_fee: Number(e.target.value) })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Loại Thẻ</label>
-                  <select
-                    value={formData.card_type}
-                    onChange={e => setFormData({ ...formData, card_type: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
-                  >
-                    <option value="RESIDENT_ALL_ACCESS">Thẻ Toàn Quyền</option>
-                    <option value="ELEVATOR_ONLY">Thẻ Thang Máy</option>
-                    <option value="PARKING_ONLY">Thẻ Gửi Xe</option>
-                    <option value="VISITOR_PASS">Thẻ Khách Thăm</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Trạng Thái</label>
-                  <select
-                    value={formData.status}
-                    onChange={e => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 font-medium"
-                  >
-                    <option value="ACTIVE">ACTIVE (Hoạt động)</option>
-                    <option value="LOCKED_TEMPORARY">LOCKED (Tạm khóa)</option>
-                    <option value="LOST_REPORTED">BÁO MẤT</option>
-                    <option value="REVOKED">THU HỒI</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Căn Hộ</label>
-                  <select
-                    value={formData.assigned_apartment_id}
-                    onChange={e => setFormData({ ...formData, assigned_apartment_id: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  >
-                    <option value="">-- Chưa gán căn hộ --</option>
-                    {apartments.map(apt => (
-                      <option key={apt.id} value={apt.id}>Căn hộ {apt.apartment_number}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Cư Dân</label>
-                  <select
-                    value={formData.assigned_user_id}
-                    onChange={e => setFormData({ ...formData, assigned_user_id: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  >
-                    <option value="">-- Chưa gán cư dân --</option>
-                    {filteredFormResidents.map(res => (
-                      <option key={res.user_id} value={res.user_id}>
-                        {res.full_name} {res.phone_number ? `(${res.phone_number})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Hạn Sử Dụng</label>
-                  <input
-                    type="date"
-                    value={formData.expiry_date}
-                    onChange={e => setFormData({ ...formData, expiry_date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Tiền Cọc (VND)</label>
-                  <input
-                    type="number"
-                    step="1000"
-                    value={formData.deposit_fee}
-                    onChange={e => setFormData({ ...formData, deposit_fee: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
@@ -1202,13 +1209,14 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: View Detail & Recent Access Logs */}
-      {isDetailModalOpen && selectedCard && (
+      {isDetailModalOpen && selectedCard && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
@@ -1225,7 +1233,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </button>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-5">
+            <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1 max-h-[calc(90vh-130px)]">
               {detailLoading ? (
                 <div className="py-8 text-center text-slate-400">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-600" />
@@ -1279,26 +1287,27 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   </div>
                 </>
               )}
+            </div>
 
-              <div className="pt-3 border-t border-slate-100 text-right">
-                <button
-                  type="button"
-                  onClick={() => setIsDetailModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition"
-                >
-                  Đóng
-                </button>
-              </div>
+            <div className="p-4 sm:px-6 bg-slate-50 border-t border-slate-100 text-right shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsDetailModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition"
+              >
+                Đóng
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: Delete Confirmation */}
-      {isDeleteModalOpen && selectedCard && (
+      {isDeleteModalOpen && selectedCard && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-6 text-center space-y-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6 text-center space-y-4 overflow-y-auto flex-1">
               <div className="w-14 h-14 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border-4 border-rose-100">
                 <Trash2 className="w-7 h-7" />
               </div>
@@ -1321,7 +1330,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   Hủy Bỏ
                 </button>
                 <button
-                  type="button"
+                  type="submit"
                   onClick={handleDeleteConfirm}
                   disabled={actionLoading}
                   className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
@@ -1332,7 +1341,8 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
