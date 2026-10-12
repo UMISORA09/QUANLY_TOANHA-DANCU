@@ -155,7 +155,8 @@ test('full GitHub history, author filtering, sliders and live updates preserve 1
   const rows = page.locator('table tbody tr');
   await expect(nav).toContainText('Trang 1/10');
   await expect(rows).toHaveCount(15);
-  await page.getByRole('button', { name: 'Trang cuối' }).click();
+  await page.getByRole('slider', { name: 'Chuyển trang pipelines' }).focus();
+  await page.keyboard.press('End');
   await expect(nav).toContainText('Trang 10/10');
   await expect(rows.first()).toContainText('History pipeline 136');
   await page.getByRole('combobox', { name: 'Lọc tác giả pipeline' }).selectOption('qa');

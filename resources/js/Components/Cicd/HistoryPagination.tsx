@@ -40,6 +40,8 @@ export const HistoryPagination: React.FC<{
         Hiển thị <span className="font-bold text-slate-700">{startItem}–{endItem}</span> / <span className="font-bold text-slate-700">{total}</span> {itemLabel} · Trang <span className="font-bold text-slate-700">{current}</span>/{pages}
       </div>
 
+      <input type="range" aria-label={`Chuyển trang ${itemLabel}`} min={1} max={pages} value={current} disabled={pages === 1} onChange={event => onPageChange(Number(event.target.value))} className="w-full sm:w-32 accent-sky-600" />
+
       <div className="flex items-center gap-1.5 flex-wrap">
         {/* Nút Trang đầu */}
         <button
