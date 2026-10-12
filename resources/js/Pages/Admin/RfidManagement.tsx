@@ -101,11 +101,10 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
-          isOpen
-            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-            : 'border-slate-200 hover:border-slate-300'
-        }`}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
       >
         <span className="truncate pr-2">
           {selectedApartment ? (
@@ -118,9 +117,8 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
           )}
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-indigo-600' : ''
-          }`}
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
         />
       </button>
 
@@ -145,11 +143,10 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
             <button
               type="button"
               onClick={() => handleSelect('')}
-              className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
-                !value
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'hover:bg-slate-100 text-slate-600 italic'
-              }`}
+              className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${!value
+                ? 'bg-indigo-600 text-white font-bold'
+                : 'hover:bg-slate-100 text-slate-600 italic'
+                }`}
             >
               <span>-- Chưa gán căn hộ --</span>
               {!value && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
@@ -167,17 +164,15 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
                     key={a.id}
                     type="button"
                     onClick={() => handleSelect(a.id)}
-                    className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white font-bold'
-                        : 'hover:bg-slate-100 text-slate-800'
-                    }`}
+                    className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${isSelected
+                      ? 'bg-indigo-600 text-white font-bold'
+                      : 'hover:bg-slate-100 text-slate-800'
+                      }`}
                   >
                     <div className="flex items-center gap-2 truncate pr-2">
                       <Building2
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          isSelected ? 'text-white' : 'text-slate-400'
-                        }`}
+                        className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-slate-400'
+                          }`}
                       />
                       <span className="truncate">Căn hộ {a.apartment_number}</span>
                     </div>
@@ -267,11 +262,10 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
-          isOpen
-            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-            : 'border-slate-200 hover:border-slate-300'
-        }`}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
       >
         <span className="truncate pr-2">
           {selectedResident ? (
@@ -284,9 +278,8 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
           )}
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-indigo-600' : ''
-          }`}
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
         />
       </button>
 
@@ -313,11 +306,10 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
             <button
               type="button"
               onClick={() => handleSelect('')}
-              className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
-                !value
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'hover:bg-slate-100 text-slate-600 italic'
-              }`}
+              className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${!value
+                ? 'bg-indigo-600 text-white font-bold'
+                : 'hover:bg-slate-100 text-slate-600 italic'
+                }`}
             >
               <span>-- Chưa gán cư dân --</span>
               {!value && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
@@ -335,17 +327,15 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
                     key={r.user_id}
                     type="button"
                     onClick={() => handleSelect(r.user_id)}
-                    className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white font-bold'
-                        : 'hover:bg-slate-100 text-slate-800'
-                    }`}
+                    className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${isSelected
+                      ? 'bg-indigo-600 text-white font-bold'
+                      : 'hover:bg-slate-100 text-slate-800'
+                      }`}
                   >
                     <div className="flex items-center gap-2 truncate pr-2">
                       <User
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          isSelected ? 'text-white' : 'text-slate-400'
-                        }`}
+                        className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-slate-400'
+                          }`}
                       />
                       <span className="truncate">
                         {r.full_name} {r.phone_number ? `(${r.phone_number})` : ''}
@@ -436,20 +426,18 @@ const CardTypeCombobox: React.FC<CardTypeComboboxProps> = ({ value, onChange }) 
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
-          isOpen
-            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-            : 'border-slate-200 hover:border-slate-300'
-        }`}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
       >
         <span className="flex items-center gap-1.5 truncate pr-2">
           <SelectedIcon className={`w-3.5 h-3.5 ${selectedOption.color} shrink-0`} />
           <span className="font-bold text-slate-800 truncate">{selectedOption.title}</span>
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-indigo-600' : ''
-          }`}
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
         />
       </button>
 
@@ -466,26 +454,23 @@ const CardTypeCombobox: React.FC<CardTypeComboboxProps> = ({ value, onChange }) 
                   onChange(opt.id);
                   setIsOpen(false);
                 }}
-                className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-left transition ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white font-bold'
-                    : 'hover:bg-slate-100 text-slate-800'
-                }`}
+                className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-left transition ${isSelected
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-slate-100 text-slate-800'
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate pr-2">
                   <div
-                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
-                      isSelected ? 'bg-white/20 text-white' : opt.badgeBg
-                    }`}
+                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${isSelected ? 'bg-white/20 text-white' : opt.badgeBg
+                      }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
                   </div>
                   <div className="truncate">
                     <div className="truncate leading-tight font-medium">{opt.title}</div>
                     <div
-                      className={`text-[10px] truncate ${
-                        isSelected ? 'text-indigo-100' : 'text-slate-400'
-                      }`}
+                      className={`text-[10px] truncate ${isSelected ? 'text-indigo-100' : 'text-slate-400'
+                        }`}
                     >
                       {opt.subtitle}
                     </div>
@@ -590,11 +575,10 @@ const CardStatusCombobox: React.FC<CardStatusComboboxProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
-          isOpen
-            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-            : 'border-slate-200 hover:border-slate-300'
-        }`}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
       >
         <span className="flex items-center gap-1.5 truncate pr-2">
           <span className={`w-2 h-2 rounded-full ${selectedOption.dotColor} shrink-0`} />
@@ -602,9 +586,8 @@ const CardStatusCombobox: React.FC<CardStatusComboboxProps> = ({
           <span className="font-bold text-slate-800 truncate">{selectedOption.title}</span>
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-indigo-600' : ''
-          }`}
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
         />
       </button>
 
@@ -621,33 +604,29 @@ const CardStatusCombobox: React.FC<CardStatusComboboxProps> = ({
                   onChange(opt.id);
                   setIsOpen(false);
                 }}
-                className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-left transition ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white font-bold'
-                    : 'hover:bg-slate-100 text-slate-800'
-                }`}
+                className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-left transition ${isSelected
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-slate-100 text-slate-800'
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate pr-2">
                   <div
-                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
-                      isSelected ? 'bg-white/20 text-white' : opt.badgeBg
-                    }`}
+                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${isSelected ? 'bg-white/20 text-white' : opt.badgeBg
+                      }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
                   </div>
                   <div className="truncate">
                     <div className="flex items-center gap-1.5 truncate leading-tight font-medium">
                       <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          isSelected ? 'bg-white' : opt.dotColor
-                        } shrink-0`}
+                        className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : opt.dotColor
+                          } shrink-0`}
                       />
                       <span>{opt.title}</span>
                     </div>
                     <div
-                      className={`text-[10px] truncate ${
-                        isSelected ? 'text-indigo-100' : 'text-slate-400'
-                      }`}
+                      className={`text-[10px] truncate ${isSelected ? 'text-indigo-100' : 'text-slate-400'
+                        }`}
                     >
                       {opt.subtitle}
                     </div>
@@ -708,20 +687,18 @@ const IssuedDateCombobox: React.FC<IssuedDateComboboxProps> = ({ value, onChange
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
-          isOpen
-            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-            : 'border-slate-200 hover:border-slate-300'
-        }`}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
       >
         <span className="flex items-center gap-1.5 truncate pr-2">
           <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
           <span className="font-bold text-slate-800 truncate">{displayDate}</span>
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-indigo-600' : ''
-          }`}
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
         />
       </button>
 
@@ -737,11 +714,10 @@ const IssuedDateCombobox: React.FC<IssuedDateComboboxProps> = ({ value, onChange
                 onChange(todayStr);
                 setIsOpen(false);
               }}
-              className={`px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold flex items-center justify-between ${
-                value === todayStr
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-              }`}
+              className={`px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold flex items-center justify-between ${value === todayStr
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                }`}
             >
               <span>Hôm nay</span>
               {value === todayStr && <Check className="w-3.5 h-3.5 text-white" />}
@@ -834,20 +810,18 @@ const ExpiryDateCombobox: React.FC<ExpiryDateComboboxProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
-          isOpen
-            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-            : 'border-slate-200 hover:border-slate-300'
-        }`}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
       >
         <span className="flex items-center gap-1.5 truncate pr-2">
           <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
           <span className="font-bold text-slate-800 truncate">{displayDate}</span>
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-indigo-600' : ''
-          }`}
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
         />
       </button>
 
@@ -952,20 +926,18 @@ const DepositFeeCombobox: React.FC<DepositFeeComboboxProps> = ({ value, onChange
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${
-          isOpen
-            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-            : 'border-slate-200 hover:border-slate-300'
-        }`}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
       >
         <span className="flex items-center gap-1.5 truncate pr-2">
           <DollarSign className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
           <span className="font-bold text-slate-800 truncate">{formattedValue}</span>
         </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-indigo-600' : ''
-          }`}
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
         />
       </button>
 
@@ -985,11 +957,10 @@ const DepositFeeCombobox: React.FC<DepositFeeComboboxProps> = ({ value, onChange
                     onChange(p.amount);
                     setIsOpen(false);
                   }}
-                  className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition font-semibold text-xs ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-800'
-                  }`}
+                  className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition font-semibold text-xs ${isSelected
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-800'
+                    }`}
                 >
                   <span>{p.label}</span>
                   {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
@@ -1439,13 +1410,12 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
       {/* Toast Notification */}
       {toastMessage && typeof document !== 'undefined' && createPortal(
         <div
-          className={`fixed top-5 right-5 z-[10000] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border transition-all duration-300 ${
-            toastMessage.type === 'success'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-              : toastMessage.type === 'error'
+          className={`fixed top-5 right-5 z-[10000] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border transition-all duration-300 ${toastMessage.type === 'success'
+            ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+            : toastMessage.type === 'error'
               ? 'bg-rose-50 text-rose-900 border-rose-300'
               : 'bg-sky-50 text-sky-900 border-sky-300'
-          }`}
+            }`}
         >
           {toastMessage.type === 'success' ? (
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -1468,10 +1438,6 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
               {portalMode === 'receptionist'
                 ? 'CỔNG LỄ TÂN · THẺ TỪ THÔNG MINH'
                 : 'PHÂN HỆ AN NINH · KIỂM SOÁT RA VÀO'}
-            </span>
-            <span className="text-slate-300">·</span>
-            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-indigo-200">
-              MODULE #6: RFID CARDS
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight mt-1">
@@ -1770,11 +1736,10 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                           <button
                             onClick={() => handleToggleStatus(card)}
                             disabled={actionLoading || card.status === 'REVOKED'}
-                            className={`p-1.5 rounded-lg transition ${
-                              card.status === 'ACTIVE'
-                                ? 'text-slate-600 hover:text-amber-600 hover:bg-amber-50'
-                                : 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50'
-                            }`}
+                            className={`p-1.5 rounded-lg transition ${card.status === 'ACTIVE'
+                              ? 'text-slate-600 hover:text-amber-600 hover:bg-amber-50'
+                              : 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50'
+                              }`}
                             title={card.status === 'ACTIVE' ? 'Tạm khóa thẻ tức thì' : 'Mở kích hoạt thẻ'}
                           >
                             {card.status === 'ACTIVE' ? (
