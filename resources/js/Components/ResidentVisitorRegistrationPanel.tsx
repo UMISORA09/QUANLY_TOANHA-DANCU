@@ -25,7 +25,15 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Filter,
+  RotateCcw,
+  Package,
+  Wrench,
+  Briefcase,
+  HelpCircle,
   Loader2,
+  Download,
 } from 'lucide-react';
 import {
   api,
@@ -35,6 +43,622 @@ import {
   ApiError,
 } from '../Services/api';
 import { useRealtimeSync, RealtimeEventPayload } from '../Hooks/useRealtimeSync';
+
+// --- Helpers for Date & Time Formatting ---
+const formatDateTimeDisplay = (isoStr: string) => {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${hours}:${mins} · ${day}/${month}/${year}`;
+  } catch {
+    return isoStr;
+  }
+};
+
+const toLocalISOString = (d: Date) => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const mins = pad(d.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${mins}`;
+};
+
+// --- Custom Combobox Components ---
+
+interface VisitorStatusFilterComboboxProps {
+  value: string;
+  onChange: (status: string) => void;
+}
+
+const VISITOR_STATUS_FILTER_OPTIONS = [
+  {
+    id: 'ALL',
+    label: '-- Tất cả trạng thái --',
+    icon: Filter,
+    color: 'text-neutral-400',
+    dotColor: null,
+  },
+  {
+    id: 'ACTIVE',
+    label: 'Đang hiệu lực (Chờ đến)',
+    icon: CheckCircle2,
+    color: 'text-emerald-600',
+    dotColor: 'bg-emerald-500',
+  },
+  {
+    id: 'USED',
+    label: 'Đã tiếp đón (Đã check-in)',
+    icon: UserCheck,
+    color: 'text-blue-600',
+    dotColor: 'bg-blue-500',
+  },
+  {
+    id: 'CANCELLED',
+    label: 'Đã hủy',
+    icon: XCircle,
+    color: 'text-rose-600',
+    dotColor: 'bg-rose-500',
+  },
+  {
+    id: 'EXPIRED',
+    label: 'Quá hạn',
+    icon: Clock,
+    color: 'text-neutral-500',
+    dotColor: 'bg-neutral-400',
+  },
+];
+
+const VisitorStatusFilterCombobox: React.FC<VisitorStatusFilterComboboxProps> = ({
+  value,
+  onChange,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const selectedOption =
+    VISITOR_STATUS_FILTER_OPTIONS.find((opt) => opt.id === value) ||
+    VISITOR_STATUS_FILTER_OPTIONS[0];
+  const SelectedIcon = selectedOption.icon;
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-xl bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-2xs ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-neutral-200 hover:border-neutral-300'
+          }`}
+      >
+        <span className="truncate pr-2">
+          {value === 'ALL' ? (
+            <span className="text-neutral-500 font-medium flex items-center gap-1.5 truncate">
+              <Filter className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+              <span className="truncate">{selectedOption.label}</span>
+            </span>
+          ) : (
+            <span className="text-neutral-900 font-bold flex items-center gap-1.5 truncate">
+              {selectedOption.dotColor && (
+                <span className={`w-2 h-2 rounded-full ${selectedOption.dotColor} shrink-0`} />
+              )}
+              <SelectedIcon className={`w-3.5 h-3.5 ${selectedOption.color} shrink-0`} />
+              <span className="truncate">{selectedOption.label}</span>
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[210px]">
+          {VISITOR_STATUS_FILTER_OPTIONS.map((opt) => {
+            const isSelected = opt.id === value;
+            const Icon = opt.icon;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onChange(opt.id);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between text-left transition ${isSelected
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-neutral-100 text-neutral-800'
+                  }`}
+              >
+                <div className="flex items-center gap-2 truncate pr-2">
+                  {opt.dotColor ? (
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-white' : opt.dotColor
+                        }`}
+                    />
+                  ) : (
+                    <Icon
+                      className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : opt.color
+                        }`}
+                    />
+                  )}
+                  <span className="truncate">{opt.label}</span>
+                </div>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface VisitPurposeComboboxProps {
+  value: string;
+  onChange: (purpose: string) => void;
+}
+
+const VISIT_PURPOSE_OPTIONS = [
+  {
+    id: 'Thăm người thân',
+    title: 'Thăm người thân',
+    subtitle: 'Gia đình, bạn bè, họ hàng',
+    icon: Users,
+    color: 'text-indigo-600',
+    badgeBg: 'bg-indigo-50 text-indigo-700',
+  },
+  {
+    id: 'Giao nhận hàng hóa / Bưu phẩm',
+    title: 'Giao nhận hàng hóa / Bưu phẩm',
+    subtitle: 'Shipper, bưu tá giao nhận đồ',
+    icon: Package,
+    color: 'text-amber-600',
+    badgeBg: 'bg-amber-50 text-amber-700',
+  },
+  {
+    id: 'Sửa chữa / Lắp đặt thiết bị',
+    title: 'Sửa chữa / Lắp đặt thiết bị',
+    subtitle: 'Thợ điện nước, nội thất, bảo trì',
+    icon: Wrench,
+    color: 'text-blue-600',
+    badgeBg: 'bg-blue-50 text-blue-700',
+  },
+  {
+    id: 'Gặp gỡ công việc',
+    title: 'Gặp gỡ công việc',
+    subtitle: 'Trao đổi đối tác, làm việc, họp',
+    icon: Briefcase,
+    color: 'text-emerald-600',
+    badgeBg: 'bg-emerald-50 text-emerald-700',
+  },
+  {
+    id: 'Khác',
+    title: 'Mục đích khác',
+    subtitle: 'Nhu cầu cá nhân khác',
+    icon: HelpCircle,
+    color: 'text-purple-600',
+    badgeBg: 'bg-purple-50 text-purple-700',
+  },
+];
+
+const VisitPurposeCombobox: React.FC<VisitPurposeComboboxProps> = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const selectedOption =
+    VISIT_PURPOSE_OPTIONS.find((opt) => opt.id === value) ||
+    VISIT_PURPOSE_OPTIONS.find((opt) => opt.id === 'Khác') ||
+    VISIT_PURPOSE_OPTIONS[0];
+
+  const SelectedIcon = selectedOption.icon;
+  const isCustom = !VISIT_PURPOSE_OPTIONS.some((opt) => opt.id === value && opt.id !== 'Khác');
+
+  useEffect(() => {
+    if (isOpen && isCustom && value && value !== 'Khác') {
+      setCustomText(value);
+    }
+  }, [isOpen, isCustom, value]);
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-xl bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-2xs cursor-pointer ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-neutral-200 hover:border-neutral-300'
+          }`}
+      >
+        <span className="flex items-center gap-2 truncate pr-2">
+          <SelectedIcon className={`w-3.5 h-3.5 ${selectedOption.color} shrink-0`} />
+          <span className="font-bold text-neutral-900 truncate">
+            {value || selectedOption.title}
+          </span>
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-1.5 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+          {VISIT_PURPOSE_OPTIONS.map((opt) => {
+            const isSelected =
+              opt.id === value || (opt.id === 'Khác' && isCustom && value !== 'Thăm người thân');
+            const Icon = opt.icon;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onChange(opt.id);
+                  if (opt.id !== 'Khác') {
+                    setIsOpen(false);
+                  }
+                }}
+                className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between text-left transition cursor-pointer ${isSelected
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-neutral-100 text-neutral-800'
+                  }`}
+              >
+                <div className="flex items-center gap-2.5 truncate pr-2">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-white/20 text-white' : opt.badgeBg
+                      }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="truncate">
+                    <div className="truncate leading-tight font-semibold">{opt.title}</div>
+                    <div
+                      className={`text-[10px] truncate ${isSelected ? 'text-indigo-100' : 'text-neutral-400'
+                        }`}
+                    >
+                      {opt.subtitle}
+                    </div>
+                  </div>
+                </div>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+              </button>
+            );
+          })}
+
+          <div className="pt-2 mt-1 border-t border-neutral-100 px-1">
+            <label className="block text-[10px] font-semibold text-neutral-500 mb-1">
+              Hoặc nhập chi tiết mục đích khác:
+            </label>
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                placeholder="VD: Phỏng vấn xin việc..."
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (customText.trim()) {
+                      onChange(customText.trim());
+                      setIsOpen(false);
+                    }
+                  }
+                }}
+                className="w-full px-2.5 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (customText.trim()) {
+                    onChange(customText.trim());
+                    setIsOpen(false);
+                  }
+                }}
+                className="px-2.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shrink-0 transition cursor-pointer"
+              >
+                Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface ArrivalDateTimeComboboxProps {
+  value: string;
+  onChange: (val: string) => void;
+  required?: boolean;
+}
+
+const ArrivalDateTimeCombobox: React.FC<ArrivalDateTimeComboboxProps> = ({
+  value,
+  onChange,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const setPreset = (offsetHours: number, setFixedHour?: number) => {
+    const d = new Date();
+    if (setFixedHour !== undefined) {
+      d.setDate(d.getDate() + offsetHours);
+      d.setHours(setFixedHour, 0, 0, 0);
+    } else {
+      d.setMinutes(d.getMinutes() + offsetHours * 60);
+    }
+    onChange(toLocalISOString(d));
+    setIsOpen(false);
+  };
+
+  const displayText = formatDateTimeDisplay(value);
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-xl bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-2xs ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-neutral-200 hover:border-neutral-300'
+          }`}
+      >
+        <span className="flex items-center gap-2 truncate pr-2">
+          <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          {displayText ? (
+            <span className="font-bold text-neutral-900 truncate">{displayText}</span>
+          ) : (
+            <span className="text-neutral-400 truncate">-- Chọn thời gian dự kiến đến --</span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-2.5 text-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+          <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider px-1">
+            Chọn nhanh giờ đến
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPreset(0.5)}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-neutral-50 hover:bg-neutral-100 text-neutral-700"
+            >
+              Hôm nay (+30p)
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreset(0, 14)}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-neutral-50 hover:bg-neutral-100 text-neutral-700"
+            >
+              Hôm nay (14:00)
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreset(0, 19)}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-neutral-50 hover:bg-neutral-100 text-neutral-700"
+            >
+              Tối nay (19:00)
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreset(1, 9)}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700"
+            >
+              Sáng mai (09:00)
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-neutral-100">
+            <label className="block text-[10px] font-semibold text-neutral-500 mb-1">
+              Hoặc chọn ngày giờ chính xác:
+            </label>
+            <input
+              type="datetime-local"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface DepartureDateTimeComboboxProps {
+  value: string;
+  onChange: (val: string) => void;
+  arrivalTime?: string;
+}
+
+const DepartureDateTimeCombobox: React.FC<DepartureDateTimeComboboxProps> = ({
+  value,
+  onChange,
+  arrivalTime,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const setOffsetHours = (hours: number) => {
+    const base = arrivalTime ? new Date(arrivalTime) : new Date();
+    if (isNaN(base.getTime())) return;
+    base.setHours(base.getHours() + hours);
+    onChange(toLocalISOString(base));
+    setIsOpen(false);
+  };
+
+  const displayText = formatDateTimeDisplay(value);
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-xl bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-2xs ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-neutral-200 hover:border-neutral-300'
+          }`}
+      >
+        <span className="flex items-center gap-2 truncate pr-2">
+          <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          {displayText ? (
+            <span className="font-bold text-neutral-900 truncate">{displayText}</span>
+          ) : (
+            <span className="text-neutral-400 truncate">-- Dự kiến rời đi (tùy chọn) --</span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-2.5 text-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+          <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider px-1">
+            Thời hạn lưu trú dự kiến
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOffsetHours(1)}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-neutral-50 hover:bg-neutral-100 text-neutral-700"
+            >
+              +1 Giờ
+            </button>
+            <button
+              type="button"
+              onClick={() => setOffsetHours(2)}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-neutral-50 hover:bg-neutral-100 text-neutral-700"
+            >
+              +2 Giờ
+            </button>
+            <button
+              type="button"
+              onClick={() => setOffsetHours(4)}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-neutral-50 hover:bg-neutral-100 text-neutral-700"
+            >
+              +4 Giờ
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+              }}
+              className="px-2.5 py-1.5 rounded-lg text-left transition text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700"
+            >
+              Để trống / Xóa
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-neutral-100">
+            <label className="block text-[10px] font-semibold text-neutral-500 mb-1">
+              Hoặc chọn ngày giờ chính xác:
+            </label>
+            <input
+              type="datetime-local"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface ResidentVisitorRegistrationPanelProps {
   embedded?: boolean;
@@ -91,6 +715,8 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [cancelReason, setCancelReason] = useState<string>('');
   const [copiedPassCode, setCopiedPassCode] = useState<boolean>(false);
+  const [qrServerFailed, setQrServerFailed] = useState<boolean>(false);
+  const [isDownloadingQr, setIsDownloadingQr] = useState<boolean>(false);
 
   // Debounce search
   useEffect(() => {
@@ -219,6 +845,7 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
     setIsDetailModalOpen(true);
     setIsDetailLoading(true);
     setCopiedPassCode(false);
+    setQrServerFailed(false);
     try {
       const res = await api.getResidentVisitorDetail(item.id);
       setDetailData(res);
@@ -234,6 +861,30 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
     setSelectedVisitor(item);
     setCancelReason('');
     setIsCancelModalOpen(true);
+  };
+
+  // Download QR Code Image
+  const handleDownloadQrCode = async (passCode: string, visitorName: string) => {
+    setIsDownloadingQr(true);
+    try {
+      const url = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=16&data=${encodeURIComponent(passCode)}`;
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      const safeName = (visitorName || 'Khach').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_');
+      a.download = `QR_PASS_${safeName}_${passCode}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      triggerToast('Đã tải hình ảnh mã QR thành công!');
+    } catch {
+      window.open(`https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=16&data=${encodeURIComponent(passCode)}`, '_blank');
+    } finally {
+      setIsDownloadingQr(false);
+    }
   };
 
   // Submit Create
@@ -452,11 +1103,8 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
             <Users className="w-3.5 h-3.5 text-neutral-400" />
             <span>CỔNG CƯ DÂN · TIỆN ÍCH & AN NINH</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-neutral-900 tracking-tight flex items-center gap-2.5">
+          <h1 className="text-2xl font-extrabold text-neutral-900 tracking-tight">
             Khai báo khách viếng thăm
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
-              Module #7: KBTTKVT
-            </span>
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
             Đăng ký trước thông tin khách dự kiến đến thăm căn hộ. Khách xuất trình thẻ QR Pass tại cổng để tiếp đón nhanh chóng.
@@ -552,7 +1200,7 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
       </div>
 
       {/* 3. Filter Bar */}
-      <div className="p-4 rounded-2xl bg-white border border-neutral-200/80 shadow-2xs space-y-3">
+      <div className="p-4 rounded-2xl bg-white border border-neutral-200/80 shadow-2xs space-y-3 relative z-20">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {/* Quick Search */}
           <div className="relative md:col-span-2">
@@ -577,20 +1225,13 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
 
           {/* Status Filter */}
           <div>
-            <select
+            <VisitorStatusFilterCombobox
               value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
+              onChange={(st) => {
+                setStatusFilter(st);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-neutral-800"
-            >
-              <option value="ALL">Tất cả trạng thái</option>
-              <option value="ACTIVE">Đang hiệu lực (Chờ đến)</option>
-              <option value="USED">Đã tiếp đón (Đã check-in)</option>
-              <option value="CANCELLED">Đã hủy</option>
-              <option value="EXPIRED">Quá hạn</option>
-            </select>
+            />
           </div>
 
           {/* Reset button */}
@@ -604,9 +1245,10 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
                 setToDate('');
                 setCurrentPage(1);
               }}
-              className="w-full py-2 px-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-neutral-600 text-xs font-medium transition-all"
+              className="w-full py-2 px-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 hover:border-neutral-300 text-neutral-600 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
             >
-              Xóa bộ lọc
+              <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Xóa bộ lọc</span>
             </button>
           </div>
         </div>
@@ -917,17 +1559,14 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
               </div>
 
               {/* Arrival Time & Departure Time */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-30">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Thời gian dự kiến đến <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="datetime-local"
-                    required
+                  <ArrivalDateTimeCombobox
                     value={formData.expected_arrival_time}
-                    onChange={(e) => setFormData({ ...formData, expected_arrival_time: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(val) => setFormData((prev) => ({ ...prev, expected_arrival_time: val }))}
                   />
                   {formErrors.expected_arrival_time && (
                     <p className="text-[11px] text-rose-500 mt-0.5">{formErrors.expected_arrival_time}</p>
@@ -938,11 +1577,10 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Dự kiến rời đi <span className="text-neutral-400 font-normal">(tùy chọn)</span>
                   </label>
-                  <input
-                    type="datetime-local"
+                  <DepartureDateTimeCombobox
                     value={formData.expected_departure_time}
-                    onChange={(e) => setFormData({ ...formData, expected_departure_time: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(val) => setFormData((prev) => ({ ...prev, expected_departure_time: val }))}
+                    arrivalTime={formData.expected_arrival_time}
                   />
                   {formErrors.expected_departure_time && (
                     <p className="text-[11px] text-rose-500 mt-0.5">{formErrors.expected_departure_time}</p>
@@ -951,7 +1589,7 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
               </div>
 
               {/* Vehicle License Plate & Visit Purpose */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-20">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Biển số xe khách <span className="text-neutral-400 font-normal">(nếu đi xe)</span>
@@ -969,17 +1607,10 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Mục đích viếng thăm
                   </label>
-                  <select
+                  <VisitPurposeCombobox
                     value={formData.visit_purpose}
-                    onChange={(e) => setFormData({ ...formData, visit_purpose: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="Thăm người thân">Thăm người thân</option>
-                    <option value="Giao nhận hàng hóa / Bưu phẩm">Giao nhận hàng hóa / Bưu phẩm</option>
-                    <option value="Sửa chữa / Lắp đặt thiết bị">Sửa chữa / Lắp đặt thiết bị</option>
-                    <option value="Gặp gỡ công việc">Gặp gỡ công việc</option>
-                    <option value="Khác">Mục đích khác</option>
-                  </select>
+                    onChange={(purpose) => setFormData((prev) => ({ ...prev, visit_purpose: purpose }))}
+                  />
                 </div>
               </div>
 
@@ -1103,34 +1734,36 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-30">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Thời gian dự kiến đến <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="datetime-local"
-                    required
+                  <ArrivalDateTimeCombobox
                     value={formData.expected_arrival_time}
-                    onChange={(e) => setFormData({ ...formData, expected_arrival_time: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(val) => setFormData((prev) => ({ ...prev, expected_arrival_time: val }))}
                   />
+                  {formErrors.expected_arrival_time && (
+                    <p className="text-[11px] text-rose-500 mt-0.5">{formErrors.expected_arrival_time}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Dự kiến rời đi
                   </label>
-                  <input
-                    type="datetime-local"
+                  <DepartureDateTimeCombobox
                     value={formData.expected_departure_time}
-                    onChange={(e) => setFormData({ ...formData, expected_departure_time: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(val) => setFormData((prev) => ({ ...prev, expected_departure_time: val }))}
+                    arrivalTime={formData.expected_arrival_time}
                   />
+                  {formErrors.expected_departure_time && (
+                    <p className="text-[11px] text-rose-500 mt-0.5">{formErrors.expected_departure_time}</p>
+                  )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-20">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Biển số xe khách
@@ -1147,11 +1780,9 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
                   <label className="block text-xs font-semibold text-neutral-800 mb-1">
                     Mục đích viếng thăm
                   </label>
-                  <input
-                    type="text"
+                  <VisitPurposeCombobox
                     value={formData.visit_purpose}
-                    onChange={(e) => setFormData({ ...formData, visit_purpose: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(purpose) => setFormData((prev) => ({ ...prev, visit_purpose: purpose }))}
                   />
                 </div>
               </div>
@@ -1200,68 +1831,93 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
                 <button
                   type="button"
                   onClick={() => setIsDetailModalOpen(false)}
-                  className="text-neutral-400 hover:text-white p-1 rounded-lg"
+                  className="text-neutral-400 hover:text-white p-1 rounded-lg cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* QR Code Graphic Mockup */}
+              {/* QR Code Real & Scannable */}
               <div className="bg-white rounded-2xl p-5 text-neutral-900 flex flex-col items-center justify-center text-center space-y-3 shadow-inner my-2">
-                {/* SVG QR Code Simulation */}
-                <div className="w-40 h-40 bg-neutral-900 p-2 rounded-xl flex items-center justify-center relative">
-                  <div className="w-full h-full bg-white rounded-lg p-2 flex flex-col justify-between items-center">
-                    <div className="w-full flex justify-between">
-                      <div className="w-8 h-8 border-4 border-neutral-900 rounded-sm p-1 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-neutral-900" />
-                      </div>
-                      <div className="w-8 h-8 border-4 border-neutral-900 rounded-sm p-1 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-neutral-900" />
-                      </div>
-                    </div>
-                    <div className="my-auto flex flex-col items-center">
-                      <QrCode className="w-12 h-12 text-neutral-900" />
-                      <span className="text-[9px] font-mono font-bold tracking-widest text-neutral-500">
-                        VERIFIED PASS
-                      </span>
-                    </div>
-                    <div className="w-full flex justify-between">
-                      <div className="w-8 h-8 border-4 border-neutral-900 rounded-sm p-1 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-neutral-900" />
-                      </div>
-                      <div className="w-8 h-8 border-2 border-dashed border-neutral-400 rounded-sm flex items-center justify-center">
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-                      </div>
-                    </div>
-                  </div>
+                {/* Real Scannable QR Code */}
+                <div className="relative p-2.5 bg-white rounded-2xl border-2 border-neutral-900 shadow-md flex items-center justify-center group">
+                  {/* Modern scanner corner accents */}
+                  <span className="absolute -top-1 -left-1 w-3.5 h-3.5 border-t-2 border-l-2 border-emerald-500 rounded-tl-sm pointer-events-none" />
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 border-t-2 border-r-2 border-emerald-500 rounded-tr-sm pointer-events-none" />
+                  <span className="absolute -bottom-1 -left-1 w-3.5 h-3.5 border-b-2 border-l-2 border-emerald-500 rounded-bl-sm pointer-events-none" />
+                  <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-b-2 border-r-2 border-emerald-500 rounded-br-sm pointer-events-none" />
+
+                  <img
+                    src={
+                      qrServerFailed
+                        ? `https://quickchart.io/qr?text=${encodeURIComponent(selectedVisitor.qr_access_pass_code || selectedVisitor.registration_code || '')}&size=320&margin=2`
+                        : `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(selectedVisitor.qr_access_pass_code || selectedVisitor.registration_code || '')}`
+                    }
+                    alt={`Mã QR ${selectedVisitor.qr_access_pass_code}`}
+                    className="w-44 h-44 object-contain rounded-lg transition-transform duration-200 group-hover:scale-[1.02]"
+                    onError={() => setQrServerFailed(true)}
+                    loading="eager"
+                  />
+                </div>
+
+                {/* Scan instruction badge */}
+                <div className="inline-flex items-center gap-1.5 text-[10px] text-emerald-700 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>Quét mã tại cổng an ninh & quầy lễ tân</span>
                 </div>
 
                 {/* Pass Code */}
                 <div>
-                  <div className="text-[11px] text-neutral-400 font-semibold uppercase">Mã thông hành QR</div>
-                  <div className="font-mono font-extrabold text-sm text-neutral-900 tracking-wider">
+                  <div className="text-[11px] text-neutral-400 font-semibold uppercase tracking-wider">Mã thông hành QR</div>
+                  <div className="font-mono font-extrabold text-sm text-neutral-900 tracking-wider select-all">
                     {selectedVisitor.qr_access_pass_code}
                   </div>
                 </div>
 
-                {/* Copy button */}
-                <button
-                  type="button"
-                  onClick={() => handleCopyPassCode(selectedVisitor.qr_access_pass_code)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition-all cursor-pointer"
-                >
-                  {copiedPassCode ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-emerald-700">Đã sao chép mã!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5 text-neutral-500" />
-                      <span>Sao chép mã cho khách</span>
-                    </>
-                  )}
-                </button>
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyPassCode(selectedVisitor.qr_access_pass_code)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    {copiedPassCode ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">Đã sao chép!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-neutral-500" />
+                        <span>Sao chép mã</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDownloadQrCode(
+                        selectedVisitor.qr_access_pass_code || selectedVisitor.registration_code || '',
+                        selectedVisitor.visitor_name
+                      )
+                    }
+                    disabled={isDownloadingQr}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    {isDownloadingQr ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
+                        <span>Đang tải...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Tải ảnh QR</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
