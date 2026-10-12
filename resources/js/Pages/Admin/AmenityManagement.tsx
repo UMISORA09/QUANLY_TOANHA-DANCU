@@ -42,6 +42,8 @@ import { CategoryModal } from '../../Components/Admin/CategoryModal';
 import { TimeSlotModal } from '../../Components/Admin/TimeSlotModal';
 import { BlackoutModal } from '../../Components/Admin/BlackoutModal';
 import { AmenityBookingsModal } from '../../Components/Admin/AmenityBookingsModal';
+import { AmenityBookingWorklist } from '../../Components/Admin/AmenityBookingWorklist';
+import { AmenityClosureDialog } from '../../Components/Admin/AmenityClosureDialog';
 import { ConfirmDialog } from '../../Components/Admin/ConfirmDialog';
 
 export interface AmenityManagementProps {
@@ -248,6 +250,34 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   const [blackoutModalAmenity, setBlackoutModalAmenity] = useState<Amenity | null>(null);
   const [detailAmenity, setDetailAmenity] = useState<Amenity | null>(null);
   const [bookingModalAmenity, setBookingModalAmenity] = useState<Amenity | null>(null);
+  const [bookingSearch, setBookingSearch] = useState('');
+  const [closureAmenity, setClosureAmenity] = useState<Amenity | null>(null);
+  const [openingBooking, setOpeningBooking] = useState(false);
+
+  useEffect(() => {
+    let generation = 0;
+    let disposed = false;
+    const openLinkedBooking = async () => {
+      const requestId = ++generation;
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('amenity_id');
+      if (!id) { setBookingModalAmenity(null); setBookingSearch(''); setOpeningBooking(false); return; }
+      setOpeningBooking(true);
+      try {
+        const item = await api.getAmenity(id, true);
+        if (disposed || requestId !== generation) return;
+        setBookingSearch(params.get('booking_code') || '');
+        setBookingModalAmenity(item);
+      } catch {
+        if (!disposed && requestId === generation) showToast('Không thể mở tiện ích từ thông báo. Vui lòng thử lại.', 'error');
+      } finally {
+        if (!disposed && requestId === generation) setOpeningBooking(false);
+      }
+    };
+    void openLinkedBooking();
+    window.addEventListener('popstate', openLinkedBooking);
+    return () => { disposed = true; window.removeEventListener('popstate', openLinkedBooking); };
+  }, []);
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -601,6 +631,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   };
 
   const handleToggleStatus = (amenity: Amenity) => {
+    if (amenity.is_active) { setClosureAmenity(amenity); return; }
     const nextStatus = !amenity.is_active;
     setConfirmDialog({
       isOpen: true,
@@ -612,7 +643,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       action: async () => {
         setIsConfirmLoading(true);
         try {
-          await api.patchAmenityStatus(amenity.id, nextStatus);
+          await api.patchAmenityStatus(amenity.id, nextStatus, amenity.updated_at);
           showToast(`Đã ${nextStatus ? 'kích hoạt' : 'tạm ngưng'} tiện ích thành công.`);
           await fetchAmenities(true);
         } catch (err: any) {
@@ -674,6 +705,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       {/* Toast Notification */}
       {toast && (
         <div
+          role={toast.type === 'error' ? 'alert' : 'status'}
           className={`fixed bottom-6 right-6 z-[80] px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-bottom-3 duration-200 border ${
             toast.type === 'success'
               ? 'bg-neutral-900/95 text-white border-white/10'
@@ -820,6 +852,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Main Container */}
       <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} space-y-4`}>
+        <AmenityBookingWorklist opening={openingBooking} onOpen={(id, code) => { const url = new URL(window.location.href); url.searchParams.set('amenity_id', id); url.searchParams.set('booking_code', code); window.history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }} />
         {/* Filters Bar Card */}
         <div className="relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
@@ -1141,10 +1174,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                           <button
                             type="button"
                             onClick={() => setBookingModalAmenity(item)}
-                            className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                            title="Xem thông tin đặt chỗ của cư dân"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                            title="Xem và duyệt đăng ký tiện ích của cư dân"
                           >
                             <Ticket className="w-3.5 h-3.5" />
+                            <span>Duyệt đăng ký</span>
                           </button>
 
                           {/* Xem chi tiết */}
@@ -1470,7 +1504,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 className="px-3.5 py-2 text-xs font-semibold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 <Ticket className="w-3.5 h-3.5 text-sky-600" />
-                <span>Xem {detailAmenity.active_bookings_count ?? 0} lượt đặt chỗ thực tế</span>
+                <span>Xem và duyệt đăng ký ({detailAmenity.active_bookings_count ?? 0} đang đặt)</span>
               </button>
 
               <button
@@ -1489,7 +1523,8 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       <AmenityBookingsModal
         isOpen={!!bookingModalAmenity}
         amenity={bookingModalAmenity}
-        onClose={() => setBookingModalAmenity(null)}
+        initialSearch={bookingSearch}
+        onClose={() => { setBookingModalAmenity(null); setBookingSearch(''); }}
       />
 
       <AmenityFormModal
@@ -1520,6 +1555,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         onChanged={() => fetchAmenities(true)}
       />
 
+      {closureAmenity && <AmenityClosureDialog amenity={closureAmenity} onClose={() => setClosureAmenity(null)} onChanged={() => { showToast('Đã tạm ngưng tiện ích và xử lý đăng ký theo lựa chọn.'); void fetchAmenities(true); }} />}
       <BlackoutModal
         isOpen={!!blackoutModalAmenity}
         amenity={blackoutModalAmenity}

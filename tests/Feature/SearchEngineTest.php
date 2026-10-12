@@ -4,12 +4,17 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Services\Search\Drivers\SmartSearchDriver;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
 class SearchEngineTest extends TestCase
 {
+    use DatabaseTransactions;
+    use ResidentAmenityBookingFixtures;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -167,7 +172,7 @@ class SearchEngineTest extends TestCase
             'id' => $bbqId,
             'category_id' => $categoryId,
             'amenity_name' => 'Vườn Nướng BBQ Ven Hồ Số 1',
-            'amenity_code' => 'BBQ_VEN_HO_'.rand(100, 999),
+            'amenity_code' => 'BBQ_VEN_HO_'.Str::random(8),
             'location_detail' => 'Khu dã ngoại công viên bờ hồ',
             'max_capacity_per_slot' => 15,
             'hourly_rate' => 0,
@@ -381,6 +386,8 @@ class SearchEngineTest extends TestCase
      */
     public function test_search_soft_deleted_amenity_not_returned(): void
     {
+        $this->createBookingFixture();
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
         $categoryId = $this->getOrCreateTestCategoryId();
 
         $tempId = (string) Str::uuid();

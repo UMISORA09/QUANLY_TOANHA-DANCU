@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import api, { UserRbac, RoleRbac, PermissionRbac } from '../../Services/api';
 import { usePermission } from '../../Hooks/usePermission';
+import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
+import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
 
 interface RbacManagementProps {
   embedded?: boolean;
@@ -32,18 +34,30 @@ interface RbacManagementProps {
 
 export const RbacManagement: React.FC<RbacManagementProps> = ({ embedded = false }) => {
   const { can, isSuperAdmin } = usePermission();
+  const { isCooldownActive, remainingSeconds, message: cooldownMessage, startCooldown } = useModuleCooldown('rbac');
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'users' | 'roles' | 'matrix' | 'permissions'>('users');
 
+  // Đọc snapshot lưu trong sessionStorage để hiển thị tức thì (0ms) cho lần tải thứ 2
+  const getCachedRbacData = () => {
+    try {
+      const raw = sessionStorage.getItem('smartcassavas_rbac_cache');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const cachedRbac = getCachedRbacData();
+
   // Common Data State
-  const [users, setUsers] = useState<UserRbac[]>([]);
-  const [roles, setRoles] = useState<RoleRbac[]>([]);
-  const [permissionsGrouped, setPermissionsGrouped] = useState<Record<string, PermissionRbac[]>>({});
-  const [permissionsList, setPermissionsList] = useState<PermissionRbac[]>([]);
+  const [users, setUsers] = useState<UserRbac[]>(() => (Array.isArray(cachedRbac?.users) ? cachedRbac.users : []));
+  const [roles, setRoles] = useState<RoleRbac[]>(() => (Array.isArray(cachedRbac?.roles) ? cachedRbac.roles : []));
+  const [permissionsGrouped, setPermissionsGrouped] = useState<Record<string, PermissionRbac[]>>(() => (cachedRbac?.permissionsGrouped && typeof cachedRbac.permissionsGrouped === 'object' && !Array.isArray(cachedRbac.permissionsGrouped) ? cachedRbac.permissionsGrouped : {}));
+  const [permissionsList, setPermissionsList] = useState<PermissionRbac[]>(() => (Array.isArray(cachedRbac?.permissionsList) ? cachedRbac.permissionsList : []));
 
   // Loading & Feedback
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(() => !cachedRbac);
   const [saving, setSaving] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -133,6 +147,19 @@ export const RbacManagement: React.FC<RbacManagementProps> = ({ embedded = false
       if (usersRes.success) {
         setUsers(usersRes.data);
       }
+
+      if (rolesRes.success && permsRes.success && usersRes.success) {
+        try {
+          sessionStorage.setItem('smartcassavas_rbac_cache', JSON.stringify({
+            roles: rolesRes.data,
+            permissionsGrouped: permsRes.data,
+            permissionsList: Object.values(permsRes.data as Record<string, PermissionRbac[]>).flat(),
+            users: usersRes.data,
+          }));
+        } catch {
+          // ignore storage error
+        }
+      }
     } catch (err: any) {
       showToast(err.message || 'Không thể tải dữ liệu phân quyền', 'error');
     } finally {
@@ -143,6 +170,47 @@ export const RbacManagement: React.FC<RbacManagementProps> = ({ embedded = false
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Realtime Auto-Sync Listener (Quốc Tín - RBAC)
+  useRealtimeSync({
+    channel: 'quoc-tin.rbac',
+    onEvent: (event) => {
+      // 0. Cập nhật state in-memory ngay lập tức nếu là xóa
+      if (event.action === 'DELETED' && event.entity_id) {
+        if (event.entity === 'user') {
+          setUsers((prev) => prev.filter((u) => u.id !== event.entity_id));
+        } else if (event.entity === 'role') {
+          setRoles((prev) => prev.filter((r) => r.id !== event.entity_id));
+        } else if (event.entity === 'permission') {
+          setPermissionsList((prev) => prev.filter((p) => p.id !== event.entity_id));
+        }
+      }
+
+      // 1. Invalidate cache để tránh stale data
+      try {
+        sessionStorage.removeItem('smartcassavas_rbac_cache');
+      } catch {
+        // ignore
+      }
+
+      // 2. Refetch RBAC data
+      fetchData();
+
+      // 3. Nếu đang xem matrix của đúng vai trò vừa bị đổi quyền, reload quyền của vai trò đó
+      if (selectedRoleForMatrix && selectedRoleForMatrix.id === event.entity_id) {
+        api.getRolePermissions(selectedRoleForMatrix.id)
+          .then((res) => {
+            if (res.success && res.data.permissions) {
+              setMatrixPermissions(res.data.permissions.map((p) => p.permission_code));
+            }
+          })
+          .catch(() => {});
+      }
+    },
+    onReconnect: () => {
+      fetchData();
+    },
+  });
 
   // When selected role for matrix changes, load its permissions
   useEffect(() => {
@@ -162,17 +230,19 @@ export const RbacManagement: React.FC<RbacManagementProps> = ({ embedded = false
 
   // Filtered Users
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    return (Array.isArray(users) ? users : []).filter((u) => {
+      if (!u) return false;
+      const s = (userSearch || '').toLowerCase();
       const matchesSearch =
-        !userSearch ||
-        u.full_name?.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.username?.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.email?.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.phone_number?.includes(userSearch);
+        !s ||
+        (u.full_name || '').toLowerCase().includes(s) ||
+        (u.username || '').toLowerCase().includes(s) ||
+        (u.email || '').toLowerCase().includes(s) ||
+        (u.phone_number || '').includes(s);
 
       const matchesRole =
         !userRoleFilter ||
-        u.roles?.some((r) => r.role_code === userRoleFilter || r.id === userRoleFilter);
+        (Array.isArray(u.roles) && u.roles.some((r) => r && (r.role_code === userRoleFilter || r.id === userRoleFilter)));
 
       const matchesStatus = !userStatusFilter || u.status === userStatusFilter;
 
@@ -181,17 +251,21 @@ export const RbacManagement: React.FC<RbacManagementProps> = ({ embedded = false
   }, [users, userSearch, userRoleFilter, userStatusFilter]);
 
   // Modules list
-  const moduleKeys = useMemo(() => Object.keys(permissionsGrouped), [permissionsGrouped]);
+  const moduleKeys = useMemo(() => {
+    if (!permissionsGrouped || typeof permissionsGrouped !== 'object') return [];
+    return Object.keys(permissionsGrouped);
+  }, [permissionsGrouped]);
 
   // Filtered Permissions
   const filteredPermissions = useMemo(() => {
-    return permissionsList.filter((p) => {
-      const matchesSearch =
-        !permissionSearch ||
-        p.permission_code.toLowerCase().includes(permissionSearch.toLowerCase()) ||
-        p.permission_name.toLowerCase().includes(permissionSearch.toLowerCase()) ||
-        (p.description && p.description.toLowerCase().includes(permissionSearch.toLowerCase()));
+    return (Array.isArray(permissionsList) ? permissionsList : []).filter((p) => {
+      if (!p) return false;
+      const code = (p.permission_code || '').toLowerCase();
+      const name = (p.permission_name || '').toLowerCase();
+      const desc = (p.description || '').toLowerCase();
+      const s = (permissionSearch || '').toLowerCase();
 
+      const matchesSearch = !s || code.includes(s) || name.includes(s) || desc.includes(s);
       const matchesModule = !permissionModuleFilter || p.module === permissionModuleFilter;
 
       return matchesSearch && matchesModule;
@@ -496,6 +570,13 @@ export const RbacManagement: React.FC<RbacManagementProps> = ({ embedded = false
         </div>
       </div>
 
+      {/* Cooldown Banner */}
+      <CooldownBanner
+        isCooldownActive={isCooldownActive}
+        remainingSeconds={remainingSeconds}
+        customMessage={cooldownMessage}
+      />
+
       {/* ========================================================
           TAB NAVIGATION SWITCHER
           ======================================================== */}
@@ -679,13 +760,15 @@ export const RbacManagement: React.FC<RbacManagementProps> = ({ embedded = false
 
                           <td className="py-3.5 px-4">
                             <div className="flex flex-wrap gap-1">
-                              {user.roles && user.roles.length > 0 ? (
+                              {Array.isArray(user.roles) && user.roles.length > 0 ? (
                                 user.roles.map((r) => {
-                                  const isAdm = r.role_code === 'SUPER_ADMIN' || r.role_code === 'SUPER_ADMI';
-                                  const isMgr = r.role_code === 'BUILDING_MANAGER';
-                                  const isRec = r.role_code === 'RECEPTIONIST';
-                                  const isAcc = r.role_code === 'ACCOUNTANT';
-                                  const isRes = r.role_code.includes('RESIDENT');
+                                  if (!r) return null;
+                                  const roleCode = r.role_code || '';
+                                  const isAdm = roleCode === 'SUPER_ADMIN' || roleCode === 'SUPER_ADMI';
+                                  const isMgr = roleCode === 'BUILDING_MANAGER';
+                                  const isRec = roleCode === 'RECEPTIONIST';
+                                  const isAcc = roleCode === 'ACCOUNTANT';
+                                  const isRes = roleCode.includes('RESIDENT');
 
                                   const badgeClass = isAdm
                                     ? 'bg-neutral-900 text-sky-300 ring-1 ring-white/10'

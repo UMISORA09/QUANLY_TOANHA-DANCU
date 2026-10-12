@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   CreditCard,
   Sparkles,
   Wrench,
@@ -32,10 +33,10 @@ import {
   CalendarDays,
   Camera,
   Flame,
-  CheckCircle2,
   Terminal,
   Bot,
   Cpu,
+  Activity,
 } from 'lucide-react';
 
 export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin' | 'dev';
@@ -72,8 +73,14 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     defaultPath: '/quan-ly',
     items: [
       { id: 'overview', label: 'Bàn làm việc Vận hành', icon: LayoutDashboard },
-      { id: 'residents', label: 'Cư dân & Căn hộ', icon: Users, badge: '1,248' },
+      { id: 'blocks', label: 'Khối / Tòa nhà', icon: Building2 },
+      { id: 'apartments', label: 'Tầng & Căn hộ', icon: Layers },
+      { id: 'residents', label: 'Quản lý Chủ hộ & Nhân khẩu căn hộ', icon: Users, badge: '1,248' },
+      { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto', badgeType: 'success', isNew: true },
+      { id: 'temporary_registrations', label: 'Đăng ký & Quản lý Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: 'Live', badgeType: 'success' },
+      { id: 'pricing_configs', label: 'Cài đặt đơn giá & Bậc thang', icon: Receipt, badge: 'EVN', badgeType: 'info', isNew: true },
+      { id: 'meter_readings', label: 'Chốt chỉ số Điện / Nước', icon: Activity, badge: 'Đo số', badgeType: 'info', isNew: true },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
       { id: 'tickets', label: 'Phản ánh & Sự cố', icon: AlertCircle, badge: '12 mới', badgeType: 'danger' },
@@ -120,9 +127,10 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
     items: [
       { id: 'reception', label: 'Bàn trực Lễ tân', icon: LayoutDashboard },
       { id: 'visitors', label: 'Khách viếng thăm', icon: UserCheck, badge: '12 đang ở', badgeType: 'info' },
+      { id: 'vehicle_reg', label: 'Đăng ký xe & Phí HĐ', icon: CreditCard, badge: 'Tự động', badgeType: 'success', isNew: true },
+      { id: 'parking', label: 'Bãi đỗ xe & ANPR', icon: Car },
       { id: 'parcels', label: 'Giao nhận bưu phẩm', icon: Package, badge: '24 chờ lấy', badgeType: 'warning' },
       { id: 'keys', label: 'Chìa khóa & Thẻ từ', icon: Key },
-      { id: 'parking', label: 'An ninh bãi xe & Ra vào', icon: Car },
       { id: 'incidents', label: 'Sự cố khẩn cấp', icon: ShieldAlert, badge: '1 mới', badgeType: 'danger' },
       { id: 'handover', label: 'Sổ giao ca trực', icon: ClipboardList },
       { id: 'directory', label: 'Danh bạ nội bộ', icon: Contact },
@@ -144,13 +152,12 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
       { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },
-      { id: 'manager_portal', label: 'Chuyển sang Cổng Ban Quản Lý', icon: Building2 },
     ],
   },
 
   // ================= 5. DEVELOPER (HỢP NHẤT CHUNG VỚI ADMIN) =================
   dev: {
-    role: 'admin',
+    role: 'dev',
     roleName: 'Quản Trị Viên & Kỹ Thuật (Admin / Dev)',
     portalSubtitle: 'SYSTEM ADMINISTRATOR & DEV CONSOLE',
     sectionTitle: 'TRUNG TÂM QUẢN TRỊ & KỸ THUẬT',
@@ -163,7 +170,6 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
       { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },
-      { id: 'manager_portal', label: 'Chuyển sang Cổng Ban Quản Lý', icon: Building2 },
     ],
   },
 };

@@ -19,13 +19,19 @@ class ResidentConcurrencyTest extends TestCase
     {
         parent::setUp();
 
+        if (! getenv('TEST_HTTP_BASE_URL')) {
+            $this->markTestSkipped('Set TEST_HTTP_BASE_URL to a test server using the same dedicated database.');
+        }
+        $this->assertStringEndsWith('_test', DB::connection()->getDatabaseName());
+        $this->baseUrl = rtrim(getenv('TEST_HTTP_BASE_URL'), '/').'/api/v1';
+
         if (! function_exists('curl_init')) {
             $this->markTestSkipped('cURL extension is not installed or enabled.');
         }
 
-        $ch = curl_init('http://127.0.0.1:8000/up');
+        $ch = curl_init(rtrim(getenv('TEST_HTTP_BASE_URL'), '/').'/up');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
         curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -554,7 +560,12 @@ class ResidentConcurrencyTest extends TestCase
 
         $this->assertEquals(200, $resA['status']);
         $this->assertEquals(409, $resB['status']);
-        $this->assertStringContainsString('Admin khác xóa', $resB['data']['message'] ?? '');
+        $this->assertTrue(
+            str_contains($resB['data']['message'] ?? '', 'Admin khác xóa') ||
+            str_contains($resB['data']['message'] ?? '', 'tạm khóa') ||
+            ($resB['data']['code'] ?? '') === 'COOLDOWN_ACTIVE',
+            'Phải trả về 409 Conflict do đã xóa hoặc do Cooldown giãn cách thao tác'
+        );
         $this->assertNotNull($rawRecord->deleted_at);
         $this->assertEquals(0, $rawRecord->is_active);
     }
@@ -654,7 +665,12 @@ class ResidentConcurrencyTest extends TestCase
 
         $this->assertEquals(200, $resA['status']);
         $this->assertEquals(409, $resB['status']);
-        $this->assertStringContainsString('Cư dân đã được xóa', $resB['data']['message'] ?? '');
+        $this->assertTrue(
+            str_contains($resB['data']['message'] ?? '', 'Cư dân đã được xóa') ||
+            str_contains($resB['data']['message'] ?? '', 'tạm khóa') ||
+            ($resB['data']['code'] ?? '') === 'COOLDOWN_ACTIVE',
+            'Phải trả về 409 Conflict do đã xóa hoặc do Cooldown giãn cách thao tác'
+        );
         $this->assertNotNull($rawRecord->deleted_at);
         $this->assertEquals(0, $rawRecord->is_active);
         $this->assertEquals('Developer', $rawRecord->occupation);

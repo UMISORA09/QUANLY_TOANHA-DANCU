@@ -75,6 +75,65 @@ export interface AmenityBooking {
   resident_notes?: string | null;
   admin_notes?: string | null;
   created_at: string;
+  payment?: AmenityBookingPayment | null;
+}
+
+export interface AmenityBookingPayment {
+  id: string;
+  booking_id: string;
+  reference: string;
+  amount: number;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  status: 'WAITING_APPROVAL' | 'PENDING' | 'REPORTED' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'REVIEW';
+  expires_at: string | null;
+  qr_url: string | null;
+  can_pay: boolean;
+  checkout_available?: boolean;
+  checkout_environment?: 'sandbox' | 'production';
+  can_confirm: boolean;
+  refund_required: boolean;
+  bank_transaction_id: string | null;
+  received_amount: number | null;
+  received_at: string | null;
+  confirmed_at: string | null;
+  review_reason: string | null;
+  review_due_at?: string | null;
+  review_overdue?: boolean;
+}
+
+export interface AmenityBookingNotification {
+  id: string;
+  title: string;
+  message: string;
+  category: 'AMENITY_BOOKING' | 'AMENITY';
+  timeAgo: string;
+  isRead: boolean;
+  deepLink: string;
+}
+
+export interface AmenityNotificationFeed {
+  items: AmenityBookingNotification[];
+  unread_count: number;
+  page: number;
+  total_pages: number;
+  latest_unread?: AmenityBookingNotification | null;
+}
+
+export interface AmenityClosureImpact {
+  count: number;
+  received_amount: number;
+  reported_count: number;
+  confirmation_token: string;
+  items: { booking_code: string; booking_date: string; start_time: string; end_time: string }[];
+}
+
+export interface AmenityBookingWorklist {
+  items: Array<{ id: string; booking_code: string; amenity_id: string; amenity_name: string; resident_name: string; apartment_number: string; booking_date: string; start_time: string; end_time: string; review_overdue: boolean }>;
+  counts: Record<'PENDING' | 'REPORTED' | 'REVIEW', number>;
+  page: number;
+  total_pages: number;
 }
 
 export interface AmenityListResponse {
@@ -87,6 +146,188 @@ export interface AmenityListResponse {
   corrected_query?: string | null;
   is_fuzzy?: boolean;
 }
+
+export interface ResidentAmenityCatalog {
+  apartments: Array<{ id: string; apartment_number: string; block_id: string; block_name: string }>;
+  amenities: Amenity[];
+  categories: Array<{ id: string; category_name: string }>;
+  today: string;
+  timezone: string;
+}
+
+export interface ResidentAvailableSlot {
+  slot_id: string;
+  start_time: string;
+  end_time: string;
+  slot_label: string | null;
+  remaining_bookings: number;
+  remaining_attendees: number;
+  available: boolean;
+  reason: string | null;
+  total_amount: number;
+  deposit_amount: number;
+}
+
+export type ResidentBookingStatus = 'PENDING' | 'APPROVED' | 'CONFIRMED' | 'CHECKED_IN' | 'COMPLETED' | 'CANCELLED' | 'REJECTED';
+
+export interface ResidentAmenityBooking extends Omit<AmenityBooking, 'resident_name'> {
+  amenity_name: string;
+  location_detail: string;
+  status: ResidentBookingStatus;
+  can_cancel: boolean;
+  cancel_deadline: string;
+  rejection_reason?: string | null;
+}
+
+export interface ResidentBookingList {
+  items: ResidentAmenityBooking[];
+  page: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface ResidentBookingPayload {
+  amenity_id: string;
+  slot_id?: string;
+  booking_date: string;
+  start_time?: string;
+  end_time?: string;
+  attendee_count: number;
+  apartment_id?: string;
+  resident_notes?: string;
+  accepted_rules: boolean;
+}
+
+export interface ApiError extends Error {
+  status?: number;
+  errors?: Record<string, string[]>;
+}
+
+export interface ResidentVisitorItem {
+  id: string;
+  registration_code: string;
+  host_resident_user_id: string;
+  apartment_id: string;
+  visitor_name: string;
+  visitor_phone: string;
+  visitor_national_id?: string | null;
+  expected_arrival_time: string;
+  expected_departure_time?: string | null;
+  visit_purpose: string;
+  visitor_count: number;
+  vehicle_license_plate?: string | null;
+  qr_access_pass_code: string;
+  qr_pass_status: 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED';
+  is_pre_approved_by_resident: boolean;
+  created_at: string;
+  updated_at: string;
+  apartment_number?: string;
+  block_name?: string;
+  block_code?: string;
+}
+
+export interface ResidentVisitorListResponse {
+  success: boolean;
+  data: ResidentVisitorItem[];
+  kpis: {
+    total: number;
+    active: number;
+    used: number;
+    cancelled: number;
+    expired: number;
+  };
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+  };
+}
+
+export interface ResidentVisitorDetailResponse {
+  success: boolean;
+  data: ResidentVisitorItem;
+  checkin_log?: any | null;
+  cooldown?: {
+    cooldown_seconds: number;
+    retry_after: number;
+    cooldown_until: string;
+  } | null;
+}
+
+export interface ReceptionVisitorItem {
+  id: string;
+  registration_id: string;
+  registration_code: string;
+  qr_access_pass_code: string;
+  visitor_name: string;
+  visitor_phone: string;
+  visitor_national_id?: string | null;
+  expected_arrival_time: string;
+  expected_departure_time?: string | null;
+  visit_purpose: string;
+  visitor_count: number;
+  vehicle_license_plate?: string | null;
+  qr_pass_status: string;
+  is_pre_approved_by_resident: boolean;
+  status: 'EXPECTED' | 'INSIDE' | 'CHECKED_OUT' | 'CANCELLED' | 'EXPIRED';
+  status_label: string;
+  status_color: 'indigo' | 'blue' | 'emerald' | 'rose' | 'gray' | 'amber';
+  apartment: {
+    id: string;
+    number: string;
+    block_code?: string;
+    block_name?: string;
+  };
+  host: {
+    id?: string;
+    name?: string;
+    phone?: string;
+  };
+  checkin_log?: {
+    id: string;
+    checkin_time: string;
+    checkout_time?: string | null;
+    temp_card_id?: string | null;
+    assigned_elevator_access?: string | null;
+    notes?: string | null;
+    receptionist_user_id?: string | null;
+    security_guard_user_id?: string | null;
+  } | null;
+  created_at: string;
+}
+
+export interface ReceptionVisitorListResponse {
+  success: boolean;
+  data: ReceptionVisitorItem[];
+  kpis: {
+    expected_today: number;
+    currently_inside: number;
+    checked_out_today: number;
+    total_registrations: number;
+  };
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_more: boolean;
+  };
+}
+
+export interface ReceptionVisitorLookupResponse {
+  success: boolean;
+  data: {
+    registration: any;
+    status: string;
+    status_label: string;
+    status_color: string;
+    can_checkin: boolean;
+    can_checkout: boolean;
+    latest_checkin_log?: any | null;
+  };
+}
+
 
 export interface TimeSlot {
   id: string;
@@ -128,6 +369,10 @@ export interface SwrOptions<T> {
 class ApiService {
   private getToken(): string | null {
     return localStorage.getItem('smart_cassavas_token');
+  }
+
+  public getAuthToken(): string | null {
+    return this.getToken();
   }
 
   public setToken(token: string) {
@@ -749,14 +994,21 @@ class ApiService {
     return result;
   }
 
-  async patchAmenityStatus(id: string, is_active: boolean): Promise<Amenity> {
+  async getAmenityClosureImpact(id: string, period: { blackout_date?: string; start_time?: string | null; end_time?: string | null } = {}): Promise<AmenityClosureImpact> {
+    const query = new URLSearchParams();
+    Object.entries(period).forEach(([key, value]) => { if (value) query.set(key, value); });
+    return this.request(`/admin/amenities/${id}/closure-impact?${query}`, { cache: 'no-store' });
+  }
+
+  async patchAmenityStatus(id: string, is_active: boolean, updated_at: string, closure: { booking_action?: 'keep' | 'cancel'; reason?: string; confirmation_token?: string } = {}): Promise<Amenity> {
     const result = await this.request<Amenity>(`/admin/amenities/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active }),
+      body: JSON.stringify({ is_active, updated_at, ...closure }),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
     amenityCache.broadcastMutation('AMENITY_STATUS_CHANGED', id);
+    if (closure.booking_action === 'cancel') { amenityCache.invalidateBookings(id); amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', id); }
     return result;
   }
 
@@ -867,6 +1119,7 @@ class ApiService {
       start_time?: string | null;
       end_time?: string | null;
       reason: string;
+      confirmation_token?: string;
     }
   ): Promise<Blackout> {
     const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts`, {
@@ -874,6 +1127,8 @@ class ApiService {
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, result.id);
     return result;
   }
@@ -886,6 +1141,7 @@ class ApiService {
       start_time?: string | null;
       end_time?: string | null;
       reason: string;
+      confirmation_token?: string;
     }
   ): Promise<Blackout> {
     const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
@@ -893,6 +1149,8 @@ class ApiService {
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
     return result;
   }
@@ -907,15 +1165,15 @@ class ApiService {
   }
 
   // ================= BOOKINGS =================
-  async getAmenityBookings(amenityId: string, forceRefresh: boolean = false): Promise<AmenityBooking[]> {
+  async getAmenityBookings(amenityId: string, forceRefresh: boolean = false, signal?: AbortSignal): Promise<AmenityBooking[]> {
     const key = `amenity:${amenityId}:bookings`;
     const lookup = amenityCache.get<AmenityBooking[]>(key);
     if (!forceRefresh && lookup.exists && lookup.data && lookup.isFresh) {
       return lookup.data;
     }
 
-    const bookings = await this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`);
-    amenityCache.set(key, bookings, null, 2 * 60 * 1000);
+    const bookings = await this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`, { signal, cache: 'no-store' });
+    if (!signal?.aborted) amenityCache.set(key, bookings, null, 2 * 60 * 1000);
     return bookings;
   }
 
@@ -927,7 +1185,7 @@ class ApiService {
   ): Promise<AmenityBooking> {
     const result = await this.request<AmenityBooking>(`/admin/amenities/${amenityId}/bookings/${bookingId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, admin_notes: adminNotes }),
+      body: JSON.stringify({ status, admin_notes: adminNotes, ...(status === 'REJECTED' ? { rejection_reason: adminNotes } : {}) }),
     });
     amenityCache.invalidateBookings(amenityId);
     amenityCache.invalidateAmenities();
@@ -1011,41 +1269,222 @@ class ApiService {
     });
   }
 
-  async createResidentBooking(payload: {
-    amenity_id: string;
-    booking_date: string;
-    start_time: string;
-    end_time: string;
-    attendee_count?: number;
-    apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    const result = await this.request<any>('/resident/amenity-bookings', {
+  async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
+    return this.request('/resident/amenities', { signal, cache: 'no-store' });
+  }
+
+  async getResidentAvailability(amenityId: string, date: string, apartmentId: string, signal?: AbortSignal): Promise<{ slots: ResidentAvailableSlot[] }> {
+    const query = new URLSearchParams({ date, apartment_id: apartmentId });
+    return this.request(`/resident/amenities/${amenityId}/availability?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentBookings(status: string, page: number, signal?: AbortSignal): Promise<ResidentBookingList> {
+    const query = new URLSearchParams({ page: String(page) });
+    if (status) query.set('status', status);
+    return this.request(`/resident/amenity-bookings?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentBooking(id: string, signal?: AbortSignal): Promise<ResidentAmenityBooking> {
+    return this.request(`/resident/amenity-bookings/${id}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentBookingPayment(id: string, signal?: AbortSignal): Promise<{ payment: AmenityBookingPayment | null }> {
+    return this.request(`/resident/amenity-bookings/${id}/payment`, { signal, cache: 'no-store' });
+  }
+
+  async createResidentPaymentCheckout(id: string): Promise<{ environment: 'sandbox' | 'production'; action: string; fields: Record<string, string> }> {
+    return this.request(`/resident/amenity-bookings/${id}/payment/checkout`, { method: 'POST', cache: 'no-store' });
+  }
+
+  async getAmenityNotifications(audience: 'resident' | 'admin', page: number, unread: boolean, signal?: AbortSignal): Promise<AmenityNotificationFeed> {
+    const path = audience === 'resident' ? '/resident/amenity-notifications' : '/admin/amenity-booking-notifications';
+    return this.request(`${path}?page=${page}&unread=${unread ? 1 : 0}`, { signal, cache: 'no-store' });
+  }
+
+  async readAmenityNotification(audience: 'resident' | 'admin', id: string): Promise<{ success: boolean }> {
+    const path = audience === 'resident' ? '/resident/amenity-notifications' : '/admin/amenity-booking-notifications';
+    return this.request(`${path}/${encodeURIComponent(id)}/read`, { method: 'POST' });
+  }
+
+  async getAmenityBookingWorklist(bucket: string, page: number, signal?: AbortSignal): Promise<AmenityBookingWorklist> {
+    return this.request(`/admin/amenity-booking-worklist?bucket=${encodeURIComponent(bucket)}&page=${page}`, { signal, cache: 'no-store' });
+  }
+
+  async reportResidentBookingPayment(booking: Pick<AmenityBooking, 'id' | 'amenity_id'>): Promise<{ payment: AmenityBookingPayment }> {
+    const result = await this.request<{ payment: AmenityBookingPayment }>(`/resident/amenity-bookings/${booking.id}/payment/report`, { method: 'POST' });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
+  }
+
+  async decideAmenityBookingPayment(booking: Pick<AmenityBooking, 'id' | 'amenity_id'>, payload: { bank_transaction_id: string; received_amount: number; received_at: string } | { reason: string }): Promise<{ payment: AmenityBookingPayment }> {
+    const action = 'reason' in payload ? 'reject' : 'confirm';
+    const result = await this.request<{ payment: AmenityBookingPayment }>(`/admin/amenities/${booking.amenity_id}/bookings/${booking.id}/payment/${action}`, { method: 'POST', body: JSON.stringify(payload) });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
+  }
+
+  async cancelResidentBooking(booking: ResidentAmenityBooking, reason: string): Promise<{ success: boolean; booking: ResidentAmenityBooking }> {
+    const result = await this.request<{ success: boolean; booking: ResidentAmenityBooking }>(`/resident/amenity-bookings/${booking.id}/cancel`, {
+      method: 'POST', body: JSON.stringify({ reason }),
+    });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
+  }
+
+  async createResidentBooking(payload: ResidentBookingPayload): Promise<{ success: boolean; booking: ResidentAmenityBooking }> {
+    const result = await this.request<{ success: boolean; booking: ResidentAmenityBooking }>('/resident/amenity-bookings', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateAmenities();
+    amenityCache.invalidateBookings(payload.amenity_id);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', payload.amenity_id, result.booking.id);
     return result;
+  }
+
+  // ================= MODULE #7: KHAI BÁO KHÁCH VIẾNG THĂM (CƯ DÂN) =================
+  async getResidentVisitors(params: {
+    search?: string;
+    status?: string;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<ResidentVisitorListResponse> {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.status) q.append('status', params.status);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit) q.append('limit', String(params.limit));
+
+    const qs = q.toString();
+    return this.request<ResidentVisitorListResponse>(`/resident/visitors${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    });
+  }
+
+  async getResidentVisitorDetail(id: string): Promise<ResidentVisitorDetailResponse> {
+    return this.request<ResidentVisitorDetailResponse>(`/resident/visitors/${id}`, {
+      method: 'GET',
+    });
   }
 
   async createResidentVisitor(payload: {
     visitor_name: string;
-    visitor_phone?: string;
-    visit_purpose?: string;
+    visitor_phone: string;
+    visitor_national_id?: string;
     expected_arrival_time: string;
+    expected_departure_time?: string;
+    visit_purpose?: string;
+    visitor_count?: number;
     vehicle_license_plate?: string;
     apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    return this.request<any>('/resident/visitors', {
+  }): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>('/resident/visitors', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  }
+
+  async updateResidentVisitor(
+    id: string,
+    payload: {
+      visitor_name?: string;
+      visitor_phone?: string;
+      visitor_national_id?: string;
+      expected_arrival_time?: string;
+      expected_departure_time?: string;
+      visit_purpose?: string;
+      visitor_count?: number;
+      vehicle_license_plate?: string;
+    }
+  ): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>(`/resident/visitors/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async cancelResidentVisitor(
+    id: string,
+    reason?: string
+  ): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>(`/resident/visitors/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   }
 
   async payResidentInvoice(invoiceId: string): Promise<any> {
     return this.request<any>(`/resident/invoices/${invoiceId}/pay`, {
       method: 'POST',
+    });
+  }
+
+  // ================= RECEPTION VISITOR CHECK-IN & CHECK-OUT =================
+  async getReceptionVisitors(
+    params: {
+      search?: string;
+      status?: string;
+      from_date?: string;
+      to_date?: string;
+      apartment_id?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ReceptionVisitorListResponse> {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.status) q.append('status', params.status);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.apartment_id) q.append('apartment_id', params.apartment_id);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit || params.per_page) q.append('limit', String(params.limit || params.per_page));
+
+    return this.request<ReceptionVisitorListResponse>(`/reception/visitors?${q.toString()}`, options);
+  }
+
+  async lookupReceptionVisitor(code: string, options: RequestInit = {}): Promise<ReceptionVisitorLookupResponse> {
+    const q = new URLSearchParams();
+    q.append('code', code);
+    return this.request<ReceptionVisitorLookupResponse>(`/reception/visitors/lookup?${q.toString()}`, options);
+  }
+
+  async checkInReceptionVisitor(payload: {
+    registration_id?: string;
+    id?: string;
+    qr_code?: string;
+    code?: string;
+    national_id_number?: string;
+    temp_card_id?: string;
+    assigned_elevator_access?: any;
+    notes?: string;
+  }): Promise<{ success: boolean; message: string; data: any }> {
+    return this.request<{ success: boolean; message: string; data: any }>('/reception/visitors/check-in', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async checkOutReceptionVisitor(payload: {
+    checkin_log_id?: string;
+    registration_id?: string;
+    id?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; message: string; data: any }> {
+    return this.request<{ success: boolean; message: string; data: any }>('/reception/visitors/check-out', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   }
 
@@ -1179,7 +1618,7 @@ class ApiService {
     sort_order?: 'asc' | 'desc';
     page?: number;
     limit?: number;
-  } = {}) {
+  } = {}, options: RequestInit = {}) {
     const q = new URLSearchParams();
     if (params.search) q.append('search', params.search);
     if (params.apartment_id) q.append('apartment_id', params.apartment_id);
@@ -1195,7 +1634,7 @@ class ApiService {
       success: boolean;
       data: ResidentItem[];
       meta: { current_page: number; last_page: number; per_page: number; total: number };
-    }>(`/residents?${q.toString()}`);
+    }>(`/residents?${q.toString()}`, options);
   }
 
   async getResident(id: string) {
@@ -1209,7 +1648,7 @@ class ApiService {
     apartment_id: string;
     user_id: string;
     resident_type: string;
-    is_head_of_household?: boolean;
+    is_head_of_household: boolean;
     stay_start_date: string;
     stay_end_date?: string | null;
     relationship_to_head?: string;
@@ -1261,6 +1700,294 @@ class ApiService {
       data: ApartmentSummaryItem[];
     }>('/meta/apartments');
   }
+
+  // ==========================================
+  // TEMPORARY REGISTRATIONS APIs
+  // ==========================================
+  async getTemporaryRegistrations(params?: Record<string, string | number | boolean | undefined | null>, options: RequestInit = {}) {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          query.append(key, String(value));
+        }
+      });
+    }
+    const qStr = query.toString();
+    return this.request<{
+      success: boolean;
+      data: TemporaryRegistrationItem[];
+      meta: {
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+      };
+    }>(`/residents/temporary-registrations${qStr ? `?${qStr}` : ''}`, options);
+  }
+
+  async getTemporaryRegistrationById(id: string) {
+    return this.request<{
+      success: boolean;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}`);
+  }
+
+  async createTemporaryRegistration(data: {
+    resident_id: string;
+    apartment_id: string;
+    registration_type: 'TEMPORARY_STAY' | 'TEMPORARY_ABSENCE';
+    start_date: string;
+    end_date: string;
+    reason: string;
+    identity_card_front_url?: string | null;
+    identity_card_back_url?: string | null;
+    notes?: string | null;
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>('/residents/temporary-registrations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTemporaryRegistration(id: string, data: Partial<{
+    registration_type: 'TEMPORARY_STAY' | 'TEMPORARY_ABSENCE';
+    start_date: string;
+    end_date: string;
+    reason: string;
+    identity_card_front_url?: string | null;
+    identity_card_back_url?: string | null;
+    notes?: string | null;
+    police_reference_code?: string | null;
+    updated_at?: string;
+  }>) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteTemporaryRegistration(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/residents/temporary-registrations/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async approveTemporaryRegistration(id: string, data?: { notes?: string; police_reference_code?: string }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  }
+
+  async rejectTemporaryRegistration(id: string, reason: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async submitTemporaryRegistrationToPolice(id: string, data?: { police_reference_code?: string; notes?: string }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: TemporaryRegistrationItem;
+    }>(`/residents/temporary-registrations/${id}/submit-police`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  }
+
+  async uploadTemporaryRegistrationCccd(file: File, side: 'front' | 'back' = 'front') {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('side', side);
+
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+    const token = this.getAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/residents/temporary-registrations/upload-cccd`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => null);
+      throw new Error(errorJson?.message || 'Tải ảnh CCCD thất bại.');
+    }
+
+    return response.json() as Promise<{ success: boolean; message: string; url: string }>;
+  }
+
+  async exportTemporaryRegistrationForm(id: string) {
+    return this.request<{
+      success: boolean;
+      data: TemporaryRegistrationExportData;
+    }>(`/residents/temporary-registrations/${id}/export`);
+  }
+
+  getTemporaryRegistrationDownloadUrl(id: string) {
+    return `${API_BASE_URL}/residents/temporary-registrations/${id}/download`;
+  }
+
+  // ================= CẤP PHÁT TÀI KHOẢN TỰ ĐỘNG =================
+  async getProvisionedAccounts(params: { search?: string; status?: string; limit?: number; page?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.search) query.append('search', params.search);
+    if (params.status) query.append('status', params.status);
+    if (params.limit) query.append('limit', String(params.limit));
+    if (params.page) query.append('page', String(params.page));
+
+    return this.request<{
+      success: boolean;
+      data: any[];
+      meta: {
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+      };
+    }>(`/account-provisioning?${query.toString()}`);
+  }
+
+  async provisionAccount(payload: {
+    full_name: string;
+    email: string;
+    phone_number: string;
+    national_id_number?: string | null;
+    gender?: string;
+    date_of_birth?: string | null;
+    roles?: string[];
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: any;
+      activation: any;
+    }>('/account-provisioning', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async resendAccountActivation(userId: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: any;
+    }>(`/account-provisioning/${userId}/resend-activation`, {
+      method: 'POST',
+    });
+  }
+
+  async activateAccountWithToken(payload: {
+    email: string;
+    token: string;
+    password: string;
+    password_confirmation: string;
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: any;
+    }>('/account-provisioning/activate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+}
+
+export interface TemporaryRegistrationItem {
+  id: string;
+  resident_id: string;
+  apartment_id: string;
+  registration_type: 'TEMPORARY_STAY' | 'TEMPORARY_ABSENCE';
+  start_date: string;
+  end_date: string;
+  reason: string;
+  police_status: 'PENDING_POLICE_SUBMISSION' | 'SUBMITTED_TO_POLICE' | 'APPROVED' | 'REJECTED' | string;
+  police_reference_code?: string | null;
+  identity_card_front_url?: string | null;
+  identity_card_back_url?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  resident?: {
+    id: string;
+    user_id: string;
+    apartment_id: string;
+    resident_type: string;
+    is_head_of_household: boolean;
+    relationship_to_head?: string | null;
+    occupation?: string | null;
+    user?: {
+      id: string;
+      username: string;
+      full_name: string;
+      phone_number: string;
+      email: string;
+      national_id_number?: string | null;
+      avatar_url?: string | null;
+      gender?: string | null;
+      date_of_birth?: string | null;
+      status: string;
+    };
+  };
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id?: string;
+    floor_id?: string;
+    room_type?: string;
+    status: string;
+  };
+  reviewer?: {
+    id: string;
+    username: string;
+    full_name: string;
+    phone_number?: string;
+    email: string;
+  } | null;
+}
+
+export interface TemporaryRegistrationExportData {
+  registration: TemporaryRegistrationItem;
+  resident: any;
+  user: any;
+  apartment: any;
+  reviewer: any;
+  form_code: string;
+  form_title: string;
+  police_status: string;
+  police_reference_code?: string | null;
+  html_content: string;
 }
 
 export interface ResidentItem {

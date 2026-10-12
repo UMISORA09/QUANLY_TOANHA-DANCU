@@ -34,6 +34,10 @@ class Apartment extends Model
         'metadata',
     ];
 
+    protected $appends = [
+        'primary_owner',
+    ];
+
     protected function casts(): array
     {
         return [
@@ -48,6 +52,40 @@ class Apartment extends Model
             'updated_at' => 'datetime',
             'deleted_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Thông tin chủ hộ hoặc đại diện cư dân
+     *
+     * @return array{full_name: string, phone_number: ?string, email: ?string}|null
+     */
+    public function getPrimaryOwnerAttribute(): ?array
+    {
+        if ($this->relationLoaded('headOfHousehold') && $this->headOfHousehold && $this->headOfHousehold->user) {
+            return [
+                'full_name' => $this->headOfHousehold->user->full_name,
+                'phone_number' => $this->headOfHousehold->user->phone_number,
+                'email' => $this->headOfHousehold->user->email,
+            ];
+        }
+
+        if ($this->relationLoaded('currentResident') && $this->currentResident) {
+            return [
+                'full_name' => $this->currentResident->full_name,
+                'phone_number' => $this->currentResident->phone_number,
+                'email' => $this->currentResident->email,
+            ];
+        }
+
+        if ($this->relationLoaded('firstResident') && $this->firstResident && $this->firstResident->user) {
+            return [
+                'full_name' => $this->firstResident->user->full_name,
+                'phone_number' => $this->firstResident->user->phone_number,
+                'email' => $this->firstResident->user->email,
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -69,10 +107,68 @@ class Apartment extends Model
     }
 
     /**
+     * Cư dân đầu tiên đang hoạt động trong căn hộ (fallback)
+     */
+    public function firstResident(): HasOne
+    {
+        return $this->hasOne(Resident::class, 'apartment_id')
+            ->where('is_active', 1)
+            ->oldest();
+    }
+
+    /**
      * Người đại diện hiện tại của căn hộ
      */
     public function currentResident(): BelongsTo
     {
         return $this->belongsTo(User::class, 'current_resident_user_id');
+    }
+
+    /**
+     * Khối tòa nhà chứa căn hộ (Quan hệ N-1: Apartment -> Block)
+     */
+    public function block(): BelongsTo
+    {
+        return $this->belongsTo(Block::class, 'block_id');
+    }
+
+    /**
+     * Tầng chứa căn hộ (Quan hệ N-1: Apartment -> Floor)
+     */
+    public function floor(): BelongsTo
+    {
+        return $this->belongsTo(Floor::class, 'floor_id');
+    }
+
+    /**
+     * Danh sách đồng hồ đo điện/nước của căn hộ
+     */
+    public function meters(): HasMany
+    {
+        return $this->hasMany(Meter::class, 'apartment_id');
+    }
+
+    /**
+     * Lịch sử chỉ số đo của căn hộ
+     */
+    public function meterReadings(): HasMany
+    {
+        return $this->hasMany(MeterReading::class, 'apartment_id');
+    }
+
+    /**
+     * Danh sách phương tiện đăng ký của căn hộ
+     */
+    public function vehicles(): HasMany
+    {
+        return $this->hasMany(Vehicle::class, 'apartment_id');
+    }
+
+    /**
+     * Danh sách hóa đơn của căn hộ
+     */
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class, 'apartment_id');
     }
 }

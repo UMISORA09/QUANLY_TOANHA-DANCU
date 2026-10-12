@@ -132,6 +132,13 @@ class RbacSeeder extends Seeder
             // REPORT MODULE
             ['module' => 'REPORT', 'permission_code' => 'REPORT:VIEW', 'permission_name' => 'Xem báo cáo thống kê', 'description' => 'Xem biểu đồ doanh thu và vận hành'],
             ['module' => 'REPORT', 'permission_code' => 'REPORT:EXPORT', 'permission_name' => 'Xuất file báo cáo', 'description' => 'Xuất dữ liệu ra Excel/PDF'],
+
+            // VEHICLE MODULE
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:VIEW', 'permission_name' => 'Xem danh sách phương tiện', 'description' => 'Tra cứu danh sách xe máy, ô tô và tình trạng duyệt'],
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:CREATE', 'permission_name' => 'Đăng ký xe & đẩy phí hóa đơn', 'description' => 'Đăng ký phương tiện cho căn hộ và tự động tạo phí gửi xe vào hóa đơn'],
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:UPDATE', 'permission_name' => 'Cập nhật thông tin phương tiện', 'description' => 'Chỉnh sửa biển số, dòng xe, màu sắc và trạng thái'],
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:DELETE', 'permission_name' => 'Xóa / ngừng theo dõi xe', 'description' => 'Xóa mềm phương tiện ra khỏi bãi đỗ'],
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:APPROVE', 'permission_name' => 'Phê duyệt xe & kích hoạt thu phí', 'description' => 'Duyệt phương tiện và kích hoạt đẩy phí vào kỳ hóa đơn'],
         ];
 
         $permissionModelMap = [];
@@ -160,6 +167,7 @@ class RbacSeeder extends Seeder
                 'TICKET:VIEW', 'TICKET:UPDATE', 'TICKET:RESOLVE',
                 'VISITOR:VIEW', 'VISITOR:CREATE', 'VISITOR:CHECKIN',
                 'REPORT:VIEW', 'REPORT:EXPORT',
+                'VEHICLE:VIEW', 'VEHICLE:CREATE', 'VEHICLE:UPDATE', 'VEHICLE:DELETE', 'VEHICLE:APPROVE',
             ],
             'ACCOUNTANT' => [
                 'INVOICE:VIEW', 'INVOICE:CREATE', 'INVOICE:UPDATE', 'INVOICE:APPROVE', 'INVOICE:PAY',
@@ -169,6 +177,12 @@ class RbacSeeder extends Seeder
                 'VISITOR:VIEW', 'VISITOR:CREATE', 'VISITOR:CHECKIN',
                 'TICKET:VIEW', 'TICKET:CREATE',
                 'AMENITY:VIEW',
+                'VEHICLE:VIEW', 'VEHICLE:CREATE', 'VEHICLE:UPDATE', 'VEHICLE:APPROVE',
+            ],
+            'SECURITY_GUARD' => [
+                'VISITOR:VIEW', 'VISITOR:CREATE', 'VISITOR:CHECKIN',
+                'TICKET:VIEW', 'TICKET:CREATE',
+                'VEHICLE:VIEW', 'VEHICLE:CREATE', 'VEHICLE:UPDATE', 'VEHICLE:APPROVE',
             ],
             'TECHNICIAN' => [
                 'TICKET:VIEW', 'TICKET:UPDATE', 'TICKET:RESOLVE',

@@ -4,6 +4,7 @@
 @use 'variables' as vars;
 @use 'mixins' as mix;
 @use 'animations';
+@use 'database';
 
 // Demo card requested by specification
 .demo-card {

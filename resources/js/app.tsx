@@ -12,6 +12,7 @@ const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
 const DevConsolePage = lazy(() => import('./Pages/Dev/DevConsolePage'));
 const PublicStatusPage = lazy(() => import('./Pages/PublicStatusPage'));
 const IncidentHistoryPage = lazy(() => import('./Pages/IncidentHistoryPage'));
+const AccountActivationPage = lazy(() => import('./Pages/Auth/AccountActivationPage'));
 const LoginPage = lazy(() => import('./Pages/Auth/LoginPage'));
 const RegisterPage = lazy(() => import('./Pages/Auth/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('./Pages/Auth/ForgotPasswordPage'));
@@ -179,6 +180,16 @@ const App: React.FC = () => {
     );
   }
 
+  // 0.2 Phân hệ Kích hoạt tài khoản cư dân (Public Activation Token Page)
+  if (
+    currentPath === '/kich-hoat-tai-khoan' ||
+    currentPath.startsWith('/kich-hoat-tai-khoan') ||
+    currentPath === '/activate-account' ||
+    currentPath.startsWith('/activate-account')
+  ) {
+    return <AccountActivationPage />;
+  }
+
   // 0.1 Nếu truy cập các URL đăng nhập dev cũ, tự động chuyển về trang /login chung
   const isDevLoginPath =
     currentPath === '/dev/login' ||
@@ -217,6 +228,16 @@ const App: React.FC = () => {
     currentPath.startsWith('/admin/roles') ||
     currentPath.startsWith('/admin/rbac');
 
+  const isResidentAdminPath =
+    currentPath === '/admin/residents' ||
+    currentPath === '/admin/cu-dan' ||
+    currentPath.startsWith('/admin/residents');
+
+  const isTemporaryRegistrationAdminPath =
+    currentPath === '/admin/temporary-registrations' ||
+    currentPath === '/admin/tam-tru' ||
+    currentPath.startsWith('/admin/temporary-registrations');
+
   const isUnifiedAdminDevPath =
     !isAmenityPath &&
     (currentPath === '/admin' ||
@@ -226,7 +247,9 @@ const App: React.FC = () => {
       currentPath === '/developer' ||
       currentPath.startsWith('/developer/') ||
       isCicdAdminPath ||
-      isRoleAdminPath);
+      isRoleAdminPath ||
+      isResidentAdminPath ||
+      isTemporaryRegistrationAdminPath);
 
   if (isUnifiedAdminDevPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
@@ -250,6 +273,10 @@ const App: React.FC = () => {
       ? 'cicd'
       : isRoleAdminPath
       ? 'roles'
+      : isResidentAdminPath
+      ? 'residents'
+      : isTemporaryRegistrationAdminPath
+      ? 'temporary_registrations'
       : (urlTab || 'overview');
 
     return (
@@ -268,13 +295,102 @@ const App: React.FC = () => {
   }
 
   // 2. Phân hệ Ban Quản Lý (Building Management - Vận hành tòa nhà & Quản lý tiện ích)
+  const isAccountProvisioningPath =
+    currentPath === '/quan-ly/account-provisioning' ||
+    currentPath === '/quan-ly/cap-phat-tai-khoan' ||
+    currentPath.startsWith('/quan-ly/account-provisioning') ||
+    currentPath.startsWith('/quan-ly/cap-phat-tai-khoan') ||
+    currentPath === '/admin/account-provisioning' ||
+    currentPath === '/admin/cap-phat-tai-khoan' ||
+    currentPath.startsWith('/admin/account-provisioning');
+
+  const isVehiclePath =
+    currentPath === '/quan-ly/vehicles' ||
+    currentPath === '/quan-ly/phuong-tien' ||
+    currentPath.startsWith('/quan-ly/vehicles') ||
+    currentPath === '/admin/vehicles' ||
+    currentPath === '/admin/phuong-tien' ||
+    currentPath.startsWith('/admin/vehicles');
+
+  const isPricingPath =
+    currentPath === '/quan-ly/don-gia' ||
+    currentPath === '/quan-ly/pricing-configs' ||
+    currentPath === '/admin/pricing-configs' ||
+    currentPath.startsWith('/quan-ly/pricing-configs') ||
+    currentPath.startsWith('/quan-ly/don-gia');
+
+  const isMeterReadingPath =
+    currentPath === '/quan-ly/chot-chi-so' ||
+    currentPath === '/quan-ly/meter-readings' ||
+    currentPath === '/admin/meter-readings' ||
+    currentPath.startsWith('/quan-ly/chot-chi-so') ||
+    currentPath.startsWith('/admin/meter-readings');
+
+  const isInvoicePath =
+    currentPath === '/quan-ly/hoa-don' ||
+    currentPath === '/quan-ly/invoices' ||
+    currentPath === '/admin/hoa-don' ||
+    currentPath === '/admin/invoices' ||
+    currentPath.startsWith('/quan-ly/hoa-don') ||
+    currentPath.startsWith('/quan-ly/invoices');
+
+  const isInvoiceGenerationPath =
+    currentPath === '/quan-ly/sinh-hoa-don' ||
+    currentPath === '/quan-ly/invoice-generation' ||
+    currentPath === '/admin/sinh-hoa-don' ||
+    currentPath === '/admin/invoice-generation' ||
+    currentPath.startsWith('/quan-ly/sinh-hoa-don') ||
+    currentPath.startsWith('/quan-ly/invoice-generation');
+
+  const isPaymentHistoryPath =
+    currentPath === '/quan-ly/lich-su-giao-dich' ||
+    currentPath === '/quan-ly/payment-history' ||
+    currentPath === '/admin/lich-su-giao-dich' ||
+    currentPath === '/admin/payment-history' ||
+    currentPath.startsWith('/quan-ly/lich-su-giao-dich') ||
+    currentPath.startsWith('/quan-ly/payment-history');
+
+  const isRevenueAnalyticsPath =
+    currentPath === '/quan-ly/thong-ke-doanh-thu' ||
+    currentPath === '/quan-ly/revenue-analytics' ||
+    currentPath === '/admin/thong-ke-doanh-thu' ||
+    currentPath === '/admin/revenue-analytics' ||
+    currentPath.startsWith('/quan-ly/thong-ke-doanh-thu') ||
+    currentPath.startsWith('/quan-ly/revenue-analytics');
+
+  const isFinancialReportPath =
+    currentPath === '/quan-ly/bao-cao-tai-chinh' ||
+    currentPath === '/quan-ly/financial-reports' ||
+    currentPath === '/admin/bao-cao-tai-chinh' ||
+    currentPath === '/admin/financial-reports' ||
+    currentPath.startsWith('/quan-ly/bao-cao-tai-chinh') ||
+    currentPath.startsWith('/quan-ly/financial-reports');
+
+  const isRfidPath =
+    currentPath === '/quan-ly/rfid-cards' ||
+    currentPath === '/quan-ly/rfid' ||
+    currentPath.startsWith('/quan-ly/rfid') ||
+    currentPath === '/admin/rfid-cards' ||
+    currentPath === '/admin/rfid' ||
+    currentPath.startsWith('/admin/rfid');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
     currentPath === '/manager' ||
     currentPath.startsWith('/manager/') ||
     currentPath === '/dashboard' ||
-    isAmenityPath;
+    isAmenityPath ||
+    isAccountProvisioningPath ||
+    isVehiclePath ||
+    isPricingPath ||
+    isMeterReadingPath ||
+    isInvoicePath ||
+    isInvoiceGenerationPath ||
+    isPaymentHistoryPath ||
+    isRevenueAnalyticsPath ||
+    isFinancialReportPath ||
+    isRfidPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -291,7 +407,29 @@ const App: React.FC = () => {
 
     const isUserAdmin = currentUser?.role === 'admin';
     const managerUrlTab = new URLSearchParams(window.location.search).get('tab');
-    const tabForManager = isAmenityPath ? 'amenities' : (managerUrlTab || undefined);
+    const initialManagerTab = isAmenityPath
+      ? 'amenities'
+      : isVehiclePath
+      ? 'vehicles'
+      : isPricingPath
+      ? 'pricing_configs'
+      : isMeterReadingPath
+      ? 'meter_readings'
+      : isRfidPath
+      ? 'rfid_cards'
+      : isAccountProvisioningPath
+      ? 'account_provisioning'
+      : isInvoiceGenerationPath
+      ? 'invoice_generation'
+      : isPaymentHistoryPath
+      ? 'payment_history'
+      : isRevenueAnalyticsPath
+      ? 'revenue_analytics'
+      : isFinancialReportPath
+      ? 'financial_reports'
+      : isInvoicePath
+      ? 'invoices'
+      : (managerUrlTab || undefined);
 
     return (
       <ManagementHome
@@ -300,7 +438,7 @@ const App: React.FC = () => {
         userRole="manager"
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Ban Quản Lý')}
         userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'quanly@cassavas.vn')}
-        initialTab={tabForManager}
+        initialTab={initialManagerTab}
       />
     );
   }
@@ -340,24 +478,48 @@ const App: React.FC = () => {
     currentUser?.role?.toLowerCase().includes('receptionist') ||
     currentUser?.role?.toLowerCase().includes('letan');
 
+  const isSecurityPath =
+    currentPath === '/an-ninh' ||
+    currentPath.startsWith('/an-ninh') ||
+    currentPath === '/bao-ve' ||
+    currentPath.startsWith('/bao-ve') ||
+    currentPath === '/security' ||
+    currentPath.startsWith('/security');
+
+  const isReceptionistVehiclePath =
+    currentPath === '/le-tan/vehicles' ||
+    currentPath === '/le-tan/phuong-tien' ||
+    currentPath.startsWith('/le-tan/vehicles') ||
+    currentPath.startsWith('/le-tan/phuong-tien') ||
+    currentPath === '/an-ninh/vehicles' ||
+    currentPath === '/an-ninh/phuong-tien' ||
+    currentPath.startsWith('/an-ninh/vehicles');
+
   const isReceptionistPath =
     currentPath === '/le-tan' ||
     currentPath.startsWith('/le-tan') ||
     currentPath === '/receptionist' ||
     currentPath.startsWith('/receptionist') ||
+    isSecurityPath ||
+    isReceptionistVehiclePath ||
     (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
 
   if (isReceptionistPath) {
     const isUserAdmin = currentUser?.role === 'admin';
-    const effectiveRole = isUserAdmin ? 'admin' : 'receptionist';
+    const effectiveRole = isUserAdmin ? 'admin' : (isSecurityPath ? 'security' : 'receptionist');
+    const receptionUrlTab = new URLSearchParams(window.location.search).get('tab');
+    const initialReceptionTab = isReceptionistVehiclePath
+      ? 'vehicle_reg'
+      : (receptionUrlTab || undefined);
     return (
       <ReceptionHome
         onLogout={handleLogout}
         onNavigateHome={() => navigateTo('/home?landing=true')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
-        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : 'Lễ Tân Sảnh Chính')}
-        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : 'letan@cassavas.vn')}
+        userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : (isSecurityPath ? 'Đội Trực An Ninh' : 'Lễ Tân Sảnh Chính'))}
+        userEmail={currentUser?.email || (isUserAdmin ? 'admin@cassavas.vn' : (isSecurityPath ? 'anninh@cassavas.vn' : 'letan@cassavas.vn'))}
+        initialTab={initialReceptionTab}
       />
     );
   }

@@ -105,6 +105,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSuccessMessage(null);
     if (!amenity) return;
 
     if (startTime >= endTime) {
@@ -149,8 +150,11 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
   const handleToggleStatus = async (slot: TimeSlot) => {
     if (!amenity) return;
+    setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       await api.patchTimeSlotStatus(amenity.id, slot.id, !slot.is_active);
+      setSuccessMessage(`Đã ${slot.is_active ? 'tạm ngưng' : 'kích hoạt'} khung giờ thành công.`);
       await fetchSlots();
       onChanged();
     } catch (err: any) {
@@ -161,6 +165,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const handleDelete = async (slotId: string) => {
     if (!amenity) return;
     if (!confirm('Bạn có chắc muốn xóa khung giờ này?')) return;
+    setErrorMessage(null);
+    setSuccessMessage(null);
 
     try {
       await api.deleteTimeSlot(amenity.id, slotId);
@@ -213,13 +219,13 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
         {/* Alerts */}
         {errorMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shrink-0">
+          <div role="alert" className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shrink-0">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
         {successMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
+          <div role="status" className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
           </div>

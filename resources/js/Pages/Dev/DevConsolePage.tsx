@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Terminal,
   Bot,
@@ -39,6 +39,12 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // State demo cho Feature Flags
   const [featureFlags, setFeatureFlags] = useState([
@@ -148,9 +154,11 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               {activeTab === 'overview' && 'Bàn Làm Việc Quản Trị & Kỹ Thuật (Admin / Dev)'}
               {activeTab === 'roles' && 'Phân Quyền Tài Khoản (RBAC Matrix)'}
+              {activeTab === 'residents' && 'Quản Lý Cư Dân & Căn Hộ'}
               {activeTab === 'ai_triage' && 'AI Chatbot & Phân Loại Sự Cố Tự Động (Triage)'}
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
+              {activeTab === 'temporary_registrations' && 'Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)'}
               {activeTab === 'cicd' && 'Hệ Thống Tự Động Hóa CI/CD & DevOps Pipeline'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -489,6 +497,53 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {activeTab === 'roles' && (
           <div className="space-y-6">
             <RbacManagement embedded={true} />
+          </div>
+        )}
+        {/* TAB 7: QUẢN LÝ CHỦ HỘ & NHÂN KHẨU (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
+        {activeTab === 'residents' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Quản Lý Chủ Hộ & Thông Tin Nhân Khẩu</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Quản lý Chủ hộ và Nhân khẩu căn hộ đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác vận hành thường nhật của tòa nhà.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* TAB 8: ĐĂNG KÝ & QUẢN LÝ TẠM TRÚ / TẠM VẮNG (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
+        {activeTab === 'temporary_registrations' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+              <FileText className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Đăng ký & Quản lý Tạm trú / Tạm vắng đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác hành chính và nhân khẩu với cơ quan Công an.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
