@@ -46,28 +46,54 @@ interface ReceptionVisitorCheckinPanelProps {
   embedded?: boolean;
 }
 
+// Persistent in-memory & localStorage cache across unmounts/tab switching (0ms instant display - Hiện liền)
+const VISITOR_CACHE_STORAGE_KEY = 'smartcassavas_reception_visitors_cache_v1';
+
+const globalVisitorTabCache = new Map<string, {
+  data: ReceptionVisitorItem[];
+  pagination: { current_page: number; total_pages: number; total_items: number };
+  kpis: { expected_today: number; currently_inside: number; checked_out_today: number; total_registrations: number };
+}>();
+
+const getInitialVisitorCache = () => {
+  const memCached = globalVisitorTabCache.get('ALL__1');
+  if (memCached && memCached.data && memCached.data.length > 0) {
+    return memCached;
+  }
+  try {
+    const raw = localStorage.getItem(VISITOR_CACHE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+};
+
 export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanelProps> = ({
   embedded = false,
 }) => {
-  // 1. Dữ liệu chính & KPIs
-  const [visitors, setVisitors] = useState<ReceptionVisitorItem[]>([]);
-  const [kpis, setKpis] = useState({
+  const initialCache = useMemo(() => getInitialVisitorCache(), []);
+
+  // 1. Dữ liệu chính & KPIs (Hiện liền tức thời 0ms từ cache)
+  const [visitors, setVisitors] = useState<ReceptionVisitorItem[]>(() => initialCache?.data ?? []);
+  const [kpis, setKpis] = useState(() => initialCache?.kpis ?? {
     expected_today: 0,
     currently_inside: 0,
     checked_out_today: 0,
     total_registrations: 0,
   });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !initialCache);
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Bộ nhớ đệm Client (In-memory SWR Cache) cho các tab và trang (Chuyển tab 0ms)
-  const tabCacheRef = useRef<Map<string, {
-    data: ReceptionVisitorItem[];
-    pagination: { current_page: number; total_pages: number; total_items: number };
-    kpis: { expected_today: number; currently_inside: number; checked_out_today: number; total_registrations: number };
-  }>>(new Map());
+  const tabCacheRef = useRef(globalVisitorTabCache);
 
   // 2. Bộ lọc & Phân trang
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -75,8 +101,8 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [perPage] = useState<number>(15);
-  const [totalPages, setTotalPages] = useState<number>(1);
-  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(() => initialCache?.pagination?.total_pages ?? 1);
+  const [totalCount, setTotalCount] = useState<number>(() => initialCache?.pagination?.total_items ?? 0);
 
   // 3. Tra cứu nhanh / Quét mã QR
   const [quickScanCode, setQuickScanCode] = useState<string>('');
@@ -105,8 +131,25 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  // AbortController ref để hủy các request cũ khi người dùng gõ tìm kiếm liên tục
+  // AbortController ref và requestId để hủy request cũ an toàn, không bị tắt nhầm trạng thái đang tải
   const searchAbortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
+
+  const statusFilterRef = useRef<string>(statusFilter);
+  const currentPageRef = useRef<number>(currentPage);
+  const debouncedSearchRef = useRef<string>(debouncedSearch);
+
+  useEffect(() => {
+    statusFilterRef.current = statusFilter;
+  }, [statusFilter]);
+
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
+    debouncedSearchRef.current = debouncedSearch;
+  }, [debouncedSearch]);
 
   // Debounce tìm kiếm 350ms
   useEffect(() => {
@@ -145,11 +188,13 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
   // Fetch danh sách khách từ Server (SWR pattern)
   const fetchVisitors = useCallback(
     async (
-      targetStatus: string = statusFilter,
-      targetPage: number = currentPage,
-      targetSearch: string = debouncedSearch,
+      targetStatus: string = statusFilterRef.current,
+      targetPage: number = currentPageRef.current,
+      targetSearch: string = debouncedSearchRef.current,
       isSilent: boolean = false
     ) => {
+      const currentRequestId = ++requestIdRef.current;
+
       if (searchAbortControllerRef.current) {
         searchAbortControllerRef.current.abort();
       }
@@ -176,7 +221,12 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
           { signal: abortController.signal }
         );
 
-        if (res.success) {
+        // Bỏ qua nếu đã có request mới hơn được gửi đi
+        if (currentRequestId !== requestIdRef.current) {
+          return;
+        }
+
+        if (res && res.success) {
           const fetchedData = res.data || [];
           setVisitors(fetchedData);
 
@@ -185,12 +235,12 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
           }
           if (res.pagination) {
             setCurrentPage(res.pagination.current_page);
+            currentPageRef.current = res.pagination.current_page;
             setTotalPages(res.pagination.total_pages);
             setTotalCount(res.pagination.total_items);
           }
 
-          // Lưu vào cache để chuyển tab/trang 0ms
-          tabCacheRef.current.set(cacheKey, {
+          const cacheItem = {
             data: fetchedData,
             pagination: {
               current_page: res.pagination?.current_page || targetPage,
@@ -198,31 +248,48 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
               total_items: res.pagination?.total_items || fetchedData.length,
             },
             kpis: res.kpis || kpis,
-          });
+          };
+
+          // Lưu vào cache để chuyển tab/trang 0ms
+          tabCacheRef.current.set(cacheKey, cacheItem);
+
+          // Nếu là tab ALL mặc định, lưu localStorage để lần sau vào lại là hiện liền tức thì (0ms)
+          if (targetStatus === 'ALL' && !targetSearch && targetPage === 1) {
+            try {
+              localStorage.setItem(VISITOR_CACHE_STORAGE_KEY, JSON.stringify(cacheItem));
+            } catch {
+              // ignore
+            }
+          }
         }
       } catch (err: any) {
-        if (err?.name === 'AbortError') {
+        if (err?.name === 'AbortError' || currentRequestId !== requestIdRef.current) {
           return;
         }
         console.error('Lỗi khi tải danh sách khách:', err);
         setErrorMsg(err.message || 'Không thể tải danh sách khách viếng thăm.');
       } finally {
-        setIsLoading(false);
-        setIsFetching(false);
+        // Chỉ tắt loading nếu đây chính là request mới nhất đang chạy
+        if (currentRequestId === requestIdRef.current) {
+          setIsLoading(false);
+          setIsFetching(false);
+        }
       }
     },
-    [statusFilter, currentPage, debouncedSearch, perPage]
+    [perPage, kpis]
   );
 
   // Chuyển tab: Chuyển ngay và nạp dữ liệu chuẩn xác cho từng tab
   const handleTabChange = useCallback(
     (newStatus: string) => {
-      if (newStatus === statusFilter) return;
+      if (newStatus === statusFilterRef.current) return;
 
       setStatusFilter(newStatus);
+      statusFilterRef.current = newStatus;
       setCurrentPage(1);
+      currentPageRef.current = 1;
 
-      const cacheKey = `${newStatus}_${debouncedSearch}_1`;
+      const cacheKey = `${newStatus}_${debouncedSearchRef.current}_1`;
       const cached = tabCacheRef.current.get(cacheKey);
 
       if (cached) {
@@ -230,51 +297,56 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         setVisitors(cached.data);
         setTotalPages(cached.pagination.total_pages);
         setTotalCount(cached.pagination.total_items);
+        setIsLoading(false);
         // Đồng bộ ngầm trong nền
-        fetchVisitors(newStatus, 1, debouncedSearch, true);
+        fetchVisitors(newStatus, 1, debouncedSearchRef.current, true);
       } else {
-        // 2. Chưa có trong cache -> hiện skeleton loading ngay và fetch dữ liệu thực từ Server
+        // 2. Chưa có trong cache -> hiện "Đang tải..." ngay lập tức
         setVisitors([]);
         setIsLoading(true);
-        fetchVisitors(newStatus, 1, debouncedSearch, false);
+        fetchVisitors(newStatus, 1, debouncedSearchRef.current, false);
       }
     },
-    [statusFilter, debouncedSearch, fetchVisitors]
+    [fetchVisitors]
   );
 
   // Chuyển trang siêu tốc tận dụng cache
   const handlePageChange = useCallback(
     (newPage: number) => {
       setCurrentPage(newPage);
-      const cacheKey = `${statusFilter}_${debouncedSearch}_${newPage}`;
+      currentPageRef.current = newPage;
+      const cacheKey = `${statusFilterRef.current}_${debouncedSearchRef.current}_${newPage}`;
       const cached = tabCacheRef.current.get(cacheKey);
 
       if (cached) {
         setVisitors(cached.data);
         setTotalPages(cached.pagination.total_pages);
         setTotalCount(cached.pagination.total_items);
-        fetchVisitors(statusFilter, newPage, debouncedSearch, true);
+        setIsLoading(false);
+        fetchVisitors(statusFilterRef.current, newPage, debouncedSearchRef.current, true);
       } else {
+        setVisitors([]);
         setIsLoading(true);
-        fetchVisitors(statusFilter, newPage, debouncedSearch, false);
+        fetchVisitors(statusFilterRef.current, newPage, debouncedSearchRef.current, false);
       }
     },
-    [statusFilter, debouncedSearch, fetchVisitors]
+    [fetchVisitors]
   );
 
-  // Tải dữ liệu ban đầu
+  const isInitialDebounceMounted = useRef(false);
+
+  // Tải dữ liệu ban đầu (nếu đã có cache thì tải ngầm silent để hiện liền tức thời)
   useEffect(() => {
-    fetchVisitors('ALL', 1, '', false);
+    fetchVisitors('ALL', 1, '', !!initialCache);
   }, []);
 
-  // Khi từ khóa tìm kiếm thay đổi (sau 350ms debounce)
+  // Khi từ khóa tìm kiếm thay đổi (sau 350ms debounce, không kích hoạt lần render đầu tiên)
   useEffect(() => {
-    if (debouncedSearch !== '') {
-      fetchVisitors(statusFilter, 1, debouncedSearch, false);
-    } else {
-      // Khi xóa ô tìm kiếm, nạp lại theo tab hiện tại
-      fetchVisitors(statusFilter, 1, '', false);
+    if (!isInitialDebounceMounted.current) {
+      isInitialDebounceMounted.current = true;
+      return;
     }
+    fetchVisitors(statusFilterRef.current, 1, debouncedSearch, false);
   }, [debouncedSearch]);
 
   // Realtime Live Sync: Khi có bất kỳ mutation nào (A check-in / B check-out)
@@ -282,7 +354,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
     (event: RealtimeEventPayload) => {
       if (event.module === 'visitors' || event.entity === 'visitor_checkin' || event.entity === 'visitor_registration') {
         tabCacheRef.current.clear();
-        fetchVisitors(statusFilter, currentPage, debouncedSearch, true);
+        fetchVisitors(statusFilterRef.current, currentPageRef.current, debouncedSearchRef.current, true);
 
         if (event.action === 'CHECKED_IN') {
           showToast(`⚡ Realtime: Khách ${event.visitor_name || ''} vừa check-in vào tòa nhà!`);
@@ -291,7 +363,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
         }
       }
     },
-    [statusFilter, currentPage, debouncedSearch, fetchVisitors]
+    [fetchVisitors]
   );
 
   useRealtimeSync({
@@ -701,37 +773,47 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-              {isLoading && visitors.length === 0 ? (
-                // Skeleton loading rows for ultra-clean perceived speed
-                [1, 2, 3, 4, 5].map((idx) => (
-                  <tr key={`skeleton-${idx}`} className="animate-pulse">
-                    <td className="py-4 px-4 sm:px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-slate-200 shrink-0" />
-                        <div className="space-y-1.5 w-32">
-                          <div className="h-3.5 bg-slate-200 rounded w-28" />
-                          <div className="h-2.5 bg-slate-100 rounded w-20" />
-                        </div>
+              {(isLoading || isFetching) && visitors.length === 0 ? (
+                // ĐANG TẢI: Hiển thị trạng thái đang tải rõ ràng khi người dùng chọn tab hoặc lọc khác
+                <>
+                  <tr>
+                    <td colSpan={6} className="py-6 px-6 bg-sky-50/40 border-b border-sky-100/60 text-center">
+                      <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 text-sky-800 text-xs font-bold">
+                        <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
+                        <span>Đang tải danh sách khách viếng thăm... Vui lòng đợi trong giây lát</span>
                       </div>
                     </td>
-                    <td className="py-4 px-4">
-                      <div className="h-3.5 bg-slate-200 rounded w-24 mb-1.5" />
-                      <div className="h-2.5 bg-slate-100 rounded w-16" />
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="h-3 bg-slate-200 rounded w-28" />
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="h-6 bg-slate-100 rounded-lg w-24" />
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      <div className="h-6 bg-slate-100 rounded-full w-24 mx-auto" />
-                    </td>
-                    <td className="py-4 px-4 sm:px-6 text-right">
-                      <div className="h-8 bg-slate-200 rounded-xl w-24 ml-auto" />
-                    </td>
                   </tr>
-                ))
+                  {[1, 2, 3, 4, 5].map((idx) => (
+                    <tr key={`skeleton-${idx}`} className="animate-pulse">
+                      <td className="py-4 px-4 sm:px-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-slate-200 shrink-0" />
+                          <div className="space-y-1.5 w-32">
+                            <div className="h-3.5 bg-slate-200 rounded w-28" />
+                            <div className="h-2.5 bg-slate-100 rounded w-20" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="h-3.5 bg-slate-200 rounded w-24 mb-1.5" />
+                        <div className="h-2.5 bg-slate-100 rounded w-16" />
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="h-3 bg-slate-200 rounded w-28" />
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="h-6 bg-slate-100 rounded-lg w-24" />
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <div className="h-6 bg-slate-100 rounded-full w-24 mx-auto" />
+                      </td>
+                      <td className="py-4 px-4 sm:px-6 text-right">
+                        <div className="h-8 bg-slate-200 rounded-xl w-24 ml-auto" />
+                      </td>
+                    </tr>
+                  ))}
+                </>
               ) : visitors.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-16 text-center">
