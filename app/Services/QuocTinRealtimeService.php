@@ -30,6 +30,7 @@ class QuocTinRealtimeService
             'vehicles', 'vehicle' => 'vehicles',
             'rfid', 'rfid_cards', 'rfid-cards', 'cards', 'access_cards' => 'rfid_cards',
             'visitors', 'visitor', 'visitor_registrations', 'visitor-registrations' => 'visitors',
+            'parcels', 'parcel', 'packages', 'package' => 'parcels',
             default => str_replace('-', '_', $m),
         };
     }
@@ -49,6 +50,7 @@ class QuocTinRealtimeService
             'vehicles' => 'quoc-tin.vehicles',
             'rfid_cards' => 'quoc-tin.rfid-cards',
             'visitors' => 'quoc-tin.visitors',
+            'parcels' => 'quoc-tin.parcels',
             default => str_starts_with($module, 'quoc-tin.') ? $module : "quoc-tin.{$module}",
         };
     }
@@ -195,6 +197,8 @@ class QuocTinRealtimeService
                 || true,
 
             'quoc-tin.visitors' => true,
+
+            'quoc-tin.parcels' => true,
 
             default => false,
         };

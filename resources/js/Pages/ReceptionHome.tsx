@@ -39,6 +39,7 @@ import { AppLayout } from '../Components/Layout/AppLayout';
 import { VehicleManagement } from './Admin/VehicleManagement';
 import { RfidManagement } from './Admin/RfidManagement';
 import { ReceptionVisitorCheckinPanel } from '../Components/ReceptionVisitorCheckinPanel';
+import { ReceptionParcelPanel } from '../Components/ReceptionParcelPanel';
 
 
 export interface ReceptionHomeProps {
@@ -106,17 +107,27 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
     ) {
       return 'visitors';
     }
+    if (
+      path === '/le-tan/parcels' ||
+      path === '/le-tan/buu-pham' ||
+      path.includes('/parcels') ||
+      path.includes('/buu-pham')
+    ) {
+      return 'parcels';
+    }
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
     if (tabParam) {
       if (tabParam === 'vehicles' || tabParam === 'phuong-tien') return 'vehicle_reg';
       if (tabParam === 'rfid' || tabParam === 'rfid_cards' || tabParam === 'the-tu') return 'rfid_cards';
       if (tabParam === 'visitors' || tabParam === 'khach' || tabParam === 'checkin') return 'visitors';
+      if (tabParam === 'parcels' || tabParam === 'buu_pham' || tabParam === 'kien_hang') return 'parcels';
       return tabParam;
     }
     if (initialTab) {
       if (initialTab === 'vehicles' || initialTab === 'phuong-tien') return 'vehicle_reg';
       if (initialTab === 'visitors' || initialTab === 'khach') return 'visitors';
+      if (initialTab === 'parcels' || initialTab === 'buu_pham') return 'parcels';
       return initialTab;
     }
     return 'overview';
@@ -546,6 +557,12 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
               <ReceptionVisitorCheckinPanel embedded={true} />
             </div>
           </div>
+        ) : activeMenuId === 'parcels' ? (
+          <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+            <div className="bg-white/95 backdrop-blur-2xl border border-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl glass-specular-edge">
+              <ReceptionParcelPanel embedded={true} />
+            </div>
+          </div>
         ) : (
           <div className="w-full max-w-7xl mx-auto space-y-6">
             {/* Section Breadcrumb Tag */}
@@ -604,20 +621,29 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
                 <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-sky-400/10 rounded-full blur-xl pointer-events-none" />
               </div>
 
-              {/* Stat 2: Bưu phẩm chờ nhận */}
-              <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-amber-300/80 transition-all group relative overflow-hidden glass-specular-edge">
+              {/* Stat 2: Bưu phẩm chờ nhận - CLICKABLE */}
+              <div
+                onClick={() => handleMenuClick('parcels')}
+                className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-xl hover:border-amber-400/90 hover:-translate-y-1 transition-all group relative overflow-hidden glass-specular-edge cursor-pointer"
+                title="Bấm để xem danh sách bưu phẩm và tiếp nhận kiện hàng mới"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium">Bưu phẩm chờ nhận</span>
-                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xs">
+                  <span className="text-xs text-slate-500 font-medium group-hover:text-amber-600 transition-colors">
+                    Bưu phẩm chờ nhận
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-600 group-hover:text-white transition-all shadow-2xs">
                     <Package className="w-4 h-4" />
                   </div>
                 </div>
-                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight">
+                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight group-hover:text-amber-950 transition-colors">
                   {kpis.pendingParcels}
                 </div>
-                <div className="text-[11px] text-amber-600 mt-2 font-medium flex items-center gap-1.5">
-                  <Clock className="w-3 h-3" />
-                  <span>{kpis.overdueParcelsNote}</span>
+                <div className="text-[11px] text-amber-600 mt-2 font-medium flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3 h-3" />
+                    <span>{kpis.overdueParcelsNote}</span>
+                  </div>
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold">Quản lý ngay →</span>
                 </div>
                 <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-400/10 rounded-full blur-xl pointer-events-none" />
               </div>
@@ -760,10 +786,11 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
                       </span>
                     </button>
 
-                    {/* Action 2: Nhận bưu phẩm */}
+                    {/* Action 2: Nhận bưu phẩm - CLICKABLE */}
                     <button
-                      onClick={() => showToast('Mở máy quét mã & Nhận bưu phẩm tại quầy')}
-                      className="flex flex-col items-center justify-center p-4 sm:p-5 border border-slate-200/90 rounded-2xl hover:border-amber-300 hover:bg-amber-50/50 transition-all text-neutral-800 cursor-pointer group shadow-2xs hover:shadow-xs"
+                      onClick={() => handleMenuClick('parcels')}
+                      className="flex flex-col items-center justify-center p-4 sm:p-5 border border-slate-200/90 rounded-2xl hover:border-amber-400 hover:bg-amber-50/60 transition-all text-neutral-800 cursor-pointer group shadow-2xs hover:shadow-md"
+                      title="Mở phân hệ tiếp nhận bưu phẩm & upload ảnh"
                     >
                       <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-amber-500 group-hover:text-white flex items-center justify-center text-slate-700 transition-colors mb-2.5">
                         <Package className="w-5 h-5 group-hover:scale-110 transition-transform" />
