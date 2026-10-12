@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   RotateCw,
@@ -46,6 +46,37 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
   const [isRetryDialogOpen, setIsRetryDialogOpen] = useState<boolean>(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen || isRetryDialogOpen || isCancelDialogOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    drawerRef.current?.querySelector<HTMLButtonElement>('[aria-label="Đóng chi tiết pipeline"]')?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+      if (event.key === 'Tab') {
+        const controls = drawerRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]');
+        if (!controls?.length) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen, isRetryDialogOpen, isCancelDialogOpen, onClose]);
 
   useEffect(() => {
     if (isOpen && pipeline) {
@@ -131,16 +162,16 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
         />
 
         {/* Drawer Panel */}
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-          <div className="w-screen max-w-3xl bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
+        <div className="fixed inset-y-0 right-0 flex w-full max-w-3xl">
+          <div ref={drawerRef} role="dialog" aria-modal="true" aria-labelledby="pipeline-detail-title" className="w-full min-w-0 bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
             {/* Drawer Header */}
-            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-start justify-between gap-4 bg-slate-50/70">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+            <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3 bg-slate-50/70">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs font-black text-neutral-800 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">
                     #{pipeline.run_number}
                   </span>
-                  <h2 className="text-base sm:text-lg font-black text-neutral-900">
+                  <h2 id="pipeline-detail-title" className="break-words text-base sm:text-lg font-black text-neutral-900">
                     {pipeline.name}
                   </h2>
                   <span
@@ -160,7 +191,7 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 {/* Action Buttons */}
                 {canManage && (
                   <>
@@ -191,6 +222,7 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
+                  aria-label="Đóng chi tiết pipeline"
                   className="p-1.5 text-slate-400 hover:text-neutral-700 rounded-xl hover:bg-slate-200/60 transition-colors"
                 >
                   <X className="w-5 h-5" />
@@ -258,13 +290,14 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
             )}
 
             {/* Main Content Area: Jobs Tabs & Log Viewer */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
               {/* Jobs List */}
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-mono">
                   Danh sách Jobs ({jobs.length})
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {isLoadingJobs && <p className="text-xs text-slate-500" role="status">Đang tải danh sách jobs...</p>}
                   {jobs.map((job) => {
                     const isSelected = selectedJobId === job.id;
                     return (

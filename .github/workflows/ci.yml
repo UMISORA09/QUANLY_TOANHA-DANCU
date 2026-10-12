@@ -244,6 +244,9 @@ jobs:
           name: frontend-build-artifacts
           path: public/build
 
+      - name: Sync Frontend Index HTML
+        run: node scripts/sync-index-html.js
+
       - name: Configure E2E Testing Environment
         env:
           DB_CONNECTION: sqlite

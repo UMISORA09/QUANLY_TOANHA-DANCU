@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\Cicd\GitHubActionsService;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -241,9 +242,53 @@ class GitHubActionsServiceTest extends TestCase
 
     public function test_unknown_pipeline_id_does_not_return_a_different_run(): void
     {
+        config(['services.github.token' => null]);
         $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods(['getPipelines'])->getMock();
         $service->method('getPipelines')->willReturn([['id' => '123', 'name' => 'Actual run']]);
         $this->assertNull($service->getPipelineDetail('999'));
         $this->assertSame('123', $service->getPipelineDetail('123')['id']);
+    }
+
+    public function test_history_reads_old_pages_and_keeps_real_activity_statuses(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        $run = [
+            'id' => 999, 'run_number' => 1, 'name' => 'Vercel CD', 'path' => '.github/workflows/vercel.yml',
+            'status' => 'completed', 'conclusion' => 'cancelled', 'head_branch' => 'master',
+            'head_sha' => 'abcdef123456', 'head_commit' => ['message' => 'Old commit', 'author' => ['name' => 'QA']],
+            'actor' => ['login' => 'dependabot[bot]'], 'event' => 'push',
+            'created_at' => '2025-01-01T00:00:00Z', 'updated_at' => '2025-01-01T00:01:00Z',
+        ];
+        Http::fake([
+            '*/actions/runs/999' => Http::response($run),
+            '*/actions/runs?*' => Http::response(['total_count' => 1501, 'workflow_runs' => [$run]]),
+            '*/commits?*' => Http::response([[
+                'sha' => '1234567890abcdef', 'author' => ['login' => 'octocat'],
+                'commit' => ['author' => ['name' => 'QA', 'date' => '2025-01-01T00:00:00Z'], 'message' => 'Old commit'],
+            ]]),
+        ]);
+        $service = new GitHubActionsService;
+        $result = $service->getHistoryPage(15);
+        $this->assertSame(1501, $result['total_pipelines']);
+        $this->assertSame('dependabot[bot]', $result['pipelines'][0]['author']);
+        $this->assertTrue($result['has_more']);
+        $this->assertSame('deploy', $result['activities'][0]['type']);
+        $this->assertSame('cancelled', $result['activities'][0]['status']);
+        $this->assertSame('recorded', $result['activities'][1]['status']);
+        $this->assertSame('commit', $result['activities'][1]['type']);
+        Http::assertSent(fn ($request) => $request['page'] === 15 && $request['per_page'] === 100);
+        $this->assertSame($result, $service->getHistoryPage(15));
+        Http::assertSentCount(2);
+        $service->getHistoryPage(15, true);
+        Http::assertSentCount(4);
+        $this->assertSame('999', $service->getPipelineDetail('999')['id']);
+    }
+
+    public function test_failed_history_request_is_not_cached_as_empty_history(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        Http::fake(['*' => Http::response(['message' => 'Rate limited'], 403)]);
+        $this->expectException(RequestException::class);
+        (new GitHubActionsService)->getHistoryPage(1);
     }
 }

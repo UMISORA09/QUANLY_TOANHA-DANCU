@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Services\Cicd\GitHubActionsService;
 use App\Services\RbacService;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -12,6 +14,23 @@ class CicdDashboardController extends Controller
     public function __construct(
         protected GitHubActionsService $cicdService
     ) {}
+
+    public function history(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'force' => ['sometimes', 'boolean'],
+        ]);
+        try {
+            $history = $this->cicdService->getHistoryPage((int) ($validated['page'] ?? 1), $request->boolean('force'));
+        } catch (RequestException $exception) {
+            return response()->json(['message' => 'Không thể đồng bộ lịch sử GitHub (HTTP '.$exception->response->status().'). Vui lòng thử lại sau.'], 502);
+        } catch (ConnectionException) {
+            return response()->json(['message' => 'Kết nối GitHub quá thời gian chờ. Vui lòng thử đồng bộ lại.'], 504);
+        }
+
+        return response()->json(['data' => $history]);
+    }
 
     /**
      * Bundle toàn bộ dữ liệu Dashboard trong 1 request (Tối ưu tốc độ cao)
