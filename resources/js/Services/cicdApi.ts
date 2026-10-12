@@ -47,9 +47,9 @@ export interface DeploymentItem {
   version: string;
   image_tag: string;
   commit_sha: string;
-  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'not_deployed' | 'not_configured';
+  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'stopped' | 'unknown' | 'not_deployed' | 'not_configured';
   deployed_by: string;
-  deployed_at: string;
+  deployed_at: string | null;
   response_time_ms: number;
   release_notes?: string;
 }
