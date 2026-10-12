@@ -448,6 +448,8 @@ class ApiService {
             token = 'smart_token_admin_demo';
           } else if (session.role === 'receptionist' || session.role === 'security') {
             token = 'smart_token_reception_demo';
+          } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
+            token = 'smart_token_resident_demo';
           } else {
             token = 'smart_token_manager_demo';
           }
@@ -467,7 +469,15 @@ class ApiService {
         path.includes('/visitors') ||
         path.includes('/parcels') ||
         path.includes('/vehicles');
-      token = isReceptionPath ? 'smart_token_reception_demo' : 'smart_token_manager_demo';
+      const isResidentPath =
+        path.startsWith('/cu-dan') ||
+        path.startsWith('/resident') ||
+        path.startsWith('/cudan');
+      token = isReceptionPath
+        ? 'smart_token_reception_demo'
+        : isResidentPath
+        ? 'smart_token_resident_demo'
+        : 'smart_token_manager_demo';
       try {
         localStorage.setItem('smart_cassavas_token', token);
       } catch {

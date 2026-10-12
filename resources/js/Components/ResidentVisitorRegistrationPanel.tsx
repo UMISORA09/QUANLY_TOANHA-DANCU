@@ -1060,11 +1060,8 @@ export const ResidentVisitorRegistrationPanel: React.FC<ResidentVisitorRegistrat
             <Users className="w-3.5 h-3.5 text-neutral-400" />
             <span>CỔNG CƯ DÂN · TIỆN ÍCH & AN NINH</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-neutral-900 tracking-tight flex items-center gap-2.5">
+          <h1 className="text-2xl font-extrabold text-neutral-900 tracking-tight">
             Khai báo khách viếng thăm
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
-              Module #7: KBTTKVT
-            </span>
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
             Đăng ký trước thông tin khách dự kiến đến thăm căn hộ. Khách xuất trình thẻ QR Pass tại cổng để tiếp đón nhanh chóng.
