@@ -34,12 +34,20 @@ jobs:
     if: github.event_name != 'workflow_dispatch'
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test deployment selection
+        run: node --test tests/Unit/VercelDeploymentResolver.test.mjs
       - name: Resolve deployment from Git Integration
         id: deployment
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REPOSITORY: ${{ github.repository }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
         run: |
           for attempt in {1..30}; do
             DEPLOYMENTS=$(gh api "repos/$REPOSITORY/deployments?sha=$EXPECTED_SHA&per_page=10")
@@ -58,6 +66,14 @@ jobs:
               if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
                 echo "::error ::Vercel deployment failed for $EXPECTED_SHA"
                 exit 1
+              fi
+            fi
+            if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_PROJECT_ID" ] && [ -n "$VERCEL_ORG_ID" ]; then
+              URL=$(node scripts/resolve-vercel-deployment.mjs) || URL=""
+              if [ -n "$URL" ]; then
+                echo "url=$URL" >> "$GITHUB_OUTPUT"
+                echo "Vercel API confirms a READY deployment matching $EXPECTED_SHA; GitHub metadata is not available yet." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
               fi
             fi
             sleep 15
