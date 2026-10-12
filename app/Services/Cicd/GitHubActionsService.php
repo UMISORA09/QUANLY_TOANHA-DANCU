@@ -69,17 +69,19 @@ class GitHubActionsService
             $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
             $failed = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'failed'));
             $running = count(array_filter($pipelines, fn ($p) => in_array($p['status'] ?? '', ['in_progress', 'running', 'queued'], true)));
-            $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
+            $prodDeployment = collect($deployments)->firstWhere('environment', 'production');
+            $stagingDeployment = collect($deployments)->firstWhere('environment', 'staging');
+            $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || $prodDeployment !== null;
             $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
 
             $lastDeployedProd = $this->getLastDeployedImageRef('production');
             $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
 
-            $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
-            $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
+            $prodStatus = $prodDeployment['status'] ?? ($prodConfigured ? 'not_deployed' : 'not_configured');
+            $prodVersion = $prodDeployment['version'] ?? ($prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập');
 
-            $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
-            $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
+            $stagingStatus = $stagingDeployment['status'] ?? ($stagingConfigured ? 'not_deployed' : 'not_configured');
+            $stagingVersion = $stagingDeployment['version'] ?? ($stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập');
 
             $security = $this->getSecurityAudit();
 
@@ -116,47 +118,7 @@ class GitHubActionsService
      */
     public function getOverview(): array
     {
-        $pipelines = $this->getPipelines();
-        $total = count($pipelines);
-        $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
-        $failed = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'failed'));
-        $running = count(array_filter($pipelines, fn ($p) => in_array($p['status'] ?? '', ['in_progress', 'running', 'queued'], true)));
-
-        $latest = $pipelines[0] ?? null;
-        $health = $this->getSystemHealth();
-
-        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
-        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
-
-        $lastDeployedProd = $this->getLastDeployedImageRef('production');
-        $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
-
-        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : env('APP_URL'));
-        $stagingUrl = env('STAGING_URL');
-
-        $prodHealthy = $prodConfigured && $this->probeLiveUrlHealth($prodUrl);
-        $stagingHealthy = $stagingConfigured && $this->probeLiveUrlHealth($stagingUrl);
-
-        $prodStatus = $prodConfigured ? ($prodHealthy ? 'healthy' : ($lastDeployedProd ? 'unknown' : 'not_deployed')) : 'not_configured';
-        $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
-
-        $stagingStatus = $stagingConfigured ? ($stagingHealthy ? 'healthy' : ($lastDeployedStaging ? 'unknown' : 'not_deployed')) : 'not_configured';
-        $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
-
-        return [
-            'total_pipelines' => $total,
-            'success_count' => $success,
-            'failed_count' => $failed,
-            'running_count' => $running,
-            'success_rate' => $total > 0 ? round(($success / $total) * 100, 1) : 100,
-            'latest_pipeline' => $latest,
-            'production_status' => $prodStatus,
-            'production_version' => $prodVersion,
-            'staging_status' => $stagingStatus,
-            'staging_version' => $stagingVersion,
-            'system_health' => $health['status'] ?? 'unknown',
-            'is_live_github' => $this->isLiveGitHubAvailable(),
-        ];
+        return $this->getDashboardBundle()['overview'];
     }
 
     /**
@@ -267,7 +229,7 @@ class GitHubActionsService
             }
         }
 
-        return $pipelines[0] ?? null;
+        return null;
     }
 
     /**
@@ -334,9 +296,11 @@ class GitHubActionsService
 
         if ($this->isLiveGitHubAvailable() && is_numeric($id)) {
             try {
-                $endpoint = $jobId
-                    ? "{$this->apiBase}/actions/jobs/{$jobId}/logs"
-                    : "{$this->apiBase}/actions/runs/{$id}/logs";
+                $jobId ??= $this->getPipelineJobs($id)[0]['id'] ?? null;
+                if ($jobId === null) {
+                    return $header."Chưa có job để tải log. Xem toàn bộ workflow trên GitHub.\n";
+                }
+                $endpoint = "{$this->apiBase}/actions/jobs/{$jobId}/logs";
 
                 $response = Http::withToken($this->token)
                     ->timeout(10)
@@ -577,61 +541,45 @@ class GitHubActionsService
      */
     public function getEnvironments(): array
     {
-        $commitSha = substr($this->getLatestCommitSha(), 0, 7);
-        $prodImage = $this->getLastDeployedImageRef('production');
-        $stagingImage = $this->getLastDeployedImageRef('staging');
-        $prodDeployedAt = $this->getDeploymentTimestamp('production');
-        $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
-
-        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || ! empty(env('VERCEL_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
-        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
-
-        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : (env('APP_URL') ?: 'https://quanly-toanha-dancu.vercel.app'));
-
-        // Đo latency thực tế tới CSDL / App local
-        $dbLatency = $this->measureDatabaseLatency();
-
-        return [
-            [
-                'id' => 'development',
-                'name' => 'Development (Môi trường Local Docker)',
-                'url' => 'http://localhost:8000',
-                'status' => $dbLatency !== -1 ? 'operational' : 'degraded',
-                'version' => "local-dev ({$commitSha})",
-                'commit_sha' => $commitSha,
-                'last_deployment' => now()->toIso8601String(),
-                'response_time_ms' => max(0, $dbLatency),
-                'uptime_percentage' => 'N/A (local)',
-                'branch' => $this->getCurrentBranch(),
-                'approval_required' => false,
-            ],
-            [
-                'id' => 'staging',
-                'name' => 'Staging (Máy chủ kiểm thử / Vercel Preview)',
-                'url' => env('STAGING_URL') ?: 'https://quanly-toanha-dancu.vercel.app',
-                'status' => $stagingConfigured ? ($stagingImage ? 'operational' : 'operational') : 'not_configured',
-                'version' => $stagingConfigured ? ($stagingImage ?: "preview-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / STAGING_HOST)',
-                'commit_sha' => $stagingConfigured ? $commitSha : 'N/A',
-                'last_deployment' => $stagingDeployedAt ?: 'N/A',
+        $deployments = $this->getDeployments();
+        $dbLatency = empty(env('VERCEL')) ? $this->measureDatabaseLatency() : -1;
+        $environments = [[
+            'id' => 'development',
+            'name' => 'Development (Local)',
+            'url' => 'http://localhost:8000',
+            'status' => empty(env('VERCEL')) ? ($dbLatency !== -1 ? 'operational' : 'degraded') : 'not_deployed',
+            'version' => 'local-dev',
+            'commit_sha' => empty(env('VERCEL')) ? substr($this->getLatestCommitSha(), 0, 7) : 'N/A',
+            'last_deployment' => 'N/A',
+            'response_time_ms' => max(0, $dbLatency),
+            'uptime_percentage' => 'N/A (chưa đo)',
+            'branch' => empty(env('VERCEL')) ? $this->getCurrentBranch() : 'N/A',
+            'approval_required' => false,
+        ]];
+        foreach (['staging', 'production'] as $environment) {
+            $deployment = collect($deployments)->firstWhere('environment', $environment);
+            $environments[] = [
+                'id' => $environment,
+                'name' => ucfirst($environment).' (GitHub Deployment)',
+                'url' => env(strtoupper($environment === 'production' ? 'PROD' : 'STAGING').'_URL') ?: '',
+                'status' => match ($deployment['status'] ?? 'not_configured') {
+                    'healthy' => 'operational',
+                    'failed', 'stopped' => 'down',
+                    'deploying' => 'degraded',
+                    'not_configured' => 'not_configured',
+                    default => 'not_deployed',
+                },
+                'version' => $deployment['version'] ?? 'Chưa triển khai',
+                'commit_sha' => $deployment['commit_sha'] ?? 'N/A',
+                'last_deployment' => $deployment['deployed_at'] ?? 'N/A',
                 'response_time_ms' => 0,
                 'uptime_percentage' => 'N/A (chưa đo)',
-                'branch' => 'develop',
-                'approval_required' => false,
-            ],
-            [
-                'id' => 'production',
-                'name' => 'Production (Vercel Container Runtime)',
-                'url' => $prodUrl,
-                'status' => $prodConfigured ? 'operational' : 'not_configured',
-                'version' => $prodConfigured ? ($prodImage ?: "prod-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / PROD_HOST)',
-                'commit_sha' => $prodConfigured ? $commitSha : 'N/A',
-                'last_deployment' => $prodDeployedAt ?: 'N/A',
-                'response_time_ms' => 0,
-                'uptime_percentage' => 'N/A (chưa đo)',
-                'branch' => 'master',
-                'approval_required' => true,
-            ],
-        ];
+                'branch' => $environment === 'production' ? $this->getDefaultBranch() : 'develop',
+                'approval_required' => $environment === 'production',
+            ];
+        }
+
+        return $environments;
     }
 
     /**

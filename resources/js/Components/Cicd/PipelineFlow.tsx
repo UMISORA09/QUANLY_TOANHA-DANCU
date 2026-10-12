@@ -6,12 +6,7 @@ import {
   XCircle,
   Clock,
   Loader2,
-  Box,
   Terminal,
-  ShieldCheck,
-  Server,
-  HeartPulse,
-  Wrench,
   Layers,
   Sparkles,
 } from 'lucide-react';
@@ -40,81 +35,21 @@ export const PipelineFlow: React.FC<PipelineFlowProps> = ({ pipeline, onSelect }
     );
   }
 
-  const isFailed = pipeline.status === 'failed';
-  const isRunning = pipeline.status === 'running';
-
   const stages: FlowStage[] = [
     {
       id: 'commit',
       name: 'Commit',
       icon: GitCommit,
       status: 'success',
-      duration: '0s',
       detail: pipeline.commit_sha,
     },
     {
-      id: 'checkout',
-      name: 'Checkout',
-      icon: Layers,
-      status: 'success',
-      duration: '3s',
-      detail: 'v4',
-    },
-    {
-      id: 'install',
-      name: 'Install Deps',
-      icon: Box,
-      status: 'success',
-      duration: '18s',
-      detail: 'Composer & npm',
-    },
-    {
-      id: 'lint',
-      name: 'Code Lint',
+      id: 'workflow',
+      name: pipeline.name,
       icon: Terminal,
-      status: 'success',
-      duration: '8s',
-      detail: 'Pint 0 issues',
-    },
-    {
-      id: 'test',
-      name: 'Unit & Feature',
-      icon: ShieldCheck,
-      status: isFailed ? 'failed' : 'success',
-      duration: '30s',
-      detail: isFailed ? '1 test failed' : '26/26 passed',
-    },
-    {
-      id: 'build',
-      name: 'Vite Build',
-      icon: Sparkles,
-      status: isFailed ? 'skipped' : 'success',
-      duration: '4s',
-      detail: 'React 19 bundle',
-    },
-    {
-      id: 'docker',
-      name: 'Docker & Smoke',
-      icon: Box,
-      status: isFailed ? 'skipped' : isRunning ? 'running' : 'success',
-      duration: isRunning ? 'running...' : '54s',
-      detail: 'Multi-stage prod',
-    },
-    {
-      id: 'deploy',
-      name: 'CD Deploy',
-      icon: Server,
-      status: isFailed ? 'skipped' : isRunning ? 'queued' : 'success',
-      duration: '14s',
-      detail: 'GHCR image pull',
-    },
-    {
-      id: 'health',
-      name: 'Health Check',
-      icon: HeartPulse,
-      status: isFailed ? 'skipped' : isRunning ? 'queued' : 'success',
-      duration: '2s',
-      detail: 'HTTP 200 OK',
+      status: pipeline.status,
+      duration: pipeline.duration,
+      detail: 'Trạng thái workflow từ GitHub',
     },
   ];
 
@@ -205,7 +140,7 @@ export const PipelineFlow: React.FC<PipelineFlowProps> = ({ pipeline, onSelect }
 
       {/* Visual Pipeline Flow */}
       <div className="relative overflow-x-auto pb-2 scrollbar-subtle">
-        <div className="flex items-center min-w-[850px] justify-between gap-1 sm:gap-2">
+        <div className="flex items-center min-w-[280px] justify-start gap-3">
           {stages.map((stage, idx) => {
             const badge = getStatusBadge(stage.status);
             const StageIcon = stage.icon;
