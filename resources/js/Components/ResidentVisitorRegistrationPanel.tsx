@@ -301,12 +301,18 @@ const VisitPurposeCombobox: React.FC<VisitPurposeComboboxProps> = ({ value, onCh
   const SelectedIcon = selectedOption.icon;
   const isCustom = !VISIT_PURPOSE_OPTIONS.some((opt) => opt.id === value && opt.id !== 'Khác');
 
+  useEffect(() => {
+    if (isOpen && isCustom && value && value !== 'Khác') {
+      setCustomText(value);
+    }
+  }, [isOpen, isCustom, value]);
+
   return (
     <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3 py-2 border rounded-xl bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-2xs ${isOpen
+        className={`w-full px-3 py-2 border rounded-xl bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-2xs cursor-pointer ${isOpen
           ? 'border-indigo-500 ring-2 ring-indigo-500/20'
           : 'border-neutral-200 hover:border-neutral-300'
           }`}
@@ -325,7 +331,7 @@ const VisitPurposeCombobox: React.FC<VisitPurposeComboboxProps> = ({ value, onCh
 
       {isOpen && (
         <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-1.5 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
-          {VISITOR_PURPOSE_OPTIONS.map((opt) => {
+          {VISIT_PURPOSE_OPTIONS.map((opt) => {
             const isSelected =
               opt.id === value || (opt.id === 'Khác' && isCustom && value !== 'Thăm người thân');
             const Icon = opt.icon;
@@ -339,7 +345,7 @@ const VisitPurposeCombobox: React.FC<VisitPurposeComboboxProps> = ({ value, onCh
                     setIsOpen(false);
                   }
                 }}
-                className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between text-left transition ${isSelected
+                className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between text-left transition cursor-pointer ${isSelected
                   ? 'bg-indigo-600 text-white font-bold'
                   : 'hover:bg-neutral-100 text-neutral-800'
                   }`}
@@ -377,6 +383,15 @@ const VisitPurposeCombobox: React.FC<VisitPurposeComboboxProps> = ({ value, onCh
                 value={customText}
                 onChange={(e) => setCustomText(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (customText.trim()) {
+                      onChange(customText.trim());
+                      setIsOpen(false);
+                    }
+                  }
+                }}
                 className="w-full px-2.5 py-1.5 text-xs bg-neutral-50 border border-neutral-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
               <button
@@ -387,7 +402,7 @@ const VisitPurposeCombobox: React.FC<VisitPurposeComboboxProps> = ({ value, onCh
                     setIsOpen(false);
                   }
                 }}
-                className="px-2.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shrink-0 transition"
+                className="px-2.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shrink-0 transition cursor-pointer"
               >
                 Lưu
               </button>
