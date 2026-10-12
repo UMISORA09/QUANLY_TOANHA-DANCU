@@ -326,38 +326,37 @@ class GitHubActionsService
     public function getPipelineJobs(string $id): array
     {
         if ($this->isLiveGitHubAvailable() && is_numeric($id)) {
-            try {
+            $jobs = [];
+            $page = 1;
+            do {
                 $response = Http::withToken($this->token)
                     ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
                     ->timeout(8)
-                    ->get("{$this->apiBase}/actions/runs/{$id}/jobs");
+                    ->get("{$this->apiBase}/actions/runs/{$id}/jobs", ['filter' => 'latest', 'per_page' => 100, 'page' => $page]);
+                $response->throw();
+                $jobs = array_merge($jobs, $response->json('jobs') ?? []);
+                $page++;
+            } while (count($jobs) < ($response->json('total_count') ?? count($jobs)) && count($response->json('jobs') ?? []) > 0);
 
-                if ($response->successful()) {
-                    $jobs = $response->json('jobs') ?? [];
-
-                    return array_map(function ($j) {
+            return array_map(function ($j) {
+                return [
+                    'id' => (string) $j['id'],
+                    'name' => $j['name'],
+                    'status' => $this->normalizeStatus($j['status'], $j['conclusion']),
+                    'started_at' => $j['started_at'] ?? null,
+                    'completed_at' => $j['completed_at'] ?? null,
+                    'duration' => $this->calculateDuration($j['started_at'] ?? null, $j['completed_at'] ?? null),
+                    'steps' => array_map(function ($s) {
                         return [
-                            'id' => (string) $j['id'],
-                            'name' => $j['name'],
-                            'status' => $this->normalizeStatus($j['status'], $j['conclusion']),
-                            'started_at' => $j['started_at'],
-                            'completed_at' => $j['completed_at'],
-                            'duration' => $this->calculateDuration($j['started_at'], $j['completed_at']),
-                            'steps' => array_map(function ($s) {
-                                return [
-                                    'name' => $s['name'],
-                                    'status' => $this->normalizeStatus($s['status'], $s['conclusion']),
-                                    'number' => $s['number'],
-                                    'started_at' => $s['started_at'] ?? null,
-                                    'completed_at' => $s['completed_at'] ?? null,
-                                ];
-                            }, $j['steps'] ?? []),
+                            'name' => $s['name'],
+                            'status' => $this->normalizeStatus($s['status'], $s['conclusion']),
+                            'number' => $s['number'],
+                            'started_at' => $s['started_at'] ?? null,
+                            'completed_at' => $s['completed_at'] ?? null,
                         ];
-                    }, $jobs);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('GitHub Actions Jobs API failed: '.$e->getMessage());
-            }
+                    }, $j['steps'] ?? []),
+                ];
+            }, $jobs);
         }
 
         // Lấy từ local run nếu có
@@ -374,7 +373,7 @@ class GitHubActionsService
     /**
      * Lấy logs thực tế của pipeline
      */
-    public function getLogs(string $id, ?string $jobId = null): string
+    public function getLogs(string $id, ?string $jobId = null, ?int $stepNumber = null): string
     {
         $header = "=== SMART CASSAVAS CI/CD LOG VIEWER ===\n";
         $header .= "Repository: {$this->owner}/{$this->repo}\n";
@@ -389,10 +388,24 @@ class GitHubActionsService
                     return $header."Chưa có job để tải log. Xem toàn bộ workflow trên GitHub.\n";
                 }
                 $endpoint = "{$this->apiBase}/actions/jobs/{$jobId}/logs";
+                if ($stepNumber !== null) {
+                    $job = collect($this->getPipelineJobs($id))->firstWhere('id', $jobId);
+                    if ($job === null || ! isset($job['steps'][$stepNumber])) {
+                        return $header."Không tìm thấy bước thuộc job của pipeline này.\n";
+                    }
+                    $endpoint = "{$this->apiBase}/actions/jobs/{$jobId}/steps/{$stepNumber}/logs";
+                }
 
                 $response = Http::withToken($this->token)
                     ->timeout(10)
                     ->get($endpoint);
+
+                if (! $response->successful() && $stepNumber !== null) {
+                    $header .= "GitHub chưa cung cấp log riêng của bước này. Dưới đây là log job chứa bước đã chọn.\n\n";
+                    $response = Http::withToken($this->token)
+                        ->timeout(10)
+                        ->get("{$this->apiBase}/actions/jobs/{$jobId}/logs");
+                }
 
                 if ($response->successful()) {
                     $body = $response->body();
@@ -1467,15 +1480,15 @@ class GitHubActionsService
         if ($status === 'in_progress') {
             return 'running';
         }
-        if ($status === 'queued') {
+        if (in_array($status, ['queued', 'waiting', 'pending', 'requested'], true)) {
             return 'queued';
         }
 
         return match ($conclusion) {
             'success' => 'success',
-            'failure' => 'failed',
+            'failure', 'timed_out', 'action_required', 'startup_failure', 'stale' => 'failed',
             'cancelled' => 'cancelled',
-            'skipped' => 'skipped',
+            'skipped', 'neutral' => 'skipped',
             default => 'running',
         };
     }

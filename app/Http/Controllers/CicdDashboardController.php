@@ -123,7 +123,11 @@ class CicdDashboardController extends Controller
      */
     public function jobs(string $id): JsonResponse
     {
-        $jobs = $this->cicdService->getPipelineJobs($id);
+        try {
+            $jobs = $this->cicdService->getPipelineJobs($id);
+        } catch (\Throwable) {
+            return response()->json(['message' => 'Không thể tải jobs/steps từ GitHub. Vui lòng thử lại.'], 502);
+        }
 
         return response()->json([
             'success' => true,
@@ -136,8 +140,13 @@ class CicdDashboardController extends Controller
      */
     public function logs(string $id, Request $request): JsonResponse
     {
-        $jobId = $request->query('job_id');
-        $logs = $this->cicdService->getLogs($id, $jobId);
+        $validated = $request->validate([
+            'job_id' => ['nullable', 'integer', 'min:1', 'required_with:step_number'],
+            'step_number' => ['nullable', 'integer', 'min:0'],
+        ]);
+        $jobId = isset($validated['job_id']) ? (string) $validated['job_id'] : null;
+        $stepNumber = isset($validated['step_number']) ? (int) $validated['step_number'] : null;
+        $logs = $this->cicdService->getLogs($id, $jobId, $stepNumber);
 
         return response()->json([
             'success' => true,

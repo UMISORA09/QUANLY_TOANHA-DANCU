@@ -58,6 +58,19 @@ class CicdAuthorizationTest extends TestCase
         $this->getJson('/api/admin/cicd/overview')->assertOk()->assertJsonPath('data.total_pipelines', 5);
     }
 
+    public function test_jobs_failures_are_visible_and_step_logs_validate_input(): void
+    {
+        $this->authenticateWithPermissions(['CICD:VIEW']);
+        $this->mock(GitHubActionsService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getPipelineJobs')->once()->with('123')->andThrow(new ConnectionException('sensitive-url-test'));
+            $mock->shouldReceive('getLogs')->once()->with('123', '456', 0)->andReturn('Checkout log');
+        });
+        $this->getJson('/api/admin/cicd/pipelines/123/jobs')->assertStatus(502)->assertDontSee('sensitive-url-test');
+        $this->getJson('/api/admin/cicd/pipelines/123/logs?step_number=0')->assertUnprocessable();
+        $this->getJson('/api/admin/cicd/pipelines/123/logs?job_id=456&step_number=-1')->assertUnprocessable();
+        $this->getJson('/api/admin/cicd/pipelines/123/logs?job_id=456&step_number=0')->assertOk()->assertJsonPath('data.logs', 'Checkout log');
+    }
+
     public function test_history_validates_pages_and_allows_viewers(): void
     {
         $this->authenticateWithPermissions(['CICD:VIEW']);

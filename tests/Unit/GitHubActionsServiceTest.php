@@ -11,6 +11,63 @@ use Tests\TestCase;
 
 class GitHubActionsServiceTest extends TestCase
 {
+    public function test_jobs_include_all_pages_and_actual_step_statuses(): void
+    {
+        config(['services.github.token' => 'test-token', 'services.github.owner' => 'test-owner', 'services.github.repo' => 'test-repo']);
+        $job = ['id' => 456, 'name' => 'Build', 'status' => 'in_progress', 'conclusion' => null, 'steps' => [
+            ['name' => 'Checkout', 'number' => 1, 'status' => 'completed', 'conclusion' => 'success'],
+            ['name' => 'Test', 'number' => 2, 'status' => 'in_progress', 'conclusion' => null],
+            ['name' => 'Deploy', 'number' => 3, 'status' => 'completed', 'conclusion' => 'skipped'],
+        ]];
+        Http::fake(function ($request) use ($job) {
+            $this->assertSame('latest', $request['filter']);
+            $this->assertEquals(100, $request['per_page']);
+
+            return Http::response(['total_count' => 101, 'jobs' => $request['page'] === 1 ? array_fill(0, 100, $job) : [array_replace($job, ['id' => 457, 'status' => 'waiting'])]]);
+        });
+        $jobs = (new GitHubActionsService)->getPipelineJobs('123');
+        $this->assertCount(101, $jobs);
+        $this->assertSame(['success', 'running', 'skipped'], array_column($jobs[0]['steps'], 'status'));
+        $this->assertSame('queued', $jobs[100]['status']);
+        $this->assertNull($jobs[0]['started_at']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_jobs_api_failure_is_not_reported_as_an_empty_workflow(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        Http::fake(['*' => Http::response(['message' => 'Rate limited'], 403)]);
+        $this->expectException(RequestException::class);
+        (new GitHubActionsService)->getPipelineJobs('123');
+    }
+
+    public function test_step_logs_use_the_requested_job_and_zero_based_step_position(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods(['getPipelineJobs'])->getMock();
+        $service->method('getPipelineJobs')->with('123')->willReturn([['id' => '456', 'steps' => [['number' => 1, 'name' => 'Checkout']]]]);
+        Http::fake(['*/actions/jobs/456/steps/0/logs' => Http::response('Checkout log')]);
+        $this->assertStringContainsString('Checkout log', $service->getLogs('123', '456', 0));
+        $this->assertStringContainsString('Không tìm thấy bước', $service->getLogs('123', '999', 0));
+        $this->assertStringContainsString('Không tìm thấy bước', $service->getLogs('123', '456', 2));
+        Http::assertSentCount(1);
+    }
+
+    public function test_unavailable_step_logs_fall_back_to_the_selected_job_with_an_explicit_notice(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods(['getPipelineJobs'])->getMock();
+        $service->method('getPipelineJobs')->with('123')->willReturn([['id' => '456', 'steps' => [['number' => 1, 'name' => 'Checkout']]]]);
+        Http::fake([
+            '*/actions/jobs/456/steps/0/logs' => Http::response([], 404),
+            '*/actions/jobs/456/logs' => Http::response('Actual selected job log'),
+        ]);
+        $logs = $service->getLogs('123', '456', 0);
+        $this->assertStringContainsString('chưa cung cấp log riêng', $logs);
+        $this->assertStringContainsString('Actual selected job log', $logs);
+        Http::assertSentCount(2);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

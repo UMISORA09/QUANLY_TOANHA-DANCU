@@ -36,7 +36,7 @@ export interface JobItem {
   name: string;
   status: PipelineStatus;
   duration: string;
-  started_at: string;
+  started_at: string | null;
   completed_at?: string | null;
   steps: StepItem[];
 }
@@ -284,16 +284,18 @@ export const cicdApi = {
     return json.data;
   },
 
-  async getPipelineJobs(id: string): Promise<JobItem[]> {
-    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}/jobs`);
+  async getPipelineJobs(id: string, signal?: AbortSignal): Promise<JobItem[]> {
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}/jobs`, { signal });
     if (!res.ok) throw new Error(`Không thể tải jobs của pipeline #${id}`);
     const json = await res.json();
     return json.data;
   },
 
-  async getPipelineLogs(id: string, jobId?: string): Promise<string> {
-    const url = jobId ? `${API_BASE}/pipelines/${id}/logs?job_id=${jobId}` : `${API_BASE}/pipelines/${id}/logs`;
-    const res = await authenticatedFetch(url);
+  async getPipelineLogs(id: string, jobId?: string, stepNumber?: number, signal?: AbortSignal): Promise<string> {
+    const params = new URLSearchParams();
+    if (jobId) params.set('job_id', jobId);
+    if (stepNumber !== undefined) params.set('step_number', String(stepNumber));
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}/logs?${params}`, { signal });
     if (!res.ok) throw new Error(`Không thể tải logs của pipeline #${id}`);
     const json = await res.json();
     return json.data?.logs || 'Không có dữ liệu log.';
