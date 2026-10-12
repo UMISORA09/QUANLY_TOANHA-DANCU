@@ -44,6 +44,7 @@ interface ApartmentComboboxProps {
   onChange: (apartmentId: string) => void;
   apartments: RfidApartmentOption[];
   placeholder?: string;
+  emptyLabel?: string;
 }
 
 const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
@@ -51,6 +52,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
   onChange,
   apartments,
   placeholder = '-- Chưa gán căn hộ --',
+  emptyLabel,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,7 +115,10 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
               <span>Căn hộ {selectedApartment.apartment_number}</span>
             </span>
           ) : (
-            <span className="text-slate-400">{placeholder}</span>
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="truncate">{placeholder}</span>
+            </span>
           )}
         </span>
         <ChevronDown
@@ -123,7 +128,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100 min-w-[200px]">
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -148,7 +153,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
                 : 'hover:bg-slate-100 text-slate-600 italic'
                 }`}
             >
-              <span>-- Chưa gán căn hộ --</span>
+              <span>{emptyLabel || '-- Chưa gán căn hộ --'}</span>
               {!value && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
             </button>
 
@@ -987,6 +992,279 @@ const DepositFeeCombobox: React.FC<DepositFeeComboboxProps> = ({ value, onChange
   );
 };
 
+interface StatusFilterComboboxProps {
+  value: string;
+  onChange: (status: string) => void;
+}
+
+const STATUS_FILTER_OPTIONS = [
+  {
+    id: 'ALL',
+    label: '-- Tất cả trạng thái --',
+    icon: Filter,
+    color: 'text-slate-400',
+    dotColor: null,
+  },
+  {
+    id: 'ACTIVE',
+    label: 'ACTIVE (Đang hoạt động)',
+    icon: CheckCircle2,
+    color: 'text-emerald-600',
+    dotColor: 'bg-emerald-500',
+  },
+  {
+    id: 'LOCKED',
+    label: 'LOCKED (Tạm khóa)',
+    icon: Lock,
+    color: 'text-amber-600',
+    dotColor: 'bg-amber-500',
+  },
+  {
+    id: 'LOST_REPORTED',
+    label: 'LOST (Báo mất)',
+    icon: AlertCircle,
+    color: 'text-rose-600',
+    dotColor: 'bg-rose-500',
+  },
+  {
+    id: 'REVOKED',
+    label: 'REVOKED (Thu hồi)',
+    icon: Trash2,
+    color: 'text-slate-600',
+    dotColor: 'bg-slate-500',
+  },
+];
+
+const StatusFilterCombobox: React.FC<StatusFilterComboboxProps> = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const selectedOption =
+    STATUS_FILTER_OPTIONS.find((opt) => opt.id === value) || STATUS_FILTER_OPTIONS[0];
+  const SelectedIcon = selectedOption.icon;
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
+      >
+        <span className="truncate pr-2">
+          {value === 'ALL' ? (
+            <span className="text-slate-500 font-medium flex items-center gap-1.5 truncate">
+              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="truncate">{selectedOption.label}</span>
+            </span>
+          ) : (
+            <span className="text-slate-900 font-bold flex items-center gap-1.5 truncate">
+              {selectedOption.dotColor && (
+                <span className={`w-2 h-2 rounded-full ${selectedOption.dotColor} shrink-0`} />
+              )}
+              <SelectedIcon className={`w-3.5 h-3.5 ${selectedOption.color} shrink-0`} />
+              <span className="truncate">{selectedOption.label}</span>
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[210px]">
+          {STATUS_FILTER_OPTIONS.map((opt) => {
+            const isSelected = opt.id === value;
+            const Icon = opt.icon;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onChange(opt.id);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-left transition ${isSelected
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-slate-100 text-slate-800'
+                  }`}
+              >
+                <div className="flex items-center gap-2 truncate pr-2">
+                  {opt.dotColor ? (
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-white' : opt.dotColor
+                        }`}
+                    />
+                  ) : (
+                    <Icon
+                      className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : opt.color
+                        }`}
+                    />
+                  )}
+                  <span className="truncate">{opt.label}</span>
+                </div>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface CardTypeFilterComboboxProps {
+  value: string;
+  onChange: (cardType: string) => void;
+}
+
+const CARD_TYPE_FILTER_OPTIONS = [
+  {
+    id: 'ALL',
+    label: '-- Tất cả loại thẻ --',
+    icon: Filter,
+    color: 'text-slate-400',
+  },
+  {
+    id: 'RESIDENT_ALL_ACCESS',
+    label: 'Thẻ Toàn Quyền',
+    icon: CreditCard,
+    color: 'text-indigo-600',
+  },
+  {
+    id: 'ELEVATOR_ONLY',
+    label: 'Thẻ Thang Máy',
+    icon: Building2,
+    color: 'text-blue-600',
+  },
+  {
+    id: 'PARKING_ONLY',
+    label: 'Thẻ Gửi Xe',
+    icon: Radio,
+    color: 'text-emerald-600',
+  },
+  {
+    id: 'VISITOR_PASS',
+    label: 'Thẻ Khách Thăm',
+    icon: User,
+    color: 'text-amber-600',
+  },
+];
+
+const CardTypeFilterCombobox: React.FC<CardTypeFilterComboboxProps> = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const selectedOption =
+    CARD_TYPE_FILTER_OPTIONS.find((opt) => opt.id === value) || CARD_TYPE_FILTER_OPTIONS[0];
+  const SelectedIcon = selectedOption.icon;
+
+  return (
+    <div className={`relative w-full ${isOpen ? 'z-40' : 'z-10'}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3 py-2 border rounded-lg bg-white text-xs flex items-center justify-between text-left transition font-medium shadow-sm ${isOpen
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 hover:border-slate-300'
+          }`}
+      >
+        <span className="truncate pr-2">
+          {value === 'ALL' ? (
+            <span className="text-slate-500 font-medium flex items-center gap-1.5 truncate">
+              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="truncate">{selectedOption.label}</span>
+            </span>
+          ) : (
+            <span className="text-slate-900 font-bold flex items-center gap-1.5 truncate">
+              <SelectedIcon className={`w-3.5 h-3.5 ${selectedOption.color} shrink-0`} />
+              <span className="truncate">{selectedOption.label}</span>
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180 text-indigo-600' : ''
+            }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[210px]">
+          {CARD_TYPE_FILTER_OPTIONS.map((opt) => {
+            const isSelected = opt.id === value;
+            const Icon = opt.icon;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onChange(opt.id);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-left transition ${isSelected
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'hover:bg-slate-100 text-slate-800'
+                  }`}
+              >
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <Icon
+                    className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : opt.color
+                      }`}
+                  />
+                  <span className="truncate">{opt.label}</span>
+                </div>
+                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface RfidManagementProps {
   embedded?: boolean;
   portalMode?: 'admin' | 'manager' | 'receptionist';
@@ -1533,7 +1811,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
       </div>
 
       {/* 3. Filter & Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 relative z-20">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Search Input */}
           <div className="relative lg:col-span-2">
@@ -1559,48 +1837,23 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
 
           {/* Trạng thái filter */}
           <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-700"
-            >
-              <option value="ALL">-- Tất cả trạng thái --</option>
-              <option value="ACTIVE">ACTIVE (Đang hoạt động)</option>
-              <option value="LOCKED">LOCKED (Tạm khóa)</option>
-              <option value="LOST_REPORTED">LOST (Báo mất)</option>
-              <option value="REVOKED">REVOKED (Thu hồi)</option>
-            </select>
+            <StatusFilterCombobox value={statusFilter} onChange={setStatusFilter} />
           </div>
 
           {/* Loại thẻ filter */}
           <div>
-            <select
-              value={cardTypeFilter}
-              onChange={(e) => setCardTypeFilter(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-700"
-            >
-              <option value="ALL">-- Tất cả loại thẻ --</option>
-              <option value="RESIDENT_ALL_ACCESS">Thẻ Toàn Quyền</option>
-              <option value="ELEVATOR_ONLY">Thẻ Thang Máy</option>
-              <option value="PARKING_ONLY">Thẻ Gửi Xe</option>
-              <option value="VISITOR_PASS">Thẻ Khách Thăm</option>
-            </select>
+            <CardTypeFilterCombobox value={cardTypeFilter} onChange={setCardTypeFilter} />
           </div>
 
           {/* Căn hộ filter */}
           <div>
-            <select
+            <ApartmentCombobox
               value={apartmentFilter}
-              onChange={(e) => setApartmentFilter(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-700"
-            >
-              <option value="">-- Lọc theo căn hộ --</option>
-              {apartments.map((apt) => (
-                <option key={apt.id} value={apt.id}>
-                  Căn {apt.apartment_number}
-                </option>
-              ))}
-            </select>
+              onChange={setApartmentFilter}
+              apartments={apartments}
+              placeholder="-- Lọc theo căn hộ --"
+              emptyLabel="-- Tất cả căn hộ --"
+            />
           </div>
         </div>
 
