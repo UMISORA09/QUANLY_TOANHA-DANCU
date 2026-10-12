@@ -74,6 +74,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
     workflow: 'all',
     dateRange: 'all',
   });
+  const [pipelinePage, setPipelinePage] = useState(1);
 
   // Interactive drawer & modal states
   const [selectedPipeline, setSelectedPipeline] = useState<PipelineItem | null>(null);
@@ -161,6 +162,12 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       return true;
     });
   }, [pipelines, filters]);
+
+  const pipelinePageSize = 15;
+  const pipelineTotalPages = Math.max(1, Math.ceil(filteredPipelines.length / pipelinePageSize));
+  const currentPipelinePage = Math.min(pipelinePage, pipelineTotalPages);
+  const pipelinePageStart = (currentPipelinePage - 1) * pipelinePageSize;
+  const paginatedPipelines = filteredPipelines.slice(pipelinePageStart, pipelinePageStart + pipelinePageSize);
 
   useEffect(() => {
     fetchData();
@@ -428,16 +435,30 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       {activeTab === 'pipelines' && (
         <div className="space-y-4">
           <PipelineFilters
-            onFilterChange={setFilters}
+            onFilterChange={(nextFilters) => {
+              setFilters(nextFilters);
+              setPipelinePage(1);
+            }}
             availableBranches={['all', ...gitBranches]}
             totalResults={filteredPipelines.length}
           />
           <PipelineTable
-            pipelines={filteredPipelines}
+            pipelines={paginatedPipelines}
             isLoading={isLoading && pipelines.length === 0}
             onSelectPipeline={handleSelectPipeline}
             canRun={canRunPipeline}
           />
+          {filteredPipelines.length > 0 && (
+            <nav aria-label="Phân trang pipelines" className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+              <span role="status">
+                Hiển thị {pipelinePageStart + 1}–{pipelinePageStart + paginatedPipelines.length} / {filteredPipelines.length} pipelines · Trang {currentPipelinePage}/{pipelineTotalPages}
+              </span>
+              <div className="flex gap-2">
+                <button type="button" disabled={currentPipelinePage <= 1} onClick={() => setPipelinePage(currentPipelinePage - 1)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-40">Trước</button>
+                <button type="button" disabled={currentPipelinePage >= pipelineTotalPages} onClick={() => setPipelinePage(currentPipelinePage + 1)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-40">Sau</button>
+              </div>
+            </nav>
+          )}
         </div>
       )}
 
@@ -450,7 +471,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
             onTriggerRollback={handleTriggerRollback}
             canDeploy={canDeploy}
           />
-          <DeploymentTimeline />
+          <DeploymentTimeline deployments={deployments} />
         </div>
       )}
 
