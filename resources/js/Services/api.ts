@@ -72,6 +72,9 @@ export interface AmenityBooking {
   status: string;
   checkin_qr_code: string;
   checked_in_at?: string | null;
+  rejection_reason?: string | null;
+  approved_at?: string | null;
+  approved_by_user_id?: string | null;
   resident_notes?: string | null;
   admin_notes?: string | null;
   created_at: string;
