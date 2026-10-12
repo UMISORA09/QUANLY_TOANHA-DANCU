@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\Cicd\GitHubActionsService;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -165,5 +167,128 @@ class GitHubActionsServiceTest extends TestCase
         $this->assertTrue($components->has('Docker Engine'));
         $dockerComponent = $components->get('Docker Engine');
         $this->assertContains($dockerComponent['status'], ['operational', 'down', 'degraded', 'not_available']);
+    }
+
+    public function test_default_logs_use_plaintext_job_endpoint_and_mask_tokens(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods(['getPipelineJobs'])->getMock();
+        $service->expects($this->once())->method('getPipelineJobs')->with('123')->willReturn([['id' => '456']]);
+        $secret = 'ghp_'.str_repeat('a', 36);
+        Http::fake(['*/actions/jobs/456/logs' => Http::response('Build passed '.$secret)]);
+        $logs = $service->getLogs('123');
+        $this->assertStringContainsString('Build passed', $logs);
+        $this->assertStringNotContainsString($secret, $logs);
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/actions/jobs/456/logs'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/actions/runs/123/logs'));
+    }
+
+    public function test_missing_jobs_do_not_download_workflow_zip(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods(['getPipelineJobs'])->getMock();
+        $service->method('getPipelineJobs')->willReturn([]);
+        Http::fake();
+        $this->assertStringContainsString('Chưa có job', $service->getLogs('123'));
+        Http::assertNothingSent();
+    }
+
+    public function test_overview_and_environments_use_actual_deployment_state(): void
+    {
+        $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods([
+            'getDeployments', 'getSystemHealth', 'getGitBranches', 'getPipelines', 'getRecentActivities', 'getSecurityAudit',
+        ])->getMock();
+        $service->method('getDeployments')->willReturn([[
+            'environment' => 'production', 'status' => 'failed', 'version' => 'prod-abc1234',
+            'commit_sha' => 'abc1234', 'deployed_at' => null,
+        ]]);
+        $service->method('getSystemHealth')->willReturn(['status' => 'unknown']);
+        $service->method('getGitBranches')->willReturn([]);
+        $service->method('getPipelines')->willReturn([]);
+        $service->method('getRecentActivities')->willReturn([]);
+        $service->method('getSecurityAudit')->willReturn([]);
+        $overview = $service->getOverview();
+        $this->assertSame('failed', $overview['production_status']);
+        $this->assertSame('prod-abc1234', $overview['production_version']);
+        $production = collect($service->getEnvironments())->firstWhere('id', 'production');
+        $this->assertSame('down', $production['status']);
+        $this->assertSame('abc1234', $production['commit_sha']);
+        $this->assertSame('N/A', $production['last_deployment']);
+    }
+
+    public function test_pipeline_api_reports_missing_token_empty_runs_http_errors_and_timeout(): void
+    {
+        $status = 200;
+        Http::fake(function () use (&$status) {
+            if ($status === 0) {
+                throw new ConnectionException('Request timed out');
+            }
+
+            return Http::response(['workflow_runs' => []], $status);
+        });
+        config(['services.github.token' => null]);
+        $this->assertSame('token_missing', (new GitHubActionsService)->getPipelinesWithStatus()['status']);
+        Http::assertNothingSent();
+
+        config(['services.github.token' => 'test-token']);
+        foreach ([401, 403, 500, 200, 0] as $status) {
+            $result = (new GitHubActionsService)->getPipelinesWithStatus();
+            $this->assertSame($status === 200 ? 'empty_runs' : 'api_unavailable', $result['status']);
+            if ($status >= 400) {
+                $this->assertStringContainsString((string) $status, $result['reason']);
+            }
+        }
+    }
+
+    public function test_unknown_pipeline_id_does_not_return_a_different_run(): void
+    {
+        config(['services.github.token' => null]);
+        $service = $this->getMockBuilder(GitHubActionsService::class)->onlyMethods(['getPipelines'])->getMock();
+        $service->method('getPipelines')->willReturn([['id' => '123', 'name' => 'Actual run']]);
+        $this->assertNull($service->getPipelineDetail('999'));
+        $this->assertSame('123', $service->getPipelineDetail('123')['id']);
+    }
+
+    public function test_history_reads_old_pages_and_keeps_real_activity_statuses(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        $run = [
+            'id' => 999, 'run_number' => 1, 'name' => 'Vercel CD', 'path' => '.github/workflows/vercel.yml',
+            'status' => 'completed', 'conclusion' => 'cancelled', 'head_branch' => 'master',
+            'head_sha' => 'abcdef123456', 'head_commit' => ['message' => 'Old commit', 'author' => ['name' => 'QA']],
+            'actor' => ['login' => 'dependabot[bot]'], 'event' => 'push',
+            'created_at' => '2025-01-01T00:00:00Z', 'updated_at' => '2025-01-01T00:01:00Z',
+        ];
+        Http::fake([
+            '*/actions/runs/999' => Http::response($run),
+            '*/actions/runs?*' => Http::response(['total_count' => 1501, 'workflow_runs' => [$run]]),
+            '*/commits?*' => Http::response([[
+                'sha' => '1234567890abcdef', 'author' => ['login' => 'octocat'],
+                'commit' => ['author' => ['name' => 'QA', 'date' => '2025-01-01T00:00:00Z'], 'message' => 'Old commit'],
+            ]]),
+        ]);
+        $service = new GitHubActionsService;
+        $result = $service->getHistoryPage(15);
+        $this->assertSame(1501, $result['total_pipelines']);
+        $this->assertSame('dependabot[bot]', $result['pipelines'][0]['author']);
+        $this->assertTrue($result['has_more']);
+        $this->assertSame('deploy', $result['activities'][0]['type']);
+        $this->assertSame('cancelled', $result['activities'][0]['status']);
+        $this->assertSame('recorded', $result['activities'][1]['status']);
+        $this->assertSame('commit', $result['activities'][1]['type']);
+        Http::assertSent(fn ($request) => $request['page'] === 15 && $request['per_page'] === 100);
+        $this->assertSame($result, $service->getHistoryPage(15));
+        Http::assertSentCount(2);
+        $service->getHistoryPage(15, true);
+        Http::assertSentCount(4);
+        $this->assertSame('999', $service->getPipelineDetail('999')['id']);
+    }
+
+    public function test_failed_history_request_is_not_cached_as_empty_history(): void
+    {
+        config(['services.github.token' => 'test-token']);
+        Http::fake(['*' => Http::response(['message' => 'Rate limited'], 403)]);
+        $this->expectException(RequestException::class);
+        (new GitHubActionsService)->getHistoryPage(1);
     }
 }

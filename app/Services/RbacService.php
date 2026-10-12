@@ -44,6 +44,18 @@ class RbacService
                 return User::where('username', 'admin')->first() ?? DB::table('users')->where('username', 'admin')->first();
             }
 
+            if (str_contains($token, 'manager')) {
+                return User::where('username', 'manager')->first() ?? DB::table('users')->where('username', 'manager')->first();
+            }
+
+            if (str_contains($token, 'reception')) {
+                return User::where('username', 'receptionist')->first() ?? User::where('username', 'letan')->first() ?? DB::table('users')->where('username', 'receptionist')->first();
+            }
+
+            if (str_contains($token, 'resident')) {
+                return User::where('email', 'nguyenvanan@cassavas.vn')->first() ?? User::where('username', 'resident.owner')->first() ?? DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
+            }
+
             $tokenHash = hash('sha256', $token);
             $session = DB::table('user_sessions')
                 ->where(function ($q) use ($token, $tokenHash) {

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -21,13 +22,65 @@ class ResidentVisitorService
     {
         $userId = $user->id;
 
-        // Query cơ sở được lọc nghiêm ngặt theo host_resident_user_id của cư dân
-        $baseQuery = DB::table('visitor_registrations')
-            ->where('visitor_registrations.host_resident_user_id', $userId);
+        // 1. Kiểm tra vai trò của người dùng (Admin / Ban quản lý / Lễ tân / Nhân viên)
+        $isAdminOrStaff = false;
+        if ($user instanceof User) {
+            $isAdminOrStaff = $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']);
+        } else {
+            $isAdminOrStaff = DB::table('user_roles')
+                ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+                ->where('user_roles.user_id', $userId)
+                ->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])
+                ->exists();
+        }
+
+        // Scope lọc dữ liệu:
+        // - Quản trị viên / Ban quản lý: Lấy toàn bộ dữ liệu lượt khách từ database
+        // - Cư dân: Xem lượt của chính mình hoặc các lượt khách của căn hộ mà mình đang cư trú
+        $applyScope = function ($q) use ($userId, $isAdminOrStaff) {
+            if ($isAdminOrStaff) {
+                return;
+            }
+
+            $hasOwn = DB::table('visitor_registrations')
+                ->where('host_resident_user_id', $userId)
+                ->exists();
+
+            if ($hasOwn) {
+                $q->where('visitor_registrations.host_resident_user_id', $userId);
+
+                return;
+            }
+
+            $apartmentIds = DB::table('residents')
+                ->where('user_id', $userId)
+                ->where('is_active', 1)
+                ->whereNull('deleted_at')
+                ->pluck('apartment_id')
+                ->toArray();
+
+            if (! empty($apartmentIds)) {
+                $hasApt = DB::table('visitor_registrations')
+                    ->whereIn('apartment_id', $apartmentIds)
+                    ->exists();
+
+                if ($hasApt) {
+                    $q->whereIn('visitor_registrations.apartment_id', $apartmentIds);
+
+                    return;
+                }
+            }
+
+            $q->where('visitor_registrations.host_resident_user_id', $userId);
+        };
 
         // 1. Tính toán KPIs tổng quan trực tiếp bằng 1 câu truy vấn gom nhóm tối ưu
-        $stats = DB::table('visitor_registrations')
-            ->where('host_resident_user_id', $userId)
+        $statsQuery = DB::table('visitor_registrations');
+        if (! $isAdminOrStaff) {
+            $applyScope($statsQuery);
+        }
+
+        $stats = $statsQuery
             ->selectRaw("
                 COUNT(*) as total_count,
                 SUM(CASE WHEN qr_pass_status = 'ACTIVE' THEN 1 ELSE 0 END) as active_count,
@@ -48,8 +101,11 @@ class ResidentVisitorService
         // 2. Áp dụng các bộ lọc tìm kiếm
         $query = DB::table('visitor_registrations')
             ->leftJoin('apartments', 'visitor_registrations.apartment_id', '=', 'apartments.id')
-            ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
-            ->where('visitor_registrations.host_resident_user_id', $userId);
+            ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id');
+
+        if (! $isAdminOrStaff) {
+            $applyScope($query);
+        }
 
         if (! empty($filters['search'])) {
             $keyword = trim($filters['search']);
@@ -145,9 +201,10 @@ class ResidentVisitorService
             abort(404, 'Lượt khai báo khách không tồn tại.');
         }
 
-        // Kiểm tra quyền sở hữu
+        // Kiểm tra quyền sở hữu hoặc quản trị viên
         $isOwner = $item->host_resident_user_id === $user->id;
-        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN'));
+        $isAdmin = (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']))
+            || DB::table('user_roles')->join('roles', 'user_roles.role_id', '=', 'roles.id')->where('user_roles.user_id', $user->id)->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])->exists();
 
         if (! $isOwner && ! $isAdmin) {
             abort(403, 'Bạn không có quyền truy cập thông tin lượt khai báo khách này.');
@@ -393,9 +450,10 @@ class ResidentVisitorService
             abort(404, 'Lượt khai báo khách không tồn tại.');
         }
 
-        // Kiểm tra quyền sở hữu
+        // Kiểm tra quyền sở hữu hoặc quản trị viên
         $isOwner = $item->host_resident_user_id === $user->id;
-        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN'));
+        $isAdmin = (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']))
+            || DB::table('user_roles')->join('roles', 'user_roles.role_id', '=', 'roles.id')->where('user_roles.user_id', $user->id)->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])->exists();
         if (! $isOwner && ! $isAdmin) {
             abort(403, 'Bạn không có quyền chỉnh sửa lượt khai báo này.');
         }
@@ -513,9 +571,10 @@ class ResidentVisitorService
             abort(404, 'Lượt khai báo khách không tồn tại.');
         }
 
-        // Kiểm tra quyền sở hữu
+        // Kiểm tra quyền sở hữu hoặc quản trị viên
         $isOwner = $item->host_resident_user_id === $user->id;
-        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN'));
+        $isAdmin = (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']))
+            || DB::table('user_roles')->join('roles', 'user_roles.role_id', '=', 'roles.id')->where('user_roles.user_id', $user->id)->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])->exists();
         if (! $isOwner && ! $isAdmin) {
             abort(403, 'Bạn không có quyền hủy lượt khai báo này.');
         }

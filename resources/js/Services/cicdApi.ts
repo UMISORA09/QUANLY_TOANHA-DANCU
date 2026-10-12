@@ -47,9 +47,9 @@ export interface DeploymentItem {
   version: string;
   image_tag: string;
   commit_sha: string;
-  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'not_deployed' | 'not_configured';
+  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'stopped' | 'unknown' | 'not_deployed' | 'not_configured';
   deployed_by: string;
-  deployed_at: string;
+  deployed_at: string | null;
   response_time_ms: number;
   release_notes?: string;
 }
@@ -116,12 +116,13 @@ export interface CicdOverviewStats {
 
 export interface ActivityItem {
   id: string;
-  type: 'build' | 'deploy' | 'test' | 'security' | 'rollback';
+  type: 'build' | 'deploy' | 'test' | 'security' | 'rollback' | 'commit';
   title: string;
   description: string;
-  status: 'success' | 'failed' | 'running';
+  status: PipelineStatus | 'recorded';
   actor: string;
   timestamp: string;
+  url?: string | null;
 }
 
 export type FreshnessState = 'FRESH' | 'STALE' | 'CRITICAL' | 'UNKNOWN' | 'UNAVAILABLE';
@@ -234,6 +235,14 @@ export interface DashboardBundleData {
 }
 
 export const cicdApi = {
+  async getHistoryPage(page: number, force = false, signal?: AbortSignal): Promise<{ pipelines: PipelineItem[]; activities: ActivityItem[]; has_more: boolean; total_pipelines: number }> {
+    const res = await authenticatedFetch(`${API_BASE}/history?page=${page}${force ? '&force=1' : ''}`, { signal });
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || 'Không thể đồng bộ lịch sử GitHub.');
+    }
+    return (await res.json()).data;
+  },
   async getDashboardBundle(filters?: { status?: string; branch?: string; workflow?: string; search?: string }, force = false): Promise<DashboardBundleData> {
     const params = new URLSearchParams();
     if (filters?.status && filters.status !== 'all') params.append('status', filters.status);

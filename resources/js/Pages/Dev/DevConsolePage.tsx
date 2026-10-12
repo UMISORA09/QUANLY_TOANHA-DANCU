@@ -143,7 +143,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       onNavigateHome={onNavigateHome}
       statusText="Hệ thống Quản trị & Kỹ thuật (Admin / Dev) đang vận hành ổn định"
     >
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+      <div className="p-4 sm:p-6 lg:p-8 w-full max-w-[2000px] mx-auto space-y-6 animate-in fade-in duration-200">
         {/* Breadcrumb & Title Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
           <div>

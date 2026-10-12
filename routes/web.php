@@ -20,6 +20,7 @@ use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\RealtimeStreamController;
+use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
@@ -191,6 +192,14 @@ Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'in
 Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
 Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
 Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
+
+// API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Upload ảnh)
+Route::get('/api/v1/reception/parcels', [ReceptionParcelController::class, 'index']);
+Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'store']);
+Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
+Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
+Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
+Route::put('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
@@ -691,6 +700,7 @@ Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [Reside
 
 // Phân hệ Quản trị CI/CD & DevOps Dashboard APIs
 Route::prefix('api/admin/cicd')->middleware(['auth.bearer:strict', 'permission:CICD:VIEW'])->group(function () {
+    Route::get('history', [CicdDashboardController::class, 'history']);
     Route::get('bundle', [CicdDashboardController::class, 'bundle']);
     Route::get('overview', [CicdDashboardController::class, 'overview']);
     Route::get('pipelines', [CicdDashboardController::class, 'pipelines']);

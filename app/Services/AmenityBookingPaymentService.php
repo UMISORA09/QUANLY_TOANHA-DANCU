@@ -246,7 +246,7 @@ class AmenityBookingPaymentService
                         throw ValidationException::withMessages(['received_at' => 'Thời điểm nhận tiền không được trước khi tạo yêu cầu thanh toán.']);
                     }
                     if (DB::table('amenity_booking_payments')->where('bank_bin', $payment->bank_bin)->where('id', '!=', $payment->id)
-                        ->whereIn('bank_transaction_id', $aliases)->lockForUpdate()->first()) {
+                        ->whereIn('bank_transaction_id', $aliases)->first()) {
                         throw ValidationException::withMessages(['bank_transaction_id' => 'Mã giao dịch đã được sử dụng cho đăng ký khác.']);
                     }
                     // Reserve legacy aliases atomically, including across different amenities.
@@ -290,6 +290,8 @@ class AmenityBookingPaymentService
         if (str_starts_with($reference, 'PG-')) {
             $aliases[] = substr($reference, 3);
         }
+
+        sort($aliases, SORT_STRING);
 
         return array_values(array_unique($aliases));
     }
