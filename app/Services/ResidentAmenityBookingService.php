@@ -302,8 +302,8 @@ class ResidentAmenityBookingService
     {
         $this->audit($request->user(), $after->id, 'UPDATE', (array) $before, (array) $after, $request);
         $message = match ($after->status) {
-            'APPROVED' => $after->is_paid ? 'Đăng ký đã được duyệt.' : 'Đăng ký đã được duyệt. Mở thông tin thanh toán để xem QR và thời hạn chuyển khoản.',
-            'REJECTED' => 'Đăng ký bị từ chối: '.($after->rejection_reason ?? ''),
+            'APPROVED' => 'Yêu cầu đăng ký tiện ích của bạn đã được phê duyệt.'.($after->is_paid ? '' : ' Mở thông tin thanh toán để xem QR và thời hạn chuyển khoản.'),
+            'REJECTED' => 'Yêu cầu đăng ký tiện ích của bạn đã bị từ chối.'.(! empty($after->rejection_reason) ? ' Lý do: '.$after->rejection_reason : ''),
             'CANCELLED' => 'Đăng ký đã hủy.'.($after->admin_notes ? ' Lý do: '.$after->admin_notes.'.' : '').' Nếu đã chuyển tiền, liên hệ ban quản lý để đối soát hoặc hoàn tiền.',
             'COMPLETED' => 'Đăng ký đã hoàn tất.',
             default => 'Đăng ký đã được xác nhận sử dụng.',
@@ -374,7 +374,7 @@ class ResidentAmenityBookingService
     /** @param array<string, mixed>|null $oldData
      * @param  array<string, mixed>  $newData
      */
-    private function audit(User $user, string $id, string $action, ?array $oldData, array $newData, Request $request): void
+    public function audit(User $user, string $id, string $action, ?array $oldData, array $newData, Request $request): void
     {
         DB::table('audit_logs')->insert([
             'id' => (string) Str::uuid(), 'table_name' => 'amenity_bookings', 'record_id' => $id, 'action' => $action,
