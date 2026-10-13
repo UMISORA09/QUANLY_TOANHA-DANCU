@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Route } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -6,8 +6,8 @@ import { promisify } from 'node:util';
 const fixturePath = process.env.RESIDENT_BROWSER_FIXTURE;
 test.skip(!fixturePath || !process.env.RESIDENT_REAL_API_URL, 'Requires a dedicated resident QA server and database fixture.');
 
-test('cư dân đăng ký, xem và hủy bằng API thật, kiểm tra quyền và giải phóng chỗ', async ({ page, request }) => {
-  test.setTimeout(180000);
+test('API thật: cư dân đăng ký, quản lý duyệt và thu tiền, cư dân hủy để đối soát hoàn', async ({ page, request, browser }) => {
+  test.setTimeout(360000);
   const fixture = JSON.parse(readFileSync(fixturePath!, 'utf8'));
   const base = process.env.RESIDENT_REAL_API_URL!;
   const container = process.env.RESIDENT_REAL_API_CONTAINER;
@@ -20,13 +20,15 @@ test('cư dân đăng ký, xem và hủy bằng API thật, kiểm tra quyền v
     const split = stdout.lastIndexOf('\n');
     return { status: Number(stdout.slice(split + 1)), body: stdout.slice(0, split) };
   };
+  const forwardApi = async (route: Route) => {
+    const incoming = route.request();
+    const result = await containerRequest(incoming.url(), incoming.method(), incoming.headers().authorization?.replace(/^Bearer /, '') || '', incoming.postData() || undefined);
+    await route.fulfill({ status: result.status, contentType: 'application/json', body: result.body });
+  };
   if (container) {
-    await page.route('**/api/**', async (route) => {
-      const incoming = route.request();
-      const result = await containerRequest(incoming.url(), incoming.method(), incoming.headers().authorization?.replace(/^Bearer /, '') || '', incoming.postData() || undefined);
-      await route.fulfill({ status: result.status, contentType: 'application/json', body: result.body });
-    });
+    await page.route('**/api/**', forwardApi);
   }
+  await page.route('https://img.vietqr.io/**', (route) => route.abort());
   const callApi = async (path: string, method: 'GET' | 'POST', token: string) => {
     if (container) {
       const result = await containerRequest(`${base}${path}`, method, token, method === 'POST' ? '{}' : undefined);
@@ -59,11 +61,65 @@ test('cư dân đăng ký, xem và hủy bằng API thật, kiểm tra quyền v
   await page.getByRole('button', { name: 'Đóng', exact: true }).click();
   expect((await callApi(`/api/v1/resident/amenity-bookings/${result.booking.id}`, 'GET', fixture.second_token)).status).toBe(404);
   expect((await callApi(`/api/v1/resident/amenity-bookings/${result.booking.id}/cancel`, 'POST', fixture.second_token)).status).toBe(404);
-  await page.getByRole('button', { name: 'Hủy đăng ký', exact: true }).click();
-  await page.getByLabel('Lý do hủy (không bắt buộc)').fill('Browser QA hoàn tất');
-  await page.getByRole('button', { name: 'Xác nhận hủy', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Chi tiết đăng ký' }).getByText('Đã hủy', { exact: true })).toBeVisible({ timeout: 30000 });
-  const availability = await callApi(`/api/v1/resident/amenities/${fixture.amenity_id}/availability?date=${fixture.date}&apartment_id=${fixture.apartment_id}`, 'GET', fixture.token);
-  expect(availability.status).toBe(200);
-  expect(availability.data.slots[0]).toMatchObject({ available: true, remaining_bookings: 2, remaining_attendees: 4 });
+  const managerContext = await browser.newContext();
+  try {
+    if (container) await managerContext.route('**/api/**', forwardApi);
+    await managerContext.addInitScript(({ token }) => {
+      localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'Quản lý Browser QA' }));
+      localStorage.setItem('smart_cassavas_token', token);
+    }, { token: fixture.admin_token });
+    const manager = await managerContext.newPage();
+    const managerUrl = `${base}/quan-ly?tab=amenities&amenity_id=${fixture.amenity_id}&booking_code=${result.booking.booking_code}`;
+    await manager.goto(managerUrl);
+    const managerRow = manager.getByRole('row').filter({ hasText: result.booking.booking_code });
+    await expect(managerRow).toBeVisible({ timeout: 60000 });
+    const approved = manager.waitForResponse((response) => response.request().method() === 'PATCH' && response.url().endsWith(`/bookings/${result.booking.id}/status`));
+    await managerRow.getByRole('button', { name: 'Duyệt', exact: true }).click();
+    expect((await approved).status()).toBe(200);
+    await expect(managerRow).toContainText('Chờ thanh toán', { timeout: 30000 });
+    await page.bringToFront();
+    await page.reload();
+    await page.getByRole('button', { name: 'Lịch của tôi', exact: true }).click();
+    await page.getByRole('button', { name: 'Thanh toán QR', exact: true }).click();
+    const residentPayment = page.getByRole('dialog', { name: 'Thanh toán tiện ích', exact: true });
+    await expect(residentPayment.getByRole('status').filter({ hasText: /^Chờ thanh toán$/ })).toBeVisible({ timeout: 30000 });
+    await expect(residentPayment).toContainText('200.000');
+    const reportResponse = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith(`/resident/amenity-bookings/${result.booking.id}/payment/report`));
+    await residentPayment.getByRole('button', { name: 'Đã chuyển khoản', exact: true }).click();
+    expect((await reportResponse).status()).toBe(200);
+    await expect(residentPayment.getByRole('status').filter({ hasText: /^Chờ đối soát$/ })).toBeVisible({ timeout: 30000 });
+    const reported = await callApi(`/api/v1/resident/amenity-bookings/${result.booking.id}`, 'GET', fixture.token);
+    expect(reported.data).toMatchObject({ is_paid: false, payment: { status: 'REPORTED', amount: 200000 } });
+    await manager.bringToFront();
+    await manager.reload();
+    await managerRow.getByRole('button', { name: 'Đối soát', exact: true }).click();
+    const reconciliation = manager.getByRole('dialog', { name: 'Đối soát thanh toán tiện ích' });
+    const receipt = `QA-${result.booking.id}`.toUpperCase();
+    await reconciliation.getByLabel('Mã giao dịch ngân hàng').fill(receipt);
+    await reconciliation.getByLabel('Số tiền thực nhận').fill('200000');
+    const receivedAt = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+    await reconciliation.getByLabel('Thời điểm nhận tiền').fill(receivedAt);
+    await reconciliation.getByRole('checkbox').check();
+    await reconciliation.getByRole('button', { name: 'Xác nhận nhận tiền', exact: true }).click();
+    await expect(reconciliation.getByRole('status').filter({ hasText: /^Đã thanh toán$/ })).toBeVisible({ timeout: 30000 });
+    await page.bringToFront();
+    await expect(residentPayment.getByRole('status').filter({ hasText: /^Đã thanh toán$/ })).toBeVisible({ timeout: 30000 });
+    const paid = await callApi(`/api/v1/resident/amenity-bookings/${result.booking.id}`, 'GET', fixture.token);
+    expect(paid.data).toMatchObject({ is_paid: true, status: 'APPROVED', payment: { status: 'PAID', received_amount: 200000, bank_transaction_id: receipt } });
+    await residentPayment.getByRole('button', { name: 'Đóng', exact: true }).click();
+    await page.getByRole('button', { name: 'Hủy đăng ký', exact: true }).click();
+    await page.getByLabel('Lý do hủy (không bắt buộc)').fill('Browser QA hoàn tất');
+    await page.getByRole('button', { name: 'Xác nhận hủy', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Chi tiết đăng ký' }).getByText('Đã hủy', { exact: true })).toBeVisible({ timeout: 30000 });
+    const availability = await callApi(`/api/v1/resident/amenities/${fixture.amenity_id}/availability?date=${fixture.date}&apartment_id=${fixture.apartment_id}`, 'GET', fixture.token);
+    expect(availability.status).toBe(200);
+    expect(availability.data.slots[0]).toMatchObject({ available: true, remaining_bookings: 2, remaining_attendees: 4 });
+    const cancelled = await callApi(`/api/v1/resident/amenity-bookings/${result.booking.id}`, 'GET', fixture.token);
+    expect(cancelled.data).toMatchObject({ status: 'CANCELLED', payment: { status: 'REVIEW', received_amount: 200000, bank_transaction_id: receipt, refund_required: true } });
+    await manager.reload();
+    await expect(managerRow).toContainText('Đã hủy', { timeout: 60000 });
+    await expect(managerRow).toContainText('Cần xử lý');
+  } finally {
+    await managerContext.close();
+  }
 });
