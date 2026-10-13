@@ -427,8 +427,6 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText="Ca trực an ninh hoạt động"
-      hideTopbar={true}
-      hideBrandHeader={true}
       onNotificationClick={() => setIsNotificationOpen(!isNotificationOpen)}
       onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
       unreadNotificationCount={notifications.filter((n) => !n.isRead).length}
