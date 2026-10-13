@@ -84,7 +84,7 @@ test('distinguishes configuration, network, timeout, invalid responses and deplo
   assert.match(failed.stderr, /deployment failed/);
 });
 
-test('workflow retries GitHub errors and selects Production instead of a failed Preview', { skip: process.platform === 'win32' }, () => {
+test('workflow retries quickly, backs off after five minutes and selects the correct Production deployment', { skip: process.platform === 'win32' }, () => {
   const workflow = readFileSync(new URL('../../.github/workflows/vercel.yml', import.meta.url), 'utf8');
   const step = workflow.split('      - name: Resolve deployment from Git Integration')[1].split('      - name: Verify deployed frontend and API')[0];
   const body = step.split('        run: |\n')[1].replace(/^          /gm, '');
@@ -102,7 +102,10 @@ test('workflow retries GitHub errors and selects Production instead of a failed 
       fi
     }
     node() { return 3; }
-    sleep() { :; }
+    sleep() {
+      echo "$1" >> "$TEST_DIR/sleeps"
+      SECONDS=300
+    }
   `;
   try {
     const result = spawnSync('bash', ['-e', '-c', setup + body], { encoding: 'utf8', timeout: 10000, env: {
@@ -111,6 +114,7 @@ test('workflow retries GitHub errors and selects Production instead of a failed 
     } });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(join(directory, 'count'), 'utf8').trim(), '3');
+    assert.equal(readFileSync(join(directory, 'sleeps'), 'utf8').trim(), '5\n30');
     assert.match(result.stdout, /GitHub deployment API unavailable/);
     assert.match(result.stdout, /GitHub deployment status API unavailable/);
     assert.match(result.stdout, /fallback disabled/);

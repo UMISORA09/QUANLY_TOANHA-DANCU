@@ -50,7 +50,8 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
         run: |
-          deadline=$((SECONDS + 3600))
+          started=$SECONDS
+          deadline=$((started + 3600))
           VERCEL_LOOKUP_ENABLED=true
           while [ "$SECONDS" -lt "$deadline" ]; do
             if ! DEPLOYMENTS=$(gh api "repos/$REPOSITORY/deployments?sha=$EXPECTED_SHA&per_page=100"); then
@@ -98,7 +99,11 @@ jobs:
                 exit 0
               fi
             fi
-            sleep 30
+            if [ "$((SECONDS - started))" -lt 300 ]; then
+              sleep 5
+            else
+              sleep 30
+            fi
           done
           echo "::error ::Deployment verification timed out after 60 minutes for $EXPECTED_SHA ($EXPECTED_ENVIRONMENT). No success was confirmed; check provider status, API diagnostics and deployment logs."
           exit 1
