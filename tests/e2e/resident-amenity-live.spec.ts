@@ -43,7 +43,7 @@ test('API thật: cư dân đăng ký, quản lý duyệt và thu tiền, cư d�
   }, { token: fixture.token });
   await page.goto(`${base}/cu-dan?tab=amenities`);
   await page.getByRole('button', { name: /Browser QA BBQ/ }).click();
-  await page.getByRole('button', { name: 'Ngày mai', exact: true }).click();
+  await page.getByLabel(/^Ngày sử dụng/).fill(fixture.date);
   await page.getByRole('button', { name: /10:00.*11:30/ }).click();
   await page.getByLabel('Số người', { exact: true }).fill('2');
   await page.getByLabel('Ghi chú', { exact: true }).fill('Browser API thật');

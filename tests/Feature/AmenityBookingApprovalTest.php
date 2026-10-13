@@ -458,6 +458,42 @@ class AmenityBookingApprovalTest extends TestCase
         $this->patchJson("/api/v1/admin/amenities/{$this->amenityId}/bookings/{$created['id']}/status", [
             'status' => 'CONFIRMED',
         ])->assertStatus(409);
+
+        $this->patchJson("/api/v1/admin/amenities/{$this->amenityId}/bookings/{$created['id']}/status", [
+            'status' => 'COMPLETED',
+        ])->assertStatus(409);
+    }
+
+    public function test_unpaid_legacy_booking_without_payment_cannot_be_confirmed_or_completed(): void
+    {
+        $created = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking');
+        DB::table('amenity_booking_payments')->where('booking_id', $created['id'])->delete();
+        DB::table('amenity_bookings')->where('id', $created['id'])->update(['status' => 'APPROVED']);
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+
+        foreach ([150000, 0] as $fee) {
+            DB::table('amenity_bookings')->where('id', $created['id'])->update(['total_amount' => $fee]);
+            foreach (['CONFIRMED', 'COMPLETED'] as $status) {
+                $this->patchJson("/api/v1/admin/amenities/{$this->amenityId}/bookings/{$created['id']}/status", [
+                    'status' => $status,
+                ])->assertConflict();
+                $this->assertDatabaseHas('amenity_bookings', ['id' => $created['id'], 'status' => 'APPROVED', 'is_paid' => 0]);
+            }
+        }
+    }
+
+    public function test_free_or_paid_legacy_booking_without_payment_can_be_completed(): void
+    {
+        $created = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking');
+        DB::table('amenity_booking_payments')->where('booking_id', $created['id'])->delete();
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+
+        foreach ([['total_amount' => 0, 'deposit_amount' => 0, 'is_paid' => 0], ['total_amount' => 150000, 'deposit_amount' => 50000, 'is_paid' => 1]] as $amounts) {
+            DB::table('amenity_bookings')->where('id', $created['id'])->update(['status' => 'APPROVED', ...$amounts]);
+            $this->patchJson("/api/v1/admin/amenities/{$this->amenityId}/bookings/{$created['id']}/status", [
+                'status' => 'COMPLETED',
+            ])->assertOk();
+        }
     }
 
     /**
