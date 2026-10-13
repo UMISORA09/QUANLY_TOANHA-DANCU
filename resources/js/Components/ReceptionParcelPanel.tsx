@@ -61,13 +61,20 @@ const getInitialParcelCache = () => {
 
 export const getParcelImageUrl = (url?: string | null): string => {
   if (!url) return '';
-  let cleanPath = url;
-  if (url.includes('/storage/parcels/')) {
-    const parts = url.split('/storage/parcels/');
+  let cleanPath = url.trim();
+  if (cleanPath.includes('/storage/parcels/')) {
+    const parts = cleanPath.split('/storage/parcels/');
     cleanPath = `/storage/parcels/${parts[parts.length - 1]}`;
   }
-  // Khi chạy dev server port 5173, tự động chuyển hướng đường dẫn /storage/ về backend 8000
-  if (typeof window !== 'undefined' && window.location.port === '5173' && cleanPath.startsWith('/storage/')) {
+  if (cleanPath.startsWith('storage/')) {
+    cleanPath = `/${cleanPath}`;
+  }
+  // Khi chạy dev server port 5173, tự động chuyển hướng /storage/ hoặc /images/ về backend 8000
+  if (
+    typeof window !== 'undefined' &&
+    window.location.port === '5173' &&
+    (cleanPath.startsWith('/storage/') || cleanPath.startsWith('/images/'))
+  ) {
     return `http://127.0.0.1:8000${cleanPath}`;
   }
   return cleanPath;
@@ -147,16 +154,17 @@ export const compressImageFile = async (file: File): Promise<File> => {
 
 /**
  * Component Hiển thị Thumbnail Kiện hàng tối ưu:
+ * - Layout độc lập chống co lệch flexbox
  * - Lazy load và async decoding
  * - Skeleton shimmer loading khi đang nạp ảnh
- * - Fallback icon hộp bưu kiện thanh lịch khi ảnh bị lỗi (chống ô trắng xám rỗng)
- * - Click phóng to ảnh nhanh chóng
+ * - Fallback icon hộp bưu kiện sang trọng, căn giữa tâm 100% khi ảnh rỗng hoặc lỗi
+ * - Click tương tác thông minh (phóng to khi có ảnh, mở chi tiết khi chưa có ảnh)
  */
 export const ParcelThumbnail: React.FC<{
   imageUrl?: string | null;
   trackingNumber: string;
   courierCompany?: string;
-  onClick: () => void;
+  onClick: (hasLoadedImage: boolean) => void;
 }> = ({ imageUrl, trackingNumber, courierCompany, onClick }) => {
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   const resolvedUrl = useMemo(() => getParcelImageUrl(imageUrl), [imageUrl]);
@@ -167,50 +175,104 @@ export const ParcelThumbnail: React.FC<{
 
   const hasValidUrl = Boolean(resolvedUrl && resolvedUrl.trim());
 
+  // Tên viết tắt ngắn gọn cho nhãn fallback
+  const fallbackLabel = useMemo(() => {
+    if (!courierCompany) return 'Kiện hàng';
+    return courierCompany.split(' ')[0];
+  }, [courierCompany]);
+
   return (
     <div
-      onClick={onClick}
-      className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group-hover:scale-105 transition-all duration-200 cursor-pointer shadow-xs flex items-center justify-center select-none"
-      title="Bấm để xem ảnh phóng to"
+      onClick={() => onClick(hasValidUrl && status === 'loaded')}
+      className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border border-slate-200/90 shadow-2xs cursor-pointer group hover:scale-105 hover:shadow-md transition-all duration-200 select-none shrink-0"
+      title={hasValidUrl && status === 'loaded' ? 'Bấm để phóng to ảnh kiện hàng' : 'Xem chi tiết kiện hàng'}
     >
-      {/* 1. Shimmer Loading khi ảnh đang nạp */}
-      {status === 'loading' && hasValidUrl && (
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-pulse flex items-center justify-center">
-          <div className="w-3.5 h-3.5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
-        </div>
-      )}
-
-      {/* 2. Ảnh bưu kiện thật với lazy load và async decoding */}
-      {hasValidUrl && (
-        <img
-          src={resolvedUrl}
-          alt={trackingNumber}
-          className={`w-full h-full object-cover transition-opacity duration-200 ${
-            status === 'loaded' ? 'opacity-100' : 'opacity-0'
-          }`}
-          loading="lazy"
-          decoding="async"
-          onLoad={() => setStatus('loaded')}
-          onError={() => setStatus('error')}
-        />
-      )}
-
-      {/* 3. Fallback sang Icon bưu phẩm tinh xảo nếu ảnh lỗi hoặc rỗng (chống ô trống) */}
-      {(!hasValidUrl || status === 'error') && (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50/60 p-1 text-center">
+      {/* 1. TRƯỜNG HỢP: KHÔNG CÓ URL HOẶC ẢNH BỊ LỖI -> Render duy nhất Fallback căn chuẩn chính giữa tâm */}
+      {!hasValidUrl || status === 'error' ? (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100/70 p-1 text-center">
           <Package className="w-5 h-5 text-amber-600 shrink-0" />
-          <span className="text-[9px] font-bold text-amber-700 truncate max-w-full scale-90">
-            {courierCompany ? courierCompany.split(' ')[0] : 'Bưu kiện'}
+          <span className="text-[9px] font-bold text-amber-800 truncate max-w-full leading-tight mt-0.5 px-0.5">
+            {fallbackLabel}
           </span>
         </div>
-      )}
+      ) : (
+        /* 2. TRƯỜNG HỢP: CÓ URL HỢP LỆ VÀ ĐANG TẢI HOẶC ĐÃ NẠP THÀNH CÔNG */
+        <>
+          {/* Shimmer loading khi ảnh đang nạp */}
+          {status === 'loading' && (
+            <div className="absolute inset-0 bg-slate-100 animate-pulse flex items-center justify-center z-1">
+              <Package className="w-5 h-5 text-slate-300" />
+            </div>
+          )}
 
-      {/* 4. Hover zoom icon */}
-      {status === 'loaded' && (
-        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-          <Maximize2 className="w-3.5 h-3.5 drop-shadow-md" />
-        </div>
+          {/* Thẻ <img> thực tế */}
+          <img
+            src={resolvedUrl}
+            alt={trackingNumber}
+            className={`w-full h-full object-cover block transition-opacity duration-200 ${
+              status === 'loaded' ? 'opacity-100' : 'opacity-0'
+            }`}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setStatus('loaded')}
+            onError={() => setStatus('error')}
+          />
+
+          {/* Overlay hover phóng to khi ảnh đã nạp thành công */}
+          {status === 'loaded' && (
+            <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white z-2">
+              <Maximize2 className="w-3.5 h-3.5 drop-shadow-md" />
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+};
+
+/**
+ * Component hiển thị ảnh chi tiết kiện hàng với Fallback đẹp mắt khi lỗi
+ */
+export const ParcelDetailImage: React.FC<{
+  imageUrl?: string | null;
+  trackingNumber: string;
+  onExpand: () => void;
+}> = ({ imageUrl, trackingNumber, onExpand }) => {
+  const [hasError, setHasError] = useState(false);
+  const resolvedUrl = useMemo(() => getParcelImageUrl(imageUrl), [imageUrl]);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [resolvedUrl]);
+
+  const hasValid = Boolean(resolvedUrl && resolvedUrl.trim() && !hasError);
+
+  if (!hasValid) {
+    return (
+      <div className="w-full h-48 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50/60 border border-amber-200/80 flex flex-col items-center justify-center text-center p-6 shadow-xs select-none">
+        <Package className="w-12 h-12 text-amber-500 mb-2" />
+        <span className="text-sm font-bold text-amber-900">Bưu kiện chưa có ảnh chụp</span>
+        <span className="text-xs text-amber-700/80 mt-1">Ảnh thực tế chưa được tải lên hoặc không tồn tại</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={onExpand}
+      className="w-full h-56 rounded-2xl overflow-hidden bg-slate-900 relative cursor-pointer group shadow-md"
+      title="Bấm để xem ảnh phóng to toàn màn hình"
+    >
+      <img
+        src={resolvedUrl}
+        alt={trackingNumber}
+        className="w-full h-full object-contain"
+        onError={() => setHasError(true)}
+      />
+      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold gap-1.5">
+        <Maximize2 className="w-4 h-4" />
+        <span>Bấm để phóng to ảnh</span>
+      </div>
     </div>
   );
 };
@@ -1365,10 +1427,14 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                           imageUrl={parcel.parcel_photo_url}
                           trackingNumber={parcel.tracking_number}
                           courierCompany={parcel.courier_company}
-                          onClick={() => {
-                            setLightboxImage(getParcelImageUrl(parcel.parcel_photo_url));
+                          onClick={(hasLoadedImage) => {
                             setActiveParcel(parcel);
-                            setIsLightboxOpen(true);
+                            if (hasLoadedImage && parcel.parcel_photo_url) {
+                              setLightboxImage(getParcelImageUrl(parcel.parcel_photo_url));
+                              setIsLightboxOpen(true);
+                            } else {
+                              setIsDetailModalOpen(true);
+                            }
                           }}
                         />
                       </td>
@@ -1892,24 +1958,15 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
             {/* Thân cuộn mượt mà */}
             <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar">
-              {/* Ảnh lớn */}
-              <div
-                onClick={() => {
+              {/* Ảnh lớn chi tiết bưu phẩm (có fallback lịch sự) */}
+              <ParcelDetailImage
+                imageUrl={activeParcel.parcel_photo_url}
+                trackingNumber={activeParcel.tracking_number}
+                onExpand={() => {
                   setLightboxImage(getParcelImageUrl(activeParcel.parcel_photo_url));
                   setIsLightboxOpen(true);
                 }}
-                className="w-full h-56 rounded-2xl overflow-hidden bg-slate-900 relative cursor-pointer group shadow-md"
-              >
-                <img
-                  src={getParcelImageUrl(activeParcel.parcel_photo_url)}
-                  alt={activeParcel.tracking_number}
-                  className="w-full h-full object-contain"
-                />
-                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold gap-1.5">
-                  <Maximize2 className="w-4 h-4" />
-                  <span>Bấm để phóng to ảnh</span>
-                </div>
-              </div>
+              />
 
               {/* Thông tin mã lấy hàng */}
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-between">
@@ -2238,10 +2295,13 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     </div>
                   ) : (
                     <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 p-2">
-                      <img
-                        src={getParcelImageUrl(editingParcel.parcel_photo_url)}
-                        alt={editingParcel.tracking_number}
-                        className="w-full max-h-56 object-contain rounded-xl mx-auto"
+                      <ParcelDetailImage
+                        imageUrl={editingParcel.parcel_photo_url}
+                        trackingNumber={editingParcel.tracking_number}
+                        onExpand={() => {
+                          setLightboxImage(getParcelImageUrl(editingParcel.parcel_photo_url));
+                          setIsLightboxOpen(true);
+                        }}
                       />
                       <div className="absolute top-4 right-4 flex items-center gap-2">
                         <button
