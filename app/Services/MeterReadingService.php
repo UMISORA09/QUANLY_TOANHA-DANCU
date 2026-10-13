@@ -8,6 +8,7 @@ use App\Models\MeterReading;
 use App\Models\MeterReadingBatch;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -31,46 +32,52 @@ class MeterReadingService
      */
     public function getSummary(string $billingCycle, ?string $blockId = null): array
     {
-        $meterQuery = Meter::query()->where('is_active', true);
-        if ($blockId) {
-            $meterQuery->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
-        }
-        $totalMeters = $meterQuery->count();
+        $cacheKey = 'meter_summary_'.$billingCycle.'_'.($blockId ?? 'all');
 
-        $readingQuery = MeterReading::query()
-            ->where('billing_cycle', $billingCycle);
+        return Cache::remember($cacheKey, 6, function () use ($billingCycle, $blockId) {
+            $meterQuery = Meter::query()->where('is_active', true);
+            if ($blockId) {
+                $meterQuery->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
+            }
+            $totalMeters = $meterQuery->count();
 
-        if ($blockId) {
-            $readingQuery->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
-        }
+            $readingQuery = DB::table('meter_readings')
+                ->join('meters', 'meters.id', '=', 'meter_readings.meter_id')
+                ->where('meter_readings.billing_cycle', $billingCycle);
 
-        $recordedMeters = (clone $readingQuery)->count();
-        $pendingMeters = max(0, $totalMeters - $recordedMeters);
-        $completionRate = $totalMeters > 0 ? round(($recordedMeters / $totalMeters) * 100, 1) : 0.0;
+            if ($blockId) {
+                $readingQuery->join('apartments', 'apartments.id', '=', 'meter_readings.apartment_id')
+                    ->where('apartments.block_id', $blockId);
+            }
 
-        $abnormalCount = (clone $readingQuery)->where('is_abnormal_consumption', true)->count();
+            $stats = $readingQuery->selectRaw("
+                COUNT(*) as recorded_meters,
+                SUM(CASE WHEN meter_readings.is_abnormal_consumption = 1 THEN 1 ELSE 0 END) as abnormal_count,
+                SUM(CASE WHEN meters.meter_type = 'ELECTRICITY' THEN meter_readings.consumed_units ELSE 0 END) as elec_units,
+                SUM(CASE WHEN meters.meter_type IN ('WATER', 'COLD_WATER') THEN meter_readings.consumed_units ELSE 0 END) as water_units,
+                MAX(CASE WHEN meter_readings.is_locked_for_billing = 1 THEN 1 ELSE 0 END) as is_locked
+            ")->first();
 
-        $elecUnits = (clone $readingQuery)
-            ->whereHas('meter', fn ($q) => $q->where('meter_type', 'ELECTRICITY'))
-            ->sum('consumed_units');
+            $recordedMeters = (int) ($stats->recorded_meters ?? 0);
+            $pendingMeters = max(0, $totalMeters - $recordedMeters);
+            $completionRate = $totalMeters > 0 ? round(($recordedMeters / $totalMeters) * 100, 1) : 0.0;
+            $abnormalCount = (int) ($stats->abnormal_count ?? 0);
+            $elecUnits = (float) ($stats->elec_units ?? 0);
+            $waterUnits = (float) ($stats->water_units ?? 0);
+            $isCycleLocked = (bool) ($stats->is_locked ?? 0);
 
-        $waterUnits = (clone $readingQuery)
-            ->whereHas('meter', fn ($q) => $q->whereIn('meter_type', ['WATER', 'COLD_WATER']))
-            ->sum('consumed_units');
-
-        $isCycleLocked = (clone $readingQuery)->where('is_locked_for_billing', true)->exists();
-
-        return [
-            'billing_cycle' => $billingCycle,
-            'total_meters' => $totalMeters,
-            'recorded_meters' => $recordedMeters,
-            'pending_meters' => $pendingMeters,
-            'completion_rate' => $completionRate,
-            'abnormal_count' => $abnormalCount,
-            'total_electricity_kwh' => round((float) $elecUnits, 2),
-            'total_water_m3' => round((float) $waterUnits, 2),
-            'is_cycle_locked' => $isCycleLocked,
-        ];
+            return [
+                'billing_cycle' => $billingCycle,
+                'total_meters' => $totalMeters,
+                'recorded_meters' => $recordedMeters,
+                'pending_meters' => $pendingMeters,
+                'completion_rate' => $completionRate,
+                'abnormal_count' => $abnormalCount,
+                'total_electricity_kwh' => round($elecUnits, 2),
+                'total_water_m3' => round($waterUnits, 2),
+                'is_cycle_locked' => $isCycleLocked,
+            ];
+        });
     }
 
     /**

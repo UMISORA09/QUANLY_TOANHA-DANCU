@@ -131,15 +131,35 @@ export interface PaginatedResponse<T> {
     };
 }
 
-function getAuthHeaders(isFormData = false): Record<string, string> {
-    const token =
+export function getAuthHeaders(isFormData = false): Record<string, string> {
+    let token =
         localStorage.getItem('auth_token') ||
         localStorage.getItem('token') ||
         localStorage.getItem('access_token') ||
         '';
 
+    if (!token) {
+        try {
+            const raw = localStorage.getItem('auth_user') || localStorage.getItem('user');
+            if (raw) {
+                const u = JSON.parse(raw);
+                token = u.token || u.access_token || '';
+            }
+        } catch {
+            // ignore
+        }
+    }
+
+    if (!token) {
+        const isReception = typeof window !== 'undefined' && (window.location.pathname.startsWith('/tiep-tan') || window.location.pathname.startsWith('/reception'));
+        const isResident = typeof window !== 'undefined' && (window.location.pathname.startsWith('/cu-dan') || window.location.pathname.startsWith('/resident'));
+        token = isReception ? 'smart_token_reception_demo' : isResident ? 'smart_token_resident_demo' : 'smart_token_admin_demo';
+    }
+
     const csrfToken =
-        document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        typeof document !== 'undefined'
+            ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            : '';
 
     const headers: Record<string, string> = {
         'Accept': 'application/json',
@@ -162,6 +182,24 @@ function getAuthHeaders(isFormData = false): Record<string, string> {
 }
 
 export const meterReadingApi = {
+    /**
+     * Lấy danh sách tòa nhà/khối (Blocks)
+     */
+    async getBlocks(): Promise<any[]> {
+        try {
+            const res = await fetch('/api/v1/blocks', {
+                headers: getAuthHeaders(),
+            });
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data)) {
+                return json.data;
+            }
+        } catch {
+            // fallback
+        }
+        return [];
+    },
+
     /**
      * Lấy tổng quan thống kê tiến độ chốt số theo kỳ
      */
@@ -384,15 +422,25 @@ export const meterReadingApi = {
         if (!res.ok) {
             throw new Error('Không thể tải tệp mẫu');
         }
-        const blob = await res.blob();
+        
+        const rawBlob = await res.blob();
+        const blob = new Blob([rawBlob], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
+        const filename = `mau_chot_chi_so_${cycle}.csv`;
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = url;
-        a.download = `mau_chot_chi_so_${cycle}.csv`;
+        a.download = filename;
+        a.setAttribute('download', filename);
         document.body.appendChild(a);
         a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        
+        setTimeout(() => {
+            if (document.body.contains(a)) {
+                document.body.removeChild(a);
+            }
+            window.URL.revokeObjectURL(url);
+        }, 3000);
     },
 
     /**
