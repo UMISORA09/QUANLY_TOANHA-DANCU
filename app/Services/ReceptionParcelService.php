@@ -411,6 +411,55 @@ class ReceptionParcelService
     }
 
     /**
+     * Xóa phiếu tiếp nhận bưu phẩm (chỉ cho phép xóa khi bưu phẩm chưa bàn giao)
+     *
+     * @throws ValidationException|Throwable
+     */
+    public function deleteParcel(string $id, ?User $staffUser = null): bool
+    {
+        $parcel = Parcel::findOrFail($id);
+
+        if (in_array($parcel->status, ['DELIVERED', 'RETURNED'])) {
+            throw ValidationException::withMessages([
+                'status' => ['Không thể xóa kiện hàng đã hoàn tất bàn giao hoặc đã hoàn trả.'],
+            ]);
+        }
+
+        $photoUrl = $parcel->parcel_photo_url;
+        $trackingNumber = $parcel->tracking_number;
+        $parcelId = $parcel->id;
+
+        // Xóa file ảnh vật lý nếu có
+        if ($photoUrl && str_contains($photoUrl, '/storage/parcels/')) {
+            $photoPath = 'parcels/'.basename($photoUrl);
+            if (Storage::disk('public')->exists($photoPath)) {
+                Storage::disk('public')->delete($photoPath);
+            }
+        }
+
+        $parcel->delete();
+
+        // Phát sự kiện realtime DELETED
+        try {
+            QuocTinRealtimeService::emit(
+                module: 'parcels',
+                entity: 'parcel',
+                action: 'DELETED',
+                entityId: $parcelId,
+                extra: [
+                    'tracking_number' => $trackingNumber,
+                ],
+                actorId: $staffUser?->id,
+                triggerCooldown: false
+            );
+        } catch (Throwable $e) {
+            Log::warning('Lỗi broadcast realtime delete parcel: '.$e->getMessage());
+        }
+
+        return true;
+    }
+
+    /**
      * Tìm kiếm nhanh người nhận/cư dân (chỉ select trường cần thiết)
      *
      * @return array<int, array{id: string, full_name: string, phone_number: ?string, apartment_number: ?string}>

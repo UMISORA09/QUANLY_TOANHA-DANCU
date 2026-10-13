@@ -19,6 +19,7 @@ import {
   X,
   Eye,
   Edit2,
+  Trash2,
   QrCode,
   KeyRound,
   MapPin,
@@ -144,6 +145,27 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // 5. Edit Form States
+  const [editingParcel, setEditingParcel] = useState<ParcelItem | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    tracking_number: '',
+    courier_company: 'Shopee Express',
+    recipient_name: '',
+    recipient_phone: '',
+    stored_location_type: 'RECEPTION_DESK',
+    notes: '',
+  });
+  const [editSelectedPhotoFile, setEditSelectedPhotoFile] = useState<File | null>(null);
+  const [editPhotoPreviewUrl, setEditPhotoPreviewUrl] = useState<string | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  // 6. Delete Modal States
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deletingParcel, setDeletingParcel] = useState<ParcelItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Autocomplete / Options States
   const [apartmentOptions, setApartmentOptions] = useState<any[]>([]);
   const [recipientSuggestions, setRecipientSuggestions] = useState<any[]>([]);
@@ -183,7 +205,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
   // Khóa cuộn trang khi modal đang mở để modal luôn cố định chính giữa khung nhìn màn hình
   useEffect(() => {
-    const isAnyModalOpen = isCreateModalOpen || isDetailModalOpen || isLightboxOpen;
+    const isAnyModalOpen = isCreateModalOpen || isDetailModalOpen || isEditModalOpen || isDeleteModalOpen || isLightboxOpen;
     if (isAnyModalOpen) {
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
@@ -191,7 +213,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
         document.body.style.overflow = originalOverflow;
       };
     }
-  }, [isCreateModalOpen, isDetailModalOpen, isLightboxOpen]);
+  }, [isCreateModalOpen, isDetailModalOpen, isEditModalOpen, isDeleteModalOpen, isLightboxOpen]);
 
   // Load Apartments for selection
   const loadApartments = useCallback(async (query: string = '') => {
@@ -467,6 +489,126 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
         tracking_number: newTracking,
       };
     });
+  };
+
+  // Xử lý mở Modal Chỉnh sửa
+  const handleOpenEditModal = (parcel: ParcelItem) => {
+    setEditingParcel(parcel);
+    setEditFormData({
+      tracking_number: parcel.tracking_number,
+      courier_company: parcel.courier_company,
+      recipient_name: parcel.recipient_name,
+      recipient_phone: parcel.recipient_phone,
+      stored_location_type: parcel.stored_location_type || 'RECEPTION_DESK',
+      notes: parcel.notes || '',
+    });
+    setEditSelectedPhotoFile(null);
+    setEditPhotoPreviewUrl(null);
+    setEditError(null);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setEditError('Dung lượng ảnh bưu kiện không được vượt quá 10MB.');
+      return;
+    }
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setEditError('Định dạng ảnh không hợp lệ. Vui lòng chọn ảnh JPG, PNG hoặc WebP.');
+      return;
+    }
+
+    setEditError(null);
+    setEditSelectedPhotoFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setEditPhotoPreviewUrl(objectUrl);
+  };
+
+  const handleClearEditPhoto = () => {
+    if (editPhotoPreviewUrl) {
+      URL.revokeObjectURL(editPhotoPreviewUrl);
+    }
+    setEditSelectedPhotoFile(null);
+    setEditPhotoPreviewUrl(null);
+    if (editFileInputRef.current) {
+      editFileInputRef.current.value = '';
+    }
+  };
+
+  const handleUpdateParcel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingParcel) return;
+    setEditError(null);
+
+    if (!editFormData.tracking_number.trim()) {
+      setEditError('Vui lòng nhập Mã vận đơn của kiện hàng.');
+      return;
+    }
+    if (!editFormData.recipient_name.trim()) {
+      setEditError('Vui lòng nhập Tên người nhận.');
+      return;
+    }
+    if (!editFormData.recipient_phone.trim()) {
+      setEditError('Vui lòng nhập Số điện thoại người nhận.');
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      const formPayload = new FormData();
+      formPayload.append('tracking_number', editFormData.tracking_number.trim());
+      formPayload.append('courier_company', editFormData.courier_company);
+      formPayload.append('recipient_name', editFormData.recipient_name.trim());
+      formPayload.append('recipient_phone', editFormData.recipient_phone.trim());
+      formPayload.append('stored_location_type', editFormData.stored_location_type);
+      if (editFormData.notes) {
+        formPayload.append('notes', editFormData.notes.trim());
+      }
+      if (editSelectedPhotoFile) {
+        formPayload.append('photo', editSelectedPhotoFile);
+      }
+
+      const res = await api.updateParcel(editingParcel.id, formPayload);
+      if (res.success) {
+        showToast(`✅ Đã cập nhật thành công kiện hàng [${res.data.tracking_number}]!`);
+        setIsEditModalOpen(false);
+        handleClearEditPhoto();
+        fetchParcels(currentPage, false);
+      }
+    } catch (err: any) {
+      setEditError(err.message || 'Không thể cập nhật kiện hàng.');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  // Xử lý Xóa kiện hàng
+  const handleOpenDeleteModal = (parcel: ParcelItem) => {
+    setDeletingParcel(parcel);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingParcel) return;
+    setIsDeleting(true);
+    try {
+      const res = await api.deleteParcel(deletingParcel.id);
+      if (res.success) {
+        showToast(`🗑️ Đã xóa thành công kiện hàng [${deletingParcel.tracking_number}]!`);
+        setIsDeleteModalOpen(false);
+        setDeletingParcel(null);
+        fetchParcels(currentPage, true);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Không thể xóa kiện hàng.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Helper date format
@@ -1017,7 +1159,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
                       {/* Thao tác */}
                       <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
                             onClick={() => {
@@ -1029,6 +1171,26 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+                          {!isDelivered && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(parcel)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition cursor-pointer"
+                                title="Chỉnh sửa kiện hàng"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDeleteModal(parcel)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                title="Xóa kiện hàng"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1579,6 +1741,330 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                 </a>
               </div>
             )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: CHỈNH SỬA KIỆN HÀNG ================= */}
+      {isEditModalOpen && editingParcel && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-neutral-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Header cố định */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
+              <div>
+                <span className="text-xs font-bold text-amber-600 uppercase tracking-wider font-mono">
+                  CHỈNH SỬA BƯU PHẨM
+                </span>
+                <h3 className="text-xl font-black text-neutral-900 mt-0.5">
+                  Mã vận đơn: {editFormData.tracking_number}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!editSubmitting) {
+                    setIsEditModalOpen(false);
+                    handleClearEditPhoto();
+                  }
+                }}
+                className="p-2 rounded-xl text-slate-400 hover:text-neutral-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body cuộn */}
+            <form onSubmit={handleUpdateParcel} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar">
+                {editError && (
+                  <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-rose-500" />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                {/* Thông tin Căn hộ (Readonly) */}
+                <div className="p-3.5 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Building className="w-4 h-4 text-sky-600" />
+                    <span className="text-xs font-bold text-sky-900">
+                      Căn hộ nhận hàng:
+                    </span>
+                  </div>
+                  <span className="text-sm font-black text-sky-700 font-mono">
+                    {editingParcel.apartment?.apartment_number} {editingParcel.apartment?.block?.block_name ? `(${editingParcel.apartment?.block?.block_name})` : ''}
+                  </span>
+                </div>
+
+                {/* VẬN ĐƠN & ĐƠN VỊ VẬN CHUYỂN */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Đơn vị vận chuyển */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Đơn vị vận chuyển <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={editFormData.courier_company}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({ ...prev, courier_company: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
+                    >
+                      {courierOptions.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Mã vận đơn */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Mã vận đơn <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.tracking_number}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
+                    />
+                  </div>
+
+                  {/* Tên người nhận */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Tên người nhận <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.recipient_name}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({ ...prev, recipient_name: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* SĐT người nhận */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Số điện thoại nhận hàng <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={editFormData.recipient_phone}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({ ...prev, recipient_phone: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* Vị trí lưu giữ */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Vị trí lưu giữ <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={editFormData.stored_location_type}
+                      onChange={(e) =>
+                        setEditFormData((prev) => ({
+                          ...prev,
+                          stored_location_type: e.target.value,
+                        }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
+                    >
+                      <option value="RECEPTION_DESK">Quầy Lễ tân (Reception Desk)</option>
+                      <option value="SMART_LOCKER">Tủ đồ thông minh (Smart Locker)</option>
+                      <option value="SECURITY_BOOTH">Bốt Bảo vệ (Security Booth)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* ẢNH BƯU KIỆN */}
+                <div className="space-y-3 pt-2">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <Camera className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>ẢNH CHỤP THỰC TẾ BƯU KIỆN</span>
+                    </span>
+                    <span className="text-xs text-slate-400">Chọn ảnh mới để thay thế</span>
+                  </h4>
+
+                  <input
+                    ref={editFileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleEditPhotoSelect}
+                    className="hidden"
+                  />
+
+                  {editPhotoPreviewUrl ? (
+                    <div className="relative rounded-2xl overflow-hidden border border-amber-300 bg-slate-900 p-2">
+                      <img
+                        src={editPhotoPreviewUrl}
+                        alt="Preview ảnh mới"
+                        className="w-full max-h-56 object-contain rounded-xl mx-auto"
+                      />
+                      <div className="absolute top-4 right-4 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => editFileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Đổi ảnh khác</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearEditPhoto}
+                          className="p-1.5 rounded-lg bg-rose-600/80 hover:bg-rose-700 text-white backdrop-blur-md transition-all cursor-pointer"
+                          title="Hủy ảnh mới, giữ ảnh cũ"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-amber-300 px-3 py-1 mt-1 text-center font-semibold">
+                        Ảnh mới đã chọn (sẽ thay thế ảnh cũ khi lưu)
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 p-2">
+                      <img
+                        src={getParcelImageUrl(editingParcel.parcel_photo_url)}
+                        alt={editingParcel.tracking_number}
+                        className="w-full max-h-56 object-contain rounded-xl mx-auto"
+                      />
+                      <div className="absolute top-4 right-4 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => editFileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>Tải ảnh mới thay thế</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ghi chú */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Ghi chú bưu phẩm
+                  </label>
+                  <textarea
+                    value={editFormData.notes}
+                    onChange={(e) =>
+                      setEditFormData((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    rows={2}
+                    placeholder="VD: Hàng dễ vỡ, thùng to để cạnh quầy..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Footer cố định */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0 bg-white">
+                <button
+                  type="button"
+                  disabled={editSubmitting}
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    handleClearEditPhoto();
+                  }}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+                >
+                  {editSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Đang lưu thay đổi...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Lưu thay đổi</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: XÁC NHẬN XÓA KIỆN HÀNG ================= */}
+      {isDeleteModalOpen && deletingParcel && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-neutral-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full p-6 text-center my-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-lg font-black text-neutral-900">
+              Xác Nhận Xóa Kiện Hàng
+            </h3>
+
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Bạn có chắc chắn muốn xóa kiện hàng mã{' '}
+              <strong className="text-neutral-900 font-mono">
+                {deletingParcel.tracking_number}
+              </strong>{' '}
+              của căn hộ{' '}
+              <strong className="text-sky-700">
+                {deletingParcel.apartment?.apartment_number}
+              </strong>{' '}
+              khỏi hệ thống? Hành động này sẽ xóa dữ liệu và ảnh của bưu kiện.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 mt-6">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setDeletingParcel(null);
+                }}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Đang xóa...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Xác nhận xóa</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>,
         document.body

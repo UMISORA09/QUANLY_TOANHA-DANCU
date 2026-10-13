@@ -168,6 +168,36 @@ class ReceptionParcelController extends Controller
     }
 
     /**
+     * Xóa phiếu tiếp nhận bưu phẩm
+     */
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $this->service->deleteParcel(
+                id: $id,
+                staffUser: $staffUser
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Đã xóa kiện hàng bưu phẩm thành công.',
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Không thể xóa kiện hàng.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Lỗi khi xóa kiện hàng.',
+            ], 500);
+        }
+    }
+
+    /**
      * Tìm kiếm nhanh người nhận/cư dân để chọn trong form tiếp nhận
      */
     public function searchRecipients(Request $request): JsonResponse
