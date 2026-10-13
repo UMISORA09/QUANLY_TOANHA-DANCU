@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Zap,
     Droplets,
@@ -59,14 +59,32 @@ export const MeterReadingManagement: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'meters' | 'readings' | 'abnormal' | 'import'>('meters');
 
+    // Đọc cache tức thời (0ms) từ sessionStorage để render ngay lập tức
+    const getCachedData = () => {
+        try {
+            const raw = sessionStorage.getItem(`smartcassavas_meter_cache_${currentMonthStr}`);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    };
+    const initialCache = getCachedData();
+
     // Dữ liệu từ API
-    const [summary, setSummary] = useState<MeterSummaryData | null>(null);
-    const [meters, setMeters] = useState<MeterModel[]>([]);
+    const [summary, setSummary] = useState<MeterSummaryData | null>(initialCache?.summary || null);
+    const [meters, setMeters] = useState<MeterModel[]>(initialCache?.meters || []);
     const [readings, setReadings] = useState<MeterReadingModel[]>([]);
     const [batches, setBatches] = useState<MeterReadingBatchModel[]>([]);
-    const [blocks, setBlocks] = useState<BlockOption[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [blocks, setBlocks] = useState<BlockOption[]>(() => {
+        try {
+            const raw = sessionStorage.getItem('smartcassavas_blocks_cache');
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    });
+    const [loading, setLoading] = useState<boolean>(!initialCache);
+    const [pagination, setPagination] = useState(initialCache?.pagination || { current_page: 1, last_page: 1, total: 0 });
 
     // State Import Excel
     const [importFile, setImportFile] = useState<File | null>(null);
@@ -118,52 +136,73 @@ export const MeterReadingManagement: React.FC = () => {
         setTimeout(() => setToast(null), 4000);
     };
 
-    // Tải dữ liệu (Hỗ trợ silent background polling mượt mà không giật lag)
+    // Tải dữ liệu song song (Promise.all) kết hợp silent background polling mượt mà không giật lag
     const fetchData = async (isSilent = false) => {
         if (!isSilent && meters.length === 0 && readings.length === 0) {
             setLoading(true);
         }
         try {
             const blockId = selectedBlock !== 'ALL' ? selectedBlock : undefined;
-            
-            // 1. Lấy Summary KPI
-            const sumData = await meterReadingApi.getSummary(selectedCycle, blockId);
+
+            // Chạy song song (Parallel) cả Summary KPI và dữ liệu tab để cắt giảm 50% thời gian chờ mạng
+            const [sumData, tabData] = await Promise.all([
+                meterReadingApi.getSummary(selectedCycle, blockId),
+                activeTab === 'meters'
+                    ? meterReadingApi.getMeters({
+                        cycle: selectedCycle,
+                        block_id: blockId,
+                        meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                        search: searchQuery,
+                        page: pagination.current_page,
+                        per_page: 15,
+                    })
+                    : activeTab === 'import'
+                    ? meterReadingApi.getBatches({
+                        cycle: selectedCycle,
+                        block_id: blockId,
+                        meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                        page: pagination.current_page,
+                        per_page: 10,
+                    })
+                    : meterReadingApi.getReadings({
+                        cycle: selectedCycle,
+                        block_id: blockId,
+                        meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                        is_abnormal: activeTab === 'abnormal' ? true : undefined,
+                        search: searchQuery,
+                        page: pagination.current_page,
+                        per_page: 15,
+                    }),
+            ]);
+
             setSummary(prev => JSON.stringify(prev) === JSON.stringify(sumData) ? prev : sumData);
 
-            // 2. Lấy danh sách theo Tab
             if (activeTab === 'meters') {
-                const meterRes = await meterReadingApi.getMeters({
-                    cycle: selectedCycle,
-                    block_id: blockId,
-                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
-                    search: searchQuery,
-                    page: pagination.current_page,
-                    per_page: 15,
-                });
-                setMeters(prev => JSON.stringify(prev) === JSON.stringify(meterRes.data) ? prev : meterRes.data);
-                setPagination(prev => JSON.stringify(prev) === JSON.stringify(meterRes.meta) ? prev : meterRes.meta);
+                const mData = (tabData as any).data || [];
+                const mMeta = (tabData as any).meta || pagination;
+                setMeters(prev => JSON.stringify(prev) === JSON.stringify(mData) ? prev : mData);
+                setPagination(prev => JSON.stringify(prev) === JSON.stringify(mMeta) ? prev : mMeta);
+
+                // Lưu vào cache cho lần mở trang sau tức thì 0ms
+                if (selectedBlock === 'ALL' && selectedMeterType === 'ALL' && !searchQuery) {
+                    try {
+                        sessionStorage.setItem(`smartcassavas_meter_cache_${selectedCycle}`, JSON.stringify({
+                            summary: sumData,
+                            meters: mData,
+                            pagination: mMeta,
+                        }));
+                    } catch {}
+                }
             } else if (activeTab === 'import') {
-                const batchRes = await meterReadingApi.getBatches({
-                    cycle: selectedCycle,
-                    block_id: blockId,
-                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
-                    page: pagination.current_page,
-                    per_page: 10,
-                });
-                setBatches(prev => JSON.stringify(prev) === JSON.stringify(batchRes.data) ? prev : batchRes.data);
-                setPagination(prev => JSON.stringify(prev) === JSON.stringify(batchRes.meta) ? prev : batchRes.meta);
+                const bData = (tabData as any).data || [];
+                const bMeta = (tabData as any).meta || pagination;
+                setBatches(prev => JSON.stringify(prev) === JSON.stringify(bData) ? prev : bData);
+                setPagination(prev => JSON.stringify(prev) === JSON.stringify(bMeta) ? prev : bMeta);
             } else {
-                const readingRes = await meterReadingApi.getReadings({
-                    cycle: selectedCycle,
-                    block_id: blockId,
-                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
-                    is_abnormal: activeTab === 'abnormal' ? true : undefined,
-                    search: searchQuery,
-                    page: pagination.current_page,
-                    per_page: 15,
-                });
-                setReadings(prev => JSON.stringify(prev) === JSON.stringify(readingRes.data) ? prev : readingRes.data);
-                setPagination(prev => JSON.stringify(prev) === JSON.stringify(readingRes.meta) ? prev : readingRes.meta);
+                const rData = (tabData as any).data || [];
+                const rMeta = (tabData as any).meta || pagination;
+                setReadings(prev => JSON.stringify(prev) === JSON.stringify(rData) ? prev : rData);
+                setPagination(prev => JSON.stringify(prev) === JSON.stringify(rMeta) ? prev : rMeta);
             }
         } catch (err: any) {
             if (!isSilent) {
@@ -231,16 +270,16 @@ export const MeterReadingManagement: React.FC = () => {
         }
     };
 
-    // Tải danh sách Block từ API
+    // Tải danh sách Block từ API (kết hợp cache lưu tức thời)
     useEffect(() => {
         const loadBlocks = async () => {
             try {
-                const res = await fetch('/api/v1/blocks', {
-                    headers: { 'Accept': 'application/json' }
-                });
-                const json = await res.json();
-                if (json.success && Array.isArray(json.data)) {
-                    setBlocks(json.data);
+                const data = await meterReadingApi.getBlocks();
+                if (Array.isArray(data) && data.length > 0) {
+                    setBlocks(data);
+                    try {
+                        sessionStorage.setItem('smartcassavas_blocks_cache', JSON.stringify(data));
+                    } catch {}
                 }
             } catch (e) {
                 // Ignore fallback
@@ -253,8 +292,13 @@ export const MeterReadingManagement: React.FC = () => {
         fetchData();
     }, [selectedCycle, selectedBlock, selectedMeterType, activeTab, pagination.current_page]);
 
-    // Tìm kiếm với debounce
+    // Tránh search debounce trigger fetch thừa ở lần mount đầu tiên
+    const isFirstSearch = useRef(true);
     useEffect(() => {
+        if (isFirstSearch.current) {
+            isFirstSearch.current = false;
+            return;
+        }
         const timer = setTimeout(() => {
             fetchData();
         }, 350);

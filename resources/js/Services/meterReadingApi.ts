@@ -131,7 +131,7 @@ export interface PaginatedResponse<T> {
     };
 }
 
-function getAuthHeaders(isFormData = false): Record<string, string> {
+export function getAuthHeaders(isFormData = false): Record<string, string> {
     let token =
         localStorage.getItem('auth_token') ||
         localStorage.getItem('token') ||
@@ -182,6 +182,24 @@ function getAuthHeaders(isFormData = false): Record<string, string> {
 }
 
 export const meterReadingApi = {
+    /**
+     * Lấy danh sách tòa nhà/khối (Blocks)
+     */
+    async getBlocks(): Promise<any[]> {
+        try {
+            const res = await fetch('/api/v1/blocks', {
+                headers: getAuthHeaders(),
+            });
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data)) {
+                return json.data;
+            }
+        } catch {
+            // fallback
+        }
+        return [];
+    },
+
     /**
      * Lấy tổng quan thống kê tiến độ chốt số theo kỳ
      */
