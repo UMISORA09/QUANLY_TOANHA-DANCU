@@ -47,6 +47,15 @@ interface BlockOption {
     block_name: string;
 }
 
+interface PaginationState {
+    current_page: number;
+    last_page: number;
+    total: number;
+    from?: number;
+    to?: number;
+    per_page?: number;
+}
+
 export const MeterReadingManagement: React.FC = () => {
     // Thời gian hiện tại & Chu kỳ mặc định
     const now = new Date();
@@ -84,7 +93,7 @@ export const MeterReadingManagement: React.FC = () => {
         }
     });
     const [loading, setLoading] = useState<boolean>(!initialCache);
-    const [pagination, setPagination] = useState(initialCache?.pagination || { current_page: 1, last_page: 1, total: 0 });
+    const [pagination, setPagination] = useState<PaginationState>(initialCache?.pagination || { current_page: 1, last_page: 1, total: 0 });
 
     // State Import Excel
     const [importFile, setImportFile] = useState<File | null>(null);
@@ -181,7 +190,7 @@ export const MeterReadingManagement: React.FC = () => {
                 const mData = (tabData as any).data || [];
                 const mMeta = (tabData as any).meta || pagination;
                 setMeters(prev => JSON.stringify(prev) === JSON.stringify(mData) ? prev : mData);
-                setPagination(prev => JSON.stringify(prev) === JSON.stringify(mMeta) ? prev : mMeta);
+                setPagination((prev: PaginationState) => JSON.stringify(prev) === JSON.stringify(mMeta) ? prev : mMeta);
 
                 // Lưu vào cache cho lần mở trang sau tức thì 0ms
                 if (selectedBlock === 'ALL' && selectedMeterType === 'ALL' && !searchQuery) {
@@ -197,12 +206,12 @@ export const MeterReadingManagement: React.FC = () => {
                 const bData = (tabData as any).data || [];
                 const bMeta = (tabData as any).meta || pagination;
                 setBatches(prev => JSON.stringify(prev) === JSON.stringify(bData) ? prev : bData);
-                setPagination(prev => JSON.stringify(prev) === JSON.stringify(bMeta) ? prev : bMeta);
+                setPagination((prev: PaginationState) => JSON.stringify(prev) === JSON.stringify(bMeta) ? prev : bMeta);
             } else {
                 const rData = (tabData as any).data || [];
                 const rMeta = (tabData as any).meta || pagination;
                 setReadings(prev => JSON.stringify(prev) === JSON.stringify(rData) ? prev : rData);
-                setPagination(prev => JSON.stringify(prev) === JSON.stringify(rMeta) ? prev : rMeta);
+                setPagination((prev: PaginationState) => JSON.stringify(prev) === JSON.stringify(rMeta) ? prev : rMeta);
             }
         } catch (err: any) {
             if (!isSilent) {
@@ -541,7 +550,7 @@ export const MeterReadingManagement: React.FC = () => {
                 <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl">
                     <button
                         type="button"
-                        onClick={() => { setActiveTab('meters'); setPagination(p => ({ ...p, current_page: 1 })); }}
+                        onClick={() => { setActiveTab('meters'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                             activeTab === 'meters'
                                 ? 'bg-white text-sky-700 shadow-2xs'
@@ -552,7 +561,7 @@ export const MeterReadingManagement: React.FC = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setActiveTab('readings'); setPagination(p => ({ ...p, current_page: 1 })); }}
+                        onClick={() => { setActiveTab('readings'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                             activeTab === 'readings'
                                 ? 'bg-white text-sky-700 shadow-2xs'
@@ -563,7 +572,7 @@ export const MeterReadingManagement: React.FC = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setActiveTab('abnormal'); setPagination(p => ({ ...p, current_page: 1 })); }}
+                        onClick={() => { setActiveTab('abnormal'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                             activeTab === 'abnormal'
                                 ? 'bg-rose-600 text-white shadow-2xs'
@@ -593,7 +602,7 @@ export const MeterReadingManagement: React.FC = () => {
                     <div className="min-w-[190px]">
                         <CustomSelect<string>
                             value={selectedBlock}
-                            onChange={(val) => { setSelectedBlock(val); setPagination(p => ({ ...p, current_page: 1 })); }}
+                            onChange={(val) => { setSelectedBlock(val); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
                             options={[
                                 { value: 'ALL', label: 'Tất cả Khối Tòa', icon: <Building2 className="w-3.5 h-3.5 text-slate-400" /> },
                                 ...blocks.map(b => ({
@@ -609,7 +618,7 @@ export const MeterReadingManagement: React.FC = () => {
                     <div className="min-w-[190px]">
                         <CustomSelect<string>
                             value={selectedMeterType}
-                            onChange={(val) => { setSelectedMeterType(val); setPagination(p => ({ ...p, current_page: 1 })); }}
+                            onChange={(val) => { setSelectedMeterType(val); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
                             options={[
                                 { value: 'ALL', label: 'Tất cả Loại Dịch Vụ', icon: <Activity className="w-3.5 h-3.5 text-slate-400" /> },
                                 { value: 'ELECTRICITY', label: 'Đồng Hồ Điện (kWh)', description: 'Công tơ điện sinh hoạt tòa nhà', icon: <Zap className="w-3.5 h-3.5 text-amber-500" /> },
@@ -988,7 +997,7 @@ export const MeterReadingManagement: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
-                                onClick={() => setPagination(p => ({ ...p, current_page: Math.max(1, p.current_page - 1) }))}
+                                onClick={() => setPagination((p: PaginationState) => ({ ...p, current_page: Math.max(1, p.current_page - 1) }))}
                                 disabled={pagination.current_page <= 1}
                                 className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
                             >
@@ -996,7 +1005,7 @@ export const MeterReadingManagement: React.FC = () => {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setPagination(p => ({ ...p, current_page: Math.min(pagination.last_page, p.current_page + 1) }))}
+                                onClick={() => setPagination((p: PaginationState) => ({ ...p, current_page: Math.min(pagination.last_page, p.current_page + 1) }))}
                                 disabled={pagination.current_page >= pagination.last_page}
                                 className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
                             >
