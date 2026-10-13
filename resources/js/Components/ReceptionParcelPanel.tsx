@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Package,
   Search,
@@ -170,6 +171,18 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }, 350);
     return () => clearTimeout(handler);
   }, [searchTerm]);
+
+  // Khóa cuộn trang khi modal đang mở để modal luôn cố định chính giữa khung nhìn màn hình
+  useEffect(() => {
+    const isAnyModalOpen = isCreateModalOpen || isDetailModalOpen || isLightboxOpen;
+    if (isAnyModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isCreateModalOpen, isDetailModalOpen, isLightboxOpen]);
 
   // Load Apartments for selection
   const loadApartments = useCallback(async (query: string = '') => {
@@ -1018,11 +1031,11 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
       </div>
 
       {/* ================= MODAL: TIẾP NHẬN KIỆN HÀNG MỚI ================= */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-white/90 shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="p-6 sm:p-7 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+      {isCreateModalOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-neutral-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header (Cố định ở trên) */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
               <div>
                 <span className="text-xs font-bold text-amber-600 uppercase tracking-wider font-mono">
                   PHIẾU TIẾP NHẬN MỚI
@@ -1032,6 +1045,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   if (!formSubmitting) {
                     setIsCreateModalOpen(false);
@@ -1044,261 +1058,264 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
               </button>
             </div>
 
-            {/* Modal Body Form */}
-            <form onSubmit={handleCreateParcel} className="p-6 sm:p-7 space-y-5">
-              {formError && (
-                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium flex items-center gap-3">
-                  <AlertTriangle className="w-5 h-5 shrink-0 text-rose-500" />
-                  <span>{formError}</span>
-                </div>
-              )}
-
-              {/* SECTION 1: CĂN HỘ & NGƯỜI NHẬN */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2">
-                  <Building className="w-3.5 h-3.5 text-sky-500" />
-                  <span>1. THÔNG TIN CĂN HỘ & NGƯỜI NHẬN</span>
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Căn hộ */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Căn hộ nhận hàng <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={formData.apartment_id}
-                      onChange={(e) => handleApartmentChange(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                    >
-                      <option value="">-- Chọn căn hộ --</option>
-                      {apartmentOptions.map((apt) => (
-                        <option key={apt.id} value={apt.id}>
-                          {apt.apartment_number} {apt.block_name ? `(${apt.block_name})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Gợi ý người nhận nếu căn hộ có cư dân */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Tên người nhận <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.recipient_name}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, recipient_name: e.target.value }))
-                      }
-                      placeholder="VD: Nguyễn Văn A"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
-                    />
-                    {recipientSuggestions.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        <span className="text-[11px] text-slate-400">Gợi ý cư dân:</span>
-                        {recipientSuggestions.map((rec) => (
-                          <button
-                            key={rec.id}
-                            type="button"
-                            onClick={() => {
-                              setFormData((prev) => ({
-                                ...prev,
-                                recipient_name: rec.full_name,
-                                recipient_phone: rec.phone_number || prev.recipient_phone,
-                                recipient_user_id: rec.id,
-                              }));
-                            }}
-                            className="text-[11px] font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded-md border border-sky-200 transition-colors cursor-pointer"
-                          >
-                            {rec.full_name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* SĐT người nhận */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Số điện thoại nhận hàng <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.recipient_phone}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, recipient_phone: e.target.value }))
-                      }
-                      placeholder="VD: 0912345678"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
-                    />
-                  </div>
-
-                  {/* Vị trí lưu giữ */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Vị trí lưu giữ <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={formData.stored_location_type}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          stored_location_type: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                    >
-                      <option value="RECEPTION_DESK">Quầy Lễ tân (Reception Desk)</option>
-                      <option value="SMART_LOCKER">Tủ đồ thông minh (Smart Locker)</option>
-                      <option value="SECURITY_BOOTH">Bốt Bảo vệ (Security Booth)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 2: THÔNG TIN VẬN ĐƠN */}
-              <div className="space-y-4 pt-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2">
-                  <Truck className="w-3.5 h-3.5 text-amber-500" />
-                  <span>2. THÔNG TIN VẬN ĐƠN & ĐƠN VỊ VẬN CHUYỂN</span>
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Mã vận đơn */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-bold text-slate-700">
-                        Mã vận đơn <span className="text-rose-500">*</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleGenerateSampleTracking}
-                        className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
-                      >
-                        + Tạo mã mẫu
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={formData.tracking_number}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
-                      }
-                      placeholder="VD: SPX123456789VN"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
-                    />
-                  </div>
-
-                  {/* Đơn vị vận chuyển */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Đơn vị vận chuyển <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={formData.courier_company}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, courier_company: e.target.value }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                    >
-                      {courierOptions.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 3: UPLOAD ẢNH BƯU KIỆN (CORE MODULE #9) */}
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Camera className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>3. ẢNH CHỤP THỰC TẾ BƯU KIỆN</span>
-                  </span>
-                  <span className="text-rose-500 font-normal">Bắt buộc</span>
-                </h4>
-
-                {/* Ẩn input file thật */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handlePhotoSelect}
-                  className="hidden"
-                />
-
-                {!photoPreviewUrl ? (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/40 hover:bg-amber-50/70 rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all group"
-                  >
-                    <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
-                      <Camera className="w-6 h-6" />
-                    </div>
-                    <p className="text-sm font-bold text-neutral-800">
-                      Bấm để chọn file ảnh hoặc chụp trực tiếp
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Hỗ trợ JPG, PNG, WebP (Dung lượng tối đa 10MB)
-                    </p>
-                  </div>
-                ) : (
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 p-2">
-                    <img
-                      src={photoPreviewUrl}
-                      alt="Preview kiện hàng"
-                      className="w-full max-h-64 object-contain rounded-xl mx-auto"
-                    />
-                    <div className="absolute top-4 right-4 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Đổi ảnh</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleClearPhoto}
-                        className="p-1.5 rounded-lg bg-rose-600/80 hover:bg-rose-700 text-white backdrop-blur-md transition-all cursor-pointer"
-                        title="Xóa ảnh"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    {selectedPhotoFile && (
-                      <div className="text-[11px] text-slate-300 px-3 py-1 mt-1 flex items-center justify-between">
-                        <span>{selectedPhotoFile.name}</span>
-                        <span>{(selectedPhotoFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                      </div>
-                    )}
+            {/* Modal Form */}
+            <form onSubmit={handleCreateParcel} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Vùng nội dung cuộn bên trong (không trôi tiêu đề và nút bấm) */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar">
+                {formError && (
+                  <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-rose-500" />
+                    <span>{formError}</span>
                   </div>
                 )}
+
+                {/* SECTION 1: CĂN HỘ & NGƯỜI NHẬN */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                    <Building className="w-3.5 h-3.5 text-sky-500" />
+                    <span>1. THÔNG TIN CĂN HỘ & NGƯỜI NHẬN</span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Căn hộ */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Căn hộ nhận hàng <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={formData.apartment_id}
+                        onChange={(e) => handleApartmentChange(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
+                      >
+                        <option value="">-- Chọn căn hộ --</option>
+                        {apartmentOptions.map((apt) => (
+                          <option key={apt.id} value={apt.id}>
+                            {apt.apartment_number} {apt.block_name ? `(${apt.block_name})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Gợi ý người nhận nếu căn hộ có cư dân */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Tên người nhận <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.recipient_name}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, recipient_name: e.target.value }))
+                        }
+                        placeholder="VD: Nguyễn Văn A"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+                      />
+                      {recipientSuggestions.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <span className="text-[11px] text-slate-400">Gợi ý cư dân:</span>
+                          {recipientSuggestions.map((rec) => (
+                            <button
+                              key={rec.id}
+                              type="button"
+                              onClick={() => {
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  recipient_name: rec.full_name,
+                                  recipient_phone: rec.phone_number || prev.recipient_phone,
+                                  recipient_user_id: rec.id,
+                                }));
+                              }}
+                              className="text-[11px] font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded-md border border-sky-200 transition-colors cursor-pointer"
+                            >
+                              {rec.full_name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SĐT người nhận */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Số điện thoại nhận hàng <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        value={formData.recipient_phone}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, recipient_phone: e.target.value }))
+                        }
+                        placeholder="VD: 0912345678"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+                      />
+                    </div>
+
+                    {/* Vị trí lưu giữ */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Vị trí lưu giữ <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={formData.stored_location_type}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            stored_location_type: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
+                      >
+                        <option value="RECEPTION_DESK">Quầy Lễ tân (Reception Desk)</option>
+                        <option value="SMART_LOCKER">Tủ đồ thông minh (Smart Locker)</option>
+                        <option value="SECURITY_BOOTH">Bốt Bảo vệ (Security Booth)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 2: THÔNG TIN VẬN ĐƠN */}
+                <div className="space-y-4 pt-2">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                    <Truck className="w-3.5 h-3.5 text-amber-500" />
+                    <span>2. THÔNG TIN VẬN ĐƠN & ĐƠN VỊ VẬN CHUYỂN</span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Mã vận đơn */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700">
+                          Mã vận đơn <span className="text-rose-500">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleGenerateSampleTracking}
+                          className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
+                        >
+                          + Tạo mã mẫu
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={formData.tracking_number}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
+                        }
+                        placeholder="VD: SPX123456789VN"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
+                      />
+                    </div>
+
+                    {/* Đơn vị vận chuyển */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Đơn vị vận chuyển <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={formData.courier_company}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, courier_company: e.target.value }))
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
+                      >
+                        {courierOptions.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 3: UPLOAD ẢNH BƯU KIỆN (CORE MODULE #9) */}
+                <div className="space-y-3 pt-2">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <Camera className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>3. ẢNH CHỤP THỰC TẾ BƯU KIỆN</span>
+                    </span>
+                    <span className="text-rose-500 font-normal">Bắt buộc</span>
+                  </h4>
+
+                  {/* Ẩn input file thật */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handlePhotoSelect}
+                    className="hidden"
+                  />
+
+                  {!photoPreviewUrl ? (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/40 hover:bg-amber-50/70 rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all group"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                        <Camera className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-bold text-neutral-800">
+                        Bấm để chọn file ảnh hoặc chụp trực tiếp
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Hỗ trợ JPG, PNG, WebP (Dung lượng tối đa 10MB)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 p-2">
+                      <img
+                        src={photoPreviewUrl}
+                        alt="Preview kiện hàng"
+                        className="w-full max-h-64 object-contain rounded-xl mx-auto"
+                      />
+                      <div className="absolute top-4 right-4 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Đổi ảnh</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearPhoto}
+                          className="p-1.5 rounded-lg bg-rose-600/80 hover:bg-rose-700 text-white backdrop-blur-md transition-all cursor-pointer"
+                          title="Xóa ảnh"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {selectedPhotoFile && (
+                        <div className="text-[11px] text-slate-300 px-3 py-1 mt-1 flex items-center justify-between">
+                          <span>{selectedPhotoFile.name}</span>
+                          <span>{(selectedPhotoFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Ghi chú thêm */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Ghi chú bưu phẩm (nếu có)
+                  </label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    rows={2}
+                    placeholder="VD: Hàng dễ vỡ, thùng to để cạnh quầy, hàng đông lạnh..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+                  />
+                </div>
               </div>
 
-              {/* Ghi chú thêm */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Ghi chú bưu phẩm (nếu có)
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, notes: e.target.value }))
-                  }
-                  rows={2}
-                  placeholder="VD: Hàng dễ vỡ, thùng to để cạnh quầy, hàng đông lạnh..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
-                />
-              </div>
-
-              {/* Modal Footer */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+              {/* Modal Footer (Cố định ở đáy) */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0 bg-white">
                 <button
                   type="button"
                   disabled={formSubmitting}
@@ -1331,14 +1348,16 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: XEM CHI TIẾT KIỆN HÀNG ================= */}
-      {isDetailModalOpen && activeParcel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-white/90 shadow-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+      {isDetailModalOpen && activeParcel && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-neutral-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Header cố định */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
               <div>
                 <span className="text-xs font-bold text-amber-600 uppercase tracking-wider font-mono">
                   CHI TIẾT BƯU PHẨM
@@ -1348,6 +1367,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsDetailModalOpen(false)}
                 className="p-2 rounded-xl text-slate-400 hover:text-neutral-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
@@ -1355,7 +1375,8 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            {/* Thân cuộn mượt mà */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar">
               {/* Ảnh lớn */}
               <div
                 onClick={() => {
@@ -1451,8 +1472,10 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
               </div>
             </div>
 
-            <div className="p-6 border-t border-slate-100 flex items-center justify-end">
+            {/* Footer cố định */}
+            <div className="p-4 sm:p-5 border-t border-slate-100 flex items-center justify-end shrink-0 bg-white">
               <button
+                type="button"
                 onClick={() => setIsDetailModalOpen(false)}
                 className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
               >
@@ -1460,25 +1483,27 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: LIGHTBOX XEM ẢNH FULL SIZE ================= */}
-      {isLightboxOpen && lightboxImage && (
+      {isLightboxOpen && lightboxImage && typeof document !== 'undefined' && createPortal(
         <div
           onClick={() => setIsLightboxOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/85 backdrop-blur-xl animate-in fade-in duration-200 cursor-zoom-out"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-neutral-950/85 backdrop-blur-xl animate-in fade-in duration-200 cursor-zoom-out"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative max-w-4xl max-h-[90vh] bg-black/40 rounded-3xl p-2 shadow-2xl"
+            className="relative max-w-4xl max-h-[90vh] bg-black/40 rounded-3xl p-2 shadow-2xl my-auto"
           >
             <img
               src={lightboxImage}
               alt="Ảnh kiện hàng bưu phẩm"
-              className="max-h-[85vh] max-w-full rounded-2xl object-contain mx-auto shadow-2xl"
+              className="max-h-[82vh] max-w-full rounded-2xl object-contain mx-auto shadow-2xl"
             />
             <button
+              type="button"
               onClick={() => setIsLightboxOpen(false)}
               className="absolute top-5 right-5 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white backdrop-blur-md transition-colors cursor-pointer"
             >
@@ -1504,7 +1529,8 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
