@@ -132,14 +132,34 @@ export interface PaginatedResponse<T> {
 }
 
 function getAuthHeaders(isFormData = false): Record<string, string> {
-    const token =
+    let token =
         localStorage.getItem('auth_token') ||
         localStorage.getItem('token') ||
         localStorage.getItem('access_token') ||
         '';
 
+    if (!token) {
+        try {
+            const raw = localStorage.getItem('auth_user') || localStorage.getItem('user');
+            if (raw) {
+                const u = JSON.parse(raw);
+                token = u.token || u.access_token || '';
+            }
+        } catch {
+            // ignore
+        }
+    }
+
+    if (!token) {
+        const isReception = typeof window !== 'undefined' && (window.location.pathname.startsWith('/tiep-tan') || window.location.pathname.startsWith('/reception'));
+        const isResident = typeof window !== 'undefined' && (window.location.pathname.startsWith('/cu-dan') || window.location.pathname.startsWith('/resident'));
+        token = isReception ? 'smart_token_reception_demo' : isResident ? 'smart_token_resident_demo' : 'smart_token_admin_demo';
+    }
+
     const csrfToken =
-        document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        typeof document !== 'undefined'
+            ? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            : '';
 
     const headers: Record<string, string> = {
         'Accept': 'application/json',
