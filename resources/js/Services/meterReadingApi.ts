@@ -404,15 +404,25 @@ export const meterReadingApi = {
         if (!res.ok) {
             throw new Error('Không thể tải tệp mẫu');
         }
-        const blob = await res.blob();
+        
+        const rawBlob = await res.blob();
+        const blob = new Blob([rawBlob], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
+        const filename = `mau_chot_chi_so_${cycle}.csv`;
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = url;
-        a.download = `mau_chot_chi_so_${cycle}.csv`;
+        a.download = filename;
+        a.setAttribute('download', filename);
         document.body.appendChild(a);
         a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        
+        setTimeout(() => {
+            if (document.body.contains(a)) {
+                document.body.removeChild(a);
+            }
+            window.URL.revokeObjectURL(url);
+        }, 3000);
     },
 
     /**
