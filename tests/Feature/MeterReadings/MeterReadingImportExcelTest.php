@@ -394,4 +394,39 @@ class MeterReadingImportExcelTest extends TestCase
                 ],
             ]);
     }
+
+    /**
+     * Test 10: Tải tệp mẫu về và import trực tiếp ngay lập tức thành công 100% không bị lỗi rỗng
+     */
+    public function test_10_download_template_and_reimport_directly_succeeds_without_error(): void
+    {
+        $cycle = '2028-01';
+        MeterReading::where('billing_cycle', $cycle)->delete();
+
+        // 1. Tải mẫu template
+        $templateResponse = $this->withHeaders($this->authHeaders())->get("/api/v1/meter-readings/template?cycle={$cycle}");
+        $templateResponse->assertStatus(200);
+        $csvContent = $templateResponse->getContent();
+
+        // 2. Upload lại ngay file vừa tải về
+        $file = UploadedFile::fake()->createWithContent("mau_chot_chi_so_{$cycle}.csv", $csvContent);
+
+        $importResponse = $this->withHeaders($this->authHeaders())->post('/api/v1/meter-readings/import', [
+            'file' => $file,
+            'billing_cycle' => $cycle,
+        ]);
+
+        $importResponse->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'billing_month_year' => $cycle,
+                    'failed_records' => 0,
+                    'import_status' => 'COMPLETED',
+                ],
+            ]);
+
+        $this->assertGreaterThan(0, $importResponse->json('data.total_records'));
+        $this->assertEquals($importResponse->json('data.total_records'), $importResponse->json('data.success_records'));
+    }
 }

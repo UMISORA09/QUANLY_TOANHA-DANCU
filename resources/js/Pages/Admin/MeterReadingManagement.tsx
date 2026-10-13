@@ -707,15 +707,6 @@ export const MeterReadingManagement: React.FC = () => {
                             )}
                         </button>
 
-                        <button
-                            type="button"
-                            onClick={handleDownloadTemplate}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs transition-all active:scale-[0.98] cursor-pointer"
-                        >
-                            <Download className="w-3.5 h-3.5 text-sky-600" />
-                            <span>Tải Mẫu CSV</span>
-                        </button>
-
                         <span className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-mono shadow-2xs">
                             Tổng cộng: {activeTab === 'meters' ? (summary?.total_meters || meters.length) : activeTab === 'readings' ? (summary?.recorded_meters || readings.length) : (summary?.abnormal_count || 0)} {activeTab === 'meters' ? 'Công tơ' : 'Bản ghi'}
                         </span>

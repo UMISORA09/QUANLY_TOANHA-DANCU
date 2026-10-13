@@ -462,7 +462,14 @@ class MeterReadingService
         foreach ($meters as $m) {
             $existingReading = $m->readings->first();
             $prev = $existingReading ? $existingReading->previous_reading : $m->current_reading;
-            $curr = $existingReading ? $existingReading->current_reading : '';
+            // Tự động điền trước chỉ số cũ/hiện tại để người dùng có thể tải về và import thử ngay mà không bị lỗi để trống
+            $curr = $existingReading ? $existingReading->current_reading : $prev;
+
+            $typeName = match ($m->meter_type) {
+                'ELECTRICITY' => 'Điện (kWh)',
+                'WATER' => 'Nước (m³)',
+                default => $m->meter_type,
+            };
 
             $row = [
                 $stt++,
@@ -470,7 +477,7 @@ class MeterReadingService
                 $m->apartment?->apartment_number ?? '',
                 $m->apartment?->block?->block_name ?? '',
                 $m->apartment?->floor?->floor_name ?? '',
-                $m->meter_type,
+                $typeName,
                 $prev,
                 $curr,
                 $suggestedDate,
@@ -635,20 +642,28 @@ class MeterReadingService
                 continue;
             }
 
-            // Validation 3: Chỉ số mới phải là số hợp lệ
-            if ($rawCurrent === '' || ! is_numeric($rawCurrent)) {
+            // Xác định previous_reading
+            $prevReading = (is_numeric($rawPrev) && $rawPrev !== '')
+                ? (float) $rawPrev
+                : (float) $meter->current_reading;
+
+            // Validation 3: Chỉ số mới (nếu để trống tự động lấy chỉ số cũ tiêu thụ = 0)
+            if ($rawCurrent === '' || $rawCurrent === null) {
+                $currentReading = $prevReading;
+            } elseif (! is_numeric($rawCurrent)) {
                 $failedRecords++;
                 $errors[] = [
                     'line' => $lineIndex,
                     'meter_code' => $meterCode,
                     'apartment' => $meter->apartment?->apartment_number ?? $aptNumber,
-                    'error' => "Chỉ số mới '{$rawCurrent}' không hợp lệ hoặc bị để trống.",
+                    'error' => "Chỉ số mới '{$rawCurrent}' không phải là số hợp lệ.",
                 ];
 
                 continue;
+            } else {
+                $currentReading = (float) $rawCurrent;
             }
 
-            $currentReading = (float) $rawCurrent;
             if ($currentReading < 0) {
                 $failedRecords++;
                 $errors[] = [
@@ -660,11 +675,6 @@ class MeterReadingService
 
                 continue;
             }
-
-            // Xác định previous_reading
-            $prevReading = (is_numeric($rawPrev) && $rawPrev !== '')
-                ? (float) $rawPrev
-                : (float) $meter->current_reading;
 
             // Validation 4: Chỉ số mới < chỉ số cũ
             if ($currentReading < $prevReading && ! $forceReset) {
