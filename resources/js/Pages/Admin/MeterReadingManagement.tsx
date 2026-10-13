@@ -584,7 +584,7 @@ export const MeterReadingManagement: React.FC = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setActiveTab('import'); setPagination(p => ({ ...p, current_page: 1 })); }}
+                        onClick={() => { setActiveTab('import'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                             activeTab === 'import'
                                 ? 'bg-emerald-600 text-white shadow-2xs'
@@ -597,7 +597,8 @@ export const MeterReadingManagement: React.FC = () => {
                 </div>
 
                 {/* Bộ lọc Tòa nhà & Loại Đồng Hồ */}
-                <div className="flex flex-wrap items-center gap-2.5">
+                {activeTab !== 'import' && (
+                    <div className="flex flex-wrap items-center gap-2.5">
                     <button
                         type="button"
                         onClick={handleDownloadTemplate}
@@ -648,6 +649,7 @@ export const MeterReadingManagement: React.FC = () => {
                         />
                     </div>
                 </div>
+            )}
             </div>
 
             {/* BẢNG DỮ LIỆU CHÍNH */}
@@ -659,11 +661,13 @@ export const MeterReadingManagement: React.FC = () => {
                             {activeTab === 'meters' && 'Danh Sách Công Tơ Đo Điện & Nước'}
                             {activeTab === 'readings' && 'Danh Sách Chỉ Số Đã Ghi Nhận Trong Kỳ'}
                             {activeTab === 'abnormal' && 'Cảnh Báo Chỉ Số Biến Động Bất Thường'}
+                            {activeTab === 'import' && 'Import Chỉ Số Hàng Loạt Từ Excel / CSV'}
                         </h3>
                         <p className="text-xs text-slate-500">
                             {activeTab === 'meters' && 'Theo dõi trạng thái chốt số, chỉ số kỳ trước và ghi số nhanh cho từng căn hộ'}
                             {activeTab === 'readings' && `Các căn hộ đã hoàn tất đối soát số liệu điện nước trong chu kỳ ${selectedCycle}`}
                             {activeTab === 'abnormal' && 'Các trường hợp tiêu thụ đột biến gấp 1.5 lần hoặc có chênh lệch âm cần kiểm tra'}
+                            {activeTab === 'import' && `Tải lên tệp bảng tính mẫu để nhập hàng loạt và tự động đối soát trong kỳ ${selectedCycle}`}
                         </p>
                     </div>
 
@@ -1257,7 +1261,7 @@ export const MeterReadingManagement: React.FC = () => {
                 )}
 
                 {/* Phân trang */}
-                {pagination.total > 15 && (
+                {pagination.total > (activeTab === 'import' ? 10 : 15) && (
                     <div className="flex items-center justify-between p-4 bg-slate-50/70 border-t border-slate-100 text-xs text-slate-500">
                         <span>
                             Hiển thị trang {pagination.current_page} / {pagination.last_page} ({pagination.total} bản ghi)
