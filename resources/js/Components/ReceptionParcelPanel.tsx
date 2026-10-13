@@ -24,6 +24,10 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  Loader2,
   Download,
   ShieldCheck,
   Maximize2,
@@ -83,6 +87,28 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [fromDateFilter, setFromDateFilter] = useState<string>('');
   const [toDateFilter, setToDateFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Custom Dropdown Open States (Chuẩn Ảnh 2)
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState<boolean>(false);
+  const [isCourierDropdownOpen, setIsCourierDropdownOpen] = useState<boolean>(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const courierDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false);
+      }
+      if (courierDropdownRef.current && !courierDropdownRef.current.contains(event.target as Node)) {
+        setIsCourierDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // 3. Modal States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -395,245 +421,405 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   };
 
   return (
-    <div className={`space-y-6 ${embedded ? '' : 'p-4 sm:p-6 lg:p-8'}`}>
-      {/* Toast Notification */}
+    <div className={`space-y-6 ${embedded ? '' : 'p-6 max-w-7xl mx-auto'}`}>
+      {/* Toast Notification (Chuẩn phong cách RFID Management) */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="bg-neutral-900/95 text-white px-5 py-3.5 rounded-2xl shadow-2xl backdrop-blur-xl border border-white/20 flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-sm font-medium">{toastMessage}</span>
-          </div>
+        <div className="fixed top-5 right-5 z-[9999] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border bg-emerald-50 text-emerald-900 border-emerald-300">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+          <span>{toastMessage}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="ml-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
-      {/* Top Header Card */}
-      <div className="bg-white/90 backdrop-blur-xl border border-white/80 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2.5 text-xs font-bold text-amber-600 uppercase tracking-wider mb-2 font-mono">
-              <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200/80 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-amber-600" />
-                <span>PHÂN HỆ LỄ TÂN</span>
-              </span>
-              <span>•</span>
-              <span className="text-slate-500">MODULE #9</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight flex items-center gap-3">
-              Tiếp Nhận Kiện Hàng & Upload Ảnh Bưu Kiện
-            </h1>
-            <p className="text-sm text-slate-500 mt-1.5">
-              Ghi nhận bưu phẩm gửi đến cư dân, upload ảnh chụp thực tế và đồng bộ realtime tức thời.
-            </p>
+      {/* 1. Header & Title (Đồng bộ chuẩn RFID / Visitor Management - Bỏ nhãn MODULE #9) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider font-mono text-indigo-600">
+            <Package className="w-4 h-4 text-indigo-600" />
+            <span>CỔNG TIẾP ĐÓN LỄ TÂN · TIẾP NHẬN BƯU KIỆN</span>
           </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight mt-1">
+            Tiếp Nhận Kiện Hàng & Upload Ảnh Bưu Kiện
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Ghi nhận bưu phẩm gửi đến cư dân, upload ảnh chụp thực tế và đồng bộ realtime tức thời.
+          </p>
+        </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => fetchParcels(currentPage, true)}
-              disabled={loading}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white/80 hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer shadow-2xs hover:shadow-xs active:scale-95 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Làm mới</span>
-            </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => fetchParcels(currentPage, true)}
+            disabled={loading}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition shadow-sm cursor-pointer disabled:opacity-50"
+            title="Làm mới dữ liệu từ server"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+            <span>Tải lại</span>
+          </button>
 
-            <button
-              onClick={() => {
-                setFormError(null);
-                setIsCreateModalOpen(true);
-              }}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tiếp nhận kiện hàng mới</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFormError(null);
+              setIsCreateModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition shadow-sm cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Tiếp nhận kiện hàng mới</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. KPI Statistics Cards (Đồng bộ 100% chuẩn RFID Management) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* KPI 1: Chờ cư dân nhận */}
+        <div
+          onClick={() => {
+            setStatusFilter('PENDING');
+            setCurrentPage(1);
+          }}
+          className={`bg-white p-4 sm:p-5 rounded-2xl border shadow-sm flex items-center gap-4 cursor-pointer transition ${
+            statusFilter === 'PENDING'
+              ? 'border-amber-400 ring-2 ring-amber-100'
+              : 'border-slate-200/80 hover:border-amber-300'
+          }`}
+        >
+          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+            <Package className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Chờ cư dân nhận</div>
+            <div className="text-2xl font-black text-slate-900">{kpis.pending_parcels}</div>
+            <div className="text-[11px] text-amber-600 font-semibold mt-0.5">Đang lưu tại quầy & locker</div>
           </div>
         </div>
 
-        {/* 4 KPIs Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
-          {/* KPI 1: Chờ cư dân nhận */}
-          <div
-            onClick={() => setStatusFilter('PENDING')}
-            className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer ${
-              statusFilter === 'PENDING'
-                ? 'bg-amber-50/90 border-amber-300 shadow-sm'
-                : 'bg-white/70 border-slate-200/80 hover:border-amber-200 hover:bg-amber-50/40'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-              <span>Chờ cư dân nhận</span>
-              <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-                <Package className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-neutral-900 mt-2">
-              {kpis.pending_parcels}
-            </div>
-            <div className="text-[11px] text-amber-700 font-medium mt-1 flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              <span>Đang lưu tại quầy & locker</span>
-            </div>
+        {/* KPI 2: Tồn đọng > 5 ngày */}
+        <div
+          onClick={() => {
+            setStatusFilter('OVERDUE');
+            setCurrentPage(1);
+          }}
+          className={`bg-white p-4 sm:p-5 rounded-2xl border shadow-sm flex items-center gap-4 cursor-pointer transition ${
+            statusFilter === 'OVERDUE'
+              ? 'border-rose-400 ring-2 ring-rose-100'
+              : 'border-slate-200/80 hover:border-rose-300'
+          }`}
+        >
+          <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="w-6 h-6" />
           </div>
-
-          {/* KPI 2: Quá hạn > 5 ngày */}
-          <div
-            onClick={() => setStatusFilter('OVERDUE')}
-            className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer ${
-              statusFilter === 'OVERDUE'
-                ? 'bg-rose-50/90 border-rose-300 shadow-sm'
-                : 'bg-white/70 border-slate-200/80 hover:border-rose-200 hover:bg-rose-50/40'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-              <span>Tồn đọng &gt; 5 ngày</span>
-              <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-rose-600 mt-2">
-              {kpis.overdue_parcels}
-            </div>
-            <div className="text-[11px] text-rose-700 font-medium mt-1 flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              <span>Cần gọi nhắc cư dân</span>
-            </div>
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Tồn đọng &gt; 5 ngày</div>
+            <div className="text-2xl font-black text-rose-600">{kpis.overdue_parcels}</div>
+            <div className="text-[11px] text-rose-600 font-semibold mt-0.5">Cần gọi nhắc cư dân</div>
           </div>
+        </div>
 
-          {/* KPI 3: Đã nhận hôm nay */}
-          <div className="p-4 sm:p-5 rounded-2xl border bg-white/70 border-slate-200/80">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-              <span>Tiếp nhận hôm nay</span>
-              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-600 mt-2">
-              {kpis.received_today}
-            </div>
-            <div className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
-              <Sparkles className="w-3 h-3" />
-              <span>Giao dịch trong ngày</span>
-            </div>
+        {/* KPI 3: Tiếp nhận hôm nay */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="w-6 h-6" />
           </div>
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Tiếp nhận hôm nay</div>
+            <div className="text-2xl font-black text-emerald-700">{kpis.received_today}</div>
+            <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">Giao dịch trong ngày</div>
+          </div>
+        </div>
 
-          {/* KPI 4: Tổng kiện hàng */}
-          <div
-            onClick={() => setStatusFilter('ALL')}
-            className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer ${
-              statusFilter === 'ALL'
-                ? 'bg-sky-50/90 border-sky-300 shadow-sm'
-                : 'bg-white/70 border-slate-200/80 hover:border-sky-200 hover:bg-sky-50/40'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-              <span>Tổng lượt bưu phẩm</span>
-              <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center">
-                <Truck className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-neutral-900 mt-2">
-              {kpis.total_parcels}
-            </div>
-            <div className="text-[11px] text-sky-700 font-medium mt-1">
-              Toàn bộ lịch sử hệ thống
-            </div>
+        {/* KPI 4: Tổng lượt bưu phẩm */}
+        <div
+          onClick={() => {
+            setStatusFilter('ALL');
+            setCurrentPage(1);
+          }}
+          className={`bg-white p-4 sm:p-5 rounded-2xl border shadow-sm flex items-center gap-4 cursor-pointer transition ${
+            statusFilter === 'ALL'
+              ? 'border-purple-400 ring-2 ring-purple-100'
+              : 'border-slate-200/80 hover:border-purple-300'
+          }`}
+        >
+          <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+            <Truck className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 font-medium">Tổng lượt bưu phẩm</div>
+            <div className="text-2xl font-black text-purple-700">{kpis.total_parcels}</div>
+            <div className="text-[11px] text-purple-600 font-semibold mt-0.5">Toàn bộ lịch sử hệ thống</div>
           </div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white/85 backdrop-blur-xl border border-white/80 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      {/* 3. Filter & Search Bar (Đồng bộ chuẩn RFID Management) */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Search Input */}
-          <div className="relative md:col-span-2">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <div className="relative lg:col-span-2">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Tìm theo Mã vận đơn, Căn hộ, Tên hoặc SĐT người nhận..."
-              className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 bg-white/90 text-sm text-neutral-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all"
+              className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-slate-800 placeholder-slate-400"
             />
             {searchTerm && (
               <button
+                type="button"
                 onClick={() => setSearchTerm('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Xóa tìm kiếm"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Courier Filter */}
-          <div>
-            <select
-              value={courierFilter}
-              onChange={(e) => {
-                setCourierFilter(e.target.value);
-                setCurrentPage(1);
+          {/* Đơn vị vận chuyển (Courier) Dropdown chuẩn Ảnh 2 */}
+          <div className="relative" ref={courierDropdownRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsCourierDropdownOpen((prev) => !prev);
+                setIsStatusDropdownOpen(false);
               }}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white/90 text-sm text-neutral-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all cursor-pointer"
+              className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                isCourierDropdownOpen
+                  ? 'border-indigo-500 ring-2 ring-indigo-200 bg-white text-indigo-900 shadow-xs'
+                  : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+              }`}
             >
-              <option value="ALL">Tất cả đơn vị vận chuyển</option>
-              {courierOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              <div className="flex items-center gap-2 truncate">
+                <Truck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">
+                  {courierFilter === 'ALL' ? 'Tất cả ĐVVC' : courierFilter}
+                </span>
+              </div>
+              {isCourierDropdownOpen ? (
+                <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+              )}
+            </button>
+
+            {/* Courier Dropdown Menu Popup */}
+            {isCourierDropdownOpen && (
+              <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[200px] max-h-64 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                <div
+                  onClick={() => {
+                    setCourierFilter('ALL');
+                    setCurrentPage(1);
+                    setIsCourierDropdownOpen(false);
+                  }}
+                  className={`rounded-xl px-3 py-2 text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                    courierFilter === 'ALL'
+                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                      : 'hover:bg-slate-50 text-slate-700 font-medium'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Truck className={`w-3.5 h-3.5 shrink-0 ${courierFilter === 'ALL' ? 'text-white' : 'text-slate-400'}`} />
+                    <span className="truncate">Tất cả đơn vị vận chuyển</span>
+                  </div>
+                  {courierFilter === 'ALL' && <Check className="w-4 h-4 text-white shrink-0 ml-2" />}
+                </div>
+
+                {courierOptions.map((c) => {
+                  const isSelected = courierFilter === c;
+                  return (
+                    <div
+                      key={c}
+                      onClick={() => {
+                        setCourierFilter(c);
+                        setCurrentPage(1);
+                        setIsCourierDropdownOpen(false);
+                      }}
+                      className={`rounded-xl px-3 py-2 text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                          : 'hover:bg-slate-50 text-slate-700 font-medium'
+                      }`}
+                    >
+                      <span className="truncate">{c}</span>
+                      {isSelected && <Check className="w-4 h-4 text-white shrink-0 ml-2" />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Status Filter */}
+          {/* Trạng thái filter dropdown chuẩn 100% Ảnh 2 */}
+          <div className="relative" ref={statusDropdownRef}>
+            {(() => {
+              const statusOptions: Array<{ id: 'ALL' | 'PENDING' | 'OVERDUE' | 'DELIVERED'; label: string; dotColor?: string; isAll?: boolean }> = [
+                { id: 'ALL', label: '-- Tất cả trạng thái --', isAll: true },
+                { id: 'PENDING', label: 'Chờ cư dân nhận (Pending)', dotColor: 'bg-amber-500' },
+                { id: 'OVERDUE', label: 'Tồn đọng > 5 ngày (Overdue)', dotColor: 'bg-rose-500' },
+                { id: 'DELIVERED', label: 'Đã bàn giao (Delivered)', dotColor: 'bg-emerald-500' },
+              ];
+              const selectedOption = statusOptions.find((opt) => opt.id === statusFilter) || statusOptions[0];
+
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsStatusDropdownOpen((prev) => !prev);
+                      setIsCourierDropdownOpen(false);
+                    }}
+                    className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                      isStatusDropdownOpen
+                        ? 'border-indigo-500 ring-2 ring-indigo-200 bg-white text-indigo-900 shadow-xs'
+                        : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      {selectedOption.isAll ? (
+                        <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      ) : (
+                        <span className={`w-2 h-2 rounded-full ${selectedOption.dotColor} shrink-0`} />
+                      )}
+                      <span className="truncate">{selectedOption.label}</span>
+                    </div>
+                    {isStatusDropdownOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+                    )}
+                  </button>
+
+                  {/* Dropdown Menu Popup (Chuẩn 100% Ảnh 2) */}
+                  {isStatusDropdownOpen && (
+                    <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[220px] animate-in fade-in zoom-in-95 duration-100">
+                      {statusOptions.map((opt) => {
+                        const isSelected = statusFilter === opt.id;
+                        return (
+                          <div
+                            key={opt.id}
+                            onClick={() => {
+                              setStatusFilter(opt.id);
+                              setCurrentPage(1);
+                              setIsStatusDropdownOpen(false);
+                            }}
+                            className={`rounded-xl px-3 py-2 text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                                : 'hover:bg-slate-50 text-slate-700 font-medium'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              {opt.isAll ? (
+                                <Filter
+                                  className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-slate-400'}`}
+                                />
+                              ) : (
+                                <span
+                                  className={`w-2 h-2 rounded-full shrink-0 ${
+                                    isSelected ? 'bg-white ring-2 ring-white/30' : opt.dotColor
+                                  }`}
+                                />
+                              )}
+                              <span className="truncate">{opt.label}</span>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-white shrink-0 ml-2" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Nút Đặt lại bộ lọc */}
           <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as any);
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setCourierFilter('ALL');
+                setStatusFilter('ALL');
                 setCurrentPage(1);
               }}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white/90 text-sm text-neutral-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
             >
-              <option value="ALL">Tất cả trạng thái</option>
-              <option value="PENDING">Chờ nhận tại quầy (Pending)</option>
-              <option value="OVERDUE">Quá hạn 5 ngày (Overdue)</option>
-              <option value="DELIVERED">Đã bàn giao (Delivered)</option>
-            </select>
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Đặt lại bộ lọc</span>
+            </button>
           </div>
         </div>
+
+        {/* Clear filters row if active */}
+        {(searchTerm || courierFilter !== 'ALL' || statusFilter !== 'ALL') && (
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
+            <span>Đang áp dụng bộ lọc tùy chỉnh</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setCourierFilter('ALL');
+                setStatusFilter('ALL');
+                setCurrentPage(1);
+              }}
+              className="text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Xóa bộ lọc</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Main Parcels Table */}
-      <div className="bg-white/90 backdrop-blur-xl border border-white/80 rounded-3xl shadow-xl overflow-hidden">
+      {/* 4. Main Parcels Table (Đồng bộ 100% chuẩn RFID Management) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative">
+        {loading && (
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 via-sky-500 to-indigo-500 animate-pulse z-10" />
+        )}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                <th className="py-4 px-5">Ảnh bưu kiện</th>
-                <th className="py-4 px-5">Mã vận đơn & ĐVVC</th>
-                <th className="py-4 px-5">Căn hộ & Người nhận</th>
-                <th className="py-4 px-5">Mã lấy hàng</th>
-                <th className="py-4 px-5">Vị trí lưu giữ</th>
-                <th className="py-4 px-5">Thời gian tiếp nhận</th>
-                <th className="py-4 px-5">Trạng thái</th>
-                <th className="py-4 px-5 text-right">Thao tác</th>
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider font-mono">
+                <th className="py-3 px-4">Ảnh Bưu Kiện</th>
+                <th className="py-3 px-4">Mã Vận Đơn & ĐVVC</th>
+                <th className="py-3 px-4">Căn Hộ & Người Nhận</th>
+                <th className="py-3 px-4">Mã Lấy Hàng</th>
+                <th className="py-3 px-4">Vị Trí Lưu Giữ</th>
+                <th className="py-3 px-4">Thời Gian Tiếp Nhận</th>
+                <th className="py-3 px-4 text-center">Trạng Thái</th>
+                <th className="py-3 px-4 text-right">Thao Tác Tại Quầy</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
+            <tbody className="divide-y divide-slate-100">
               {loading && parcels.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
-                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
-                    <span>Đang tải danh sách bưu phẩm...</span>
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                      <span className="font-medium text-slate-600">Đang tải danh sách bưu phẩm...</span>
+                    </div>
                   </td>
                 </tr>
               ) : parcels.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
-                    <Package className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                    <p className="font-semibold text-slate-600">Không tìm thấy kiện hàng nào</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Thử thay đổi bộ lọc hoặc bấm nút "Tiếp nhận kiện hàng mới" ở trên.
-                    </p>
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Package className="w-10 h-10 text-slate-300 mb-1" />
+                      <p className="font-semibold text-slate-600">Không tìm thấy kiện hàng nào</p>
+                      <p className="text-xs text-slate-400">
+                        Thử thay đổi bộ lọc hoặc bấm nút "Tiếp nhận kiện hàng mới" ở trên.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -649,17 +835,17 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                   return (
                     <tr
                       key={parcel.id}
-                      className="hover:bg-amber-50/30 transition-colors group"
+                      className="hover:bg-slate-50/70 transition-colors group"
                     >
                       {/* Ảnh bưu kiện (Thumbnail) */}
-                      <td className="py-3.5 px-5">
+                      <td className="py-3 px-4">
                         <div
                           onClick={() => {
                             setLightboxImage(parcel.parcel_photo_url);
                             setActiveParcel(parcel);
                             setIsLightboxOpen(true);
                           }}
-                          className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 border border-slate-200/90 relative group-hover:scale-105 transition-transform cursor-pointer shadow-2xs"
+                          className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group-hover:scale-105 transition-transform cursor-pointer shadow-xs"
                           title="Bấm để xem ảnh phóng to"
                         >
                           <img
@@ -673,31 +859,31 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                             }}
                           />
                           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                            <Maximize2 className="w-4 h-4 drop-shadow-md" />
+                            <Maximize2 className="w-3.5 h-3.5 drop-shadow-md" />
                           </div>
                         </div>
                       </td>
 
                       {/* Mã vận đơn & ĐVVC */}
-                      <td className="py-3.5 px-5">
-                        <div className="font-bold text-neutral-900 flex items-center gap-1.5 font-mono">
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5 font-mono">
                           <span>{parcel.tracking_number}</span>
                         </div>
-                        <div className="text-xs text-amber-700 font-semibold mt-0.5 flex items-center gap-1">
+                        <div className="text-[11px] text-amber-700 font-semibold mt-0.5 flex items-center gap-1">
                           <Truck className="w-3 h-3 text-amber-500" />
                           <span>{parcel.courier_company}</span>
                         </div>
                       </td>
 
                       {/* Căn hộ & Người nhận */}
-                      <td className="py-3.5 px-5">
+                      <td className="py-3 px-4">
                         <div className="font-bold text-sky-700 flex items-center gap-1">
                           <Building className="w-3.5 h-3.5 text-sky-500" />
                           <span>
                             {parcel.apartment?.apartment_number || 'Căn hộ'}
                           </span>
                         </div>
-                        <div className="text-xs text-neutral-800 font-medium mt-0.5 flex items-center gap-1">
+                        <div className="text-xs text-slate-800 font-medium mt-0.5 flex items-center gap-1">
                           <User className="w-3 h-3 text-slate-400" />
                           <span>{parcel.recipient_name}</span>
                         </div>
@@ -708,18 +894,18 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       </td>
 
                       {/* Mã lấy hàng (PIN & QR) */}
-                      <td className="py-3.5 px-5 font-mono">
-                        <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs font-black text-neutral-800">
+                      <td className="py-3 px-4 font-mono">
+                        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-black text-slate-800">
                           <KeyRound className="w-3 h-3 text-amber-600" />
                           <span>{parcel.pickup_pin_code}</span>
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
+                        <div className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[120px]" title={parcel.pickup_qr_code}>
                           {parcel.pickup_qr_code}
                         </div>
                       </td>
 
                       {/* Vị trí lưu giữ */}
-                      <td className="py-3.5 px-5 text-xs text-slate-600 font-medium">
+                      <td className="py-3 px-4 text-xs text-slate-600 font-medium">
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
                           <MapPin className="w-3 h-3 text-slate-400" />
                           {parcel.stored_location_type === 'RECEPTION_DESK'
@@ -731,7 +917,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       </td>
 
                       {/* Thời gian tiếp nhận */}
-                      <td className="py-3.5 px-5 text-xs text-slate-500">
+                      <td className="py-3 px-4 text-xs text-slate-500">
                         <div>{formatDateTime(parcel.received_at)}</div>
                         {parcel.received_by_staff && (
                           <div className="text-[11px] text-slate-400 mt-0.5">
@@ -741,19 +927,19 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       </td>
 
                       {/* Trạng thái */}
-                      <td className="py-3.5 px-5">
+                      <td className="py-3 px-4 text-center">
                         {isOverdue ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                            <AlertTriangle className="w-3 h-3 text-rose-500" />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                            <AlertTriangle className="w-3 h-3 text-rose-600" />
                             <span>Quá hạn (&gt;5d)</span>
                           </span>
                         ) : isPending ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                             <span>Chờ cư dân nhận</span>
                           </span>
                         ) : isDelivered ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                             <span>Đã bàn giao</span>
                           </span>
@@ -765,14 +951,15 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       </td>
 
                       {/* Thao tác */}
-                      <td className="py-3.5 px-5 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
+                            type="button"
                             onClick={() => {
                               setActiveParcel(parcel);
                               setIsDetailModalOpen(true);
                             }}
-                            className="p-2 rounded-lg text-slate-500 hover:text-sky-600 hover:bg-sky-50 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
                             title="Xem chi tiết kiện hàng"
                           >
                             <Eye className="w-4 h-4" />
@@ -789,37 +976,39 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
         {/* Pagination Bar */}
         {pagination.total_pages > 1 && (
-          <div className="p-4 sm:p-5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between text-xs text-slate-500">
             <span>
               Hiển thị{' '}
-              <strong className="text-neutral-800">
+              <strong className="text-slate-800">
                 {(pagination.current_page - 1) * pagination.per_page + 1}
               </strong>{' '}
               đến{' '}
-              <strong className="text-neutral-800">
+              <strong className="text-slate-800">
                 {Math.min(
                   pagination.current_page * pagination.per_page,
                   pagination.total_items
                 )}
               </strong>{' '}
-              trên tổng <strong className="text-neutral-800">{pagination.total_items}</strong> kiện
+              trên tổng <strong className="text-slate-800">{pagination.total_items}</strong> kiện
             </span>
 
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
                 disabled={pagination.current_page <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="px-3 py-1 font-semibold text-neutral-800">
+              <span className="px-2.5 py-1 font-semibold text-slate-800">
                 {pagination.current_page} / {pagination.total_pages}
               </span>
               <button
+                type="button"
                 disabled={!pagination.has_more}
                 onClick={() => setCurrentPage((p) => p + 1)}
-                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -1125,7 +1314,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                 <button
                   type="submit"
                   disabled={formSubmitting}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
                 >
                   {formSubmitting ? (
                     <>
