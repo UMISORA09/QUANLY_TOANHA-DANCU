@@ -110,6 +110,42 @@ class ResidentAmenityBookingConcurrencyTest extends TestCase
         }
     }
 
+    public function test_parallel_approvals_emit_only_one_status_change(): void
+    {
+        $booking = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking');
+        $path = "/api/v1/admin/amenities/{$this->amenityId}/bookings/{$booking['id']}/status";
+
+        $this->assertSame([200, 200], $this->parallelRequests([$this->adminToken, $this->adminToken], ['status' => 'APPROVED'], $path, method: 'PATCH'));
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $booking['id'], 'status' => 'APPROVED', 'approved_by_user_id' => $this->adminUser->id]);
+        $this->assertSame(1, DB::table('audit_logs')->where('record_id', $booking['id'])->where('action', 'UPDATE')->count());
+        $this->assertSame(1, DB::table('user_in_app_notifications')->where('recipient_user_id', $this->residentUser->id)->where('title', 'Cập nhật đăng ký tiện ích · '.$booking['booking_code'])->count());
+        $this->assertSame(1, DB::table('amenity_booking_payments')->where('booking_id', $booking['id'])->where('status', 'PENDING')->count());
+    }
+
+    public function test_parallel_approval_and_rejection_have_only_one_winner(): void
+    {
+        $booking = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking');
+        $path = "/api/v1/admin/amenities/{$this->amenityId}/bookings/{$booking['id']}/status";
+
+        $this->assertSame([200, 409], $this->parallelRequests([$this->adminToken, $this->adminToken], [['status' => 'APPROVED'], ['status' => 'REJECTED', 'rejection_reason' => 'Không đủ điều kiện']], $path, method: 'PATCH'));
+        $status = DB::table('amenity_bookings')->where('id', $booking['id'])->value('status');
+        $this->assertContains($status, ['APPROVED', 'REJECTED']);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $booking['id'], 'status' => $status === 'APPROVED' ? 'PENDING' : 'CANCELLED']);
+        $this->assertSame(1, DB::table('audit_logs')->where('record_id', $booking['id'])->where('action', 'UPDATE')->count());
+    }
+
+    public function test_parallel_approval_and_resident_cancellation_leave_no_payment_or_capacity_hold(): void
+    {
+        $booking = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated()->json('booking');
+        $paths = ["/api/v1/admin/amenities/{$this->amenityId}/bookings/{$booking['id']}/status", "/api/v1/resident/amenity-bookings/{$booking['id']}/cancel"];
+        $statuses = $this->parallelRequests([$this->adminToken, $this->residentToken], [['status' => 'APPROVED'], []], method: 'POST', headers: [['X-HTTP-Method-Override: PATCH']], paths: $paths);
+
+        $this->assertContains($statuses, [[200, 200], [200, 409]]);
+        $this->assertDatabaseHas('amenity_bookings', ['id' => $booking['id'], 'status' => 'CANCELLED']);
+        $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $booking['id'], 'status' => 'CANCELLED']);
+        $this->getJson($this->availabilityUrl())->assertOk()->assertJsonPath('slots.0.remaining_bookings', 2)->assertJsonPath('slots.0.remaining_attendees', 4);
+    }
+
     public function test_two_residents_compete_for_last_booking_without_overbooking(): void
     {
         DB::table('amenity_time_slots')->where('id', $this->slotId)->update(['max_bookings' => 1]);
