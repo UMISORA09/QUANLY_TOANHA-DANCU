@@ -285,7 +285,16 @@ class MeterReadingService
         $periodStart = $data['period_start_date'] ?? $cycleCarbon->copy()->startOfMonth()->toDateString();
         $periodEnd = $data['period_end_date'] ?? $cycleCarbon->copy()->endOfMonth()->toDateString();
 
-        return DB::transaction(function () use (
+        $existing = MeterReading::where('meter_id', $meter->id)
+            ->where('billing_cycle', $cycle)
+            ->first();
+        if ($existing && $existing->is_locked_for_billing) {
+            throw ValidationException::withMessages([
+                'reading' => "Chỉ số kỳ {$cycle} của đồng hồ này đã bị khóa sổ, không thể chỉnh sửa.",
+            ]);
+        }
+
+        $result = DB::transaction(function () use (
             $meter,
             $cycle,
             $periodStart,
@@ -329,6 +338,10 @@ class MeterReadingService
 
             return $reading->load(['meter', 'apartment.block', 'apartment.floor']);
         });
+
+        $this->clearSummaryCache($cycle, $meter->apartment?->block_id);
+
+        return $result;
     }
 
     /**
@@ -372,6 +385,8 @@ class MeterReadingService
             ]);
         }
 
+        $this->clearSummaryCache($reading->billing_cycle, $reading->apartment?->block_id);
+
         return $reading->load(['meter', 'apartment.block', 'apartment.floor']);
     }
 
@@ -388,7 +403,13 @@ class MeterReadingService
             ]);
         }
 
-        return (bool) $reading->delete();
+        $cycle = $reading->billing_cycle;
+        $blockId = $reading->apartment?->block_id;
+        $deleted = (bool) $reading->delete();
+
+        $this->clearSummaryCache($cycle, $blockId);
+
+        return $deleted;
     }
 
     /**
@@ -401,7 +422,11 @@ class MeterReadingService
             $query->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
         }
 
-        return $query->update(['is_locked_for_billing' => true]);
+        $updated = $query->update(['is_locked_for_billing' => true]);
+
+        $this->clearSummaryCache($billingCycle, $blockId);
+
+        return $updated;
     }
 
     /**
@@ -414,7 +439,31 @@ class MeterReadingService
             $query->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
         }
 
-        return $query->update(['is_locked_for_billing' => false]);
+        $updated = $query->update(['is_locked_for_billing' => false]);
+
+        $this->clearSummaryCache($billingCycle, $blockId);
+
+        return $updated;
+    }
+
+    /**
+     * Xóa cache thống kê kỳ chốt số tức thời
+     */
+    public function clearSummaryCache(string $billingCycle, ?string $blockId = null): void
+    {
+        Cache::forget('meter_summary_'.$billingCycle.'_all');
+        if ($blockId) {
+            Cache::forget('meter_summary_'.$billingCycle.'_'.$blockId);
+        } else {
+            try {
+                $blockIds = Block::pluck('id');
+                foreach ($blockIds as $bId) {
+                    Cache::forget('meter_summary_'.$billingCycle.'_'.$bId);
+                }
+            } catch (\Throwable) {
+                // Ignore fallback
+            }
+        }
     }
 
     /**

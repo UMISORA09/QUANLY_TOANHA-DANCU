@@ -246,6 +246,11 @@ class MeterReadingController extends Controller
      */
     public function lockCycle(Request $request): JsonResponse
     {
+        $rawBlockId = $request->input('block_id');
+        if ($rawBlockId === 'ALL' || empty($rawBlockId)) {
+            $request->merge(['block_id' => null]);
+        }
+
         $validated = $request->validate([
             'billing_cycle' => 'required|string|regex:/^\d{4}-\d{2}$/',
             'block_id' => 'nullable|uuid|exists:blocks,id',
@@ -257,6 +262,7 @@ class MeterReadingController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Đã khóa sổ kỳ {$validated['billing_cycle']} thành công ({$updated} bản ghi).",
+                'is_locked' => true,
                 'locked_count' => $updated,
             ]);
         } catch (Throwable $e) {
@@ -272,6 +278,11 @@ class MeterReadingController extends Controller
      */
     public function unlockCycle(Request $request): JsonResponse
     {
+        $rawBlockId = $request->input('block_id');
+        if ($rawBlockId === 'ALL' || empty($rawBlockId)) {
+            $request->merge(['block_id' => null]);
+        }
+
         $validated = $request->validate([
             'billing_cycle' => 'required|string|regex:/^\d{4}-\d{2}$/',
             'block_id' => 'nullable|uuid|exists:blocks,id',
@@ -283,6 +294,7 @@ class MeterReadingController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Đã mở khóa sổ kỳ {$validated['billing_cycle']} ({$updated} bản ghi).",
+                'is_locked' => false,
                 'unlocked_count' => $updated,
             ]);
         } catch (Throwable $e) {

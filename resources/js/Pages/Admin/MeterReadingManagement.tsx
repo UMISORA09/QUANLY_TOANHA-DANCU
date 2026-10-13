@@ -139,6 +139,7 @@ export const MeterReadingManagement: React.FC = () => {
 
     // Modal Xác nhận Khóa / Mở sổ
     const [isLockConfirmOpen, setIsLockConfirmOpen] = useState<boolean>(false);
+    const [isLockingCycle, setIsLockingCycle] = useState<boolean>(false);
 
     const showToast = (type: 'success' | 'error', message: string) => {
         setToast({ type, message });
@@ -422,18 +423,33 @@ export const MeterReadingManagement: React.FC = () => {
     // Khóa sổ / Mở khóa sổ kỳ này
     const handleToggleLockCycle = async () => {
         const blockId = selectedBlock !== 'ALL' ? selectedBlock : undefined;
+        const targetLocked = !summary?.is_cycle_locked;
+        setIsLockingCycle(true);
+
+        // Optimistic UI: Phản hồi lập tức 0ms trên giao diện
+        setSummary(prev => prev ? { ...prev, is_cycle_locked: targetLocked } : null);
+        setReadings(prev => prev.map(r => ({ ...r, is_locked_for_billing: targetLocked })));
         try {
-            if (summary?.is_cycle_locked) {
-                const res = await meterReadingApi.unlockCycle(selectedCycle, blockId);
+            sessionStorage.removeItem(`smartcassavas_meter_cache_${selectedCycle}`);
+        } catch {}
+
+        try {
+            if (targetLocked) {
+                const res = await meterReadingApi.lockCycle(selectedCycle, blockId);
                 showToast('success', res.message);
             } else {
-                const res = await meterReadingApi.lockCycle(selectedCycle, blockId);
+                const res = await meterReadingApi.unlockCycle(selectedCycle, blockId);
                 showToast('success', res.message);
             }
             setIsLockConfirmOpen(false);
-            fetchData();
+            await fetchData(true);
         } catch (err: any) {
+            // Rollback trạng thái nếu API gặp sự cố
+            setSummary(prev => prev ? { ...prev, is_cycle_locked: !targetLocked } : null);
+            setReadings(prev => prev.map(r => ({ ...r, is_locked_for_billing: !targetLocked })));
             showToast('error', err.message || 'Thao tác khóa sổ thất bại');
+        } finally {
+            setIsLockingCycle(false);
         }
     };
 
@@ -1267,21 +1283,30 @@ export const MeterReadingManagement: React.FC = () => {
                         <div className="flex items-center justify-end gap-2 pt-2">
                             <button
                                 type="button"
+                                disabled={isLockingCycle}
                                 onClick={() => setIsLockConfirmOpen(false)}
-                                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
+                                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Hủy Bỏ
                             </button>
                             <button
                                 type="button"
+                                disabled={isLockingCycle}
                                 onClick={handleToggleLockCycle}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm cursor-pointer ${
+                                className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                                     summary?.is_cycle_locked
                                         ? 'bg-emerald-600 hover:bg-emerald-700'
                                         : 'bg-rose-600 hover:bg-rose-700'
                                 }`}
                             >
-                                {summary?.is_cycle_locked ? 'Xác Nhận Mở Sổ' : 'Xác Nhận Khóa Sổ'}
+                                {isLockingCycle ? (
+                                    <>
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                        <span>Đang cập nhật...</span>
+                                    </>
+                                ) : (
+                                    summary?.is_cycle_locked ? 'Xác Nhận Mở Sổ' : 'Xác Nhận Khóa Sổ'
+                                )}
                             </button>
                         </div>
                     </div>
