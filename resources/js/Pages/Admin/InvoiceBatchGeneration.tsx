@@ -19,7 +19,9 @@ import {
     X,
     ChevronRight,
     ArrowUpRight,
-    Search
+    Search,
+    Download,
+    FileSpreadsheet
 } from 'lucide-react';
 import {
     invoiceBatchApi,
@@ -86,10 +88,19 @@ export const InvoiceBatchGeneration: React.FC = () => {
         setTimeout(() => setToastMessage(null), 4000);
     };
 
-    // Tải danh sách Block
+    // Tải danh sách Block (có cache để tức thì 0ms)
     useEffect(() => {
         const fetchBlocks = async () => {
             try {
+                const cached = sessionStorage.getItem('smartcassavas_cached_blocks');
+                if (cached) {
+                    try {
+                        const parsed = JSON.parse(cached);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            setBlocks(parsed);
+                        }
+                    } catch {}
+                }
                 const token = localStorage.getItem('auth_token') || 'smart_token_admin_demo';
                 const res = await fetch('/api/v1/blocks', {
                     headers: {
@@ -99,7 +110,12 @@ export const InvoiceBatchGeneration: React.FC = () => {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setBlocks(data.data || []);
+                    if (data.data && Array.isArray(data.data)) {
+                        setBlocks(data.data);
+                        try {
+                            sessionStorage.setItem('smartcassavas_cached_blocks', JSON.stringify(data.data));
+                        } catch {}
+                    }
                 }
             } catch (err) {
                 console.error('Lỗi khi tải blocks:', err);
@@ -129,6 +145,113 @@ export const InvoiceBatchGeneration: React.FC = () => {
         }
     }, [activeTab, billingPeriod]);
 
+    // Xuất bảng dự toán Excel chuẩn form biểu tòa nhà
+    const handleExportPreviewExcel = () => {
+        if (!previewData || !previewData.preview_items || previewData.preview_items.length === 0) {
+            showToast('error', 'Chưa có dữ liệu dự toán để xuất Excel.');
+            return;
+        }
+
+        const blockName = selectedBlockId
+            ? blocks.find(b => b.id === selectedBlockId)?.block_name || 'Khối được chọn'
+            : 'Toàn Bộ Tòa Nhà';
+
+        const rowsHtml = previewData.preview_items.map((item, idx) => `
+            <tr>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${idx + 1}</td>
+                <td style="font-weight: bold; border: 1px solid #cbd5e1; padding: 6px;">${item.apartment_number}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 6px;">${item.block_name}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 6px;">${item.resident_name || 'N/A'}</td>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${item.has_electricity_reading ? 'Có số' : 'Chưa ghi'}</td>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${item.has_water_reading ? 'Có số' : 'Chưa ghi'}</td>
+                <td style="text-align: right; border: 1px solid #cbd5e1; padding: 6px;">${item.subtotal_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: right; border: 1px solid #cbd5e1; padding: 6px;">${item.tax_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: right; border: 1px solid #cbd5e1; padding: 6px;">${item.previous_debt_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: right; font-weight: bold; color: #047857; border: 1px solid #cbd5e1; padding: 6px;">${item.total_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${item.has_existing_invoice ? `Đã có HĐ (${item.existing_invoice_number || ''})` : 'Sẵn sàng tạo'}</td>
+            </tr>
+        `).join('');
+
+        const excelHtml = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+                <style>
+                    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #0f172a; }
+                    .header-title { font-size: 16pt; font-weight: bold; color: #0369a1; text-align: center; }
+                    .header-sub { font-size: 11pt; font-style: italic; color: #475569; text-align: center; }
+                    .kpi-table { margin-bottom: 15px; border-collapse: collapse; }
+                    .kpi-table td { padding: 4px 10px; }
+                    .data-table { border-collapse: collapse; width: 100%; }
+                    .th-header { background-color: #0284c7; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #0369a1; padding: 8px; }
+                    .total-row { background-color: #f1f5f9; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <table>
+                    <tr><td colspan="11" class="header-title">SMART CASSAVAS - BẢNG DỰ TOÁN SINH HÓA ĐƠN HÀNG LOẠT</td></tr>
+                    <tr><td colspan="11" class="header-sub">Kỳ tính phí: Tháng ${billingPeriod} | Phạm vi: ${blockName} | Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}</td></tr>
+                    <tr><td colspan="11"></td></tr>
+                </table>
+                <table class="kpi-table">
+                    <tr>
+                        <td><strong>Tổng số căn hộ:</strong> ${previewData.total_apartments} căn</td>
+                        <td><strong>Đủ điều kiện tạo:</strong> ${previewData.eligible_for_generation} căn</td>
+                        <td><strong>Đã có hóa đơn:</strong> ${previewData.existing_invoices_count} căn</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Dự kiến doanh thu:</strong> ${previewData.total_estimated_amount.toLocaleString('vi-VN')} đ</td>
+                        <td><strong>Thuế & Phí:</strong> ${previewData.total_estimated_tax.toLocaleString('vi-VN')} đ</td>
+                        <td><strong>Công nợ dồn:</strong> ${previewData.total_estimated_previous_debt.toLocaleString('vi-VN')} đ</td>
+                    </tr>
+                </table>
+                <br/>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="th-header">STT</th>
+                            <th class="th-header">Số Căn Hộ</th>
+                            <th class="th-header">Tòa Nhà</th>
+                            <th class="th-header">Chủ Hộ / Cư Dân</th>
+                            <th class="th-header">Điện</th>
+                            <th class="th-header">Nước</th>
+                            <th class="th-header">Trước Thuế (VNĐ)</th>
+                            <th class="th-header">Thuế & Phí (VNĐ)</th>
+                            <th class="th-header">Nợ Cũ (VNĐ)</th>
+                            <th class="th-header">Tổng Phải Thu (VNĐ)</th>
+                            <th class="th-header">Trạng Thái</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                        <tr class="total-row">
+                            <td colspan="6" style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">TỔNG CỘNG DỰ TOÁN:</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">${previewData.total_estimated_subtotal.toLocaleString('vi-VN')}</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">${previewData.total_estimated_tax.toLocaleString('vi-VN')}</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">${previewData.total_estimated_previous_debt.toLocaleString('vi-VN')}</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold; color: #047857;">${previewData.total_estimated_amount.toLocaleString('vi-VN')}</td>
+                            <td style="border: 1px solid #cbd5e1;"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+
+        const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Du_Toan_Hoa_Don_${billingPeriod}.xls`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            if (document.body.contains(a)) document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 2000);
+        showToast('success', 'Đã tải bảng dự toán Excel thành công.');
+    };
+
     // Chạy xem trước (Dry-run preview)
     const handleRunPreview = async () => {
         if (!billingPeriod) {
@@ -153,6 +276,13 @@ export const InvoiceBatchGeneration: React.FC = () => {
             setPreviewLoading(false);
         }
     };
+
+    // Tự động phân tích dự toán khi vào tab hoặc thay đổi chu kỳ/tòa nhà
+    useEffect(() => {
+        if (activeTab === 'generation' && billingPeriod) {
+            handleRunPreview();
+        }
+    }, [billingPeriod, selectedBlockId]);
 
     // Xác nhận và thực hiện phát hành hóa đơn thật
     const handleConfirmGenerate = async () => {
@@ -557,16 +687,30 @@ export const InvoiceBatchGeneration: React.FC = () => {
                                         </h3>
                                     </div>
 
-                                    {/* Tìm kiếm */}
-                                    <div className="relative w-full sm:w-64">
-                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                        <input
-                                            type="text"
-                                            placeholder="Tìm mã căn, tên cư dân..."
-                                            value={previewSearch}
-                                            onChange={(e) => setPreviewSearch(e.target.value)}
-                                            className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-                                        />
+                                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                                        {/* Tìm kiếm */}
+                                        <div className="relative w-full sm:w-64">
+                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                            <input
+                                                type="text"
+                                                placeholder="Tìm mã căn, tên cư dân..."
+                                                value={previewSearch}
+                                                onChange={(e) => setPreviewSearch(e.target.value)}
+                                                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                                            />
+                                        </div>
+
+                                        {/* Nút Xuất Excel */}
+                                        <button
+                                            type="button"
+                                            onClick={handleExportPreviewExcel}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200/80 shadow-2xs transition-all shrink-0 cursor-pointer"
+                                            title="Tải bảng tính Excel kiểm tra số liệu dự toán"
+                                        >
+                                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span className="hidden sm:inline">Xuất Excel Dự Toán</span>
+                                            <span className="sm:hidden">Excel</span>
+                                        </button>
                                     </div>
                                 </div>
 

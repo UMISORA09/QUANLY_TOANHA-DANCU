@@ -37,8 +37,8 @@ class InvoiceGenerationService
         $overwriteExisting = (bool) ($params['overwrite_existing'] ?? false);
 
         $apartments = $this->getTargetApartments($blockId);
-
         $pricingConfigs = $this->loadPricingConfigs();
+        $preloaded = $this->preloadApartmentData($apartments, $billingPeriod, $includePreviousDebt);
 
         $previewItems = [];
         $totalEstimatedSubtotal = 0.0;
@@ -51,21 +51,20 @@ class InvoiceGenerationService
         $missingWaterCount = 0;
 
         foreach ($apartments as $apartment) {
-            $existingInvoice = Invoice::where('apartment_id', $apartment->id)
-                ->where('billing_period', $billingPeriod)
-                ->first();
+            $existingInvoice = $preloaded['existing_invoices']->get($apartment->id);
 
             $hasExisting = $existingInvoice !== null;
             if ($hasExisting) {
                 $existingInvoicesCount++;
             }
 
-            // Tính toán chi tiết các mục dịch vụ
+            // Tính toán chi tiết các mục dịch vụ (sử dụng dữ liệu tải trước bulk)
             $calculation = $this->calculateApartmentFees(
                 $apartment,
                 $billingPeriod,
                 $pricingConfigs,
-                $includePreviousDebt
+                $includePreviousDebt,
+                $preloaded
             );
 
             if (! $calculation['has_electricity_reading']) {
@@ -150,6 +149,7 @@ class InvoiceGenerationService
 
         $apartments = $this->getTargetApartments($blockId);
         $pricingConfigs = $this->loadPricingConfigs();
+        $preloaded = $this->preloadApartmentData($apartments, $billingPeriod, $includePreviousDebt);
 
         $batchNumber = 'INV-BATCH-'.str_replace('-', '', $billingPeriod).'-'.($blockId ? Str::upper(substr($blockId, 0, 8)) : 'ALL').'-'.Str::upper(Str::random(4));
 
@@ -164,7 +164,8 @@ class InvoiceGenerationService
             $overwriteExisting,
             $issueDate,
             $dueDate,
-            $customNotes
+            $customNotes,
+            $preloaded
         ) {
             $batch = InvoiceGenerationBatch::create([
                 'batch_number' => $batchNumber,
@@ -186,9 +187,7 @@ class InvoiceGenerationService
 
             foreach ($apartments as $apartment) {
                 try {
-                    $existingInvoice = Invoice::where('apartment_id', $apartment->id)
-                        ->where('billing_period', $billingPeriod)
-                        ->first();
+                    $existingInvoice = $preloaded['existing_invoices']->get($apartment->id);
 
                     if ($existingInvoice) {
                         if (! $overwriteExisting) {
@@ -217,12 +216,13 @@ class InvoiceGenerationService
                     // Xác định resident_user_id
                     $residentUserId = $this->resolveResidentUserId($apartment, $executedByUserId);
 
-                    // Tính toán chi phí
+                    // Tính toán chi phí (sử dụng preloaded data)
                     $calc = $this->calculateApartmentFees(
                         $apartment,
                         $billingPeriod,
                         $pricingConfigs,
-                        $includePreviousDebt
+                        $includePreviousDebt,
+                        $preloaded
                     );
 
                     // Sinh mã hóa đơn chuẩn nghiệp vụ
@@ -366,6 +366,60 @@ class InvoiceGenerationService
     // =========================================================================
 
     /**
+     * Tải trước dữ liệu chỉ số đồng hồ, hóa đơn hiện có và công nợ cũ của danh sách căn hộ
+     * Giúp giảm tải triệt để từ hàng trăm query xuống 3 query duy nhất (chống N+1).
+     *
+     * @param  \Illuminate\Support\Collection<int, Apartment>  $apartments
+     * @return array{
+     *     existing_invoices: \Illuminate\Support\Collection<string, Invoice>,
+     *     meter_readings: \Illuminate\Support\Collection<string, \Illuminate\Support\Collection<int, MeterReading>>,
+     *     previous_debts: array<string, float>
+     * }
+     */
+    private function preloadApartmentData($apartments, string $billingPeriod, bool $includePreviousDebt): array
+    {
+        $apartmentIds = $apartments->pluck('id')->all();
+        if (empty($apartmentIds)) {
+            return [
+                'existing_invoices' => collect(),
+                'meter_readings' => collect(),
+                'previous_debts' => [],
+            ];
+        }
+
+        $existingInvoices = Invoice::whereIn('apartment_id', $apartmentIds)
+            ->where('billing_period', $billingPeriod)
+            ->get()
+            ->keyBy('apartment_id');
+
+        $meterReadings = MeterReading::with('meter')
+            ->whereIn('apartment_id', $apartmentIds)
+            ->where('billing_cycle', $billingPeriod)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->groupBy('apartment_id');
+
+        $previousDebts = [];
+        if ($includePreviousDebt) {
+            $previousDebts = Invoice::whereIn('apartment_id', $apartmentIds)
+                ->where('billing_period', '<', $billingPeriod)
+                ->where('remaining_balance', '>', 0)
+                ->where('status', '!=', 'CANCELLED')
+                ->selectRaw('apartment_id, SUM(remaining_balance) as total_debt')
+                ->groupBy('apartment_id')
+                ->pluck('total_debt', 'apartment_id')
+                ->map(fn ($val) => (float) $val)
+                ->all();
+        }
+
+        return [
+            'existing_invoices' => $existingInvoices,
+            'meter_readings' => $meterReadings,
+            'previous_debts' => $previousDebts,
+        ];
+    }
+
+    /**
      * Lấy danh sách căn hộ theo tòa/toàn bộ
      *
      * @return Collection<int, Apartment>
@@ -433,18 +487,24 @@ class InvoiceGenerationService
         Apartment $apartment,
         string $billingPeriod,
         array $pricingConfigs,
-        bool $includePreviousDebt
+        bool $includePreviousDebt,
+        ?array $preloadedData = null
     ): array {
         $items = [];
         $subtotalAmount = 0.0;
         $taxAmount = 0.0;
 
         // 1. Tiền Điện
-        $elecReading = MeterReading::where('apartment_id', $apartment->id)
-            ->where('billing_cycle', $billingPeriod)
-            ->whereHas('meter', fn ($q) => $q->where('meter_type', 'ELECTRICITY'))
-            ->latest('created_at')
-            ->first();
+        if ($preloadedData !== null) {
+            $readings = $preloadedData['meter_readings']->get($apartment->id, collect());
+            $elecReading = $readings->first(fn ($r) => $r->meter?->meter_type === 'ELECTRICITY');
+        } else {
+            $elecReading = MeterReading::where('apartment_id', $apartment->id)
+                ->where('billing_cycle', $billingPeriod)
+                ->whereHas('meter', fn ($q) => $q->where('meter_type', 'ELECTRICITY'))
+                ->latest('created_at')
+                ->first();
+        }
 
         $hasElectricityReading = $elecReading !== null;
 
@@ -473,11 +533,16 @@ class InvoiceGenerationService
         }
 
         // 2. Tiền Nước
-        $waterReading = MeterReading::where('apartment_id', $apartment->id)
-            ->where('billing_cycle', $billingPeriod)
-            ->whereHas('meter', fn ($q) => $q->where('meter_type', 'WATER'))
-            ->latest('created_at')
-            ->first();
+        if ($preloadedData !== null) {
+            $readings = $preloadedData['meter_readings']->get($apartment->id, collect());
+            $waterReading = $readings->first(fn ($r) => $r->meter?->meter_type === 'WATER');
+        } else {
+            $waterReading = MeterReading::where('apartment_id', $apartment->id)
+                ->where('billing_cycle', $billingPeriod)
+                ->whereHas('meter', fn ($q) => $q->where('meter_type', 'WATER'))
+                ->latest('created_at')
+                ->first();
+        }
 
         $hasWaterReading = $waterReading !== null;
 
@@ -601,11 +666,15 @@ class InvoiceGenerationService
         // 5. Nợ cũ kỳ trước
         $previousDebtAmount = 0.0;
         if ($includePreviousDebt) {
-            $previousDebtAmount = (float) Invoice::where('apartment_id', $apartment->id)
-                ->where('billing_period', '<', $billingPeriod)
-                ->where('remaining_balance', '>', 0)
-                ->where('status', '!=', 'CANCELLED')
-                ->sum('remaining_balance');
+            if ($preloadedData !== null) {
+                $previousDebtAmount = (float) ($preloadedData['previous_debts'][$apartment->id] ?? 0.0);
+            } else {
+                $previousDebtAmount = (float) Invoice::where('apartment_id', $apartment->id)
+                    ->where('billing_period', '<', $billingPeriod)
+                    ->where('remaining_balance', '>', 0)
+                    ->where('status', '!=', 'CANCELLED')
+                    ->sum('remaining_balance');
+            }
         }
 
         $totalAmount = round($subtotalAmount + $taxAmount + $previousDebtAmount, 2);
