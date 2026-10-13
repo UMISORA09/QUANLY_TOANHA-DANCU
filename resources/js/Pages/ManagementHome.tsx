@@ -44,7 +44,9 @@ import {
   Compass,
   Terminal,
   UserPlus,
-  Car
+  Car,
+  History,
+  CreditCard
 } from 'lucide-react';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';
@@ -57,9 +59,16 @@ import { VehicleManagement } from './Admin/VehicleManagement';
 import { ServicePricingManagement } from './Admin/ServicePricingManagement';
 import { MeterReadingManagement } from './Admin/MeterReadingManagement';
 import { InvoiceBatchGeneration } from './Admin/InvoiceBatchGeneration';
+import { InvoiceManagement } from './Admin/InvoiceManagement';
+import { PaymentHistoryManagement } from './Admin/PaymentHistoryManagement';
+import { RevenueAnalyticsDashboard } from './Admin/RevenueAnalyticsDashboard';
+import { FinancialReportManagement } from './Admin/FinancialReportManagement';
+import { InvoiceNavTabs } from '../Components/Admin/InvoiceNavTabs';
+import { RfidManagement } from './Admin/RfidManagement';
 import { AppLayout } from '../Components/Layout/AppLayout';
-import { api } from '../Services/api';
+import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
+import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -157,6 +166,13 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       return 'account_provisioning';
     }
     if (
+      path === '/quan-ly/rfid-cards' ||
+      path === '/admin/rfid-cards' ||
+      path.includes('rfid-cards')
+    ) {
+      return 'rfid_cards';
+    }
+    if (
       path === '/quan-ly/blocks' ||
       path === '/admin/blocks' ||
       path === '/quan-ly/khoi-toa-nha' ||
@@ -190,10 +206,71 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path === '/quan-ly/chot-chi-so' ||
       path === '/admin/meter-readings' ||
       path === '/quan-ly/meter-readings' ||
+      path === '/admin/chot-chi-so' ||
       path.startsWith('/quan-ly/chot-chi-so') ||
-      path.startsWith('/admin/meter-readings')
+      path.startsWith('/admin/meter-readings') ||
+      path.startsWith('/admin/chot-chi-so') ||
+      path.startsWith('/quan-ly/meter-readings')
     ) {
       return 'meter_readings';
+    }
+    if (
+      path === '/quan-ly/hoa-don' ||
+      path === '/admin/hoa-don' ||
+      path === '/quan-ly/invoices' ||
+      path === '/admin/invoices' ||
+      path.startsWith('/quan-ly/hoa-don') ||
+      path.startsWith('/quan-ly/invoices')
+    ) {
+      return 'invoices';
+    }
+    if (
+      path === '/quan-ly/sinh-hoa-don' ||
+      path === '/admin/sinh-hoa-don' ||
+      path === '/quan-ly/invoice-generation' ||
+      path === '/admin/invoice-generation' ||
+      path.startsWith('/quan-ly/sinh-hoa-don')
+    ) {
+      return 'invoice_generation';
+    }
+    if (
+      path === '/quan-ly/lich-su-giao-dich' ||
+      path === '/admin/lich-su-giao-dich' ||
+      path === '/quan-ly/payment-history' ||
+      path === '/admin/payment-history' ||
+      path.startsWith('/quan-ly/lich-su-giao-dich')
+    ) {
+      return 'payment_history';
+    }
+    if (
+      path === '/quan-ly/thong-ke-doanh-thu' ||
+      path === '/admin/thong-ke-doanh-thu' ||
+      path === '/quan-ly/revenue-analytics' ||
+      path === '/admin/revenue-analytics' ||
+      path.startsWith('/quan-ly/thong-ke-doanh-thu')
+    ) {
+      return 'revenue_analytics';
+    }
+    if (
+      path === '/quan-ly/bao-cao-tai-chinh' ||
+      path === '/admin/bao-cao-tai-chinh' ||
+      path === '/quan-ly/financial-reports' ||
+      path === '/admin/financial-reports' ||
+      path.startsWith('/quan-ly/bao-cao-tai-chinh')
+    ) {
+      return 'financial_reports';
+    }
+    if (
+      path === '/quan-ly/don-gia' ||
+      path === '/admin/don-gia' ||
+      path === '/quan-ly/pricing-configs' ||
+      path === '/admin/pricing-configs' ||
+      path.startsWith('/quan-ly/don-gia') ||
+      path.startsWith('/admin/don-gia') ||
+      path.startsWith('/quan-ly/pricing-configs') ||
+      path.startsWith('/admin/pricing-configs')
+    ) {
+      return 'pricing_configs';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -201,11 +278,15 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     const tabParam = urlParams.get('tab');
     if (tabParam) {
       if (tabParam === 'buildings') return 'blocks';
+      if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
+      if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'meter_readings';
       return tabParam;
     }
 
     // 3. Prop initialTab được truyền từ component cha (nếu có giá trị cụ thể khác overview)
     if (initialTab && initialTab !== 'overview') {
+      if (initialTab === 'pricing' || initialTab === 'don_gia') return 'pricing_configs';
+      if (initialTab === 'metering' || initialTab === 'meter-readings' || initialTab === 'chot-chi-so' || initialTab === 'chot_chi_so') return 'meter_readings';
       return initialTab;
     }
 
@@ -395,6 +476,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   });
 
   // Notifications state
+  const notices = useAmenityNotifications('admin');
+  const { items: amenityNotifications, unreadCount: amenityUnreadCount, alert: bookingAlert, setAlert: setBookingAlert } = notices;
   const [notifications, setNotifications] = useState<Array<{
     id: string;
     title: string;
@@ -410,6 +493,21 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     { id: '5', title: 'Cư dân đăng ký mới', message: 'Hộ gia đình căn B1405 hoàn tất xác thực eKYC.', timeAgo: '5 giờ trước', isRead: false },
   ]);
 
+  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || ''))];
+  const unreadNotificationCount = amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || '')).length;
+
+  const openBookingNotification = async (notification: AmenityBookingNotification) => {
+    const target = new URL(notification.deepLink, window.location.origin);
+    if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
+    target.pathname = userRole === 'manager' ? '/quan-ly' : '/admin';
+    window.history.pushState({}, '', target.pathname + target.search);
+    setActiveMenuId('amenities');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    setIsNotificationOpen(false);
+    setBookingAlert(null);
+    await notices.markRead(notification);
+  };
+
   // Sidebar Menu Items dynamically bound to Database KPIs and userRole
   const menuItems = useMemo(
     () => {
@@ -417,16 +515,21 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'overview', label: userRole === 'admin' ? 'Tổng quan Hệ thống' : 'Bàn làm việc Vận hành', icon: LayoutDashboard, badge: null, active: true },
         { id: 'blocks', label: 'Khối / Tòa nhà', icon: Building2, badge: null },
         { id: 'apartments', label: 'Tầng & Căn hộ', icon: Layers, badge: null },
-        { id: 'residents', label: 'Cư dân', icon: Users, badge: kpis.totalResidents },
+        { id: 'residents', label: 'Chủ hộ & Nhân khẩu căn hộ', icon: Users, badge: kpis.totalResidents },
         { id: 'vehicles', label: 'Phương tiện (Xe)', icon: Car, badge: null },
+        { id: 'rfid_cards', label: 'Quản lý thẻ RFID', icon: CreditCard, badge: null },
         { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto' },
-        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
+        { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'CT01' },
         { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: String(kpis.amenityBookings) },
-        { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
-        { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
-        { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
+        { id: 'pricing_configs', label: 'Đơn giá', icon: Tag, badge: null },
+        { id: 'meter_readings', label: 'Chốt chỉ số điện & nước', icon: Zap, badge: 'IoT' },
+        { id: 'invoices', label: 'Quản lý Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
+        { id: 'invoice_generation', label: 'Sinh Hóa đơn Tự động', icon: Layers, badge: 'Auto' },
+        { id: 'payment_history', label: 'Lịch sử Giao dịch', icon: History, badge: null },
+        { id: 'revenue_analytics', label: 'Dashboard Doanh thu', icon: TrendingUp, badge: 'Chart' },
+        { id: 'financial_reports', label: 'Báo cáo Tài chính', icon: FileSpreadsheet, badge: 'Excel/PDF' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
-        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${notifications.filter(n => !n.isRead).length || 2} mới` },
+        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${unreadNotificationCount} mới` },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
         { id: 'ekyc', label: 'eKYC & Xác thực CCCD', icon: ShieldCheck, badge: 'AI' },
         { id: 'assets', label: 'Tài sản & Bảo trì thiết bị', icon: ShieldAlert, badge: null },
@@ -455,7 +558,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
       return baseItems;
     },
-    [kpis, notifications, userRole]
+    [kpis, unreadNotificationCount, userRole]
   );
 
   // Ticket Data matching database seed
@@ -645,13 +748,17 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   }, []);
 
   const handleMenuClick = (id: string) => {
-    setActiveMenuId(id);
+    let normalizedId = (id === 'pricing' || id === 'don_gia') ? 'pricing_configs' : id;
+    if (normalizedId === 'metering' || normalizedId === 'chot_chi_so') {
+      normalizedId = 'meter_readings';
+    }
+    setActiveMenuId(normalizedId);
     setMobileSidebarOpen(false);
 
     // Lưu vào sessionStorage để trong phiên làm việc (ở yên chỗ đó khi chuyển đổi/F5)
     // Khi khởi động lại hoặc đăng xuất (out khỏi) sẽ tự động quay về Tổng quan
     try {
-      sessionStorage.setItem('smartcassavas_active_admin_tab', id);
+      sessionStorage.setItem('smartcassavas_active_admin_tab', normalizedId);
       localStorage.removeItem('smartcassavas_active_admin_tab');
     } catch {
       // ignore
@@ -661,23 +768,39 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     const isManagerMode = userRole === 'manager' || window.location.pathname.startsWith('/quan-ly') || window.location.pathname.startsWith('/manager');
     const basePath = isManagerMode ? '/quan-ly' : '/admin';
 
-    if (id === 'cicd') {
-      window.history.pushState({ tab: id }, '', `${basePath}/cicd`);
-    } else if (id === 'amenities') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=amenities`);
-    } else if (id === 'account_provisioning') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=account_provisioning`);
-    } else if (id === 'temporary_registrations') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=temporary_registrations`);
-    } else if (id === 'vehicles') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=vehicles`);
-    } else if (id === 'overview') {
-      window.history.pushState({ tab: id }, '', basePath);
+    if (normalizedId === 'cicd') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}/cicd`);
+    } else if (normalizedId === 'amenities') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=amenities`);
+    } else if (normalizedId === 'account_provisioning') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=account_provisioning`);
+    } else if (normalizedId === 'temporary_registrations') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=temporary_registrations`);
+    } else if (normalizedId === 'vehicles') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=vehicles`);
+    } else if (normalizedId === 'rfid_cards') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=rfid_cards`);
+    } else if (normalizedId === 'pricing_configs') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}/don-gia`);
+    } else if (normalizedId === 'meter_readings' || normalizedId === 'metering' || normalizedId === 'chot_chi_so') {
+      window.history.pushState({ tab: 'meter_readings' }, '', isManagerMode ? `${basePath}/chot-chi-so` : `${basePath}/meter-readings`);
+    } else if (normalizedId === 'invoices' || normalizedId === 'hoa_don') {
+      window.history.pushState({ tab: 'invoices' }, '', `${basePath}/hoa-don`);
+    } else if (normalizedId === 'invoice_generation' || normalizedId === 'sinh_hoa_don') {
+      window.history.pushState({ tab: 'invoice_generation' }, '', `${basePath}/sinh-hoa-don`);
+    } else if (normalizedId === 'payment_history' || normalizedId === 'lich_su_giao_dich') {
+      window.history.pushState({ tab: 'payment_history' }, '', `${basePath}/lich-su-giao-dich`);
+    } else if (normalizedId === 'revenue_analytics' || normalizedId === 'thong_ke_doanh_thu') {
+      window.history.pushState({ tab: 'revenue_analytics' }, '', `${basePath}/thong-ke-doanh-thu`);
+    } else if (normalizedId === 'financial_reports' || normalizedId === 'bao_cao_tai_chinh') {
+      window.history.pushState({ tab: 'financial_reports' }, '', `${basePath}/bao-cao-tai-chinh`);
+    } else if (normalizedId === 'overview') {
+      window.history.pushState({ tab: normalizedId }, '', basePath);
     } else {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=${id}`);
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=${normalizedId}`);
     }
-    if (id !== 'overview') {
-      showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === id)?.label}`);
+    if (normalizedId !== 'overview') {
+      showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === normalizedId)?.label || 'Chốt chỉ số điện & nước'}`);
     }
   };
 
@@ -702,7 +825,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       onNavigateHome={onNavigateHome}
       onNotificationClick={() => setIsNotificationOpen(!isNotificationOpen)}
       onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
-      unreadNotificationCount={notifications.filter((n) => !n.isRead).length}
+      unreadNotificationCount={unreadNotificationCount}
       extraTopbarActions={
         <>
 
@@ -761,13 +884,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       }
     >
       {/* Notifications Dropdown Panel */}
+      {bookingAlert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{bookingAlert.title}</p><p className="mt-1 text-xs text-neutral-600">{bookingAlert.message}</p></div><button type="button" aria-label="Đóng cảnh báo đăng ký mới" onClick={() => setBookingAlert(null)} className="rounded-lg p-1 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openBookingNotification(bookingAlert)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
       {isNotificationOpen && (
         <div className="fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-semibold">
-                {notifications.filter((n) => !n.isRead).length} mới
+                {unreadNotificationCount} mới
               </span>
             </div>
             <button
@@ -779,8 +903,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </button>
           </div>
           <div className="relative mt-2">
+            <label className="mb-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo tiện ích chưa đọc</label>
+            {notices.error && <p role="alert" className="mb-2 text-xs text-rose-700">Không thể cập nhật thông báo tiện ích. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}
             <div className="space-y-2 max-h-[260px] overflow-y-auto custom-scrollbar pr-1 pb-7">
-              {notifications.map((notif) => {
+              {displayedNotifications.map((notif) => {
                 const isError = notif.category === 'TICKET' || notif.title.includes('Sự cố');
                 const isWarning = notif.category === 'BILLING' || notif.title.includes('quá hạn');
                 const isSuccess = notif.category === 'IOT' || notif.title.includes('Đồng bộ');
@@ -806,15 +932,17 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                       <span>{notif.timeAgo || 'Vừa xong'}</span>
                     </div>
                     <p className="text-xs text-slate-700 mt-0.5">{notif.message}</p>
+                    {notif.category === 'AMENITY_BOOKING' && <button type="button" onClick={() => void openBookingNotification(notif as AmenityBookingNotification)} className="mt-2 text-xs font-semibold text-emerald-700 underline">{notif.isRead ? 'Xem lại đăng ký' : 'Xem đăng ký'}</button>}
                   </div>
                 );
               })}
             </div>
+            <div className="mt-2 flex items-center justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div>
           </div>
         </div>
       )}
           {activeMenuId === 'cicd' ? (
-            <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 transition-all duration-300 ease-in-out">
               <CicdDashboard userRole={userRole} />
             </div>
           ) : activeMenuId === 'amenities' ? (
@@ -851,7 +979,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <VehicleManagement embedded={true} />
             </div>
-          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'don_gia' || activeMenuId === 'pricing' ? (
+          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'pricing' || activeMenuId === 'don_gia' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ServicePricingManagement />
             </div>
@@ -859,9 +987,34 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <MeterReadingManagement />
             </div>
-          ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' || activeMenuId === 'sinh_hoa_don' ? (
+          ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="invoices" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <InvoiceManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
+            </div>
+          ) : activeMenuId === 'sinh_hoa_don' || activeMenuId === 'invoice_generation' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="invoice_generation" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <InvoiceBatchGeneration />
+            </div>
+          ) : activeMenuId === 'payment_history' || activeMenuId === 'lich_su_giao_dich' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="payment_history" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <PaymentHistoryManagement />
+            </div>
+          ) : activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="revenue_analytics" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <RevenueAnalyticsDashboard onBackToList={() => handleMenuClick('invoices')} />
+            </div>
+          ) : activeMenuId === 'financial_reports' || activeMenuId === 'bao_cao_tai_chinh' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <InvoiceNavTabs activeTab="financial_reports" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
+              <FinancialReportManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
+          ) : activeMenuId === 'rfid_cards' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <RfidManagement embedded={true} />
+            </div>
             </div>
           ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">

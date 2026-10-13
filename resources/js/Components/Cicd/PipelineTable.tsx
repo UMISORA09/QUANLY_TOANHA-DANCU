@@ -105,9 +105,9 @@ export const PipelineTable: React.FC<PipelineTableProps> = ({
 
   return (
     <div className="rounded-2xl bg-white/85 backdrop-blur-md border border-slate-200/80 shadow-xs overflow-hidden">
-      <div className="overflow-x-auto">
+      <div className="max-h-[70vh] overflow-auto">
         <table className="w-full text-left text-xs">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-slate-50">
             <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <th className="py-3.5 px-4">Trạng thái</th>
               <th className="py-3.5 px-4">Pipeline</th>
@@ -141,7 +141,7 @@ export const PipelineTable: React.FC<PipelineTableProps> = ({
                     </span>
                   </div>
                   <div
-                    className="text-[11px] text-slate-500 font-medium truncate max-w-sm mt-0.5"
+                    className="text-[11px] text-slate-500 font-medium truncate max-w-md xl:max-w-2xl mt-0.5"
                     title={p.commit_message}
                   >
                     {p.commit_message}
@@ -152,7 +152,7 @@ export const PipelineTable: React.FC<PipelineTableProps> = ({
                 <td className="py-3.5 px-4 whitespace-nowrap">
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-neutral-800 font-mono text-[11px] font-semibold border border-slate-200/60">
                     <GitBranch className="w-3 h-3 text-slate-500" />
-                    <span className="max-w-[120px] truncate">{p.branch}</span>
+                    <span className="max-w-[120px] xl:max-w-[180px] truncate">{p.branch}</span>
                   </span>
                 </td>
 

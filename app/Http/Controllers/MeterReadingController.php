@@ -246,6 +246,11 @@ class MeterReadingController extends Controller
      */
     public function lockCycle(Request $request): JsonResponse
     {
+        $rawBlockId = $request->input('block_id');
+        if ($rawBlockId === 'ALL' || empty($rawBlockId)) {
+            $request->merge(['block_id' => null]);
+        }
+
         $validated = $request->validate([
             'billing_cycle' => 'required|string|regex:/^\d{4}-\d{2}$/',
             'block_id' => 'nullable|uuid|exists:blocks,id',
@@ -257,6 +262,7 @@ class MeterReadingController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Đã khóa sổ kỳ {$validated['billing_cycle']} thành công ({$updated} bản ghi).",
+                'is_locked' => true,
                 'locked_count' => $updated,
             ]);
         } catch (Throwable $e) {
@@ -272,6 +278,11 @@ class MeterReadingController extends Controller
      */
     public function unlockCycle(Request $request): JsonResponse
     {
+        $rawBlockId = $request->input('block_id');
+        if ($rawBlockId === 'ALL' || empty($rawBlockId)) {
+            $request->merge(['block_id' => null]);
+        }
+
         $validated = $request->validate([
             'billing_cycle' => 'required|string|regex:/^\d{4}-\d{2}$/',
             'block_id' => 'nullable|uuid|exists:blocks,id',
@@ -283,6 +294,7 @@ class MeterReadingController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Đã mở khóa sổ kỳ {$validated['billing_cycle']} ({$updated} bản ghi).",
+                'is_locked' => false,
                 'unlocked_count' => $updated,
             ]);
         } catch (Throwable $e) {
@@ -301,13 +313,26 @@ class MeterReadingController extends Controller
         $cycle = $request->input('cycle', Carbon::now()->format('Y-m'));
         $blockId = $request->input('block_id');
         $meterType = $request->input('meter_type');
+        $format = strtolower((string) $request->input('format', 'csv'));
 
         try {
+            if (in_array($format, ['excel', 'xls', 'xlsx'], true)) {
+                $excelContent = $this->service->generateExcelTemplate($cycle, $blockId, $meterType);
+
+                return response($excelContent, 200, [
+                    'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+                    'Content-Disposition' => "attachment; filename=\"mau_chot_chi_so_{$cycle}.xls\"; filename*=UTF-8''mau_chot_chi_so_{$cycle}.xls",
+                    'Access-Control-Expose-Headers' => 'Content-Disposition',
+                    'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                ]);
+            }
+
             $csvContent = $this->service->generateTemplate($cycle, $blockId, $meterType);
 
             return response($csvContent, 200, [
                 'Content-Type' => 'text/csv; charset=UTF-8',
-                'Content-Disposition' => "attachment; filename=\"mau_chot_chi_so_{$cycle}.csv\"",
+                'Content-Disposition' => "attachment; filename=\"mau_chot_chi_so_{$cycle}.csv\"; filename*=UTF-8''mau_chot_chi_so_{$cycle}.csv",
+                'Access-Control-Expose-Headers' => 'Content-Disposition',
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
             ]);
         } catch (Throwable $e) {

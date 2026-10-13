@@ -4,6 +4,7 @@ namespace App\Services\Cicd;
 
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -57,7 +58,7 @@ class GitHubActionsService
             Cache::forget('cicd_security_audit');
         }
 
-        return Cache::remember($cacheKey, 30, function () use ($filters, $force) {
+        return Cache::remember($cacheKey, 60, function () use ($filters, $force) {
             $health = $this->getSystemHealth();
             $branches = $this->getGitBranches();
             $pipelines = $this->getPipelines($filters, $force);
@@ -69,17 +70,19 @@ class GitHubActionsService
             $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
             $failed = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'failed'));
             $running = count(array_filter($pipelines, fn ($p) => in_array($p['status'] ?? '', ['in_progress', 'running', 'queued'], true)));
-            $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
+            $prodDeployment = collect($deployments)->firstWhere('environment', 'production');
+            $stagingDeployment = collect($deployments)->firstWhere('environment', 'staging');
+            $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || $prodDeployment !== null;
             $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
 
             $lastDeployedProd = $this->getLastDeployedImageRef('production');
             $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
 
-            $prodStatus = $prodConfigured ? ($lastDeployedProd ? 'healthy' : 'not_deployed') : 'not_configured';
-            $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
+            $prodStatus = $prodDeployment['status'] ?? ($prodConfigured ? 'not_deployed' : 'not_configured');
+            $prodVersion = $prodDeployment['version'] ?? ($prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập');
 
-            $stagingStatus = $stagingConfigured ? ($lastDeployedStaging ? 'healthy' : 'not_deployed') : 'not_configured';
-            $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
+            $stagingStatus = $stagingDeployment['status'] ?? ($stagingConfigured ? 'not_deployed' : 'not_configured');
+            $stagingVersion = $stagingDeployment['version'] ?? ($stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập');
 
             $security = $this->getSecurityAudit();
 
@@ -116,47 +119,7 @@ class GitHubActionsService
      */
     public function getOverview(): array
     {
-        $pipelines = $this->getPipelines();
-        $total = count($pipelines);
-        $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
-        $failed = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'failed'));
-        $running = count(array_filter($pipelines, fn ($p) => in_array($p['status'] ?? '', ['in_progress', 'running', 'queued'], true)));
-
-        $latest = $pipelines[0] ?? null;
-        $health = $this->getSystemHealth();
-
-        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL'));
-        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL'));
-
-        $lastDeployedProd = $this->getLastDeployedImageRef('production');
-        $lastDeployedStaging = $this->getLastDeployedImageRef('staging');
-
-        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : env('APP_URL'));
-        $stagingUrl = env('STAGING_URL');
-
-        $prodHealthy = $prodConfigured && $this->probeLiveUrlHealth($prodUrl);
-        $stagingHealthy = $stagingConfigured && $this->probeLiveUrlHealth($stagingUrl);
-
-        $prodStatus = $prodConfigured ? ($prodHealthy ? 'healthy' : ($lastDeployedProd ? 'unknown' : 'not_deployed')) : 'not_configured';
-        $prodVersion = $prodConfigured ? ($lastDeployedProd ?: 'Chưa triển khai') : 'Chưa thiết lập';
-
-        $stagingStatus = $stagingConfigured ? ($stagingHealthy ? 'healthy' : ($lastDeployedStaging ? 'unknown' : 'not_deployed')) : 'not_configured';
-        $stagingVersion = $stagingConfigured ? ($lastDeployedStaging ?: 'Chưa triển khai') : 'Chưa thiết lập';
-
-        return [
-            'total_pipelines' => $total,
-            'success_count' => $success,
-            'failed_count' => $failed,
-            'running_count' => $running,
-            'success_rate' => $total > 0 ? round(($success / $total) * 100, 1) : 100,
-            'latest_pipeline' => $latest,
-            'production_status' => $prodStatus,
-            'production_version' => $prodVersion,
-            'staging_status' => $stagingStatus,
-            'staging_version' => $stagingVersion,
-            'system_health' => $health['status'] ?? 'unknown',
-            'is_live_github' => $this->isLiveGitHubAvailable(),
-        ];
+        return $this->getDashboardBundle()['overview'];
     }
 
     /**
@@ -186,7 +149,7 @@ class GitHubActionsService
 
                     $response = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(4.0)
+                        ->timeout(15.0)
                         ->get("{$this->apiBase}/actions/runs", $queryParams);
 
                     if ($response->successful()) {
@@ -255,11 +218,98 @@ class GitHubActionsService
         return $this->getPipelinesWithStatus($filters, $force)['runs'];
     }
 
+    /** @return array{pipelines: list<array>, activities: list<array>, has_more: bool, total_pipelines: int} */
+    public function getHistoryPage(int $page, bool $force = false): array
+    {
+        abort_unless($this->isLiveGitHubAvailable(), 503, 'Chưa cấu hình kết nối GitHub.');
+        $cacheKey = 'cicd_history_'.md5($this->apiBase.($this->token ?? ''))."_{$page}";
+        if ($force) {
+            Cache::forget($cacheKey);
+        }
+
+        return Cache::remember($cacheKey, 15, function () use ($page): array {
+            $query = ['per_page' => 100, 'page' => $page];
+            $responses = Http::pool(fn (Pool $pool) => [
+                $pool->as('runs')->withToken($this->token)
+                    ->withHeaders(['Accept' => 'application/vnd.github+json'])
+                    ->timeout(20)
+                    ->get("{$this->apiBase}/actions/runs", $query),
+                $pool->as('commits')->withToken($this->token)
+                    ->withHeaders(['Accept' => 'application/vnd.github+json'])
+                    ->timeout(20)
+                    ->get("{$this->apiBase}/commits", $query),
+            ]);
+
+            $runs = $responses['runs'];
+            $commits = $responses['commits'];
+
+            if ($runs instanceof \Throwable) {
+                throw $runs;
+            }
+            if ($commits instanceof \Throwable) {
+                throw $commits;
+            }
+
+            $runs->throw();
+            $commits->throw();
+            $pipelines = array_map([$this, 'formatGitHubRun'], $runs->json('workflow_runs') ?? []);
+            $activities = [];
+            foreach ($pipelines as $pipeline) {
+                $workflow = strtolower($pipeline['workflow_file']);
+                $type = match (true) {
+                    str_contains($workflow, 'rollback') => 'rollback',
+                    str_contains($workflow, 'security') => 'security',
+                    str_contains($workflow, 'vercel'), str_contains($workflow, 'staging'), str_contains($workflow, 'production'), str_contains($workflow, 'deploy') => 'deploy',
+                    str_contains($workflow, 'ci'), str_contains($workflow, 'test') => 'test',
+                    default => 'build',
+                };
+                $activities[] = [
+                    'id' => 'act-run-'.$pipeline['id'],
+                    'type' => $type,
+                    'title' => $pipeline['name'].' #'.$pipeline['run_number'],
+                    'description' => '['.$pipeline['branch'].'] '.$pipeline['commit_message'].' ('.$pipeline['commit_sha'].')',
+                    'status' => $pipeline['status'],
+                    'actor' => $pipeline['author'],
+                    'timestamp' => $pipeline['created_at'],
+                    'url' => $pipeline['url'],
+                ];
+            }
+            foreach ($commits->json() ?? [] as $commit) {
+                $author = $this->resolveMemberName($commit['author']['login'] ?? null, $commit['commit']['author']['name'] ?? null);
+                $activities[] = [
+                    'id' => 'act-gh-'.$commit['sha'],
+                    'type' => 'commit',
+                    'title' => $commit['commit']['message'],
+                    'description' => 'Commit '.substr($commit['sha'], 0, 7).' bởi '.$author,
+                    'status' => 'recorded',
+                    'actor' => $author,
+                    'timestamp' => $commit['commit']['committer']['date'] ?? $commit['commit']['author']['date'],
+                    'url' => $commit['html_url'] ?? null,
+                ];
+            }
+
+            return [
+                'pipelines' => $pipelines,
+                'activities' => $activities,
+                'has_more' => $page * 100 < (int) $runs->json('total_count') || count($commits->json() ?? []) === 100 || str_contains($commits->header('Link') ?? '', 'rel="next"'),
+                'total_pipelines' => (int) $runs->json('total_count'),
+            ];
+        });
+    }
+
     /**
      * Lấy chi tiết một pipeline
      */
     public function getPipelineDetail(string $id): ?array
     {
+        if ($this->isLiveGitHubAvailable() && ctype_digit($id)) {
+            $response = Http::withToken($this->token)->timeout(10)->get("{$this->apiBase}/actions/runs/{$id}");
+            if ($response->status() === 404) {
+                return null;
+            }
+
+            return $this->formatGitHubRun($response->throw()->json());
+        }
         $pipelines = $this->getPipelines();
         foreach ($pipelines as $p) {
             if ((string) $p['id'] === (string) $id) {
@@ -267,7 +317,7 @@ class GitHubActionsService
             }
         }
 
-        return $pipelines[0] ?? null;
+        return null;
     }
 
     /**
@@ -276,38 +326,37 @@ class GitHubActionsService
     public function getPipelineJobs(string $id): array
     {
         if ($this->isLiveGitHubAvailable() && is_numeric($id)) {
-            try {
+            $jobs = [];
+            $page = 1;
+            do {
                 $response = Http::withToken($this->token)
                     ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
                     ->timeout(8)
-                    ->get("{$this->apiBase}/actions/runs/{$id}/jobs");
+                    ->get("{$this->apiBase}/actions/runs/{$id}/jobs", ['filter' => 'latest', 'per_page' => 100, 'page' => $page]);
+                $response->throw();
+                $jobs = array_merge($jobs, $response->json('jobs') ?? []);
+                $page++;
+            } while (count($jobs) < ($response->json('total_count') ?? count($jobs)) && count($response->json('jobs') ?? []) > 0);
 
-                if ($response->successful()) {
-                    $jobs = $response->json('jobs') ?? [];
-
-                    return array_map(function ($j) {
+            return array_map(function ($j) {
+                return [
+                    'id' => (string) $j['id'],
+                    'name' => $j['name'],
+                    'status' => $this->normalizeStatus($j['status'], $j['conclusion']),
+                    'started_at' => $j['started_at'] ?? null,
+                    'completed_at' => $j['completed_at'] ?? null,
+                    'duration' => $this->calculateDuration($j['started_at'] ?? null, $j['completed_at'] ?? null),
+                    'steps' => array_map(function ($s) {
                         return [
-                            'id' => (string) $j['id'],
-                            'name' => $j['name'],
-                            'status' => $this->normalizeStatus($j['status'], $j['conclusion']),
-                            'started_at' => $j['started_at'],
-                            'completed_at' => $j['completed_at'],
-                            'duration' => $this->calculateDuration($j['started_at'], $j['completed_at']),
-                            'steps' => array_map(function ($s) {
-                                return [
-                                    'name' => $s['name'],
-                                    'status' => $this->normalizeStatus($s['status'], $s['conclusion']),
-                                    'number' => $s['number'],
-                                    'started_at' => $s['started_at'] ?? null,
-                                    'completed_at' => $s['completed_at'] ?? null,
-                                ];
-                            }, $j['steps'] ?? []),
+                            'name' => $s['name'],
+                            'status' => $this->normalizeStatus($s['status'], $s['conclusion']),
+                            'number' => $s['number'],
+                            'started_at' => $s['started_at'] ?? null,
+                            'completed_at' => $s['completed_at'] ?? null,
                         ];
-                    }, $jobs);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('GitHub Actions Jobs API failed: '.$e->getMessage());
-            }
+                    }, $j['steps'] ?? []),
+                ];
+            }, $jobs);
         }
 
         // Lấy từ local run nếu có
@@ -324,7 +373,7 @@ class GitHubActionsService
     /**
      * Lấy logs thực tế của pipeline
      */
-    public function getLogs(string $id, ?string $jobId = null): string
+    public function getLogs(string $id, ?string $jobId = null, ?int $stepNumber = null): string
     {
         $header = "=== SMART CASSAVAS CI/CD LOG VIEWER ===\n";
         $header .= "Repository: {$this->owner}/{$this->repo}\n";
@@ -334,13 +383,29 @@ class GitHubActionsService
 
         if ($this->isLiveGitHubAvailable() && is_numeric($id)) {
             try {
-                $endpoint = $jobId
-                    ? "{$this->apiBase}/actions/jobs/{$jobId}/logs"
-                    : "{$this->apiBase}/actions/runs/{$id}/logs";
+                $jobId ??= $this->getPipelineJobs($id)[0]['id'] ?? null;
+                if ($jobId === null) {
+                    return $header."Chưa có job để tải log. Xem toàn bộ workflow trên GitHub.\n";
+                }
+                $endpoint = "{$this->apiBase}/actions/jobs/{$jobId}/logs";
+                if ($stepNumber !== null) {
+                    $job = collect($this->getPipelineJobs($id))->firstWhere('id', $jobId);
+                    if ($job === null || ! isset($job['steps'][$stepNumber])) {
+                        return $header."Không tìm thấy bước thuộc job của pipeline này.\n";
+                    }
+                    $endpoint = "{$this->apiBase}/actions/jobs/{$jobId}/steps/{$stepNumber}/logs";
+                }
 
                 $response = Http::withToken($this->token)
                     ->timeout(10)
                     ->get($endpoint);
+
+                if (! $response->successful() && $stepNumber !== null) {
+                    $header .= "GitHub chưa cung cấp log riêng của bước này. Dưới đây là log job chứa bước đã chọn.\n\n";
+                    $response = Http::withToken($this->token)
+                        ->timeout(10)
+                        ->get("{$this->apiBase}/actions/jobs/{$jobId}/logs");
+                }
 
                 if ($response->successful()) {
                     $body = $response->body();
@@ -390,7 +455,7 @@ class GitHubActionsService
                 try {
                     $response = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(4)
+                        ->timeout(12)
                         ->get("{$this->apiBase}/deployments", ['per_page' => 10]);
 
                     if ($response->successful()) {
@@ -577,61 +642,45 @@ class GitHubActionsService
      */
     public function getEnvironments(): array
     {
-        $commitSha = substr($this->getLatestCommitSha(), 0, 7);
-        $prodImage = $this->getLastDeployedImageRef('production');
-        $stagingImage = $this->getLastDeployedImageRef('staging');
-        $prodDeployedAt = $this->getDeploymentTimestamp('production');
-        $stagingDeployedAt = $this->getDeploymentTimestamp('staging');
-
-        $prodConfigured = ! empty(env('PROD_HOST')) || ! empty(env('PROD_URL')) || ! empty(env('VERCEL_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
-        $stagingConfigured = ! empty(env('STAGING_HOST')) || ! empty(env('STAGING_URL')) || ! empty(env('VERCEL_PROJECT_ID'));
-
-        $prodUrl = env('PROD_URL') ?: (env('VERCEL_URL') ? 'https://'.env('VERCEL_URL') : (env('APP_URL') ?: 'https://quanly-toanha-dancu.vercel.app'));
-
-        // Đo latency thực tế tới CSDL / App local
-        $dbLatency = $this->measureDatabaseLatency();
-
-        return [
-            [
-                'id' => 'development',
-                'name' => 'Development (Môi trường Local Docker)',
-                'url' => 'http://localhost:8000',
-                'status' => $dbLatency !== -1 ? 'operational' : 'degraded',
-                'version' => "local-dev ({$commitSha})",
-                'commit_sha' => $commitSha,
-                'last_deployment' => now()->toIso8601String(),
-                'response_time_ms' => max(0, $dbLatency),
-                'uptime_percentage' => 'N/A (local)',
-                'branch' => $this->getCurrentBranch(),
-                'approval_required' => false,
-            ],
-            [
-                'id' => 'staging',
-                'name' => 'Staging (Máy chủ kiểm thử / Vercel Preview)',
-                'url' => env('STAGING_URL') ?: 'https://quanly-toanha-dancu.vercel.app',
-                'status' => $stagingConfigured ? ($stagingImage ? 'operational' : 'operational') : 'not_configured',
-                'version' => $stagingConfigured ? ($stagingImage ?: "preview-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / STAGING_HOST)',
-                'commit_sha' => $stagingConfigured ? $commitSha : 'N/A',
-                'last_deployment' => $stagingDeployedAt ?: 'N/A',
+        $deployments = $this->getDeployments();
+        $dbLatency = empty(env('VERCEL')) ? $this->measureDatabaseLatency() : -1;
+        $environments = [[
+            'id' => 'development',
+            'name' => 'Development (Local)',
+            'url' => 'http://localhost:8000',
+            'status' => empty(env('VERCEL')) ? ($dbLatency !== -1 ? 'operational' : 'degraded') : 'not_deployed',
+            'version' => 'local-dev',
+            'commit_sha' => empty(env('VERCEL')) ? substr($this->getLatestCommitSha(), 0, 7) : 'N/A',
+            'last_deployment' => 'N/A',
+            'response_time_ms' => max(0, $dbLatency),
+            'uptime_percentage' => 'N/A (chưa đo)',
+            'branch' => empty(env('VERCEL')) ? $this->getCurrentBranch() : 'N/A',
+            'approval_required' => false,
+        ]];
+        foreach (['staging', 'production'] as $environment) {
+            $deployment = collect($deployments)->firstWhere('environment', $environment);
+            $environments[] = [
+                'id' => $environment,
+                'name' => ucfirst($environment).' (GitHub Deployment)',
+                'url' => env(strtoupper($environment === 'production' ? 'PROD' : 'STAGING').'_URL') ?: '',
+                'status' => match ($deployment['status'] ?? 'not_configured') {
+                    'healthy' => 'operational',
+                    'failed', 'stopped' => 'down',
+                    'deploying' => 'degraded',
+                    'not_configured' => 'not_configured',
+                    default => 'not_deployed',
+                },
+                'version' => $deployment['version'] ?? 'Chưa triển khai',
+                'commit_sha' => $deployment['commit_sha'] ?? 'N/A',
+                'last_deployment' => $deployment['deployed_at'] ?? 'N/A',
                 'response_time_ms' => 0,
                 'uptime_percentage' => 'N/A (chưa đo)',
-                'branch' => 'develop',
-                'approval_required' => false,
-            ],
-            [
-                'id' => 'production',
-                'name' => 'Production (Vercel Container Runtime)',
-                'url' => $prodUrl,
-                'status' => $prodConfigured ? 'operational' : 'not_configured',
-                'version' => $prodConfigured ? ($prodImage ?: "prod-{$commitSha}") : 'Not configured (Chờ VERCEL_TOKEN / PROD_HOST)',
-                'commit_sha' => $prodConfigured ? $commitSha : 'N/A',
-                'last_deployment' => $prodDeployedAt ?: 'N/A',
-                'response_time_ms' => 0,
-                'uptime_percentage' => 'N/A (chưa đo)',
-                'branch' => 'master',
-                'approval_required' => true,
-            ],
-        ];
+                'branch' => $environment === 'production' ? $this->getDefaultBranch() : 'develop',
+                'approval_required' => $environment === 'production',
+            ];
+        }
+
+        return $environments;
     }
 
     /**
@@ -649,7 +698,7 @@ class GitHubActionsService
                 try {
                     $res = Http::withToken($this->token)
                         ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                        ->timeout(4)
+                        ->timeout(12)
                         ->get("{$this->apiBase}/actions/workflows/security.yml/runs", ['per_page' => 1]);
 
                     if ($res->successful()) {
@@ -660,7 +709,7 @@ class GitHubActionsService
 
                             $jobsRes = Http::withToken($this->token)
                                 ->withHeaders(['Accept' => 'application/vnd.github.v3+json'])
-                                ->timeout(4)
+                                ->timeout(12)
                                 ->get("{$this->apiBase}/actions/runs/{$runId}/jobs");
 
                             $jobs = $jobsRes->successful() ? ($jobsRes->json('jobs') ?? []) : [];
@@ -1024,7 +1073,7 @@ class GitHubActionsService
                     $lines = explode("\n", trim($output));
                     $branches = [];
                     foreach ($lines as $line) {
-                        $clean = trim(str_replace('*', '', $line));
+                        $clean = trim(preg_replace('/^[*+]\s+/', '', trim($line)));
                         if (empty($clean) || str_contains($clean, '->')) {
                             continue;
                         }
@@ -1391,7 +1440,7 @@ class GitHubActionsService
         $gitAuthor = $headCommit['author']['name'] ?? null;
         $gitCommitter = $headCommit['committer']['name'] ?? null;
 
-        $displayName = $this->resolveMemberName($login, $gitAuthor ?: $gitCommitter);
+        $displayName = $this->resolveMemberName($login, $login ?: ($gitAuthor ?: $gitCommitter));
 
         return [
             'author' => $displayName,
@@ -1431,15 +1480,15 @@ class GitHubActionsService
         if ($status === 'in_progress') {
             return 'running';
         }
-        if ($status === 'queued') {
+        if (in_array($status, ['queued', 'waiting', 'pending', 'requested'], true)) {
             return 'queued';
         }
 
         return match ($conclusion) {
             'success' => 'success',
-            'failure' => 'failed',
+            'failure', 'timed_out', 'action_required', 'startup_failure', 'stale' => 'failed',
             'cancelled' => 'cancelled',
-            'skipped' => 'skipped',
+            'skipped', 'neutral' => 'skipped',
             default => 'running',
         };
     }
