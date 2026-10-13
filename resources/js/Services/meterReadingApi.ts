@@ -75,6 +75,39 @@ export interface MeterReadingModel {
     };
 }
 
+export interface MeterReadingBatchModel {
+    id: string;
+    batch_code: string;
+    billing_month_year: string;
+    meter_type: string;
+    block_id: string | null;
+    file_name: string;
+    file_url: string;
+    uploaded_by: string;
+    total_records: number;
+    success_records: number;
+    failed_records: number;
+    import_status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    error_summary_json: Array<{
+        line: number;
+        meter_code: string;
+        apartment?: string;
+        error: string;
+    }>;
+    created_at: string;
+    completed_at: string | null;
+    block?: {
+        id: string;
+        block_code: string;
+        block_name: string;
+    };
+    uploader?: {
+        id: string;
+        full_name: string;
+        username: string;
+    };
+}
+
 export interface MeterSummaryData {
     billing_cycle: string;
     total_meters: number;
@@ -335,5 +368,98 @@ export const meterReadingApi = {
             throw new Error(json.message || 'Lỗi khi mở khóa sổ kỳ');
         }
         return json;
+    },
+
+    /**
+     * Tải tệp mẫu Excel/CSV ghi chỉ số đo kỳ hiện tại
+     */
+    async downloadTemplate(cycle: string, blockId?: string, meterType?: string): Promise<void> {
+        const params = new URLSearchParams({ cycle });
+        if (blockId && blockId !== 'ALL') params.append('block_id', blockId);
+        if (meterType && meterType !== 'ALL') params.append('meter_type', meterType);
+
+        const res = await fetch(`/api/v1/meter-readings/template?${params.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+        if (!res.ok) {
+            throw new Error('Không thể tải tệp mẫu');
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `mau_chot_chi_so_${cycle}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    },
+
+    /**
+     * Import danh sách chỉ số điện nước hàng loạt từ file Excel/CSV
+     */
+    async importReadings(
+        file: File,
+        cycle: string,
+        blockId?: string,
+        meterType?: string
+    ): Promise<MeterReadingBatchModel> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('billing_cycle', cycle);
+        if (blockId && blockId !== 'ALL') formData.append('block_id', blockId);
+        if (meterType && meterType !== 'ALL') formData.append('meter_type', meterType);
+
+        const res = await fetch('/api/v1/meter-readings/import', {
+            method: 'POST',
+            headers: getAuthHeaders(true),
+            body: formData,
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            throw new Error(json.message || 'Lỗi khi import danh sách chỉ số');
+        }
+        return json.data;
+    },
+
+    /**
+     * Lấy danh sách lịch sử các đợt import
+     */
+    async getBatches(params: {
+        cycle?: string;
+        meter_type?: string;
+        block_id?: string;
+        page?: number;
+        per_page?: number;
+    } = {}): Promise<PaginatedResponse<MeterReadingBatchModel>> {
+        const query = new URLSearchParams();
+        if (params.cycle) query.append('cycle', params.cycle);
+        if (params.meter_type && params.meter_type !== 'ALL') query.append('meter_type', params.meter_type);
+        if (params.block_id && params.block_id !== 'ALL') query.append('block_id', params.block_id);
+        if (params.page) query.append('page', params.page.toString());
+        if (params.per_page) query.append('per_page', params.per_page.toString());
+
+        const res = await fetch(`/api/v1/meter-reading-batches?${query.toString()}`, {
+            headers: getAuthHeaders(),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            throw new Error(json.message || 'Lỗi khi tải lịch sử import');
+        }
+        return json;
+    },
+
+    /**
+     * Xem chi tiết đợt import và các lỗi
+     */
+    async getBatchDetail(id: string): Promise<MeterReadingBatchModel> {
+        const res = await fetch(`/api/v1/meter-reading-batches/${id}`, {
+            headers: getAuthHeaders(),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            throw new Error(json.message || 'Không thể xem chi tiết đợt import');
+        }
+        return json.data;
     },
 };

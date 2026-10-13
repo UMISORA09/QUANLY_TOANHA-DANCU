@@ -7,6 +7,7 @@ use App\Models\Resident;
 use App\Models\Role;
 use App\Models\TemporaryRegistration;
 use App\Models\User;
+use App\Services\QuocTinRealtimeService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -255,6 +256,9 @@ class TemporaryRegistrationUpdateDeleteTest extends TestCase
             ]);
         $resA->assertStatus(200);
 
+        // Reset cooldown để cho phép test optimistic concurrency giữa hai client
+        QuocTinRealtimeService::clearModuleCooldown('temporary-registrations');
+
         // Admin B GET cùng hồ sơ ban đầu (cùng updated_at) và gửi update reason = "Học tập"
         $resB = $this->withHeader('Authorization', 'Bearer '.$token2)
             ->putJson("/api/v1/residents/temporary-registrations/{$record->id}", [
@@ -386,6 +390,8 @@ class TemporaryRegistrationUpdateDeleteTest extends TestCase
             ->deleteJson("/api/v1/residents/temporary-registrations/{$record->id}");
         $res1->assertStatus(200);
 
+        QuocTinRealtimeService::clearModuleCooldown('temporary-registrations');
+
         // Admin 2 xóa cùng record đó
         $res2 = $this->withHeader('Authorization', 'Bearer '.$token2)
             ->deleteJson("/api/v1/residents/temporary-registrations/{$record->id}");
@@ -412,6 +418,8 @@ class TemporaryRegistrationUpdateDeleteTest extends TestCase
             ]);
         $resUpd->assertStatus(200);
 
+        QuocTinRealtimeService::clearModuleCooldown('temporary-registrations');
+
         // Admin B xóa hồ sơ R1
         $resDel = $this->withHeader('Authorization', 'Bearer '.$token2)
             ->deleteJson("/api/v1/residents/temporary-registrations/{$record->id}");
@@ -433,6 +441,8 @@ class TemporaryRegistrationUpdateDeleteTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->deleteJson("/api/v1/residents/temporary-registrations/{$record->id}")
             ->assertStatus(200);
+
+        QuocTinRealtimeService::clearModuleCooldown('temporary-registrations');
 
         // Sau đó mới cập nhật
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
@@ -520,6 +530,8 @@ class TemporaryRegistrationUpdateDeleteTest extends TestCase
                 'reason' => 'Cập nhật lý do test residents table',
             ])->assertStatus(200);
 
+        QuocTinRealtimeService::clearModuleCooldown('temporary-registrations');
+
         // Thực hiện delete
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->deleteJson("/api/v1/residents/temporary-registrations/{$record->id}")
@@ -549,6 +561,8 @@ class TemporaryRegistrationUpdateDeleteTest extends TestCase
                 'reason' => 'Cập nhật lý do test apt table',
             ])->assertStatus(200);
 
+        QuocTinRealtimeService::clearModuleCooldown('temporary-registrations');
+
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->deleteJson("/api/v1/residents/temporary-registrations/{$record->id}")
             ->assertStatus(200);
@@ -575,6 +589,8 @@ class TemporaryRegistrationUpdateDeleteTest extends TestCase
             ->putJson("/api/v1/residents/temporary-registrations/{$record->id}", [
                 'reason' => 'Test RBAC immutability',
             ])->assertStatus(200);
+
+        QuocTinRealtimeService::clearModuleCooldown('temporary-registrations');
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->deleteJson("/api/v1/residents/temporary-registrations/{$record->id}")

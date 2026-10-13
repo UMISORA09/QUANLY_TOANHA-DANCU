@@ -25,12 +25,18 @@ import {
     ShieldAlert,
     Clock,
     Sparkles,
-    Check
+    Check,
+    Download,
+    UploadCloud,
+    FileSpreadsheet,
+    FileWarning,
+    CheckCheck
 } from 'lucide-react';
 import {
     meterReadingApi,
     MeterModel,
     MeterReadingModel,
+    MeterReadingBatchModel,
     MeterSummaryData
 } from '../../Services/meterReadingApi';
 
@@ -50,15 +56,22 @@ export const MeterReadingManagement: React.FC = () => {
     const [selectedBlock, setSelectedBlock] = useState<string>('ALL');
     const [selectedMeterType, setSelectedMeterType] = useState<string>('ALL');
     const [searchQuery, setSearchQuery] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<'meters' | 'readings' | 'abnormal'>('meters');
+    const [activeTab, setActiveTab] = useState<'meters' | 'readings' | 'abnormal' | 'import'>('meters');
 
     // Dữ liệu từ API
     const [summary, setSummary] = useState<MeterSummaryData | null>(null);
     const [meters, setMeters] = useState<MeterModel[]>([]);
     const [readings, setReadings] = useState<MeterReadingModel[]>([]);
+    const [batches, setBatches] = useState<MeterReadingBatchModel[]>([]);
     const [blocks, setBlocks] = useState<BlockOption[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 });
+
+    // State Import Excel
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importing, setImporting] = useState<boolean>(false);
+    const [lastImportBatch, setLastImportBatch] = useState<MeterReadingBatchModel | null>(null);
+    const [selectedBatchForDetail, setSelectedBatchForDetail] = useState<MeterReadingBatchModel | null>(null);
 
     // Toast thông báo
     const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -126,6 +139,16 @@ export const MeterReadingManagement: React.FC = () => {
                 });
                 setMeters(meterRes.data);
                 setPagination(meterRes.meta);
+            } else if (activeTab === 'import') {
+                const batchRes = await meterReadingApi.getBatches({
+                    cycle: selectedCycle,
+                    block_id: blockId,
+                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                    page: pagination.current_page,
+                    per_page: 10,
+                });
+                setBatches(batchRes.data);
+                setPagination(batchRes.meta);
             } else {
                 const readingRes = await meterReadingApi.getReadings({
                     cycle: selectedCycle,
@@ -143,6 +166,49 @@ export const MeterReadingManagement: React.FC = () => {
             showToast('error', err.message || 'Lỗi khi tải dữ liệu');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Tải file mẫu CSV
+    const handleDownloadTemplate = async () => {
+        try {
+            showToast('success', 'Đang kết xuất tệp mẫu CSV có sẵn dữ liệu căn hộ...');
+            await meterReadingApi.downloadTemplate(selectedCycle, selectedBlock, selectedMeterType);
+        } catch (err: any) {
+            showToast('error', err.message || 'Lỗi khi tải tệp mẫu');
+        }
+    };
+
+    // Tiến hành import file Excel/CSV
+    const handleExecuteImport = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!importFile) {
+            showToast('error', 'Vui lòng chọn một tệp Excel hoặc CSV để tải lên.');
+            return;
+        }
+
+        setImporting(true);
+        try {
+            const batch = await meterReadingApi.importReadings(
+                importFile,
+                selectedCycle,
+                selectedBlock !== 'ALL' ? selectedBlock : undefined,
+                selectedMeterType !== 'ALL' ? selectedMeterType : undefined
+            );
+
+            setLastImportBatch(batch);
+            if (batch.failed_records === 0) {
+                showToast('success', `Import thành công trọn vẹn ${batch.success_records}/${batch.total_records} bản ghi!`);
+            } else {
+                showToast('error', `Import hoàn tất có lỗi: ${batch.success_records} thành công, ${batch.failed_records} dòng lỗi.`);
+            }
+
+            setImportFile(null);
+            fetchData();
+        } catch (err: any) {
+            showToast('error', err.message || 'Quá trình import thất bại.');
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -1127,6 +1193,61 @@ export const MeterReadingManagement: React.FC = () => {
                                 }`}
                             >
                                 {summary?.is_cycle_locked ? 'Xác Nhận Mở Sổ' : 'Xác Nhận Khóa Sổ'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 4: XEM CHI TIẾT ĐỢT IMPORT & LỖI */}
+            {selectedBatchForDetail && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div>
+                                <h4 className="text-base font-bold text-white flex items-center gap-2">
+                                    <FileWarning className="w-5 h-5 text-rose-400" />
+                                    <span>Chi Tiết Lỗi Đợt Import: {selectedBatchForDetail.batch_code}</span>
+                                </h4>
+                                <p className="text-xs text-slate-400 mt-0.5">Tệp gốc: {selectedBatchForDetail.file_name}</p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedBatchForDetail(null)}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="max-h-80 overflow-y-auto border border-slate-800 rounded-xl overflow-hidden">
+                            <table className="w-full text-left text-xs text-slate-300">
+                                <thead className="bg-slate-950/80 uppercase font-semibold text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th className="p-3">Dòng</th>
+                                        <th className="p-3">Mã Đồng Hồ</th>
+                                        <th className="p-3">Căn Hộ</th>
+                                        <th className="p-3">Nguyên Nhân Lỗi Cụ Thể</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                    {selectedBatchForDetail.error_summary_json?.map((err, i) => (
+                                        <tr key={i} className="hover:bg-slate-800/40">
+                                            <td className="p-3 font-mono font-bold text-indigo-400">Dòng {err.line}</td>
+                                            <td className="p-3 font-mono text-slate-200">{err.meter_code}</td>
+                                            <td className="p-3 text-slate-300">{err.apartment || 'N/A'}</td>
+                                            <td className="p-3 text-rose-400 font-medium">{err.error}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex justify-end pt-2">
+                            <button
+                                onClick={() => setSelectedBatchForDetail(null)}
+                                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
+                            >
+                                Đóng
                             </button>
                         </div>
                     </div>

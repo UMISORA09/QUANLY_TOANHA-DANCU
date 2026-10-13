@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Users,
   Home,
@@ -33,22 +33,56 @@ import api, {
   ApartmentSummaryItem,
   UserRbac,
 } from '../../Services/api';
+import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
+import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
 
 interface ResidentManagementProps {
   embedded?: boolean;
 }
 
 export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded = false }) => {
+  const { isCooldownActive, remainingSeconds, message: cooldownMessage, startCooldown } = useModuleCooldown('residents');
+
+  // Đọc snapshot lưu trong sessionStorage để hiển thị tức thì (0ms) cho lần tải thứ 2
+  const getCachedResidentData = () => {
+    try {
+      const raw = sessionStorage.getItem('smartcassavas_residents_list_cache');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const cachedResidents = getCachedResidentData();
+
   // Data state
-  const [residents, setResidents] = useState<ResidentItem[]>([]);
-  const [apartments, setApartments] = useState<ApartmentSummaryItem[]>([]);
-  const [total, setTotal] = useState<number>(0);
+  const [residents, setResidents] = useState<ResidentItem[]>(() => (Array.isArray(cachedResidents?.data) ? cachedResidents.data : []));
+  const [apartments, setApartments] = useState<ApartmentSummaryItem[]>(() => {
+    try {
+      const rawApt = sessionStorage.getItem('smartcassavas_residents_apartments_cache');
+      const parsed = rawApt ? JSON.parse(rawApt) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [total, setTotal] = useState<number>(() => cachedResidents?.meta?.total || 0);
   const [page, setPage] = useState<number>(1);
   const [limit, setLimit] = useState<number>(15);
-  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(() => cachedResidents?.meta?.last_page || 1);
 
   // Filters & Search
   const [search, setSearch] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const searchAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const [apartmentFilter, setApartmentFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [headFilter, setHeadFilter] = useState<string>('');
@@ -57,7 +91,7 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Loading & Feedback
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(() => !cachedResidents);
   const [saving, setSaving] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -100,6 +134,11 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
       const res = await api.getApartmentsForFilter();
       if (res && res.data) {
         setApartments(res.data);
+        try {
+          sessionStorage.setItem('smartcassavas_residents_apartments_cache', JSON.stringify(res.data));
+        } catch {
+          // ignore
+        }
       }
     } catch (err: any) {
       console.error('Lỗi tải danh sách căn hộ:', err);
@@ -108,10 +147,16 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
 
   // Load Residents List
   const fetchResidents = useCallback(async () => {
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     setLoading(true);
     try {
       const res = await api.getResidents({
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         apartment_id: apartmentFilter || undefined,
         resident_type: typeFilter || undefined,
         is_head_of_household: headFilter !== '' ? headFilter : undefined,
@@ -120,19 +165,31 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
         sort_order: sortOrder,
         page,
         limit,
-      });
+      }, { signal: controller.signal });
 
       if (res && res.data) {
         setResidents(res.data);
         setTotal(res.meta.total);
         setTotalPages(res.meta.last_page || 1);
+
+        if (page === 1 && !debouncedSearch.trim() && !apartmentFilter && !typeFilter && headFilter === '' && statusFilter === '') {
+          try {
+            sessionStorage.setItem('smartcassavas_residents_list_cache', JSON.stringify({ data: res.data, meta: res.meta }));
+          } catch {
+            // ignore
+          }
+        }
       }
     } catch (err: any) {
-      showToast(err.message || 'Không thể tải danh sách cư dân.', 'error');
+      if (err?.name !== 'AbortError') {
+        showToast(err.message || 'Không thể tải danh sách cư dân.', 'error');
+      }
     } finally {
-      setLoading(false);
+      if (searchAbortRef.current === controller) {
+        setLoading(false);
+      }
     }
-  }, [search, apartmentFilter, typeFilter, headFilter, statusFilter, sortBy, sortOrder, page, limit]);
+  }, [debouncedSearch, apartmentFilter, typeFilter, headFilter, statusFilter, sortBy, sortOrder, page, limit]);
 
   useEffect(() => {
     fetchApartments();
@@ -141,6 +198,42 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
   useEffect(() => {
     fetchResidents();
   }, [fetchResidents]);
+
+  // Realtime Auto-Sync Listener (Quốc Tín - Resident Management)
+  useRealtimeSync({
+    channel: 'quoc-tin.residents',
+    onEvent: (event) => {
+      // 0. Cập nhật state in-memory ngay lập tức nếu là xóa
+      if (event.action === 'DELETED' && event.entity_id) {
+        setResidents((prev) => prev.filter((r) => r.id !== event.entity_id));
+        setTotal((prev) => Math.max(0, prev - 1));
+      }
+
+      // 1. Invalidate cache để tránh stale data
+      try {
+        sessionStorage.removeItem('smartcassavas_residents_list_cache');
+      } catch {
+        // ignore
+      }
+
+      // 2. Refetch danh sách cư dân (giữ nguyên search, filter, page, sort hiện tại)
+      fetchResidents();
+
+      // 3. Nếu đang mở modal chi tiết của đúng cư dân bị sửa, tự động cập nhật modal
+      if (detailModalOpen && selectedDetail && selectedDetail.resident?.id === event.entity_id) {
+        api.getResident(selectedDetail.resident.id)
+          .then((res) => {
+            if (res && res.data) {
+              setSelectedDetail(res.data);
+            }
+          })
+          .catch(() => {});
+      }
+    },
+    onReconnect: () => {
+      fetchResidents();
+    },
+  });
 
   // Quick stats calculation
   const stats = useMemo(() => {
@@ -215,9 +308,17 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
   const handleConfirmDelete = async () => {
     if (!deletingResident) return;
     setSaving(true);
+    const targetId = deletingResident.id;
     try {
-      await api.deleteResident(deletingResident.id);
+      await api.deleteResident(targetId);
       showToast('Đã xóa mềm cư dân khỏi căn hộ thành công.', 'success');
+      emitLocalRealtimeEvent({
+        module: 'residents',
+        entity: 'resident',
+        action: 'DELETED',
+        entity_id: targetId,
+        timestamp: Date.now(),
+      });
       setDeleteConfirmOpen(false);
       setDeletingResident(null);
       fetchResidents();
@@ -285,8 +386,15 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
           updated_at: editingResident.updated_at,
         });
         showToast('Cập nhật thông tin cư dân thành công.', 'success');
+        emitLocalRealtimeEvent({
+          module: 'residents',
+          entity: 'resident',
+          action: 'UPDATED',
+          entity_id: editingResident.id,
+          timestamp: Date.now(),
+        });
       } else {
-        await api.createResident({
+        const res = await api.createResident({
           apartment_id: formApartmentId,
           user_id: formUserId,
           resident_type: formResidentType,
@@ -298,6 +406,13 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
           is_active: formIsActive,
         });
         showToast('Thêm cư dân vào căn hộ thành công.', 'success');
+        emitLocalRealtimeEvent({
+          module: 'residents',
+          entity: 'resident',
+          action: 'CREATED',
+          entity_id: (res as any)?.data?.id,
+          timestamp: Date.now(),
+        });
       }
 
       setFormModalOpen(false);
@@ -409,13 +524,26 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
 
           <button
             onClick={handleOpenAdd}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-95 transition-all shadow-md hover:shadow-lg shadow-amber-600/20"
+            disabled={isCooldownActive}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-md ${
+              isCooldownActive
+                ? 'bg-amber-400 opacity-60 cursor-not-allowed'
+                : 'bg-amber-600 hover:bg-amber-700 active:scale-95 hover:shadow-lg shadow-amber-600/20'
+            }`}
+            title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Thêm Cư Dân Mới'}
           >
             <UserPlus className="w-4 h-4" />
             <span>Thêm Cư Dân Mới</span>
           </button>
         </div>
       </div>
+
+      {/* Cooldown Banner */}
+      <CooldownBanner
+        isCooldownActive={isCooldownActive}
+        remainingSeconds={remainingSeconds}
+        customMessage={cooldownMessage}
+      />
 
       {/* KPI Stats Overview */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
@@ -484,10 +612,7 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
               type="text"
               placeholder="Tìm theo họ tên, số điện thoại, CCCD, mã căn hộ..."
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all placeholder:text-slate-400"
             />
           </div>
@@ -690,15 +815,25 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
                         </button>
                         <button
                           onClick={() => handleOpenEdit(r)}
-                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Chỉnh sửa thông tin"
+                          disabled={isCooldownActive}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isCooldownActive
+                              ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                              : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50'
+                          }`}
+                          title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Chỉnh sửa thông tin'}
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleOpenDelete(r)}
-                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="Xóa cư dân (Soft Delete)"
+                          disabled={isCooldownActive}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isCooldownActive
+                              ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                              : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
+                          }`}
+                          title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Xóa cư dân (Soft Delete)'}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -811,7 +946,7 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
                   </div>
 
                   <div className="space-y-2">
-                    {selectedDetail.household_members.map((m) => (
+                    {(selectedDetail.household_members || []).map((m) => (
                       <div
                         key={m.id}
                         className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
