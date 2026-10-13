@@ -184,17 +184,31 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     ) {
       return 'blocks';
     }
+    if (
+      path === '/quan-ly/don-gia' ||
+      path === '/admin/don-gia' ||
+      path === '/quan-ly/pricing-configs' ||
+      path === '/admin/pricing-configs' ||
+      path.startsWith('/quan-ly/don-gia') ||
+      path.startsWith('/admin/don-gia') ||
+      path.startsWith('/quan-ly/pricing-configs') ||
+      path.startsWith('/admin/pricing-configs')
+    ) {
+      return 'pricing_configs';
+    }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
     if (tabParam) {
       if (tabParam === 'buildings') return 'blocks';
+      if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
       return tabParam;
     }
 
     // 3. Prop initialTab được truyền từ component cha (nếu có giá trị cụ thể khác overview)
     if (initialTab && initialTab !== 'overview') {
+      if (initialTab === 'pricing' || initialTab === 'don_gia') return 'pricing_configs';
       return initialTab;
     }
 
@@ -411,7 +425,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'account_provisioning', label: 'Cấp phát TK tự động', icon: UserPlus, badge: 'Auto' },
         { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'CT01' },
         { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: String(kpis.amenityBookings) },
-        { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
+        { id: 'pricing_configs', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
         { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
@@ -634,13 +648,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   }, []);
 
   const handleMenuClick = (id: string) => {
-    setActiveMenuId(id);
+    const normalizedId = (id === 'pricing' || id === 'don_gia') ? 'pricing_configs' : id;
+    setActiveMenuId(normalizedId);
     setMobileSidebarOpen(false);
 
     // Lưu vào sessionStorage để trong phiên làm việc (ở yên chỗ đó khi chuyển đổi/F5)
     // Khi khởi động lại hoặc đăng xuất (out khỏi) sẽ tự động quay về Tổng quan
     try {
-      sessionStorage.setItem('smartcassavas_active_admin_tab', id);
+      sessionStorage.setItem('smartcassavas_active_admin_tab', normalizedId);
       localStorage.removeItem('smartcassavas_active_admin_tab');
     } catch {
       // ignore
@@ -650,23 +665,25 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     const isManagerMode = userRole === 'manager' || window.location.pathname.startsWith('/quan-ly') || window.location.pathname.startsWith('/manager');
     const basePath = isManagerMode ? '/quan-ly' : '/admin';
 
-    if (id === 'cicd') {
-      window.history.pushState({ tab: id }, '', `${basePath}/cicd`);
-    } else if (id === 'amenities') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=amenities`);
-    } else if (id === 'account_provisioning') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=account_provisioning`);
-    } else if (id === 'temporary_registrations') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=temporary_registrations`);
-    } else if (id === 'vehicles') {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=vehicles`);
-    } else if (id === 'overview') {
-      window.history.pushState({ tab: id }, '', basePath);
+    if (normalizedId === 'cicd') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}/cicd`);
+    } else if (normalizedId === 'amenities') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=amenities`);
+    } else if (normalizedId === 'account_provisioning') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=account_provisioning`);
+    } else if (normalizedId === 'temporary_registrations') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=temporary_registrations`);
+    } else if (normalizedId === 'vehicles') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=vehicles`);
+    } else if (normalizedId === 'pricing_configs') {
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}/don-gia`);
+    } else if (normalizedId === 'overview') {
+      window.history.pushState({ tab: normalizedId }, '', basePath);
     } else {
-      window.history.pushState({ tab: id }, '', `${basePath}?tab=${id}`);
+      window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=${normalizedId}`);
     }
-    if (id !== 'overview') {
-      showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === id)?.label}`);
+    if (normalizedId !== 'overview') {
+      showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === normalizedId)?.label || 'Đơn giá'}`);
     }
   };
 
@@ -840,7 +857,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <VehicleManagement embedded={true} />
             </div>
-          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'don_gia' ? (
+          ) : activeMenuId === 'pricing_configs' || activeMenuId === 'pricing' || activeMenuId === 'don_gia' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ServicePricingManagement />
             </div>
