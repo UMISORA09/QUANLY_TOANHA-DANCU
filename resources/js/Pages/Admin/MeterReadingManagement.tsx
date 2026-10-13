@@ -236,11 +236,11 @@ export const MeterReadingManagement: React.FC = () => {
         return () => clearInterval(intervalId);
     }, [selectedCycle, selectedBlock, selectedMeterType, searchQuery, activeTab, pagination.current_page, isEntryModalOpen, isLockConfirmOpen, selectedBatchForDetail, previewImageUrl]);
 
-    // Tải file mẫu CSV
+    // Tải file mẫu Excel
     const handleDownloadTemplate = async () => {
         try {
-            showToast('success', 'Đang kết xuất tệp mẫu CSV có sẵn dữ liệu căn hộ...');
-            await meterReadingApi.downloadTemplate(selectedCycle, selectedBlock, selectedMeterType);
+            showToast('success', 'Đang kết xuất biểu mẫu Excel doanh nghiệp có logo & khung chuẩn...');
+            await meterReadingApi.downloadTemplate(selectedCycle, selectedBlock, selectedMeterType, 'excel');
         } catch (err: any) {
             showToast('error', err.message || 'Lỗi khi tải tệp mẫu');
         }
@@ -1016,7 +1016,7 @@ export const MeterReadingManagement: React.FC = () => {
                                         </div>
                                         <div>
                                             <h3 className="text-sm font-bold text-neutral-900">Tải Lên Tệp Chỉ Số Đo</h3>
-                                            <p className="text-xs text-slate-500">Hỗ trợ định dạng .csv, .txt tương thích Microsoft Excel</p>
+                                            <p className="text-xs text-slate-500">Hỗ trợ biểu mẫu Excel (.xlsx, .xls) và tệp CSV</p>
                                         </div>
                                     </div>
                                     <button
@@ -1033,7 +1033,7 @@ export const MeterReadingManagement: React.FC = () => {
                                     <div className="border-2 border-dashed border-slate-300 hover:border-sky-500 rounded-2xl p-8 text-center bg-white hover:bg-sky-50/20 transition-all cursor-pointer relative">
                                         <input
                                             type="file"
-                                            accept=".csv,.txt"
+                                            accept=".xlsx,.xls,.csv,.txt"
                                             onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                         />
