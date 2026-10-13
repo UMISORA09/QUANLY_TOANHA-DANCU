@@ -32,7 +32,7 @@ jobs:
     name: Verify Vercel Git Deployment (Exact Commit)
     runs-on: ubuntu-latest
     if: github.event_name != 'workflow_dispatch'
-    timeout-minutes: 10
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,20 +45,33 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REPOSITORY: ${{ github.repository }}
+          EXPECTED_ENVIRONMENT: ${{ github.event_name == 'push' && 'Production' || 'Preview' }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
         run: |
-          for attempt in {1..30}; do
-            DEPLOYMENTS=$(gh api "repos/$REPOSITORY/deployments?sha=$EXPECTED_SHA&per_page=10")
-            DEPLOYMENT_ID=$(echo "$DEPLOYMENTS" | jq -r '.[0].id // empty')
+          started=$SECONDS
+          deadline=$((started + 3600))
+          VERCEL_LOOKUP_ENABLED=true
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if ! DEPLOYMENTS=$(gh api "repos/$REPOSITORY/deployments?sha=$EXPECTED_SHA&per_page=100"); then
+              echo "::warning ::GitHub deployment API unavailable; retrying."
+              DEPLOYMENTS='[]'
+            fi
+            DEPLOYMENT_ID=$(echo "$DEPLOYMENTS" | jq -r --arg environment "$EXPECTED_ENVIRONMENT" 'map(select(.environment == $environment)) | .[0].id // empty')
             if [ -n "$DEPLOYMENT_ID" ]; then
-              STATUSES=$(gh api "repos/$REPOSITORY/deployments/$DEPLOYMENT_ID/statuses")
+              if ! STATUSES=$(gh api "repos/$REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"); then
+                echo "::warning ::GitHub deployment status API unavailable; retrying."
+                STATUSES='[]'
+              fi
               STATE=$(echo "$STATUSES" | jq -r '.[0].state // "pending"')
               if [ "$STATE" = "success" ]; then
                 URL=$(echo "$STATUSES" | jq -r '.[0].environment_url // empty')
                 URL="${URL%/}"
-                case "$URL" in https://*.vercel.app) ;; *) echo "::error ::No valid Vercel deployment URL"; exit 1 ;; esac
+                if [[ ! "$URL" =~ ^https://[a-zA-Z0-9-]+\.vercel\.app$ ]]; then
+                  echo "::error ::No valid Vercel deployment URL"
+                  exit 1
+                fi
                 echo "url=$URL" >> "$GITHUB_OUTPUT"
                 echo "Git Integration deployment $DEPLOYMENT_ID matches $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
                 exit 0
@@ -68,17 +81,31 @@ jobs:
                 exit 1
               fi
             fi
-            if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_PROJECT_ID" ] && [ -n "$VERCEL_ORG_ID" ]; then
-              URL=$(node scripts/resolve-vercel-deployment.mjs) || URL=""
+            if [ "$VERCEL_LOOKUP_ENABLED" = "true" ]; then
+              if URL=$(node scripts/resolve-vercel-deployment.mjs); then
+                :
+              else
+                LOOKUP_EXIT=$?
+                if [ "$LOOKUP_EXIT" = "2" ]; then exit 1; fi
+                if [ "$LOOKUP_EXIT" = "3" ]; then
+                  VERCEL_LOOKUP_ENABLED=false
+                  echo "::warning ::Vercel API fallback disabled for this run due to configuration/access errors; GitHub verification will continue."
+                fi
+                URL=""
+              fi
               if [ -n "$URL" ]; then
                 echo "url=$URL" >> "$GITHUB_OUTPUT"
                 echo "Vercel API confirms a READY deployment matching $EXPECTED_SHA; GitHub metadata is not available yet." >> "$GITHUB_STEP_SUMMARY"
                 exit 0
               fi
             fi
-            sleep 15
+            if [ "$((SECONDS - started))" -lt 300 ]; then
+              sleep 5
+            else
+              sleep 30
+            fi
           done
-          echo "::error ::No successful Git Integration deployment found for $EXPECTED_SHA"
+          echo "::error ::Deployment verification timed out after 60 minutes for $EXPECTED_SHA ($EXPECTED_ENVIRONMENT). No success was confirmed; check provider status, API diagnostics and deployment logs."
           exit 1
 
       - name: Verify deployed frontend and API
