@@ -61,12 +61,160 @@ const getInitialParcelCache = () => {
 
 export const getParcelImageUrl = (url?: string | null): string => {
   if (!url) return '';
+  let cleanPath = url;
   if (url.includes('/storage/parcels/')) {
     const parts = url.split('/storage/parcels/');
-    return `/storage/parcels/${parts[parts.length - 1]}`;
+    cleanPath = `/storage/parcels/${parts[parts.length - 1]}`;
   }
-  return url;
+  // Khi chạy dev server port 5173, tự động chuyển hướng đường dẫn /storage/ về backend 8000
+  if (typeof window !== 'undefined' && window.location.port === '5173' && cleanPath.startsWith('/storage/')) {
+    return `http://127.0.0.1:8000${cleanPath}`;
+  }
+  return cleanPath;
 };
+
+/**
+ * Nén ảnh trước khi tải lên (Client-side Canvas Compression):
+ * Resize về max 1280px và nén WebP/JPEG chất lượng cao,
+ * giảm dung lượng từ 5-10MB xuống ~100-250KB giúp upload siêu tốc và tải lại cực nhanh.
+ */
+export const compressImageFile = async (file: File): Promise<File> => {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      const maxDim = 1280;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob || blob.size >= file.size) {
+            resolve(file);
+            return;
+          }
+          const newFileName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+          const compressedFile = new File([blob], newFileName, {
+            type: 'image/webp',
+            lastModified: Date.now(),
+          });
+          resolve(compressedFile);
+        },
+        'image/webp',
+        0.82
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+
+    img.src = objectUrl;
+  });
+};
+
+/**
+ * Component Hiển thị Thumbnail Kiện hàng tối ưu:
+ * - Lazy load và async decoding
+ * - Skeleton shimmer loading khi đang nạp ảnh
+ * - Fallback icon hộp bưu kiện thanh lịch khi ảnh bị lỗi (chống ô trắng xám rỗng)
+ * - Click phóng to ảnh nhanh chóng
+ */
+export const ParcelThumbnail: React.FC<{
+  imageUrl?: string | null;
+  trackingNumber: string;
+  courierCompany?: string;
+  onClick: () => void;
+}> = ({ imageUrl, trackingNumber, courierCompany, onClick }) => {
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const resolvedUrl = useMemo(() => getParcelImageUrl(imageUrl), [imageUrl]);
+
+  useEffect(() => {
+    setStatus('loading');
+  }, [resolvedUrl]);
+
+  const hasValidUrl = Boolean(resolvedUrl && resolvedUrl.trim());
+
+  return (
+    <div
+      onClick={onClick}
+      className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group-hover:scale-105 transition-all duration-200 cursor-pointer shadow-xs flex items-center justify-center select-none"
+      title="Bấm để xem ảnh phóng to"
+    >
+      {/* 1. Shimmer Loading khi ảnh đang nạp */}
+      {status === 'loading' && hasValidUrl && (
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-pulse flex items-center justify-center">
+          <div className="w-3.5 h-3.5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* 2. Ảnh bưu kiện thật với lazy load và async decoding */}
+      {hasValidUrl && (
+        <img
+          src={resolvedUrl}
+          alt={trackingNumber}
+          className={`w-full h-full object-cover transition-opacity duration-200 ${
+            status === 'loaded' ? 'opacity-100' : 'opacity-0'
+          }`}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setStatus('loaded')}
+          onError={() => setStatus('error')}
+        />
+      )}
+
+      {/* 3. Fallback sang Icon bưu phẩm tinh xảo nếu ảnh lỗi hoặc rỗng (chống ô trống) */}
+      {(!hasValidUrl || status === 'error') && (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50/60 p-1 text-center">
+          <Package className="w-5 h-5 text-amber-600 shrink-0" />
+          <span className="text-[9px] font-bold text-amber-700 truncate max-w-full scale-90">
+            {courierCompany ? courierCompany.split(' ')[0] : 'Bưu kiện'}
+          </span>
+        </div>
+      )}
+
+      {/* 4. Hover zoom icon */}
+      {status === 'loaded' && (
+        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+          <Maximize2 className="w-3.5 h-3.5 drop-shadow-md" />
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embedded = false }) => {
   const initialCache = useMemo(() => getInitialParcelCache(), []);
@@ -336,8 +484,8 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }
   };
 
-  // Handle Photo selection & preview
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Photo selection & preview (Tự động nén Canvas client-side giúp upload siêu tốc và giảm tải)
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -353,9 +501,16 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }
 
     setFormError(null);
-    setSelectedPhotoFile(file);
-    const objectUrl = URL.createObjectURL(file);
-    setPhotoPreviewUrl(objectUrl);
+    try {
+      const optimizedFile = await compressImageFile(file);
+      setSelectedPhotoFile(optimizedFile);
+      const objectUrl = URL.createObjectURL(optimizedFile);
+      setPhotoPreviewUrl(objectUrl);
+    } catch {
+      setSelectedPhotoFile(file);
+      const objectUrl = URL.createObjectURL(file);
+      setPhotoPreviewUrl(objectUrl);
+    }
   };
 
   const handleClearPhoto = () => {
@@ -508,7 +663,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     setIsEditModalOpen(true);
   };
 
-  const handleEditPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -524,9 +679,16 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }
 
     setEditError(null);
-    setEditSelectedPhotoFile(file);
-    const objectUrl = URL.createObjectURL(file);
-    setEditPhotoPreviewUrl(objectUrl);
+    try {
+      const optimizedFile = await compressImageFile(file);
+      setEditSelectedPhotoFile(optimizedFile);
+      const objectUrl = URL.createObjectURL(optimizedFile);
+      setEditPhotoPreviewUrl(objectUrl);
+    } catch {
+      setEditSelectedPhotoFile(file);
+      const objectUrl = URL.createObjectURL(file);
+      setEditPhotoPreviewUrl(objectUrl);
+    }
   };
 
   const handleClearEditPhoto = () => {
@@ -1045,30 +1207,18 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       key={parcel.id}
                       className="hover:bg-slate-50/70 transition-colors group"
                     >
-                      {/* Ảnh bưu kiện (Thumbnail) */}
+                      {/* Ảnh bưu kiện (Thumbnail Tối Ưu Tải Nhanh & Shimmer & Fallback) */}
                       <td className="py-3 px-4">
-                        <div
+                        <ParcelThumbnail
+                          imageUrl={parcel.parcel_photo_url}
+                          trackingNumber={parcel.tracking_number}
+                          courierCompany={parcel.courier_company}
                           onClick={() => {
                             setLightboxImage(getParcelImageUrl(parcel.parcel_photo_url));
                             setActiveParcel(parcel);
                             setIsLightboxOpen(true);
                           }}
-                          className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group-hover:scale-105 transition-transform cursor-pointer shadow-xs flex items-center justify-center"
-                          title="Bấm để xem ảnh phóng to"
-                        >
-                          <img
-                            src={getParcelImageUrl(parcel.parcel_photo_url)}
-                            alt={parcel.tracking_number}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            onError={(e: any) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                            <Maximize2 className="w-3.5 h-3.5 drop-shadow-md" />
-                          </div>
-                        </div>
+                        />
                       </td>
 
                       {/* Mã vận đơn & ĐVVC */}

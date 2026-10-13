@@ -197,10 +197,7 @@ class ReceptionParcelService
 
         if ($photoFile) {
             $this->validateImageFile($photoFile);
-            $extension = $photoFile->getClientOriginalExtension() ?: 'jpg';
-            $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.strtolower($extension);
-
-            $storedPath = $photoFile->storeAs('parcels', $safeFileName, 'public');
+            $storedPath = $this->optimizeAndStoreImage($photoFile);
             $photoUrl = '/storage/'.$storedPath;
         }
 
@@ -324,10 +321,7 @@ class ReceptionParcelService
         // Nếu có upload ảnh thay thế
         if ($newPhotoFile) {
             $this->validateImageFile($newPhotoFile);
-            $extension = $newPhotoFile->getClientOriginalExtension() ?: 'jpg';
-            $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.strtolower($extension);
-
-            $newStoredPath = $newPhotoFile->storeAs('parcels', $safeFileName, 'public');
+            $newStoredPath = $this->optimizeAndStoreImage($newPhotoFile);
             $newPhotoUrl = '/storage/'.$newStoredPath;
 
             // Ghi nhớ ảnh cũ để xóa sau khi DB commit thành công
@@ -569,5 +563,76 @@ class ReceptionParcelService
                 'photo' => ['Phần mở rộng file không được chấp nhận. Vui lòng chọn ảnh định dạng hợp lệ.'],
             ]);
         }
+    }
+
+    /**
+     * Tự động nén và tối ưu hóa ảnh bưu kiện bằng GD (nếu khả dụng)
+     */
+    protected function optimizeAndStoreImage(UploadedFile $photoFile): string
+    {
+        $extension = strtolower($photoFile->getClientOriginalExtension() ?: 'jpg');
+        $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.$extension;
+        $destinationDir = storage_path('app/public/parcels');
+
+        if (! file_exists($destinationDir)) {
+            @mkdir($destinationDir, 0755, true);
+        }
+
+        $targetPath = $destinationDir.'/'.$safeFileName;
+
+        // Nếu GD extension khả dụng và file là JPEG/PNG/WebP, tiến hành resize & compress
+        if (extension_loaded('gd') && in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+            try {
+                $image = match ($extension) {
+                    'jpg', 'jpeg' => @imagecreatefromjpeg($photoFile->getRealPath()),
+                    'png' => @imagecreatefrompng($photoFile->getRealPath()),
+                    'webp' => @imagecreatefromwebp($photoFile->getRealPath()),
+                    default => null,
+                };
+
+                if ($image) {
+                    $origWidth = imagesx($image);
+                    $origHeight = imagesy($image);
+                    $maxDim = 1280;
+
+                    if ($origWidth > $maxDim || $origHeight > $maxDim) {
+                        if ($origWidth > $origHeight) {
+                            $newWidth = $maxDim;
+                            $newHeight = (int) round(($origHeight * $maxDim) / $origWidth);
+                        } else {
+                            $newHeight = $maxDim;
+                            $newWidth = (int) round(($origWidth * $maxDim) / $origHeight);
+                        }
+
+                        $resized = imagecreatetruecolor($newWidth, $newHeight);
+
+                        if (in_array($extension, ['png', 'webp'], true)) {
+                            imagealphablending($resized, false);
+                            imagesavealpha($resized, true);
+                        }
+
+                        imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
+                        imagedestroy($image);
+                        $image = $resized;
+                    }
+
+                    if ($extension === 'webp') {
+                        imagewebp($image, $targetPath, 82);
+                    } elseif ($extension === 'png') {
+                        imagepng($image, $targetPath, 6);
+                    } else {
+                        imagejpeg($image, $targetPath, 82);
+                    }
+
+                    imagedestroy($image);
+
+                    return 'parcels/'.$safeFileName;
+                }
+            } catch (Throwable $e) {
+                // Fallback nếu có lỗi xử lý GD
+            }
+        }
+
+        return $photoFile->storeAs('parcels', $safeFileName, 'public');
     }
 }
