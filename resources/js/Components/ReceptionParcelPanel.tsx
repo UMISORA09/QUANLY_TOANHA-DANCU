@@ -408,12 +408,58 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }
   };
 
-  // Quick Random tracking number for testing
-  const handleGenerateSampleTracking = () => {
-    const prefixes = ['SPX', 'GHTK', 'VN', 'JT', 'GHN'];
-    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-    const code = `${prefix}${Math.floor(100000000 + Math.random() * 900000000)}`;
+  // Helper lấy prefix mã mẫu theo đơn vị vận chuyển
+  const getCourierPrefix = (courier: string): string => {
+    switch (courier) {
+      case 'Shopee Express':
+      case 'SPX Express':
+        return 'SPX';
+      case 'Giao Hàng Tiết Kiệm (GHTK)':
+        return 'GHTK';
+      case 'Giao Hàng Nhanh (GHN)':
+        return 'GHN';
+      case 'Viettel Post':
+        return 'VTP';
+      case 'J&T Express':
+        return 'JNT';
+      case 'GrabExpress':
+        return 'GRAB';
+      case 'Ninja Van':
+        return 'NINJA';
+      case 'Bưu điện VNPost':
+        return 'VNP';
+      case 'BeDelivery':
+        return 'BE';
+      default:
+        return 'PKG';
+    }
+  };
+
+  // Quick Random tracking number for testing theo đúng Đơn vị vận chuyển đang chọn
+  const handleGenerateSampleTracking = (selectedCourier?: string) => {
+    const courier = selectedCourier || formData.courier_company || 'Shopee Express';
+    const prefix = getCourierPrefix(courier);
+    const randomNumber = Math.floor(100000000 + Math.random() * 900000000);
+    const code = `${prefix}${randomNumber}`;
     setFormData((prev) => ({ ...prev, tracking_number: code }));
+  };
+
+  // Đổi đơn vị vận chuyển: nếu mã vận đơn đã tạo mẫu thì tự động đổi prefix theo hãng mới
+  const handleCourierChange = (newCourier: string) => {
+    setFormData((prev) => {
+      const knownPrefixes = ['SPX', 'GHTK', 'GHN', 'VTP', 'JNT', 'GRAB', 'NINJA', 'VNP', 'BE', 'PKG'];
+      const isAutoSample = knownPrefixes.some((p) => prev.tracking_number.startsWith(p));
+      const newPrefix = getCourierPrefix(newCourier);
+      const newTracking = isAutoSample
+        ? `${newPrefix}${Math.floor(100000000 + Math.random() * 900000000)}`
+        : prev.tracking_number;
+
+      return {
+        ...prev,
+        courier_company: newCourier,
+        tracking_number: newTracking,
+      };
+    });
   };
 
   // Helper date format
@@ -1181,7 +1227,25 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Mã vận đơn */}
+                    {/* 1. Đơn vị vận chuyển (chọn trước) */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Đơn vị vận chuyển <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={formData.courier_company}
+                        onChange={(e) => handleCourierChange(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
+                      >
+                        {courierOptions.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 2. Mã vận đơn (nhập sau & tạo mã mẫu tương ứng hãng) */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-slate-700">
@@ -1189,8 +1253,9 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                         </label>
                         <button
                           type="button"
-                          onClick={handleGenerateSampleTracking}
+                          onClick={() => handleGenerateSampleTracking()}
                           className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
+                          title="Tạo mã mẫu ngẫu nhiên khớp với đơn vị vận chuyển đang chọn"
                         >
                           + Tạo mã mẫu
                         </button>
@@ -1201,29 +1266,9 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                         onChange={(e) =>
                           setFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
                         }
-                        placeholder="VD: SPX123456789VN"
+                        placeholder={`VD: ${getCourierPrefix(formData.courier_company)}672781726`}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
                       />
-                    </div>
-
-                    {/* Đơn vị vận chuyển */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        Đơn vị vận chuyển <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={formData.courier_company}
-                        onChange={(e) =>
-                          setFormData((prev) => ({ ...prev, courier_company: e.target.value }))
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                      >
-                        {courierOptions.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                 </div>
