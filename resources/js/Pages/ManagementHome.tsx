@@ -206,10 +206,13 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path === '/quan-ly/chot-chi-so' ||
       path === '/admin/meter-readings' ||
       path === '/quan-ly/meter-readings' ||
+      path === '/admin/chot-chi-so' ||
       path.startsWith('/quan-ly/chot-chi-so') ||
-      path.startsWith('/admin/meter-readings')
+      path.startsWith('/admin/meter-readings') ||
+      path.startsWith('/admin/chot-chi-so') ||
+      path.startsWith('/quan-ly/meter-readings')
     ) {
-      return 'metering';
+      return 'meter_readings';
     }
     if (
       path === '/quan-ly/hoa-don' ||
@@ -276,13 +279,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     if (tabParam) {
       if (tabParam === 'buildings') return 'blocks';
       if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
-      if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'metering';
+      if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'meter_readings';
       return tabParam;
     }
 
     // 3. Prop initialTab được truyền từ component cha (nếu có giá trị cụ thể khác overview)
     if (initialTab && initialTab !== 'overview') {
       if (initialTab === 'pricing' || initialTab === 'don_gia') return 'pricing_configs';
+      if (initialTab === 'metering' || initialTab === 'meter-readings' || initialTab === 'chot-chi-so' || initialTab === 'chot_chi_so') return 'meter_readings';
       return initialTab;
     }
 
@@ -518,7 +522,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng (Công An)', icon: FileText, badge: 'CT01' },
         { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: String(kpis.amenityBookings) },
         { id: 'pricing_configs', label: 'Đơn giá', icon: Tag, badge: null },
-        { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
+        { id: 'meter_readings', label: 'Chốt chỉ số điện & nước', icon: Zap, badge: 'IoT' },
         { id: 'invoices', label: 'Quản lý Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
         { id: 'invoice_generation', label: 'Sinh Hóa đơn Tự động', icon: Layers, badge: 'Auto' },
         { id: 'payment_history', label: 'Lịch sử Giao dịch', icon: History, badge: null },
@@ -744,7 +748,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   }, []);
 
   const handleMenuClick = (id: string) => {
-    const normalizedId = (id === 'pricing' || id === 'don_gia') ? 'pricing_configs' : id;
+    let normalizedId = (id === 'pricing' || id === 'don_gia') ? 'pricing_configs' : id;
+    if (normalizedId === 'metering' || normalizedId === 'chot_chi_so') {
+      normalizedId = 'meter_readings';
+    }
     setActiveMenuId(normalizedId);
     setMobileSidebarOpen(false);
 
@@ -775,8 +782,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=rfid_cards`);
     } else if (normalizedId === 'pricing_configs') {
       window.history.pushState({ tab: normalizedId }, '', `${basePath}/don-gia`);
-    } else if (normalizedId === 'metering' || normalizedId === 'meter_readings' || normalizedId === 'chot_chi_so') {
-      window.history.pushState({ tab: 'metering' }, '', isManagerMode ? `${basePath}/chot-chi-so` : `${basePath}/meter-readings`);
+    } else if (normalizedId === 'meter_readings' || normalizedId === 'metering' || normalizedId === 'chot_chi_so') {
+      window.history.pushState({ tab: 'meter_readings' }, '', isManagerMode ? `${basePath}/chot-chi-so` : `${basePath}/meter-readings`);
     } else if (normalizedId === 'invoices' || normalizedId === 'hoa_don') {
       window.history.pushState({ tab: 'invoices' }, '', `${basePath}/hoa-don`);
     } else if (normalizedId === 'invoice_generation' || normalizedId === 'sinh_hoa_don') {
@@ -793,7 +800,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=${normalizedId}`);
     }
     if (normalizedId !== 'overview') {
-      showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === normalizedId)?.label || 'Đơn giá'}`);
+      showToast(`Chuyển đến phân hệ: ${menuItems.find((m) => m.id === normalizedId)?.label || 'Chốt chỉ số điện & nước'}`);
     }
   };
 
