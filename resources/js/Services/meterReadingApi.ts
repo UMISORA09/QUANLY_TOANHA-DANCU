@@ -373,7 +373,7 @@ export const meterReadingApi = {
     /**
      * Khóa sổ kỳ chốt số
      */
-    async lockCycle(cycle: string, blockId?: string): Promise<{ locked_count: number; message: string }> {
+    async lockCycle(cycle: string, blockId?: string): Promise<{ locked_count: number; is_locked?: boolean; message: string }> {
         const res = await fetch('/api/v1/meter-readings/lock-cycle', {
             method: 'POST',
             headers: getAuthHeaders(),
@@ -392,7 +392,7 @@ export const meterReadingApi = {
     /**
      * Mở khóa sổ kỳ chốt số
      */
-    async unlockCycle(cycle: string, blockId?: string): Promise<{ unlocked_count: number; message: string }> {
+    async unlockCycle(cycle: string, blockId?: string): Promise<{ unlocked_count: number; is_locked?: boolean; message: string }> {
         const res = await fetch('/api/v1/meter-readings/unlock-cycle', {
             method: 'POST',
             headers: getAuthHeaders(),
