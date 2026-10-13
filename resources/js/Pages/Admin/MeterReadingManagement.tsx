@@ -39,6 +39,7 @@ import {
     MeterReadingBatchModel,
     MeterSummaryData
 } from '../../Services/meterReadingApi';
+import { CustomSelect } from '../../Components/Common/CustomSelect';
 
 interface BlockOption {
     id: string;
@@ -117,15 +118,17 @@ export const MeterReadingManagement: React.FC = () => {
         setTimeout(() => setToast(null), 4000);
     };
 
-    // Tải dữ liệu ban đầu
-    const fetchData = async () => {
-        setLoading(true);
+    // Tải dữ liệu (Hỗ trợ silent background polling mượt mà không giật lag)
+    const fetchData = async (isSilent = false) => {
+        if (!isSilent && meters.length === 0 && readings.length === 0) {
+            setLoading(true);
+        }
         try {
             const blockId = selectedBlock !== 'ALL' ? selectedBlock : undefined;
             
             // 1. Lấy Summary KPI
             const sumData = await meterReadingApi.getSummary(selectedCycle, blockId);
-            setSummary(sumData);
+            setSummary(prev => JSON.stringify(prev) === JSON.stringify(sumData) ? prev : sumData);
 
             // 2. Lấy danh sách theo Tab
             if (activeTab === 'meters') {
@@ -137,8 +140,8 @@ export const MeterReadingManagement: React.FC = () => {
                     page: pagination.current_page,
                     per_page: 15,
                 });
-                setMeters(meterRes.data);
-                setPagination(meterRes.meta);
+                setMeters(prev => JSON.stringify(prev) === JSON.stringify(meterRes.data) ? prev : meterRes.data);
+                setPagination(prev => JSON.stringify(prev) === JSON.stringify(meterRes.meta) ? prev : meterRes.meta);
             } else if (activeTab === 'import') {
                 const batchRes = await meterReadingApi.getBatches({
                     cycle: selectedCycle,
@@ -147,8 +150,8 @@ export const MeterReadingManagement: React.FC = () => {
                     page: pagination.current_page,
                     per_page: 10,
                 });
-                setBatches(batchRes.data);
-                setPagination(batchRes.meta);
+                setBatches(prev => JSON.stringify(prev) === JSON.stringify(batchRes.data) ? prev : batchRes.data);
+                setPagination(prev => JSON.stringify(prev) === JSON.stringify(batchRes.meta) ? prev : batchRes.meta);
             } else {
                 const readingRes = await meterReadingApi.getReadings({
                     cycle: selectedCycle,
@@ -159,15 +162,31 @@ export const MeterReadingManagement: React.FC = () => {
                     page: pagination.current_page,
                     per_page: 15,
                 });
-                setReadings(readingRes.data);
-                setPagination(readingRes.meta);
+                setReadings(prev => JSON.stringify(prev) === JSON.stringify(readingRes.data) ? prev : readingRes.data);
+                setPagination(prev => JSON.stringify(prev) === JSON.stringify(readingRes.meta) ? prev : readingRes.meta);
             }
         } catch (err: any) {
-            showToast('error', err.message || 'Lỗi khi tải dữ liệu');
+            if (!isSilent) {
+                showToast('error', err.message || 'Lỗi khi tải dữ liệu');
+            }
         } finally {
-            setLoading(false);
+            if (!isSilent) {
+                setLoading(false);
+            }
         }
     };
+
+    // Silent background polling: định kỳ 4s tự động cập nhật mượt mà
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            if (document.hidden || isEntryModalOpen || isLockConfirmOpen || selectedBatchForDetail || previewImageUrl) {
+                return;
+            }
+            fetchData(true);
+        }, 4000);
+
+        return () => clearInterval(intervalId);
+    }, [selectedCycle, selectedBlock, selectedMeterType, searchQuery, activeTab, pagination.current_page, isEntryModalOpen, isLockConfirmOpen, selectedBatchForDetail, previewImageUrl]);
 
     // Tải file mẫu CSV
     const handleDownloadTemplate = async () => {
@@ -385,15 +404,10 @@ export const MeterReadingManagement: React.FC = () => {
                     <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider font-mono text-sky-600">
                         <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500 shrink-0" />
                         <span>HỆ THỐNG GHI SỐ ĐIỆN NƯỚC & ĐỐI SOÁT</span>
-                        <span className="text-slate-300">·</span>
-                        <span className="text-slate-500">CHỨC NĂNG #4 (CHỐT CHỈ SỐ ĐIỆN NƯỚC THỦ CÔNG & KHÓA SỔ)</span>
                     </div>
                     <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 tracking-tight mt-1">
                         Chốt Chỉ Số Điện & Nước Thủ Công
                     </h1>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl leading-relaxed">
-                        Ghi số công tơ định kỳ theo căn hộ, kiểm soát biến động tiêu thụ bất thường, ảnh chụp đồng hồ và khóa sổ chu kỳ tính cước.
-                    </p>
                 </div>
 
                 {/* Bộ điều khiển Chu kỳ & Thao tác Khóa sổ */}
@@ -431,17 +445,6 @@ export const MeterReadingManagement: React.FC = () => {
                                 <span>Sổ Đang Mở (Ghi Số)</span>
                             </>
                         )}
-                    </button>
-
-                    {/* Nút Refresh */}
-                    <button
-                        type="button"
-                        onClick={fetchData}
-                        disabled={loading}
-                        title="Làm mới dữ liệu"
-                        className="p-2 rounded-xl text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-2xs transition-all active:scale-[0.98] cursor-pointer shrink-0"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-sky-600' : ''}`} />
                     </button>
                 </div>
             </div>
@@ -581,32 +584,68 @@ export const MeterReadingManagement: React.FC = () => {
                     </div>
 
                     {/* Lọc Block */}
-                    <select
-                        value={selectedBlock}
-                        onChange={(e) => { setSelectedBlock(e.target.value); setPagination(p => ({ ...p, current_page: 1 })); }}
-                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer"
-                    >
-                        <option value="ALL">Tất cả Khối Tòa</option>
-                        {blocks.map(b => (
-                            <option key={b.id} value={b.id}>{b.block_name} ({b.block_code})</option>
-                        ))}
-                    </select>
+                    <div className="min-w-[190px]">
+                        <CustomSelect<string>
+                            value={selectedBlock}
+                            onChange={(val) => { setSelectedBlock(val); setPagination(p => ({ ...p, current_page: 1 })); }}
+                            options={[
+                                { value: 'ALL', label: 'Tất cả Khối Tòa', icon: <Building2 className="w-3.5 h-3.5 text-slate-400" /> },
+                                ...blocks.map(b => ({
+                                    value: b.id,
+                                    label: `${b.block_name} (${b.block_code})`,
+                                    icon: <Building2 className="w-3.5 h-3.5 text-sky-500" />
+                                }))
+                            ]}
+                        />
+                    </div>
 
                     {/* Lọc Loại đồng hồ */}
-                    <select
-                        value={selectedMeterType}
-                        onChange={(e) => { setSelectedMeterType(e.target.value); setPagination(p => ({ ...p, current_page: 1 })); }}
-                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer"
-                    >
-                        <option value="ALL">Tất cả Loại Dịch Vụ</option>
-                        <option value="ELECTRICITY">⚡ Đồng Hồ Điện</option>
-                        <option value="WATER">💧 Đồng Hồ Nước</option>
-                    </select>
+                    <div className="min-w-[190px]">
+                        <CustomSelect<string>
+                            value={selectedMeterType}
+                            onChange={(val) => { setSelectedMeterType(val); setPagination(p => ({ ...p, current_page: 1 })); }}
+                            options={[
+                                { value: 'ALL', label: 'Tất cả Loại Dịch Vụ', icon: <Activity className="w-3.5 h-3.5 text-slate-400" /> },
+                                { value: 'ELECTRICITY', label: 'Đồng Hồ Điện (kWh)', description: 'Công tơ điện sinh hoạt tòa nhà', icon: <Zap className="w-3.5 h-3.5 text-amber-500" /> },
+                                { value: 'WATER', label: 'Đồng Hồ Nước (m³)', description: 'Đồng hồ nước sạch sinh hoạt', icon: <Droplets className="w-3.5 h-3.5 text-sky-500" /> },
+                            ]}
+                        />
+                    </div>
                 </div>
             </div>
 
             {/* BẢNG DỮ LIỆU CHÍNH */}
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                {/* Table Card Header & Actions */}
+                <div className="p-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+                    <div>
+                        <h3 className="text-sm font-bold text-neutral-900">
+                            {activeTab === 'meters' && 'Danh Sách Công Tơ Đo Điện & Nước'}
+                            {activeTab === 'readings' && 'Danh Sách Chỉ Số Đã Ghi Nhận Trong Kỳ'}
+                            {activeTab === 'abnormal' && 'Cảnh Báo Chỉ Số Biến Động Bất Thường'}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                            {activeTab === 'meters' && 'Theo dõi trạng thái chốt số, chỉ số kỳ trước và ghi số nhanh cho từng căn hộ'}
+                            {activeTab === 'readings' && `Các căn hộ đã hoàn tất đối soát số liệu điện nước trong chu kỳ ${selectedCycle}`}
+                            {activeTab === 'abnormal' && 'Các trường hợp tiêu thụ đột biến gấp 1.5 lần hoặc có chênh lệch âm cần kiểm tra'}
+                        </p>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleDownloadTemplate}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs transition-all active:scale-[0.98] cursor-pointer"
+                        >
+                            <Download className="w-3.5 h-3.5 text-sky-600" />
+                            <span>Tải Mẫu CSV</span>
+                        </button>
+
+                        <span className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-mono shadow-2xs">
+                            Tổng cộng: {activeTab === 'meters' ? (summary?.total_meters || meters.length) : activeTab === 'readings' ? (summary?.recorded_meters || readings.length) : (summary?.abnormal_count || 0)} {activeTab === 'meters' ? 'Công tơ' : 'Bản ghi'}
+                        </span>
+                    </div>
+                </div>
                 {loading ? (
                     <div className="p-16 text-center text-slate-400">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto text-sky-600 mb-2" />
@@ -1201,27 +1240,27 @@ export const MeterReadingManagement: React.FC = () => {
 
             {/* MODAL 4: XEM CHI TIẾT ĐỢT IMPORT & LỖI */}
             {selectedBatchForDetail && (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div>
-                                <h4 className="text-base font-bold text-white flex items-center gap-2">
-                                    <FileWarning className="w-5 h-5 text-rose-400" />
+                                <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                                    <FileWarning className="w-5 h-5 text-rose-500" />
                                     <span>Chi Tiết Lỗi Đợt Import: {selectedBatchForDetail.batch_code}</span>
                                 </h4>
-                                <p className="text-xs text-slate-400 mt-0.5">Tệp gốc: {selectedBatchForDetail.file_name}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">Tệp gốc: {selectedBatchForDetail.file_name}</p>
                             </div>
                             <button
                                 onClick={() => setSelectedBatchForDetail(null)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
                             >
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
 
-                        <div className="max-h-80 overflow-y-auto border border-slate-800 rounded-xl overflow-hidden">
-                            <table className="w-full text-left text-xs text-slate-300">
-                                <thead className="bg-slate-950/80 uppercase font-semibold text-slate-400 sticky top-0">
+                        <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-xl overflow-hidden">
+                            <table className="w-full text-left text-xs text-slate-700">
+                                <thead className="bg-slate-50 uppercase font-bold text-slate-600 sticky top-0 border-b border-slate-200">
                                     <tr>
                                         <th className="p-3">Dòng</th>
                                         <th className="p-3">Mã Đồng Hồ</th>
@@ -1229,13 +1268,13 @@ export const MeterReadingManagement: React.FC = () => {
                                         <th className="p-3">Nguyên Nhân Lỗi Cụ Thể</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-800">
+                                <tbody className="divide-y divide-slate-100">
                                     {selectedBatchForDetail.error_summary_json?.map((err, i) => (
-                                        <tr key={i} className="hover:bg-slate-800/40">
-                                            <td className="p-3 font-mono font-bold text-indigo-400">Dòng {err.line}</td>
-                                            <td className="p-3 font-mono text-slate-200">{err.meter_code}</td>
-                                            <td className="p-3 text-slate-300">{err.apartment || 'N/A'}</td>
-                                            <td className="p-3 text-rose-400 font-medium">{err.error}</td>
+                                        <tr key={i} className="hover:bg-slate-50/60 transition-colors">
+                                            <td className="p-3 font-mono font-bold text-indigo-600">Dòng {err.line}</td>
+                                            <td className="p-3 font-mono font-semibold text-slate-900">{err.meter_code}</td>
+                                            <td className="p-3 text-slate-700">{err.apartment || 'N/A'}</td>
+                                            <td className="p-3 text-rose-600 font-medium">{err.error}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1245,7 +1284,7 @@ export const MeterReadingManagement: React.FC = () => {
                         <div className="flex justify-end pt-2">
                             <button
                                 onClick={() => setSelectedBatchForDetail(null)}
-                                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
+                                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 shadow-2xs cursor-pointer"
                             >
                                 Đóng
                             </button>

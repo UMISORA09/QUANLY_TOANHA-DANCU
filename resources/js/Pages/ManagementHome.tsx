@@ -209,7 +209,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.startsWith('/quan-ly/chot-chi-so') ||
       path.startsWith('/admin/meter-readings')
     ) {
-      return 'meter_readings';
+      return 'metering';
     }
     if (
       path === '/quan-ly/hoa-don' ||
@@ -276,6 +276,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     if (tabParam) {
       if (tabParam === 'buildings') return 'blocks';
       if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
+      if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'metering';
       return tabParam;
     }
 
@@ -774,6 +775,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: normalizedId }, '', `${basePath}?tab=rfid_cards`);
     } else if (normalizedId === 'pricing_configs') {
       window.history.pushState({ tab: normalizedId }, '', `${basePath}/don-gia`);
+    } else if (normalizedId === 'metering' || normalizedId === 'meter_readings' || normalizedId === 'chot_chi_so') {
+      window.history.pushState({ tab: 'metering' }, '', isManagerMode ? `${basePath}/chot-chi-so` : `${basePath}/meter-readings`);
     } else if (normalizedId === 'invoices' || normalizedId === 'hoa_don') {
       window.history.pushState({ tab: 'invoices' }, '', `${basePath}/hoa-don`);
     } else if (normalizedId === 'invoice_generation' || normalizedId === 'sinh_hoa_don') {

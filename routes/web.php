@@ -503,6 +503,12 @@ Route::get('/quan-ly/chot-chi-so', function () {
 Route::get('/admin/meter-readings', function () {
     return view('welcome');
 });
+Route::get('/admin/chot-chi-so', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/meter-readings', function () {
+    return view('welcome');
+});
 
 // ==========================================
 // SINH HÓA ĐƠN TỰ ĐỘNG HÀNG LOẠT THEO THÁNG (CHỨC NĂNG 6 - XUANHOA)
