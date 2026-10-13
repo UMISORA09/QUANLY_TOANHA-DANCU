@@ -307,7 +307,8 @@ class MeterReadingController extends Controller
 
             return response($csvContent, 200, [
                 'Content-Type' => 'text/csv; charset=UTF-8',
-                'Content-Disposition' => "attachment; filename=\"mau_chot_chi_so_{$cycle}.csv\"",
+                'Content-Disposition' => "attachment; filename=\"mau_chot_chi_so_{$cycle}.csv\"; filename*=UTF-8''mau_chot_chi_so_{$cycle}.csv",
+                'Access-Control-Expose-Headers' => 'Content-Disposition',
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
             ]);
         } catch (Throwable $e) {
