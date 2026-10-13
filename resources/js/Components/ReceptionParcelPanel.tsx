@@ -280,9 +280,15 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     },
   });
 
-  // Handle Apartment Change in Create Form -> fetch resident suggestions
+  // Handle Apartment Change in Create Form -> fetch resident suggestions (không tự điền)
   const handleApartmentChange = async (aptId: string) => {
-    setFormData((prev) => ({ ...prev, apartment_id: aptId, recipient_name: '', recipient_phone: '', recipient_user_id: '' }));
+    setFormData((prev) => ({
+      ...prev,
+      apartment_id: aptId,
+      recipient_name: '',
+      recipient_phone: '',
+      recipient_user_id: '',
+    }));
     if (!aptId) {
       setRecipientSuggestions([]);
       return;
@@ -291,16 +297,8 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
       const res = await api.searchParcelRecipients('', aptId);
       if (res.success && res.data) {
         setRecipientSuggestions(res.data);
-        if (res.data.length === 1) {
-          const defaultRec = res.data[0];
-          setFormData((prev) => ({
-            ...prev,
-            apartment_id: aptId,
-            recipient_name: defaultRec.full_name || '',
-            recipient_phone: defaultRec.phone_number || '',
-            recipient_user_id: defaultRec.id || '',
-          }));
-        }
+      } else {
+        setRecipientSuggestions([]);
       }
     } catch {
       setRecipientSuggestions([]);
