@@ -168,7 +168,7 @@ class ReceptionParcelService
         if (! $staffId) {
             // Fallback lấy nhân viên lễ tân/admin đầu tiên nếu chạy CLI/Unit Test không có session
             $staffId = User::whereHas('roles', function ($q) {
-                $q->whereIn('name', ['RECEPTIONIST', 'STAFF', 'ADMIN', 'SUPER_ADMIN']);
+                $q->whereIn('roles.role_code', ['RECEPTIONIST', 'STAFF', 'ADMIN', 'SUPER_ADMIN', 'SECURITY_GUARD']);
             })->value('id') ?? User::value('id');
 
             if (! $staffId) {

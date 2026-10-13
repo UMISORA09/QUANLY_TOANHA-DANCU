@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Parcel;
+use App\Services\RbacService;
 use App\Services\ReceptionParcelService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -69,9 +70,10 @@ class ReceptionParcelController extends Controller
         $photoFile = $request->file('photo');
 
         try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
             $parcel = $this->service->receiveParcel(
                 data: $validated,
-                staffUser: $request->user(),
+                staffUser: $staffUser,
                 photoFile: $photoFile
             );
 
@@ -138,10 +140,11 @@ class ReceptionParcelController extends Controller
         $newPhotoFile = $request->file('photo');
 
         try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
             $parcel = $this->service->updateParcel(
                 id: $id,
                 data: $validated,
-                staffUser: $request->user(),
+                staffUser: $staffUser,
                 newPhotoFile: $newPhotoFile
             );
 
