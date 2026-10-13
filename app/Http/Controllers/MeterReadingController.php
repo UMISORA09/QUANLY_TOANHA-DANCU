@@ -301,8 +301,20 @@ class MeterReadingController extends Controller
         $cycle = $request->input('cycle', Carbon::now()->format('Y-m'));
         $blockId = $request->input('block_id');
         $meterType = $request->input('meter_type');
+        $format = strtolower((string) $request->input('format', 'csv'));
 
         try {
+            if (in_array($format, ['excel', 'xls', 'xlsx'], true)) {
+                $excelContent = $this->service->generateExcelTemplate($cycle, $blockId, $meterType);
+
+                return response($excelContent, 200, [
+                    'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+                    'Content-Disposition' => "attachment; filename=\"mau_chot_chi_so_{$cycle}.xls\"; filename*=UTF-8''mau_chot_chi_so_{$cycle}.xls",
+                    'Access-Control-Expose-Headers' => 'Content-Disposition',
+                    'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                ]);
+            }
+
             $csvContent = $this->service->generateTemplate($cycle, $blockId, $meterType);
 
             return response($csvContent, 200, [

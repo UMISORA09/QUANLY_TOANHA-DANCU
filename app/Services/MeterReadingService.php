@@ -462,7 +462,14 @@ class MeterReadingService
         foreach ($meters as $m) {
             $existingReading = $m->readings->first();
             $prev = $existingReading ? $existingReading->previous_reading : $m->current_reading;
-            $curr = $existingReading ? $existingReading->current_reading : '';
+            // Tự động điền trước chỉ số cũ/hiện tại để người dùng có thể tải về và import thử ngay mà không bị lỗi để trống
+            $curr = $existingReading ? $existingReading->current_reading : $prev;
+
+            $typeName = match ($m->meter_type) {
+                'ELECTRICITY' => 'Điện (kWh)',
+                'WATER' => 'Nước (m³)',
+                default => $m->meter_type,
+            };
 
             $row = [
                 $stt++,
@@ -470,7 +477,7 @@ class MeterReadingService
                 $m->apartment?->apartment_number ?? '',
                 $m->apartment?->block?->block_name ?? '',
                 $m->apartment?->floor?->floor_name ?? '',
-                $m->meter_type,
+                $typeName,
                 $prev,
                 $curr,
                 $suggestedDate,
@@ -488,7 +495,191 @@ class MeterReadingService
     }
 
     /**
-     * Import danh sách chỉ số điện nước hàng loạt từ file CSV / Excel text
+     * Sinh biểu mẫu Excel (.xls) có định dạng chuyên nghiệp: logo thương hiệu,
+     * bảng khung form chỉn chu, màu sắc nhận diện, hướng dẫn nhập liệu và highlight cột nhập số liệu.
+     */
+    public function generateExcelTemplate(string $cycle, ?string $blockId = null, ?string $meterType = null): string
+    {
+        $query = Meter::query()
+            ->with(['apartment.block', 'apartment.floor', 'readings' => fn ($q) => $q->where('billing_cycle', $cycle)])
+            ->where('is_active', true);
+
+        if ($blockId) {
+            $query->whereHas('apartment', fn ($q) => $q->where('block_id', $blockId));
+        }
+
+        if ($meterType && $meterType !== 'ALL') {
+            $query->where('meter_type', $meterType);
+        }
+
+        $meters = $query->orderBy('meter_code')->get();
+
+        $blockModel = $blockId ? Block::find($blockId) : null;
+        $blockName = $blockModel ? "{$blockModel->block_name} ({$blockModel->block_code})" : 'Toàn bộ tòa nhà / Tất cả phân khu';
+
+        $cycleCarbon = Carbon::createFromFormat('Y-m', $cycle);
+        $suggestedDate = $cycleCarbon->endOfMonth()->toDateString();
+        $exportDate = Carbon::now()->format('d/m/Y H:i');
+        $totalMeters = count($meters);
+
+        $html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+        $html .= '<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">';
+        $html .= '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Chỉ Số Điện Nước</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->';
+        $html .= '<style>';
+        $html .= 'body, table { font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-size: 10pt; color: #0F172A; }';
+        $html .= '.company-box { background-color: #FFFFFF; border: 1px solid #CBD5E1; padding: 10px 14px; vertical-align: middle; }';
+        $html .= '.doc-meta-box { background-color: #F8FAFC; border: 1px solid #CBD5E1; padding: 10px 14px; text-align: right; vertical-align: middle; font-size: 8.5pt; color: #475569; }';
+        $html .= '.brand-title { background-color: #0F172A; color: #38BDF8; font-size: 13pt; font-weight: bold; text-align: center; height: 38px; vertical-align: middle; letter-spacing: 0.5px; border: 1px solid #0F172A; }';
+        $html .= '.sub-title { background-color: #0284C7; color: #FFFFFF; font-size: 10.5pt; font-weight: bold; text-align: center; height: 28px; vertical-align: middle; border: 1px solid #0284C7; }';
+        $html .= '.meta-lbl { background-color: #F1F5F9; color: #334155; font-weight: bold; font-size: 9.5pt; border: 1px solid #CBD5E1; padding: 6px 10px; }';
+        $html .= '.meta-val { background-color: #FFFFFF; color: #0F172A; font-size: 9.5pt; border: 1px solid #CBD5E1; padding: 6px 10px; }';
+        $html .= '.guide-box { background-color: #FEF9C3; color: #854D0E; font-size: 9pt; border: 2px dashed #F59E0B; padding: 10px 14px; line-height: 1.5; }';
+        $html .= 'th.hdr { background-color: #0F172A; color: #FFFFFF; font-weight: bold; font-size: 9.5pt; text-align: center; vertical-align: middle; border: 1px solid #334155; height: 36px; padding: 5px; }';
+        $html .= 'th.hdr-target { background-color: #D97706; color: #FFFFFF; font-weight: bold; font-size: 10pt; text-align: center; vertical-align: middle; border: 2px solid #B45309; height: 36px; padding: 5px; }';
+        $html .= 'td.cell-stt { border: 1px solid #CBD5E1; text-align: center; background-color: #F8FAFC; color: #64748B; padding: 6px 4px; }';
+        $html .= 'td.cell-code { border: 1px solid #CBD5E1; text-align: center; font-family: Consolas, monospace; font-weight: bold; color: #0284C7; padding: 6px 8px; mso-number-format: "\@"; }';
+        $html .= 'td.cell-apt { border: 1px solid #CBD5E1; text-align: center; font-weight: bold; color: #0F172A; padding: 6px 8px; mso-number-format: "\@"; }';
+        $html .= 'td.cell-text { border: 1px solid #CBD5E1; padding: 6px 8px; }';
+        $html .= 'td.cell-center { border: 1px solid #CBD5E1; text-align: center; padding: 6px 8px; }';
+        $html .= 'td.cell-prev { border: 1px solid #CBD5E1; text-align: right; color: #475569; background-color: #F8FAFC; font-weight: 500; padding: 6px 10px; mso-number-format: "#\,##0\.0"; }';
+        $html .= 'td.cell-curr { border: 2px solid #F59E0B; background-color: #FEFCE8; text-align: right; font-weight: bold; color: #0F172A; padding: 6px 10px; mso-number-format: "#\,##0\.0"; }';
+        $html .= 'td.cell-date { border: 1px solid #CBD5E1; text-align: center; color: #475569; padding: 6px 8px; mso-number-format: "yyyy-mm-dd"; }';
+        $html .= 'tr.alt td:not(.cell-curr) { background-color: #F8FAFC; }';
+        $html .= '.footer-total { background-color: #F1F5F9; font-weight: bold; color: #0F172A; border: 1px solid #94A3B8; padding: 8px 10px; }';
+        $html .= '.sig-title { font-weight: bold; text-align: center; font-size: 10pt; color: #0F172A; padding-top: 15px; }';
+        $html .= '.sig-sub { font-style: italic; text-align: center; font-size: 8.5pt; color: #64748B; }';
+        $html .= '</style></head><body>';
+
+        $html .= '<table border="1" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: 1px solid #CBD5E1;">';
+
+        // 1. Dòng Logo & Thông tin công ty quản lý tòa nhà
+        $html .= '<tr>';
+        $html .= '<td colspan="6" class="company-box" style="border-top: 3px solid #0284C7;">';
+        $html .= '<div style="font-size: 13pt; font-weight: bold; color: #0284C7; letter-spacing: 0.5px;">🏢 SMART CASSAVAS • BUILDING MANAGEMENT</div>';
+        $html .= '<div style="font-size: 10pt; font-weight: bold; color: #0F172A; margin-top: 2px;">CÔNG TY CỔ PHẦN CÔNG NGHỆ & QUẢN LÝ BẤT ĐỘNG SẢN SMART CASSAVAS</div>';
+        $html .= '<div style="font-size: 8.5pt; color: #64748B; margin-top: 2px;">Hệ thống quản lý tòa nhà & cư dân số hóa • Hotline: 1900 8888 • Email: bql@smartcassavas.vn</div>';
+        $html .= '</td>';
+        $html .= '<td colspan="5" class="doc-meta-box" style="border-top: 3px solid #0284C7;">';
+        $html .= '<div><b>MÃ BIỂU MẪU:</b> BM-QLTN/05-CSDN</div>';
+        $html .= '<div style="margin-top: 2px;"><b>QUY TRÌNH:</b> ISO 9001:2015 QUẢN LÝ VẬN HÀNH</div>';
+        $html .= '<div style="margin-top: 2px; color: #0284C7; font-weight: bold;">KỲ ĐỐI SOÁT: '.htmlspecialchars($cycle).'</div>';
+        $html .= '</td>';
+        $html .= '</tr>';
+
+        // 2. Banner Tiêu Đề Biểu Mẫu
+        $html .= '<tr><th colspan="11" class="brand-title">BẢNG KÊ KHAI & CHỐT CHỈ SỐ ĐIỆN - NƯỚC HÀNG LOẠT</th></tr>';
+        $html .= '<tr><th colspan="11" class="sub-title">KỲ THU PHÍ: '.htmlspecialchars($cycle).' — BIỂU MẪU ĐỐI SOÁT & NHẬP LIỆU TỰ ĐỘNG</th></tr>';
+
+        // 3. Khung Thông Tin Biểu Mẫu (2 dòng metadata chỉnh chu)
+        $html .= '<tr>';
+        $html .= '<td colspan="2" class="meta-lbl">Tòa Nhà / Khối:</td>';
+        $html .= '<td colspan="4" class="meta-val"><b>'.htmlspecialchars($blockName).'</b></td>';
+        $html .= '<td colspan="2" class="meta-lbl">Ngày Xuất Biểu Mẫu:</td>';
+        $html .= '<td colspan="3" class="meta-val">'.htmlspecialchars($exportDate).'</td>';
+        $html .= '</tr>';
+
+        $html .= '<tr>';
+        $html .= '<td colspan="2" class="meta-lbl">Tổng Số Công Tơ:</td>';
+        $html .= '<td colspan="4" class="meta-val"><b style="color: #0284C7;">'.$totalMeters.'</b> điểm đo kỹ thuật</td>';
+        $html .= '<td colspan="2" class="meta-lbl">Hạn Chót Chốt Số:</td>';
+        $html .= '<td colspan="3" class="meta-val"><b style="color: #D97706;">'.htmlspecialchars($suggestedDate).'</b></td>';
+        $html .= '</tr>';
+
+        // 4. Khung Hướng Dẫn & Lưu Ý Kỹ Thuật
+        $html .= '<tr><td colspan="11" class="guide-box">';
+        $html .= '<b>📌 QUY ĐỊNH & HƯỚNG DẪN NHẬP DỮ LIỆU:</b><br>';
+        $html .= '• Cột <b>[Chỉ Số Kỳ Này (*)]</b> (tô viền vàng) đã được điền sẵn chỉ số kỳ trước. Kỹ thuật viên kiểm tra và cập nhật chỉ số mới thực tế tăng lên.<br>';
+        $html .= '• Nếu để trống ô <b>[Chỉ Số Kỳ Này (*)]</b>, hệ thống sẽ tự động gán bằng chỉ số kỳ trước (Tiêu thụ = 0) và không báo lỗi.<br>';
+        $html .= '• <b>Không xóa, đổi tên hoặc sửa thứ tự</b> cột [Mã Đồng Hồ] và [Số Căn Hộ] để hệ thống đối soát tự động chính xác.<br>';
+        $html .= '• Trường hợp căn hộ thay công tơ mới bắt đầu lại từ 0, nhập số <b>1</b> tại cột [Thay Đồng Hồ Mới (1/0)].';
+        $html .= '</td></tr>';
+
+        // Dòng cách nhẹ nhàng
+        $html .= '<tr><td colspan="11" style="height: 12px; background-color: #FFFFFF; border: none;"></td></tr>';
+
+        // 5. Header Bảng Dữ Liệu
+        $html .= '<tr>';
+        $html .= '<th class="hdr" style="width: 50px;">STT</th>';
+        $html .= '<th class="hdr" style="width: 140px;">Mã Đồng Hồ</th>';
+        $html .= '<th class="hdr" style="width: 95px;">Số Căn Hộ</th>';
+        $html .= '<th class="hdr" style="width: 160px;">Khối Tòa Nhà</th>';
+        $html .= '<th class="hdr" style="width: 80px;">Tầng</th>';
+        $html .= '<th class="hdr" style="width: 115px;">Loại Dịch Vụ</th>';
+        $html .= '<th class="hdr" style="width: 125px;">Chỉ Số Kỳ Trước</th>';
+        $html .= '<th class="hdr-target" style="width: 150px;">Chỉ Số Kỳ Này (*)</th>';
+        $html .= '<th class="hdr" style="width: 125px;">Ngày Ghi Số (YYYY-MM-DD)</th>';
+        $html .= '<th class="hdr" style="width: 125px;">Thay Đồng Hồ Mới (1/0)</th>';
+        $html .= '<th class="hdr" style="width: 160px;">Ghi Chú</th>';
+        $html .= '</tr>';
+
+        // 6. Dữ liệu từng dòng
+        $stt = 1;
+        $totalPrev = 0;
+        $totalCurr = 0;
+        foreach ($meters as $m) {
+            $existingReading = $m->readings->first();
+            $prev = $existingReading ? (float) $existingReading->previous_reading : (float) $m->current_reading;
+            $curr = $existingReading ? (float) $existingReading->current_reading : $prev;
+            $totalPrev += $prev;
+            $totalCurr += $curr;
+
+            $typeName = match ($m->meter_type) {
+                'ELECTRICITY' => 'Điện (kWh)',
+                'WATER' => 'Nước (m³)',
+                default => $m->meter_type,
+            };
+
+            $rowClass = ($stt % 2 === 0) ? ' class="alt"' : '';
+
+            $html .= '<tr'.$rowClass.'>';
+            $html .= '<td class="cell-stt">'.$stt++.'</td>';
+            $html .= '<td class="cell-code">'.htmlspecialchars($m->meter_code).'</td>';
+            $html .= '<td class="cell-apt">'.htmlspecialchars($m->apartment?->apartment_number ?? '').'</td>';
+            $html .= '<td class="cell-text">'.htmlspecialchars($m->apartment?->block?->block_name ?? '').'</td>';
+            $html .= '<td class="cell-center">'.htmlspecialchars($m->apartment?->floor?->floor_name ?? '').'</td>';
+            $html .= '<td class="cell-center"><b>'.htmlspecialchars($typeName).'</b></td>';
+            $html .= '<td class="cell-prev">'.$prev.'</td>';
+            $html .= '<td class="cell-curr">'.$curr.'</td>';
+            $html .= '<td class="cell-date">'.htmlspecialchars($suggestedDate).'</td>';
+            $html .= '<td class="cell-center">0</td>';
+            $html .= '<td class="cell-text">'.htmlspecialchars($existingReading?->abnormal_reason ?? '').'</td>';
+            $html .= '</tr>';
+        }
+
+        // 7. Dòng Tổng Kết Biểu Mẫu
+        $html .= '<tr>';
+        $html .= '<td colspan="6" class="footer-total" style="text-align: right;">TỔNG CỘNG ('.$totalMeters.' ĐỒNG HỒ):</td>';
+        $html .= '<td class="footer-total" style="text-align: right; color: #475569; mso-number-format: \'#\,##0\.0\';">'.$totalPrev.'</td>';
+        $html .= '<td class="footer-total" style="text-align: right; color: #B45309; background-color: #FEF3C7; mso-number-format: \'#\,##0\.0\';">'.$totalCurr.'</td>';
+        $html .= '<td colspan="3" class="footer-total"></td>';
+        $html .= '</tr>';
+
+        // 8. Khung Chữ Ký & Xác Nhận Phê Duyệt (3 bên)
+        $html .= '<tr><td colspan="11" style="height: 20px; background-color: #FFFFFF; border: none;"></td></tr>';
+        $html .= '<tr>';
+        $html .= '<td colspan="4" class="sig-title" style="border: none;">NGƯỜI LẬP BIỂU</td>';
+        $html .= '<td colspan="3" class="sig-title" style="border: none;">KỸ THUẬT VIÊN GHI SỐ</td>';
+        $html .= '<td colspan="4" class="sig-title" style="border: none;">TRƯỞNG BAN QUẢN LÝ</td>';
+        $html .= '</tr>';
+        $html .= '<tr>';
+        $html .= '<td colspan="4" class="sig-sub" style="border: none;">(Ký và ghi rõ họ tên)</td>';
+        $html .= '<td colspan="3" class="sig-sub" style="border: none;">(Ký và ghi rõ họ tên)</td>';
+        $html .= '<td colspan="4" class="sig-sub" style="border: none;">(Ký tên và đóng dấu)</td>';
+        $html .= '</tr>';
+        $html .= '<tr><td colspan="11" style="height: 60px; background-color: #FFFFFF; border: none;"></td></tr>';
+        $html .= '<tr>';
+        $html .= '<td colspan="4" class="sig-sub" style="border: none;">Ngày ..... tháng ..... năm 202...</td>';
+        $html .= '<td colspan="3" class="sig-sub" style="border: none;">Ngày ..... tháng ..... năm 202...</td>';
+        $html .= '<td colspan="4" class="sig-sub" style="border: none;">Ngày ..... tháng ..... năm 202...</td>';
+        $html .= '</tr>';
+
+        $html .= '</table></body></html>';
+
+        return $html;
+    }
+
+    /**
+     * Import danh sách chỉ số điện nước hàng loạt từ file CSV / Excel (.xls / .xlsx text)
      */
     public function importFromCsv(
         string $filePath,
@@ -516,9 +707,43 @@ class MeterReadingService
         $rawContent = file_get_contents($filePath);
         // Xóa UTF-8 BOM nếu có
         $cleanContent = preg_replace('/^\xEF\xBB\xBF/', '', $rawContent);
-        $lines = preg_split('/\r\n|\r|\n/', trim($cleanContent));
 
-        if (empty($lines) || count($lines) < 2) {
+        $isHtml = str_contains(strtolower($cleanContent), '<table') || str_contains(strtolower($cleanContent), '<tr');
+
+        $parsedRows = [];
+        if ($isHtml) {
+            preg_match_all('/<tr[^>]*>(.*?)<\/tr>/is', $cleanContent, $trMatches);
+            foreach ($trMatches[1] as $trHtml) {
+                preg_match_all('/<(?:td|th)[^>]*>(.*?)<\/(?:td|th)>/is', $trHtml, $cellMatches);
+                if (! empty($cellMatches[1])) {
+                    $rowCells = array_map(function ($c) {
+                        return trim(html_entity_decode(strip_tags($c), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                    }, $cellMatches[1]);
+                    if (! empty(array_filter($rowCells, fn ($c) => $c !== ''))) {
+                        $parsedRows[] = $rowCells;
+                    }
+                }
+            }
+        } else {
+            $lines = preg_split('/\r\n|\r|\n/', trim($cleanContent));
+            if (! empty($lines)) {
+                $firstLine = $lines[0];
+                $delimiter = ',';
+                if (substr_count($firstLine, ';') > substr_count($firstLine, ',')) {
+                    $delimiter = ';';
+                } elseif (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) {
+                    $delimiter = "\t";
+                }
+                foreach ($lines as $line) {
+                    $trimmed = trim($line);
+                    if ($trimmed !== '') {
+                        $parsedRows[] = str_getcsv($trimmed, $delimiter);
+                    }
+                }
+            }
+        }
+
+        if (empty($parsedRows) || count($parsedRows) < 2) {
             throw ValidationException::withMessages([
                 'file' => 'Tệp dữ liệu trống hoặc không có dòng dữ liệu hợp lệ.',
             ]);
@@ -541,17 +766,39 @@ class MeterReadingService
             'error_summary_json' => [],
         ]);
 
-        // Xác định delimiter (phẩy, chấm phẩy, tab)
-        $firstLine = $lines[0];
-        $delimiter = ',';
-        if (substr_count($firstLine, ';') > substr_count($firstLine, ',')) {
-            $delimiter = ';';
-        } elseif (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) {
-            $delimiter = "\t";
+        // Tìm dòng header chứa mã đồng hồ
+        $headerRowIdx = null;
+        $headerMap = [];
+        foreach ($parsedRows as $rIdx => $row) {
+            if (count($row) < 3) {
+                continue;
+            }
+
+            $hasMeterCode = false;
+            $hasOtherCol = false;
+            foreach ($row as $cIdx => $cellValue) {
+                $norm = Str::lower(Str::ascii(trim($cellValue)));
+                if (strlen($norm) < 40 && (str_contains($norm, 'ma dong ho') || str_contains($norm, 'meter_code'))) {
+                    $hasMeterCode = true;
+                }
+                if (str_contains($norm, 'stt') || str_contains($norm, 'can ho') || str_contains($norm, 'chi so')) {
+                    $hasOtherCol = true;
+                }
+            }
+
+            if ($hasMeterCode && $hasOtherCol) {
+                $headerRowIdx = $rIdx;
+                break;
+            }
         }
 
-        $headerRow = str_getcsv($firstLine, $delimiter);
-        $headerMap = [];
+        if ($headerRowIdx === null) {
+            throw ValidationException::withMessages([
+                'file' => 'Không tìm thấy dòng tiêu đề chứa cột "Mã Đồng Hồ" trong tệp tải lên.',
+            ]);
+        }
+
+        $headerRow = $parsedRows[$headerRowIdx];
         foreach ($headerRow as $idx => $colName) {
             $normalized = Str::lower(Str::ascii(trim($colName)));
             if (str_contains($normalized, 'ma dong ho') || str_contains($normalized, 'meter_code')) {
@@ -590,17 +837,35 @@ class MeterReadingService
         $errors = [];
 
         // Duyệt qua từng dòng dữ liệu (bỏ header)
-        for ($i = 1; $i < count($lines); $i++) {
-            $lineContent = trim($lines[$i]);
-            if ($lineContent === '') {
+        for ($i = $headerRowIdx + 1; $i < count($parsedRows); $i++) {
+            $row = $parsedRows[$i];
+            if (empty(array_filter($row, fn ($c) => trim($c) !== ''))) {
                 continue;
             }
 
-            $totalRecords++;
-            $row = str_getcsv($lineContent, $delimiter);
-            $lineIndex = $i + 1; // Số dòng trên Excel (1-based)
+            $rowCombined = Str::lower(Str::ascii(implode(' ', $row)));
+            if (
+                str_contains($rowCombined, 'tong cong') ||
+                str_contains($rowCombined, 'nguoi lap') ||
+                str_contains($rowCombined, 'ky thuat vien') ||
+                str_contains($rowCombined, 'truong ban') ||
+                str_contains($rowCombined, 'chu ky') ||
+                str_contains($rowCombined, 'ky va ghi ro') ||
+                str_contains($rowCombined, 'ky ten va dong dau') ||
+                str_contains($rowCombined, 'ngay .....') ||
+                str_contains($rowCombined, 'ngay ...')
+            ) {
+                continue;
+            }
 
             $meterCode = isset($row[$meterCodeIdx]) ? trim($row[$meterCodeIdx]) : '';
+            if ($meterCode === '') {
+                continue;
+            }
+
+            $lineIndex = $i + 1; // Số dòng trên Excel (1-based)
+            $totalRecords++;
+
             $rawCurrent = isset($row[$currentReadingIdx]) ? trim($row[$currentReadingIdx]) : '';
             $rawPrev = isset($row[$prevReadingIdx]) ? trim($row[$prevReadingIdx]) : '';
             $readingDate = isset($row[$dateIdx]) && trim($row[$dateIdx]) !== '' ? trim($row[$dateIdx]) : $defaultPeriodEnd;
@@ -635,20 +900,28 @@ class MeterReadingService
                 continue;
             }
 
-            // Validation 3: Chỉ số mới phải là số hợp lệ
-            if ($rawCurrent === '' || ! is_numeric($rawCurrent)) {
+            // Xác định previous_reading
+            $prevReading = (is_numeric($rawPrev) && $rawPrev !== '')
+                ? (float) $rawPrev
+                : (float) $meter->current_reading;
+
+            // Validation 3: Chỉ số mới (nếu để trống tự động lấy chỉ số cũ tiêu thụ = 0)
+            if ($rawCurrent === '' || $rawCurrent === null) {
+                $currentReading = $prevReading;
+            } elseif (! is_numeric($rawCurrent)) {
                 $failedRecords++;
                 $errors[] = [
                     'line' => $lineIndex,
                     'meter_code' => $meterCode,
                     'apartment' => $meter->apartment?->apartment_number ?? $aptNumber,
-                    'error' => "Chỉ số mới '{$rawCurrent}' không hợp lệ hoặc bị để trống.",
+                    'error' => "Chỉ số mới '{$rawCurrent}' không phải là số hợp lệ.",
                 ];
 
                 continue;
+            } else {
+                $currentReading = (float) $rawCurrent;
             }
 
-            $currentReading = (float) $rawCurrent;
             if ($currentReading < 0) {
                 $failedRecords++;
                 $errors[] = [
@@ -660,11 +933,6 @@ class MeterReadingService
 
                 continue;
             }
-
-            // Xác định previous_reading
-            $prevReading = (is_numeric($rawPrev) && $rawPrev !== '')
-                ? (float) $rawPrev
-                : (float) $meter->current_reading;
 
             // Validation 4: Chỉ số mới < chỉ số cũ
             if ($currentReading < $prevReading && ! $forceReset) {
