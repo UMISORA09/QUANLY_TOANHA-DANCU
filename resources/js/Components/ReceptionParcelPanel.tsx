@@ -58,6 +58,15 @@ const getInitialParcelCache = () => {
   return null;
 };
 
+export const getParcelImageUrl = (url?: string | null): string => {
+  if (!url) return '';
+  if (url.includes('/storage/parcels/')) {
+    const parts = url.split('/storage/parcels/');
+    return `/storage/parcels/${parts[parts.length - 1]}`;
+  }
+  return url;
+};
+
 export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embedded = false }) => {
   const initialCache = useMemo(() => getInitialParcelCache(), []);
 
@@ -898,21 +907,20 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       <td className="py-3 px-4">
                         <div
                           onClick={() => {
-                            setLightboxImage(parcel.parcel_photo_url);
+                            setLightboxImage(getParcelImageUrl(parcel.parcel_photo_url));
                             setActiveParcel(parcel);
                             setIsLightboxOpen(true);
                           }}
-                          className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group-hover:scale-105 transition-transform cursor-pointer shadow-xs"
+                          className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group-hover:scale-105 transition-transform cursor-pointer shadow-xs flex items-center justify-center"
                           title="Bấm để xem ảnh phóng to"
                         >
                           <img
-                            src={parcel.parcel_photo_url}
+                            src={getParcelImageUrl(parcel.parcel_photo_url)}
                             alt={parcel.tracking_number}
                             className="w-full h-full object-cover"
                             loading="lazy"
                             onError={(e: any) => {
-                              e.target.src =
-                                'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=150&auto=format&fit=crop&q=60';
+                              e.currentTarget.style.display = 'none';
                             }}
                           />
                           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
@@ -1423,13 +1431,13 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
               {/* Ảnh lớn */}
               <div
                 onClick={() => {
-                  setLightboxImage(activeParcel.parcel_photo_url);
+                  setLightboxImage(getParcelImageUrl(activeParcel.parcel_photo_url));
                   setIsLightboxOpen(true);
                 }}
                 className="w-full h-56 rounded-2xl overflow-hidden bg-slate-900 relative cursor-pointer group shadow-md"
               >
                 <img
-                  src={activeParcel.parcel_photo_url}
+                  src={getParcelImageUrl(activeParcel.parcel_photo_url)}
                   alt={activeParcel.tracking_number}
                   className="w-full h-full object-contain"
                 />
@@ -1541,7 +1549,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
             className="relative max-w-4xl max-h-[90vh] bg-black/40 rounded-3xl p-2 shadow-2xl my-auto"
           >
             <img
-              src={lightboxImage}
+              src={getParcelImageUrl(lightboxImage)}
               alt="Ảnh kiện hàng bưu phẩm"
               className="max-h-[82vh] max-w-full rounded-2xl object-contain mx-auto shadow-2xl"
             />
@@ -1560,7 +1568,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                   <strong>Người nhận:</strong> {activeParcel.recipient_name}
                 </span>
                 <a
-                  href={lightboxImage}
+                  href={getParcelImageUrl(lightboxImage)}
                   target="_blank"
                   rel="noreferrer"
                   download={`parcel_${activeParcel.tracking_number}.jpg`}

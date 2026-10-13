@@ -201,7 +201,7 @@ class ReceptionParcelService
             $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.strtolower($extension);
 
             $storedPath = $photoFile->storeAs('parcels', $safeFileName, 'public');
-            $photoUrl = Storage::disk('public')->url($storedPath);
+            $photoUrl = '/storage/'.$storedPath;
         }
 
         if (empty($photoUrl)) {
@@ -328,7 +328,7 @@ class ReceptionParcelService
             $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.strtolower($extension);
 
             $newStoredPath = $newPhotoFile->storeAs('parcels', $safeFileName, 'public');
-            $newPhotoUrl = Storage::disk('public')->url($newStoredPath);
+            $newPhotoUrl = '/storage/'.$newStoredPath;
 
             // Ghi nhớ ảnh cũ để xóa sau khi DB commit thành công
             $oldUrl = $parcel->parcel_photo_url;
