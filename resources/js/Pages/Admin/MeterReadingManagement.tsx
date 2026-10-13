@@ -409,44 +409,6 @@ export const MeterReadingManagement: React.FC = () => {
                         Chốt Chỉ Số Điện & Nước Thủ Công
                     </h1>
                 </div>
-
-                {/* Bộ điều khiển Chu kỳ & Thao tác Khóa sổ */}
-                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                    {/* Chọn kỳ ghi số */}
-                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs shadow-2xs">
-                        <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                        <span className="text-[11px] text-slate-500 font-bold uppercase">Kỳ chốt:</span>
-                        <input
-                            type="month"
-                            value={selectedCycle}
-                            onChange={(e) => setSelectedCycle(e.target.value)}
-                            className="bg-transparent border-0 text-slate-900 font-bold focus:ring-0 focus:outline-none text-xs cursor-pointer font-mono"
-                        />
-                    </div>
-
-                    {/* Nút Khóa / Mở Khóa Sổ */}
-                    <button
-                        type="button"
-                        onClick={() => setIsLockConfirmOpen(true)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs cursor-pointer ${
-                            summary?.is_cycle_locked
-                                ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
-                                : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                        }`}
-                    >
-                        {summary?.is_cycle_locked ? (
-                            <>
-                                <Lock className="w-3.5 h-3.5 text-rose-600" />
-                                <span>Kỳ Đã Khóa Sổ</span>
-                            </>
-                        ) : (
-                            <>
-                                <Unlock className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Sổ Đang Mở (Ghi Số)</span>
-                            </>
-                        )}
-                    </button>
-                </div>
             </div>
 
             {/* KPI Overview Cards */}
@@ -631,7 +593,42 @@ export const MeterReadingManagement: React.FC = () => {
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                        {/* Chọn kỳ ghi số */}
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs shadow-2xs">
+                            <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                            <span className="text-[11px] text-slate-500 font-bold uppercase">Kỳ chốt:</span>
+                            <input
+                                type="month"
+                                value={selectedCycle}
+                                onChange={(e) => setSelectedCycle(e.target.value)}
+                                className="bg-transparent border-0 text-slate-900 font-bold focus:ring-0 focus:outline-none text-xs cursor-pointer font-mono"
+                            />
+                        </div>
+
+                        {/* Nút Khóa / Mở Khóa Sổ */}
+                        <button
+                            type="button"
+                            onClick={() => setIsLockConfirmOpen(true)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs cursor-pointer ${
+                                summary?.is_cycle_locked
+                                    ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+                                    : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                            }`}
+                        >
+                            {summary?.is_cycle_locked ? (
+                                <>
+                                    <Lock className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Kỳ Đã Khóa Sổ</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Unlock className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Sổ Đang Mở (Ghi Số)</span>
+                                </>
+                            )}
+                        </button>
+
                         <button
                             type="button"
                             onClick={handleDownloadTemplate}
