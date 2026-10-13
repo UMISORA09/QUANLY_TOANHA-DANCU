@@ -155,4 +155,28 @@ class Apartment extends Model
     {
         return $this->hasMany(MeterReading::class, 'apartment_id');
     }
+
+    /**
+     * Danh sách phương tiện đăng ký của căn hộ
+     */
+    public function vehicles(): HasMany
+    {
+        return $this->hasMany(Vehicle::class, 'apartment_id');
+    }
+
+    /**
+     * Danh sách hóa đơn của căn hộ
+     */
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class, 'apartment_id');
+    }
+
+    /**
+     * Danh sách kiện hàng / bưu phẩm của căn hộ
+     */
+    public function parcels(): HasMany
+    {
+        return $this->hasMany(Parcel::class, 'apartment_id');
+    }
 }
