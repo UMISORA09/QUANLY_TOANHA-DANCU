@@ -913,7 +913,8 @@ class AmenityController extends Controller
 
             // Khóa thanh toán và kiểm tra điều kiện hoàn tất
             $payment = DB::table('amenity_booking_payments')->where('booking_id', $bookingId)->lockForUpdate()->first();
-            if ($payment && in_array($validated['status'], ['CONFIRMED', 'COMPLETED'], true) && ! $booking->is_paid) {
+            $requiresPayment = $payment || (float) $booking->total_amount > 0 || (float) $booking->deposit_amount > 0;
+            if ($requiresPayment && in_array($validated['status'], ['CONFIRMED', 'COMPLETED'], true) && ! $booking->is_paid) {
                 abort(409, 'Phải xác nhận thanh toán trước khi xác nhận sử dụng hoặc hoàn tất.');
             }
 
