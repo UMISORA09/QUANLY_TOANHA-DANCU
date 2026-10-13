@@ -215,6 +215,158 @@ export const ParcelThumbnail: React.FC<{
   );
 };
 
+/**
+ * Component Custom Dropdown Select chuẩn 100% Ảnh 2:
+ * - Trigger button bo góc rounded-xl, icon bên trái, ChevronUp/Down bên phải
+ * - Focus active border-indigo-500 ring-2 ring-indigo-200
+ * - Popup Menu bo góc rounded-2xl, shadow-2xl, border border-slate-100
+ * - Item được chọn: bg-indigo-600 text-white font-bold, icon trắng & Check trắng
+ * - Item khác: hover:bg-slate-50 text-slate-700
+ * - Outside click handler tự đóng
+ */
+export interface CustomSelectOption {
+  value: string;
+  label: string;
+  subLabel?: string;
+  icon?: React.ReactNode;
+}
+
+export const CustomSelectModal: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  options: CustomSelectOption[];
+  placeholder?: string;
+  icon?: React.ReactNode;
+  searchable?: boolean;
+}> = ({
+  value,
+  onChange,
+  options,
+  placeholder = '-- Chọn --',
+  icon,
+  searchable = false,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((opt) => opt.value === value);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchable || !searchQuery.trim()) return options;
+    const q = searchQuery.toLowerCase().trim();
+    return options.filter(
+      (opt) =>
+        opt.label.toLowerCase().includes(q) ||
+        (opt.subLabel && opt.subLabel.toLowerCase().includes(q))
+    );
+  }, [options, searchable, searchQuery]);
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      {/* Trigger Button chuẩn 100% Ảnh 2 */}
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full px-3.5 py-2.5 text-xs font-semibold rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+          isOpen
+            ? 'border-indigo-500 ring-2 ring-indigo-200 bg-white text-indigo-900 shadow-xs'
+            : 'border-slate-200 hover:border-slate-300 bg-white text-slate-800'
+        }`}
+      >
+        <div className="flex items-center gap-2 truncate">
+          {icon && <span className="shrink-0">{icon}</span>}
+          <span className="truncate">
+            {selectedOption ? selectedOption.label : placeholder}
+          </span>
+          {selectedOption?.subLabel && (
+            <span className="text-[11px] text-slate-400 font-normal truncate">
+              {selectedOption.subLabel}
+            </span>
+          )}
+        </div>
+        {isOpen ? (
+          <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5" />
+        )}
+      </button>
+
+      {/* Menu Popup chuẩn 100% Ảnh 2 */}
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
+          {searchable && (
+            <div className="p-1 border-b border-slate-100 mb-1">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm kiếm nhanh..."
+                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800"
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+              />
+            </div>
+          )}
+
+          {filteredOptions.length === 0 ? (
+            <div className="py-3 px-2 text-center text-xs text-slate-400 font-medium">
+              Không tìm thấy lựa chọn nào
+            </div>
+          ) : (
+            filteredOptions.map((opt) => {
+              const isSelected = opt.value === value;
+              return (
+                <div
+                  key={opt.value}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setIsOpen(false);
+                    setSearchQuery('');
+                  }}
+                  className={`rounded-xl px-3 py-2 text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                      : 'hover:bg-slate-50 text-slate-700 font-medium'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    {icon && (
+                      <span className={`shrink-0 ${isSelected ? 'text-white' : 'text-slate-400'}`}>
+                        {icon}
+                      </span>
+                    )}
+                    <span className="truncate">{opt.label}</span>
+                    {opt.subLabel && (
+                      <span
+                        className={`text-[10px] ml-1 truncate ${
+                          isSelected ? 'text-indigo-100' : 'text-slate-400'
+                        }`}
+                      >
+                        {opt.subLabel}
+                      </span>
+                    )}
+                  </div>
+                  {isSelected && <Check className="w-4 h-4 text-white shrink-0 ml-2" />}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embedded = false }) => {
   const initialCache = useMemo(() => getInitialParcelCache(), []);
@@ -1441,23 +1593,22 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Căn hộ */}
+                    {/* Căn hộ nhận hàng chuẩn CustomSelectModal */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
                         Căn hộ nhận hàng <span className="text-rose-500">*</span>
                       </label>
-                      <select
+                      <CustomSelectModal
                         value={formData.apartment_id}
-                        onChange={(e) => handleApartmentChange(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                      >
-                        <option value="">-- Chọn căn hộ --</option>
-                        {apartmentOptions.map((apt) => (
-                          <option key={apt.id} value={apt.id}>
-                            {apt.apartment_number} {apt.block_name ? `(${apt.block_name})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => handleApartmentChange(val)}
+                        options={apartmentOptions.map((apt) => ({
+                          value: apt.id,
+                          label: `${apt.apartment_number} ${apt.block_name ? `(${apt.block_name})` : ''}`,
+                        }))}
+                        placeholder="-- Chọn căn hộ --"
+                        icon={<Building className="w-3.5 h-3.5 text-sky-500" />}
+                        searchable={true}
+                      />
                     </div>
 
                     {/* Gợi ý người nhận nếu căn hộ có cư dân */}
@@ -1514,25 +1665,27 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       />
                     </div>
 
-                    {/* Vị trí lưu giữ */}
+                    {/* Vị trí lưu giữ chuẩn CustomSelectModal */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
                         Vị trí lưu giữ <span className="text-rose-500">*</span>
                       </label>
-                      <select
+                      <CustomSelectModal
                         value={formData.stored_location_type}
-                        onChange={(e) =>
+                        onChange={(val) =>
                           setFormData((prev) => ({
                             ...prev,
-                            stored_location_type: e.target.value,
+                            stored_location_type: val,
                           }))
                         }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                      >
-                        <option value="RECEPTION_DESK">Quầy Lễ tân (Reception Desk)</option>
-                        <option value="SMART_LOCKER">Tủ đồ thông minh (Smart Locker)</option>
-                        <option value="SECURITY_BOOTH">Bốt Bảo vệ (Security Booth)</option>
-                      </select>
+                        options={[
+                          { value: 'RECEPTION_DESK', label: 'Quầy Lễ tân (Reception Desk)' },
+                          { value: 'SMART_LOCKER', label: 'Tủ đồ thông minh (Smart Locker)' },
+                          { value: 'SECURITY_BOOTH', label: 'Bốt Bảo vệ (Security Booth)' },
+                        ]}
+                        placeholder="-- Chọn vị trí lưu giữ --"
+                        icon={<MapPin className="w-3.5 h-3.5 text-emerald-500" />}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1545,22 +1698,21 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* 1. Đơn vị vận chuyển (chọn trước) */}
+                    {/* 1. Đơn vị vận chuyển chuẩn CustomSelectModal 100% Ảnh 2 */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">
                         Đơn vị vận chuyển <span className="text-rose-500">*</span>
                       </label>
-                      <select
+                      <CustomSelectModal
                         value={formData.courier_company}
-                        onChange={(e) => handleCourierChange(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                      >
-                        {courierOptions.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => handleCourierChange(val)}
+                        options={courierOptions.map((c) => ({
+                          value: c,
+                          label: c,
+                        }))}
+                        placeholder="-- Chọn ĐVVC --"
+                        icon={<Truck className="w-3.5 h-3.5 text-amber-500" />}
+                      />
                     </div>
 
                     {/* 2. Mã vận đơn (nhập sau & tạo mã mẫu tương ứng hãng) */}
@@ -1949,24 +2101,23 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
                 {/* VẬN ĐƠN & ĐƠN VỊ VẬN CHUYỂN */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Đơn vị vận chuyển */}
+                  {/* Đơn vị vận chuyển chuẩn CustomSelectModal 100% Ảnh 2 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       Đơn vị vận chuyển <span className="text-rose-500">*</span>
                     </label>
-                    <select
+                    <CustomSelectModal
                       value={editFormData.courier_company}
-                      onChange={(e) =>
-                        setEditFormData((prev) => ({ ...prev, courier_company: e.target.value }))
+                      onChange={(val) =>
+                        setEditFormData((prev) => ({ ...prev, courier_company: val }))
                       }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                    >
-                      {courierOptions.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
+                      options={courierOptions.map((c) => ({
+                        value: c,
+                        label: c,
+                      }))}
+                      placeholder="-- Chọn ĐVVC --"
+                      icon={<Truck className="w-3.5 h-3.5 text-amber-500" />}
+                    />
                   </div>
 
                   {/* Mã vận đơn */}
@@ -2014,25 +2165,27 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     />
                   </div>
 
-                  {/* Vị trí lưu giữ */}
+                  {/* Vị trí lưu giữ chuẩn CustomSelectModal */}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       Vị trí lưu giữ <span className="text-rose-500">*</span>
                     </label>
-                    <select
+                    <CustomSelectModal
                       value={editFormData.stored_location_type}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         setEditFormData((prev) => ({
                           ...prev,
-                          stored_location_type: e.target.value,
+                          stored_location_type: val,
                         }))
                       }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 cursor-pointer"
-                    >
-                      <option value="RECEPTION_DESK">Quầy Lễ tân (Reception Desk)</option>
-                      <option value="SMART_LOCKER">Tủ đồ thông minh (Smart Locker)</option>
-                      <option value="SECURITY_BOOTH">Bốt Bảo vệ (Security Booth)</option>
-                    </select>
+                      options={[
+                        { value: 'RECEPTION_DESK', label: 'Quầy Lễ tân (Reception Desk)' },
+                        { value: 'SMART_LOCKER', label: 'Tủ đồ thông minh (Smart Locker)' },
+                        { value: 'SECURITY_BOOTH', label: 'Bốt Bảo vệ (Security Booth)' },
+                      ]}
+                      placeholder="-- Chọn vị trí lưu giữ --"
+                      icon={<MapPin className="w-3.5 h-3.5 text-emerald-500" />}
+                    />
                   </div>
                 </div>
 
