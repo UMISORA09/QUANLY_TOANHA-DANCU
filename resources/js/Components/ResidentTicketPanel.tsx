@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { TicketImage } from './TicketImage';
+import { ConfirmDialog } from './Admin/ConfirmDialog';
 import {
   AlertCircle,
   AlertTriangle,
@@ -173,6 +175,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
   // Lightbox xem ảnh lớn
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [removeImageId, setRemoveImageId] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -1514,29 +1518,27 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
             </div>
 
             {/* Attached Photos */}
-            {detailTicket.attachments && detailTicket.attachments.length > 0 && (
+            {(detailTicket.attachments?.length || detailTicket.status === 'NEW') && (
               <div className="space-y-2 pt-2">
                 <span className="font-bold text-neutral-700 text-xs block">
-                  Hình ảnh minh chứng ({detailTicket.attachments.length} ảnh):
+                  Hình ảnh minh chứng ({detailTicket.attachments?.length || 0} ảnh):
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {detailTicket.attachments.map((att) => (
-                    <div
-                      key={att.id}
-                      onClick={() => setPreviewImage(att.file_url)}
-                      className="group relative rounded-xl overflow-hidden border border-neutral-200 aspect-video bg-neutral-100 cursor-pointer shadow-2xs hover:shadow-md transition-all"
-                    >
-                      <img
-                        src={att.file_url}
-                        alt={att.file_name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                        <Eye className="w-4 h-4" />
-                      </div>
+                  {detailTicket.attachments?.map((att) => (
+                    <div key={att.id} className="space-y-1"><TicketImage url={att.file_url} name={att.file_name} onPreview={setPreviewImage} />
+                      {detailTicket.status === 'NEW' && <button type="button" disabled={imageBusy} onClick={() => setRemoveImageId(att.id)} className="text-xs text-rose-600 cursor-pointer">Bỏ ảnh {att.file_name}</button>}
                     </div>
                   ))}
                 </div>
+                {detailTicket.status === 'NEW' && <label className="block text-xs">Thêm ảnh (tối đa 5 ảnh/Ticket)
+                  <input aria-label="Thêm ảnh sự cố" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={imageBusy} onChange={async (event) => {
+                    const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return;
+                    setImageBusy(true);
+                    try { const res = await api.addTicketImages(detailTicket.id, files, detailTicket.version); setDetailTicket(res.data); showToast('Đã thêm ảnh.'); }
+                    catch (error: any) { showToast(error.message, 'error'); if (error.status === 409) void fetchTicketDetail(detailTicket.id); }
+                    finally { setImageBusy(false); }
+                  }} className="block mt-2" />
+                </label>}
               </div>
             )}
           </div>
@@ -1747,6 +1749,13 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       )}
 
       {/* ================= MODAL: CHỈNH SỬA TICKET ================= */}
+      <ConfirmDialog isOpen={!!removeImageId} title="Bỏ ảnh sự cố" message="Bạn muốn bỏ ảnh này khỏi yêu cầu?" confirmLabel="Bỏ ảnh" isDangerous isLoading={imageBusy} onCancel={() => { if (!imageBusy) setRemoveImageId(null); }} onConfirm={async () => {
+        if (!detailTicket || !removeImageId || imageBusy) return;
+        setImageBusy(true);
+        try { const res = await api.removeTicketImage(detailTicket.id, removeImageId, detailTicket.version); setDetailTicket(res.data); setRemoveImageId(null); showToast('Đã bỏ ảnh.'); }
+        catch (error: any) { showToast(error.message, 'error'); if (error.status === 409) void fetchTicketDetail(detailTicket.id); }
+        finally { setImageBusy(false); }
+      }} />
       {isEditModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl border border-neutral-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">

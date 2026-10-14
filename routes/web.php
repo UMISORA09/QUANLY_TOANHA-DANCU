@@ -217,6 +217,8 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
     Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
     Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
 
     // Tiện ích
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
@@ -245,6 +247,8 @@ Route::prefix('api/resident')->middleware('auth.bearer:strict')->group(function 
     Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
     Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
     Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
 });
 
 // API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)
