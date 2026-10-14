@@ -557,4 +557,58 @@ class ReceptionParcelTest extends TestCase
             'id' => $deliveredParcel->id,
         ]);
     }
+
+    /**
+     * Test 16: Lọc bưu phẩm bằng mã PIN chính xác và tra cứu O(log N) bằng idx_parcels_pin_code
+     */
+    public function test_16_can_filter_and_lookup_parcels_by_exact_pin_code(): void
+    {
+        $uniquePin1 = (string) rand(100000, 899999);
+        $uniquePin2 = (string) rand(900000, 999999);
+
+        $parcel1 = Parcel::create([
+            'tracking_number' => 'PIN_TEST_1_'.Str::random(6),
+            'courier_company' => 'SPX',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận PIN 1',
+            'recipient_phone' => '0901234567',
+            'parcel_photo_url' => 'https://sample.com/p1.jpg',
+            'pickup_pin_code' => $uniquePin1,
+            'pickup_qr_code' => 'PKG-PIN-1-'.Str::random(8),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $parcel2 = Parcel::create([
+            'tracking_number' => 'PIN_TEST_2_'.Str::random(6),
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận PIN 2',
+            'recipient_phone' => '0907654321',
+            'parcel_photo_url' => 'https://sample.com/p2.jpg',
+            'pickup_pin_code' => $uniquePin2,
+            'pickup_qr_code' => 'PKG-PIN-2-'.Str::random(8),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // 1. Kiểm tra qua API với bộ lọc pin_code
+        $response = $this->actingAs($this->receptionist)->getJson("/api/v1/reception/parcels?pin_code={$uniquePin1}");
+        $response->assertStatus(200);
+        $data = $response->json('data');
+        $this->assertCount(1, $data);
+        $this->assertEquals($parcel1->id, $data[0]['id']);
+        $this->assertEquals($uniquePin1, $data[0]['pickup_pin_code']);
+
+        // 2. Kiểm tra phương thức tra cứu trực tiếp findParcelByPin
+        $foundParcel = $this->service->findParcelByPin($uniquePin2);
+        $this->assertNotNull($foundParcel);
+        $this->assertEquals($parcel2->id, $foundParcel->id);
+
+        // 3. Tra cứu mã PIN không tồn tại trả về null
+        $notFound = $this->service->findParcelByPin('000000');
+        $this->assertNull($notFound);
+    }
 }

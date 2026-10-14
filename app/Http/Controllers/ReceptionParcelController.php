@@ -27,6 +27,7 @@ class ReceptionParcelController extends Controller
             'courier_company' => $request->query('courier_company'),
             'from_date' => $request->query('from_date'),
             'to_date' => $request->query('to_date'),
+            'pin_code' => $request->query('pin_code'),
             'search' => $request->query('search'),
         ];
 
