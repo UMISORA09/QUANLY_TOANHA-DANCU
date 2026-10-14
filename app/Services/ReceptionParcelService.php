@@ -72,7 +72,12 @@ class ReceptionParcelService
             $query->where('received_at', '<=', Carbon::parse($filters['to_date'])->endOfDay());
         }
 
-        // 5. Tìm kiếm (Mã vận đơn, Tên người nhận, SĐT, Căn hộ)
+        // 5. Lọc chính xác theo mã PIN nhận hàng (Hỗ trợ xác thực giao nhận / Kiosk Smart Locker qua B-Tree Index idx_parcels_pin_code)
+        if (! empty($filters['pin_code'])) {
+            $query->where('pickup_pin_code', trim($filters['pin_code']));
+        }
+
+        // 6. Tìm kiếm (Mã vận đơn, Tên người nhận, SĐT, Căn hộ)
         if (! empty($filters['search'])) {
             $search = trim($filters['search']);
             $query->where(function ($q) use ($search) {
@@ -634,5 +639,26 @@ class ReceptionParcelService
         }
 
         return $photoFile->storeAs('parcels', $safeFileName, 'public');
+    }
+
+    /**
+     * Tra cứu bưu phẩm bằng mã PIN nhận hàng (Sử dụng trực tiếp B-Tree Index idx_parcels_pin_code)
+     */
+    public function findParcelByPin(string $pinCode): ?Parcel
+    {
+        $cleanPin = trim($pinCode);
+        if ($cleanPin === '') {
+            return null;
+        }
+
+        return Parcel::query()
+            ->with([
+                'apartment:id,apartment_number,block_id',
+                'apartment.block:id,block_name,block_code',
+                'recipientUser:id,full_name,phone_number',
+                'receivedByStaff:id,full_name',
+            ])
+            ->where('pickup_pin_code', $cleanPin)
+            ->first();
     }
 }
