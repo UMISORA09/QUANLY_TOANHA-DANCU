@@ -497,4 +497,64 @@ class ReceptionParcelTest extends TestCase
 
         $response->assertStatus(422);
     }
+
+    /**
+     * Test 14: Xóa kiện hàng bưu phẩm chưa bàn giao thành công
+     */
+    public function test_delete_parcel_successfully(): void
+    {
+        $parcel = Parcel::create([
+            'tracking_number' => 'DEL_TRACK_'.rand(100, 999).'_'.Str::random(4),
+            'courier_company' => 'GrabExpress',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận Cần Xóa',
+            'recipient_phone' => '0901234567',
+            'parcel_photo_url' => 'https://sample.com/to_delete.jpg',
+            'pickup_pin_code' => '999888',
+            'pickup_qr_code' => 'PKG-DEL-'.Str::random(10),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $response = $this->actingAs($this->receptionist)->deleteJson("/api/v1/reception/parcels/{$parcel->id}");
+
+        $response->assertStatus(200);
+        $this->assertDatabaseMissing('parcels', [
+            'id' => $parcel->id,
+        ]);
+        $this->assertDatabaseHas('realtime_sync_events', [
+            'channel' => 'quoc-tin.parcels',
+            'module' => 'parcels',
+            'action' => 'DELETED',
+        ]);
+    }
+
+    /**
+     * Test 15: Không cho phép xóa kiện hàng đã bàn giao
+     */
+    public function test_cannot_delete_delivered_parcel(): void
+    {
+        $deliveredParcel = Parcel::create([
+            'tracking_number' => 'CANT_DEL_'.rand(100, 999).'_'.Str::random(4),
+            'courier_company' => 'Shopee',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Đã Lấy Hàng',
+            'recipient_phone' => '0909999888',
+            'parcel_photo_url' => 'https://sample.com/delivered.jpg',
+            'pickup_pin_code' => '112233',
+            'pickup_qr_code' => 'PKG-CANT-'.Str::random(10),
+            'status' => 'DELIVERED',
+            'received_at' => now()->subDays(1),
+            'received_by_staff_id' => $this->receptionist->id,
+            'collected_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->receptionist)->deleteJson("/api/v1/reception/parcels/{$deliveredParcel->id}");
+
+        $response->assertStatus(422);
+        $this->assertDatabaseHas('parcels', [
+            'id' => $deliveredParcel->id,
+        ]);
+    }
 }

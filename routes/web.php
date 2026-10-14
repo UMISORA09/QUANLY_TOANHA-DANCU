@@ -199,7 +199,8 @@ Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'sto
 Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
 Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
 Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
-Route::put('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
