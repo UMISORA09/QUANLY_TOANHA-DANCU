@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             AmenitySeeder::class,
             RealisticBuildingDataSeeder::class,
             ServicePricingSeeder::class,
+            ResidentTicketSeeder::class,
         ]);
 
         // Bộ dữ liệu mẫu dùng chung cho toàn bộ nhóm (Shared Demo Data)
