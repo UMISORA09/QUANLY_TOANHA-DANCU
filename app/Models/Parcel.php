@@ -51,6 +51,26 @@ class Parcel extends Model
     }
 
     /**
+     * Chuẩn hóa URL ảnh bưu phẩm về relative path /storage/parcels/... để hiển thị được trên mọi domain/port
+     */
+    public function getParcelPhotoUrlAttribute(?string $value): ?string
+    {
+        if (! $value) {
+            return null;
+        }
+
+        if (preg_match('#/storage/parcels/[^"\'\s]+#', $value, $matches)) {
+            return $matches[0];
+        }
+
+        if (str_starts_with($value, 'parcels/')) {
+            return '/storage/'.$value;
+        }
+
+        return $value;
+    }
+
+    /**
      * Căn hộ nhận bưu phẩm
      */
     public function apartment(): BelongsTo
