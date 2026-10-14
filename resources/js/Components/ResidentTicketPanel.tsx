@@ -7,6 +7,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -233,9 +234,10 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   useEffect(() => {
     const fetchBootstrapData = async () => {
       try {
-        const [catRes, overviewRes] = await Promise.allSettled([
+        const [catRes, overviewRes, amenityRes] = await Promise.allSettled([
           api.getResidentTicketCategories(),
           api.getResidentOverview(),
+          api.getResidentAmenities(),
         ]);
 
         if (catRes.status === 'fulfilled' && catRes.value?.data) {
@@ -245,13 +247,25 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
           }
         }
 
+        let resolvedApartments: any[] = [];
+
         if (overviewRes.status === 'fulfilled' && overviewRes.value) {
           const ov = overviewRes.value;
           setCurrentUser(ov.user || null);
-          if (ov.apartment) {
-            setApartments([ov.apartment]);
-            setFormData((prev) => ({ ...prev, apartment_id: ov.apartment.id }));
+          if (Array.isArray(ov.apartments) && ov.apartments.length > 0) {
+            resolvedApartments = ov.apartments;
+          } else if (ov.apartment) {
+            resolvedApartments = [ov.apartment];
           }
+        }
+
+        if (resolvedApartments.length === 0 && amenityRes.status === 'fulfilled' && amenityRes.value?.apartments?.length) {
+          resolvedApartments = amenityRes.value.apartments;
+        }
+
+        if (resolvedApartments.length > 0) {
+          setApartments(resolvedApartments);
+          setFormData((prev) => ({ ...prev, apartment_id: prev.apartment_id || resolvedApartments[0].id }));
         }
       } catch (e) {
         // ignore
@@ -771,7 +785,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
             }
           }}
         >
-          <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-8 animate-in zoom-in-95 duration-200 my-auto relative">
+          <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto custom-scrollbar p-5 sm:p-8 animate-in zoom-in-95 duration-200 my-auto relative">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-neutral-100 pb-4 mb-6">
               <div className="flex items-center gap-3">
@@ -829,17 +843,28 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-neutral-500 font-medium mb-1">Căn hộ / Tòa nhà</label>
-                    <input
-                      type="text"
-                      disabled
-                      value={
-                        apartments.length > 0
-                          ? `Căn ${apartments[0].apartment_number} (${apartments[0].block_name || 'Tòa Ruby'})`
-                          : 'Căn hộ mặc định'
-                      }
-                      className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
-                    />
+                    <label htmlFor="ticket-apartment-select" className="block text-neutral-700 font-bold mb-1">
+                      Căn hộ / Tòa nhà <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="ticket-apartment-select"
+                        value={formData.apartment_id}
+                        onChange={(e) => setFormData({ ...formData, apartment_id: e.target.value })}
+                        className="w-full appearance-none px-3.5 py-2 pr-9 bg-white border border-neutral-200 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900 rounded-xl text-xs text-neutral-900 font-semibold outline-none cursor-pointer shadow-2xs transition-all resident-ticket-select"
+                      >
+                        {apartments.length === 0 ? (
+                          <option value="">Căn hộ mặc định</option>
+                        ) : (
+                          apartments.map((apt) => (
+                            <option key={apt.id} value={apt.id}>
+                              Căn {apt.apartment_number} {apt.block_name ? `(${apt.block_name})` : ''}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -882,21 +907,24 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     <label htmlFor="ticket-category-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
                       Phân loại sự cố <span className="text-rose-500">*</span>
                     </label>
-                    <select
-                      id="ticket-category-select"
-                      value={formData.category_id}
-                      onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
-                        formErrors.category_id ? 'border-rose-400' : 'border-neutral-200'
-                      }`}
-                    >
-                      <option value="">-- Chọn danh mục sự cố --</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.category_name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        id="ticket-category-select"
+                        value={formData.category_id}
+                        onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                        className={`w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs resident-ticket-select ${
+                          formErrors.category_id ? 'border-rose-400' : 'border-neutral-200'
+                        }`}
+                      >
+                        <option value="">-- Chọn danh mục sự cố --</option>
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.category_name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                    </div>
                     {formErrors.category_id && (
                       <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.category_id}</p>
                     )}
@@ -941,33 +969,37 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     <label htmlFor="ticket-priority-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
                       Mức độ khẩn cấp
                     </label>
-                    <select
-                      id="ticket-priority-select"
-                      value={formData.priority}
-                      onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
-                    >
-                      <option value="LOW">Thấp (Chưa ảnh hưởng sinh hoạt ngay)</option>
-                      <option value="MEDIUM">Bình thường (Cần kiểm tra trong 24h)</option>
-                      <option value="HIGH">Ưu tiên cao (Ảnh hưởng trực tiếp sinh hoạt)</option>
-                      <option value="URGENT">Khẩn cấp (Rò rỉ nước lớn, chập điện nguy hiểm)</option>
-                    </select>
+                    <div className="relative">
+                      <select
+                        id="ticket-priority-select"
+                        value={formData.priority}
+                        onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                        className="w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border border-neutral-200 text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs resident-ticket-select"
+                      >
+                        <option value="LOW">Thấp (Chưa ảnh hưởng sinh hoạt ngay)</option>
+                        <option value="MEDIUM">Bình thường (Cần kiểm tra trong 24h)</option>
+                        <option value="HIGH">Ưu tiên cao (Ảnh hưởng trực tiếp sinh hoạt)</option>
+                        <option value="URGENT">Khẩn cấp (Rò rỉ nước lớn, chập điện nguy hiểm)</option>
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                    </div>
                   </div>
 
-                  {/* Giờ mong muốn tiếp nhận */}
+                  {/* Ngày mong muốn tiếp nhận (Chỉ chọn ngày tháng năm, không chọn giờ) */}
                   <div>
                     <label htmlFor="ticket-preferred-time-input" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                      Thời gian thuận tiện kỹ thuật đến kiểm tra
+                      Ngày thuận tiện kỹ thuật đến kiểm tra
                     </label>
                     <input
                       id="ticket-preferred-time-input"
-                      type="datetime-local"
+                      type="date"
+                      min={new Date().toISOString().split('T')[0]}
                       value={formData.preferred_service_time}
                       onChange={(e) => setFormData({ ...formData, preferred_service_time: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs"
                     />
                     <span className="text-[10px] text-neutral-400 mt-1 block">
-                      Không bắt buộc. Kỹ thuật viên sẽ liên hệ trước khi đến.
+                      Không bắt buộc. Kỹ thuật viên sẽ liên hệ hẹn giờ cụ thể trước khi đến.
                     </span>
                   </div>
 
@@ -1130,7 +1162,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               </div>
 
               {/* Status Filter */}
-              <div>
+              <div className="relative">
                 <select
                   id="ticket-status-filter"
                   value={statusFilter}
@@ -1138,7 +1170,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     setStatusFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-800 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                  className="w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-800 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 cursor-pointer shadow-2xs resident-ticket-select transition-all"
                 >
                   <option value="ALL">-- Tất cả trạng thái --</option>
                   <option value="NEW">Mới gửi</option>
@@ -1147,10 +1179,11 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   <option value="CLOSED">Đã hoàn tất</option>
                   <option value="CANCELLED">Đã hủy</option>
                 </select>
+                <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
               </div>
 
               {/* Category Filter */}
-              <div>
+              <div className="relative">
                 <select
                   id="ticket-category-filter"
                   value={categoryFilter}
@@ -1158,7 +1191,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     setCategoryFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-800 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                  className="w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-800 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 cursor-pointer shadow-2xs resident-ticket-select transition-all"
                 >
                   <option value="ALL">-- Tất cả loại sự cố --</option>
                   {categories.map((c) => (
@@ -1167,6 +1200,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     </option>
                   ))}
                 </select>
+                <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
               </div>
             </div>
 
@@ -1710,7 +1744,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       {/* ================= MODAL: CHỈNH SỬA TICKET ================= */}
       {isEditModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-neutral-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-start justify-between border-b border-neutral-100 pb-3">
               <div className="flex items-center gap-2">
                 <Pencil className="w-5 h-5 text-neutral-700" />
@@ -1719,7 +1753,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setIsEditModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700"
+                className="text-neutral-400 hover:text-neutral-700 p-1 rounded-lg hover:bg-neutral-100"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1732,7 +1766,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   type="text"
                   value={editFormData.title}
                   onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                 />
               </div>
 
@@ -1743,21 +1777,24 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     type="text"
                     value={editFormData.location}
                     onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-neutral-800 mb-1">Mức độ ưu tiên</label>
-                  <select
-                    value={editFormData.priority}
-                    onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-                  >
-                    <option value="LOW">Thấp</option>
-                    <option value="MEDIUM">Bình thường</option>
-                    <option value="HIGH">Ưu tiên cao</option>
-                    <option value="URGENT">Khẩn cấp</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={editFormData.priority}
+                      onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value })}
+                      className="w-full appearance-none px-3.5 py-2.5 pr-8 rounded-xl border border-neutral-200 text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 cursor-pointer shadow-2xs resident-ticket-select"
+                    >
+                      <option value="LOW">Thấp</option>
+                      <option value="MEDIUM">Bình thường</option>
+                      <option value="HIGH">Ưu tiên cao</option>
+                      <option value="URGENT">Khẩn cấp</option>
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+                  </div>
                 </div>
               </div>
 
