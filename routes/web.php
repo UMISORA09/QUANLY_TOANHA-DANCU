@@ -26,6 +26,7 @@ use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\ResidentTicketController;
 use App\Http\Controllers\ResidentVisitorController;
 use App\Http\Controllers\RevenueAnalyticsController;
 use App\Http\Controllers\RoleController;
@@ -203,8 +204,21 @@ Route::put('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
-Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket'])->middleware('auth.bearer:strict');
+
 Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {
+    // Ticket & Incident Management (Báo cáo sự cố kỹ thuật - Cư dân)
+    Route::get('tickets', [ResidentTicketController::class, 'index']);
+    Route::get('tickets/categories', [ResidentTicketController::class, 'categories']);
+    Route::post('tickets', [ResidentTicketController::class, 'store'])->middleware('throttle:30,1');
+    Route::get('tickets/{id}', [ResidentTicketController::class, 'show']);
+    Route::patch('tickets/{id}', [ResidentTicketController::class, 'update']);
+    Route::post('tickets/{id}/cancel', [ResidentTicketController::class, 'cancel']);
+    Route::post('tickets/{id}/confirm', [ResidentTicketController::class, 'confirm']);
+    Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
+    Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
+    Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+
+    // Tiện ích
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
     Route::get('amenities/{id}/availability', [ResidentAmenityBookingController::class, 'availability']);
     Route::post('amenity-bookings', [ResidentAmenityBookingController::class, 'store']);
@@ -217,6 +231,20 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::post('amenity-bookings/{id}/payment/checkout', [AmenityBookingPaymentController::class, 'checkout'])->middleware('throttle:10,1');
     Route::post('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
     Route::post('amenity-bookings/{id}/payment/report', [AmenityBookingPaymentController::class, 'report'])->middleware('throttle:10,1');
+});
+
+// Alias routes cho /api/resident/tickets (theo chuẩn RESTful của đặc tả)
+Route::prefix('api/resident')->middleware('auth.bearer')->group(function () {
+    Route::get('tickets', [ResidentTicketController::class, 'index']);
+    Route::get('tickets/categories', [ResidentTicketController::class, 'categories']);
+    Route::post('tickets', [ResidentTicketController::class, 'store'])->middleware('throttle:30,1');
+    Route::get('tickets/{id}', [ResidentTicketController::class, 'show']);
+    Route::patch('tickets/{id}', [ResidentTicketController::class, 'update']);
+    Route::post('tickets/{id}/cancel', [ResidentTicketController::class, 'cancel']);
+    Route::post('tickets/{id}/confirm', [ResidentTicketController::class, 'confirm']);
+    Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
+    Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
+    Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
 });
 
 // API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)
