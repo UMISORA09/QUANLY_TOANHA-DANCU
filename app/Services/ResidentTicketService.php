@@ -167,29 +167,11 @@ class ResidentTicketService
             ]);
         }
 
-        // Kiểm tra Idempotency Key chống tạo trùng
         $idempKey = $idempotencyKey ?: ($data['idempotency_key'] ?? null);
-        if ($idempKey) {
-            $cachedTicketId = Cache::get("ticket:idempotency:{$user->id}:{$idempKey}");
-            if ($cachedTicketId) {
-                $existingTicket = Ticket::with(['category', 'apartment.block', 'attachments', 'history'])->find($cachedTicketId);
-                if ($existingTicket) {
-                    return $existingTicket;
-                }
-            }
-        }
-
-        // Chống submit double-click liên tục trong vòng 3 giây
-        $lockKey = "ticket:create_lock:{$user->id}:".md5($data['title'].$apartmentId);
-        $lock = Cache::lock($lockKey, 5);
-        if (! $lock->get()) {
-            throw new TicketConflictException('Yêu cầu tương tự đang được hệ thống xử lý, vui lòng chờ trong giây lát.', 409);
-        }
 
         // Kiểm tra category hợp lệ
         $category = TicketCategory::find($data['category_id']);
         if (! $category) {
-            $lock->release();
             throw ValidationException::withMessages([
                 'category_id' => 'Danh mục sự cố không hợp lệ hoặc đã ngừng áp dụng.',
             ]);
@@ -211,13 +193,28 @@ class ResidentTicketService
 
         try {
             $ticket = DB::transaction(function () use (
-                $user, $data, $apartmentId, $category, $priority, $preferredServiceTime, $slaDeadline, $now, $files, &$createdFiles
+                $user, $data, $apartmentId, $category, $priority, $preferredServiceTime, $slaDeadline, $now, $files, $idempKey, &$createdFiles
             ) {
+                // Serialize creation per resident so retries across workers share one durable result.
+                DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+                if ($idempKey) {
+                    $existing = Ticket::withTrashed()->where('creator_user_id', $user->id)
+                        ->where('idempotency_key', $idempKey)->lockForUpdate()->first();
+                    if ($existing) {
+                        if ($existing->trashed()) {
+                            throw new TicketConflictException('Yêu cầu này đã bị xóa. Vui lòng tạo yêu cầu mới.');
+                        }
+
+                        return $existing;
+                    }
+                }
+
                 // Tạo mã Ticket duy nhất
                 $ticketNumber = $this->generateUniqueTicketNumber();
 
                 $ticket = Ticket::create([
                     'ticket_number' => $ticketNumber,
+                    'idempotency_key' => $idempKey,
                     'category_id' => $category->id,
                     'apartment_id' => $apartmentId,
                     'creator_user_id' => $user->id,
@@ -275,10 +272,6 @@ class ResidentTicketService
                 return $ticket;
             });
 
-            if ($idempKey) {
-                Cache::put("ticket:idempotency:{$user->id}:{$idempKey}", (string) $ticket->id, 600);
-            }
-
             return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
         } catch (\Throwable $e) {
             // Dọn dẹp file đã lưu nếu transaction thất bại
@@ -286,8 +279,6 @@ class ResidentTicketService
                 Storage::disk('public')->delete($path);
             }
             throw $e;
-        } finally {
-            $lock->release();
         }
     }
 
@@ -298,39 +289,39 @@ class ResidentTicketService
      */
     public function update(User $user, string $ticketId, array $data): Ticket
     {
-        $ticket = Ticket::find($ticketId);
-        if (! $ticket) {
-            abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-        }
+        return DB::transaction(function () use ($user, $ticketId, $data) {
+            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
+            if (! $ticket) {
+                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
+            }
 
-        $this->assertOwnership($user, $ticket);
+            $this->assertOwnership($user, $ticket);
 
-        if ($ticket->status !== 'NEW') {
-            throw new TicketConflictException('Không thể chỉnh sửa yêu cầu khi đã được ban quản lý tiếp nhận hoặc xử lý.', 409);
-        }
+            if ($ticket->status !== 'NEW') {
+                throw new TicketConflictException('Không thể chỉnh sửa yêu cầu khi đã được ban quản lý tiếp nhận hoặc xử lý.', 409);
+            }
 
-        // Optimistic Concurrency Control (OCC)
-        if (isset($data['version']) && (int) $data['version'] !== (int) $ticket->version) {
-            throw new TicketConflictException('Dữ liệu yêu cầu đã được cập nhật bởi một phiên làm việc khác. Vui lòng tải lại dữ liệu mới nhất.', 409);
-        }
+            // Optimistic Concurrency Control (OCC)
+            if (isset($data['version']) && (int) $data['version'] !== (int) $ticket->version) {
+                throw new TicketConflictException('Dữ liệu yêu cầu đã được cập nhật bởi một phiên làm việc khác. Vui lòng tải lại dữ liệu mới nhất.', 409);
+            }
 
-        if (! empty($data['updated_at'])) {
-            try {
-                $clientTimestamp = Carbon::parse($data['updated_at'])->timestamp;
-                $dbTimestamp = $ticket->updated_at ? $ticket->updated_at->timestamp : 0;
-                if ($clientTimestamp !== $dbTimestamp) {
-                    throw new TicketConflictException('Dữ liệu yêu cầu đã được cập nhật bởi một phiên làm việc khác. Vui lòng tải lại dữ liệu mới nhất.', 409);
-                }
-            } catch (\Throwable $e) {
-                if ($e instanceof TicketConflictException) {
-                    throw $e;
+            if (! empty($data['updated_at'])) {
+                try {
+                    $clientTimestamp = Carbon::parse($data['updated_at'])->timestamp;
+                    $dbTimestamp = $ticket->updated_at ? $ticket->updated_at->timestamp : 0;
+                    if ($clientTimestamp !== $dbTimestamp) {
+                        throw new TicketConflictException('Dữ liệu yêu cầu đã được cập nhật bởi một phiên làm việc khác. Vui lòng tải lại dữ liệu mới nhất.', 409);
+                    }
+                } catch (\Throwable $e) {
+                    if ($e instanceof TicketConflictException) {
+                        throw $e;
+                    }
                 }
             }
-        }
 
-        $now = Carbon::now();
+            $now = Carbon::now();
 
-        return DB::transaction(function () use ($ticket, $data, $user, $now) {
             $ticket->title = trim((string) $data['title']);
             $ticket->description = trim((string) $data['description']);
             $ticket->location = trim((string) ($data['location'] ?? $ticket->location));
@@ -368,21 +359,21 @@ class ResidentTicketService
      */
     public function cancel(User $user, string $ticketId, ?string $reason = null): Ticket
     {
-        $ticket = Ticket::find($ticketId);
-        if (! $ticket) {
-            abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-        }
+        return DB::transaction(function () use ($user, $ticketId, $reason) {
+            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
+            if (! $ticket) {
+                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
+            }
 
-        $this->assertOwnership($user, $ticket);
+            $this->assertOwnership($user, $ticket);
 
-        if (! in_array($ticket->status, ['NEW', 'RECEIVED'], true)) {
-            throw new TicketConflictException('Không thể hủy yêu cầu khi nhân viên kỹ thuật đang trong quá trình sửa chữa hoặc sự cố đã kết thúc.', 409);
-        }
+            if (! in_array($ticket->status, ['NEW', 'RECEIVED'], true)) {
+                throw new TicketConflictException('Không thể hủy yêu cầu khi nhân viên kỹ thuật đang trong quá trình sửa chữa hoặc sự cố đã kết thúc.', 409);
+            }
 
-        $now = Carbon::now();
-        $oldStatus = $ticket->status;
+            $now = Carbon::now();
+            $oldStatus = $ticket->status;
 
-        return DB::transaction(function () use ($ticket, $oldStatus, $reason, $user, $now) {
             $ticket->status = 'CANCELLED';
             $ticket->version = ((int) $ticket->version) + 1;
             $ticket->updated_at = $now;
@@ -407,20 +398,20 @@ class ResidentTicketService
      */
     public function confirm(User $user, string $ticketId, ?string $note = null): Ticket
     {
-        $ticket = Ticket::find($ticketId);
-        if (! $ticket) {
-            abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-        }
+        return DB::transaction(function () use ($user, $ticketId, $note) {
+            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
+            if (! $ticket) {
+                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
+            }
 
-        $this->assertOwnership($user, $ticket);
+            $this->assertOwnership($user, $ticket);
 
-        if ($ticket->status !== 'RESOLVED') {
-            throw new TicketConflictException('Chỉ có thể xác nhận hoàn thành khi bộ phận kỹ thuật đã báo khắc phục (RESOLVED).', 409);
-        }
+            if ($ticket->status !== 'RESOLVED') {
+                throw new TicketConflictException('Chỉ có thể xác nhận hoàn thành khi bộ phận kỹ thuật đã báo khắc phục (RESOLVED).', 409);
+            }
 
-        $now = Carbon::now();
+            $now = Carbon::now();
 
-        return DB::transaction(function () use ($ticket, $note, $user, $now) {
             $ticket->status = 'CLOSED';
             $ticket->closed_at = $now;
             $ticket->version = ((int) $ticket->version) + 1;
@@ -446,20 +437,20 @@ class ResidentTicketService
      */
     public function reopen(User $user, string $ticketId, string $reason): Ticket
     {
-        $ticket = Ticket::find($ticketId);
-        if (! $ticket) {
-            abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-        }
+        return DB::transaction(function () use ($user, $ticketId, $reason) {
+            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
+            if (! $ticket) {
+                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
+            }
 
-        $this->assertOwnership($user, $ticket);
+            $this->assertOwnership($user, $ticket);
 
-        if ($ticket->status !== 'RESOLVED') {
-            throw new TicketConflictException('Chỉ có thể phản hồi chưa hoàn tất khi yêu cầu đang ở trạng thái Chờ xác nhận (RESOLVED).', 409);
-        }
+            if ($ticket->status !== 'RESOLVED') {
+                throw new TicketConflictException('Chỉ có thể phản hồi chưa hoàn tất khi yêu cầu đang ở trạng thái Chờ xác nhận (RESOLVED).', 409);
+            }
 
-        $now = Carbon::now();
+            $now = Carbon::now();
 
-        return DB::transaction(function () use ($ticket, $reason, $user, $now) {
             $ticket->status = 'IN_PROGRESS';
             $ticket->resolved_at = null;
             $ticket->version = ((int) $ticket->version) + 1;

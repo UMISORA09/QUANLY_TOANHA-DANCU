@@ -1,6 +1,44 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Resident Incident Ticket Feature E2E Tests', () => {
+  test('Gửi lại sau lỗi mạng giữ cùng khóa chống trùng', async ({ page }) => {
+    const keys: string[] = [];
+    await page.route('**/api/**', async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith('/resident/tickets') && request.method() === 'POST') {
+        keys.push(request.headers()['x-idempotency-key']);
+        if (keys.length === 1) {
+          await route.abort('failed');
+          return;
+        }
+        await route.fulfill({ status: 201, json: { success: true, data: { id: 'qa-ticket', ticket_number: 'TCK-QA-RETRY' } } });
+        return;
+      }
+      const apartment = { id: 'qa-apartment', apartment_number: 'QA-01' };
+      const data = path.endsWith('/tickets/categories')
+        ? { success: true, data: [{ id: 'qa-category', category_name: 'Điện nước', default_priority: 'MEDIUM' }] }
+        : path.includes('/resident/tickets')
+          ? { success: true, data: [], pagination: { current_page: 1, last_page: 1, total: 0, per_page: 10 }, counters: { all: 0, new: 0, in_progress: 0, resolved: 0, closed: 0, cancelled: 0 } }
+          : { user: { full_name: 'Cư dân QA' }, apartment, apartments: [apartment] };
+      await route.fulfill({ json: data });
+    });
+    await page.goto('/cu-dan?tab=tickets');
+    await page.click('#ticket-open-create-btn');
+    await page.locator('#ticket-category-select').selectOption('qa-category');
+    await page.fill('#ticket-title-input', 'Kiểm tra vòi nước');
+    await page.fill('#ticket-location-input', 'Phòng bếp');
+    await page.fill('#ticket-description-textarea', 'Vòi nước bị rò rỉ cần hỗ trợ.');
+    await page.click('#ticket-submit-btn');
+    await expect.poll(() => keys.length).toBe(1);
+    await expect(page.locator('#ticket-submit-btn')).toBeEnabled();
+    await page.click('#ticket-submit-btn');
+    await expect.poll(() => keys.length).toBe(2);
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    await expect(page.getByText(/Gửi báo cáo sự cố thành công! Mã yêu cầu: TCK-QA-RETRY/)).toBeVisible();
+  });
+
   test.beforeEach(async ({ page }) => {
     // Giả lập phiên cư dân trong localStorage trước khi mount app
     await page.addInitScript(() => {

@@ -23,8 +23,8 @@ class ResidentUpdateTicketRequest extends FormRequest
             'location' => 'required|string|max:255',
             'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT',
             'preferred_service_time' => 'nullable|date',
-            'version' => 'nullable|integer|min:1',
-            'updated_at' => 'nullable|string',
+            'version' => 'required|integer|min:1',
+            'updated_at' => 'nullable|date',
         ];
     }
 

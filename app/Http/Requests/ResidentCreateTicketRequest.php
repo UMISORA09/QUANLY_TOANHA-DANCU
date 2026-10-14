@@ -7,6 +7,13 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class ResidentCreateTicketRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->hasHeader('X-Idempotency-Key')) {
+            $this->merge(['idempotency_key' => $this->header('X-Idempotency-Key')]);
+        }
+    }
+
     public function authorize(): bool
     {
         return $this->user() !== null;

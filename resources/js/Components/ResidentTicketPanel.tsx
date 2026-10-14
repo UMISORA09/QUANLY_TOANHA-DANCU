@@ -196,6 +196,11 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const createRequestKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    createRequestKey.current = null;
+  }, [formData, selectedFiles]);
 
   // Action Modals State
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
@@ -427,8 +432,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         dataPayload.append('attachments[]', file);
       });
 
-      const clientKey = `TICK_REQ_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const res = await api.createResidentTicket(dataPayload, clientKey);
+      createRequestKey.current ??= crypto.randomUUID();
+      const res = await api.createResidentTicket(dataPayload, createRequestKey.current);
 
       if (res && res.success) {
         showToast('Gửi báo cáo sự cố thành công! Mã yêu cầu: ' + (res.data?.ticket_number || ''), 'success');

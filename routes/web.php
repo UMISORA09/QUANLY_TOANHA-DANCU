@@ -234,7 +234,7 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
 });
 
 // Alias routes cho /api/resident/tickets (theo chuẩn RESTful của đặc tả)
-Route::prefix('api/resident')->middleware('auth.bearer')->group(function () {
+Route::prefix('api/resident')->middleware('auth.bearer:strict')->group(function () {
     Route::get('tickets', [ResidentTicketController::class, 'index']);
     Route::get('tickets/categories', [ResidentTicketController::class, 'categories']);
     Route::post('tickets', [ResidentTicketController::class, 'store'])->middleware('throttle:30,1');

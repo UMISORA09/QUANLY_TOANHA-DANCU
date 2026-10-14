@@ -40,8 +40,8 @@ class AuthenticateBearer
         $tokenHash = hash('sha256', $token);
         $cacheKey = "auth_bearer_user_id:{$tokenHash}";
 
-        // Tối ưu tốc độ cao: Đọc ID người dùng từ cache để giảm thiểu 100% truy vấn DB session lặp lại
-        $userId = Cache::get($cacheKey);
+        // Strict routes must revalidate expiry and revocation even when legacy routes cached the token.
+        $userId = $mode === 'strict' ? null : Cache::get($cacheKey);
         $user = null;
 
         if ($userId) {
@@ -88,7 +88,7 @@ class AuthenticateBearer
                 }
             }
 
-            if ($user && $user->status === 'ACTIVE') {
+            if ($mode !== 'strict' && $user && $user->status === 'ACTIVE') {
                 Cache::put($cacheKey, (string) $user->id, 120);
             }
         }

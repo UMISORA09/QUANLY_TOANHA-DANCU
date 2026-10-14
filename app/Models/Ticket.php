@@ -17,6 +17,7 @@ class Ticket extends Model
 
     protected $fillable = [
         'ticket_number',
+        'idempotency_key',
         'category_id',
         'apartment_id',
         'creator_user_id',

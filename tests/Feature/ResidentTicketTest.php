@@ -10,6 +10,7 @@ use App\Models\TicketCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -483,5 +484,94 @@ class ResidentTicketTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonStructure(['data', 'pagination', 'counters']);
+    }
+
+    public function test_audit_alias_rejects_a_fabricated_token_without_a_session(): void
+    {
+        $this->assertStringEndsWith('_test', DB::connection()->getDatabaseName());
+        $token = 'smart_token_'.$this->residentUser->id.'_fabricated';
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/resident/tickets')->assertUnauthorized();
+    }
+
+    public function test_ticket_retry_survives_cache_loss_and_the_old_ten_minute_window(): void
+    {
+        $payload = [
+            'title' => 'Kiểm tra gửi lại sau mất mạng', 'description' => 'Vòi nước cần được kiểm tra.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp', 'apartment_id' => $this->apartmentId,
+        ];
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
+            ->withHeader('X-Idempotency-Key', 'retry-after-cache-loss');
+        $first = $this->postJson('/api/v1/resident/tickets', $payload)->assertCreated()->json('data.id');
+        Cache::flush();
+        $this->travel(11)->minutes();
+        try {
+            $this->postJson('/api/v1/resident/tickets', $payload)->assertCreated()->assertJsonPath('data.id', $first);
+            $this->assertSame(1, Ticket::where('creator_user_id', $this->residentUser->id)->count());
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_ticket_rejects_an_oversized_idempotency_header(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
+            ->withHeader('X-Idempotency-Key', str_repeat('a', 101))
+            ->postJson('/api/v1/resident/tickets', [
+                'title' => 'Yêu cầu kiểm tra vòi nước', 'description' => 'Vòi nước cần được kiểm tra.',
+                'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+            ])->assertUnprocessable()->assertJsonValidationErrors('idempotency_key');
+    }
+
+    public function test_ticket_mutations_lock_the_row_and_do_not_repeat_the_transition(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $ticket = $this->postJson('/api/v1/resident/tickets', [
+            'title' => 'Yêu cầu kiểm tra vòi nước', 'description' => 'Vòi nước cần được kiểm tra.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+        ])->assertCreated()->json('data.id');
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $this->postJson('/api/v1/resident/tickets/'.$ticket.'/cancel')->assertOk();
+            $this->assertTrue(collect(DB::getQueryLog())->contains(
+                fn (array $query): bool => str_contains($query['query'], 'from `tickets`') && str_contains($query['query'], 'for update')
+            ));
+            $this->postJson('/api/v1/resident/tickets/'.$ticket.'/cancel')->assertConflict();
+            $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $ticket)->where('new_status', 'CANCELLED')->count());
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+    }
+
+    public function test_audit_strict_route_rejects_a_revoked_cached_session(): void
+    {
+        $this->assertStringEndsWith('_test', DB::connection()->getDatabaseName());
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
+            ->getJson('/api/v1/resident/tickets')->assertOk();
+
+        DB::table('user_sessions')->where('user_id', $this->residentUser->id)->update(['is_revoked' => 1]);
+
+        $this->getJson('/api/v1/resident/tickets')->assertUnauthorized();
+    }
+
+    public function test_audit_strict_route_rejects_an_expired_cached_session(): void
+    {
+        $this->assertStringEndsWith('_test', DB::connection()->getDatabaseName());
+        DB::table('user_sessions')->where('user_id', $this->residentUser->id)
+            ->update(['expires_at' => now()->addSecond()]);
+
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
+            ->getJson('/api/v1/resident/tickets')->assertOk();
+
+        $this->travel(2)->seconds();
+        try {
+            $this->getJson('/api/v1/resident/tickets')->assertUnauthorized();
+        } finally {
+            $this->travelBack();
+            Cache::forget('auth_bearer_user_id:'.hash('sha256', $this->residentToken));
+        }
     }
 }
