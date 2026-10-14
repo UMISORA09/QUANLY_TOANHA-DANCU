@@ -21,7 +21,8 @@ import {
     ArrowUpRight,
     Search,
     Download,
-    FileSpreadsheet
+    FileSpreadsheet,
+    Wifi
 } from 'lucide-react';
 import {
     invoiceBatchApi,
@@ -29,6 +30,7 @@ import {
     InvoicePreviewItem,
     InvoiceBatchModel
 } from '../../Services/invoiceBatchApi';
+import { useRealtimeSync } from '../../Hooks/useRealtimeSync';
 
 interface BlockOption {
     id: string;
@@ -125,17 +127,17 @@ export const InvoiceBatchGeneration: React.FC = () => {
     }, []);
 
     // Tải lịch sử đợt sinh hóa đơn
-    const loadBatches = async () => {
-        setBatchesLoading(true);
+    const loadBatches = async (silent: boolean = false) => {
+        if (!silent) setBatchesLoading(true);
         try {
             const res = await invoiceBatchApi.getBatches({
                 billing_period: billingPeriod,
             });
             setBatches(res.data.data);
         } catch (err: any) {
-            showToast('error', err.message || 'Không thể tải lịch sử các đợt');
+            if (!silent) showToast('error', err.message || 'Không thể tải lịch sử các đợt');
         } finally {
-            setBatchesLoading(false);
+            if (!silent) setBatchesLoading(false);
         }
     };
 
@@ -253,14 +255,16 @@ export const InvoiceBatchGeneration: React.FC = () => {
     };
 
     // Chạy xem trước (Dry-run preview)
-    const handleRunPreview = async () => {
+    const handleRunPreview = async (silent: boolean = false) => {
         if (!billingPeriod) {
-            showToast('error', 'Vui lòng chọn kỳ tính phí (tháng/năm).');
+            if (!silent) showToast('error', 'Vui lòng chọn kỳ tính phí (tháng/năm).');
             return;
         }
 
-        setPreviewLoading(true);
-        setGenerationResult(null);
+        if (!silent) {
+            setPreviewLoading(true);
+            setGenerationResult(null);
+        }
         try {
             const res = await invoiceBatchApi.previewBatch({
                 billing_period: billingPeriod,
@@ -269,11 +273,17 @@ export const InvoiceBatchGeneration: React.FC = () => {
                 overwrite_existing: overwriteExisting
             });
             setPreviewData(res.data);
-            showToast('success', `Đã phân tích xong dữ liệu dự toán cho ${res.data.total_apartments} căn hộ.`);
+            if (!silent) {
+                showToast('success', `Đã phân tích xong dữ liệu dự toán cho ${res.data.total_apartments} căn hộ.`);
+            }
         } catch (err: any) {
-            showToast('error', err.message || 'Lỗi khi tính toán dự toán');
+            if (!silent) {
+                showToast('error', err.message || 'Lỗi khi tính toán dự toán');
+            }
         } finally {
-            setPreviewLoading(false);
+            if (!silent) {
+                setPreviewLoading(false);
+            }
         }
     };
 
@@ -283,6 +293,38 @@ export const InvoiceBatchGeneration: React.FC = () => {
             handleRunPreview();
         }
     }, [billingPeriod, selectedBlockId]);
+
+    // Lắng nghe sự kiện Realtime / WebSocket từ hệ thống (Cập nhật liên tục 0ms không cần reload)
+    useRealtimeSync({
+        channel: [
+            'quoc-tin.invoices',
+            'invoices',
+            'meter_readings',
+            'quoc-tin.meter_readings',
+            'billing',
+            'invoice_generation'
+        ],
+        onEvent: () => {
+            if (activeTab === 'generation') {
+                handleRunPreview(true);
+            } else if (activeTab === 'history') {
+                loadBatches(true);
+            }
+        },
+    });
+
+    // Đồng bộ nền định kỳ liên tục (Realtime Heartbeat Polling không cần tải lại trang)
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (activeTab === 'generation' && billingPeriod) {
+                handleRunPreview(true);
+            } else if (activeTab === 'history') {
+                loadBatches(true);
+            }
+        }, 10000);
+
+        return () => clearInterval(timer);
+    }, [activeTab, billingPeriod, selectedBlockId, includePreviousDebt, overwriteExisting]);
 
     // Xác nhận và thực hiện phát hành hóa đơn thật
     const handleConfirmGenerate = async () => {
@@ -355,57 +397,46 @@ export const InvoiceBatchGeneration: React.FC = () => {
             )}
 
             {/* HEADER & TIÊU ĐỀ TRANG */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
-                <div>
-                    <div className="text-[11px] font-bold text-sky-600 font-mono tracking-wider uppercase flex items-center gap-1.5">
-                        <Calculator className="w-3.5 h-3.5" />
-                        <span>HỆ THỐNG KẾ TOÁN & HÓA ĐƠN · CHỨC NĂNG #6 (SINH HÓA ĐƠN TỰ ĐỘNG)</span>
-                    </div>
-                    <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight mt-1">
-                        Sinh Hóa Đơn Tự Động Hàng Loạt
-                    </h1>
-                    <p className="text-xs sm:text-sm text-slate-500 max-w-3xl font-medium mt-1">
-                        Hệ thống tự động tính toán lũy tiến điện, nước, phí quản lý vận hành, phí xe và công nợ kỳ trước an toàn bằng Database Transaction.
-                    </p>
+            <div className="pb-2 border-b border-slate-200/80">
+                <div className="text-[11px] font-bold text-sky-600 font-mono tracking-wider uppercase flex items-center gap-1.5">
+                    <Calculator className="w-3.5 h-3.5" />
+                    <span>HỆ THỐNG KẾ TOÁN & HÓA ĐƠN · CHỨC NĂNG #6 (SINH HÓA ĐƠN TỰ ĐỘNG)</span>
                 </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight mt-1">
+                    Sinh Hóa Đơn Tự Động Hàng Loạt
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 max-w-3xl font-medium mt-1">
+                    Hệ thống tự động tính toán lũy tiến điện, nước, phí quản lý vận hành, phí xe và công nợ kỳ trước an toàn bằng Database Transaction.
+                </p>
+            </div>
 
-                {/* Tabs Chuyển đổi & Nút Thao tác */}
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center bg-slate-100/70 p-1 rounded-xl">
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('generation')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                activeTab === 'generation'
-                                    ? 'bg-white text-sky-700 shadow-2xs'
-                                    : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>Phát Hành Kỳ Này</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('history')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                activeTab === 'history'
-                                    ? 'bg-white text-sky-700 shadow-2xs'
-                                    : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>Lịch Sử ({batches.length})</span>
-                        </button>
-                    </div>
-
+            {/* THANH ĐIỀU HƯỚNG TAB */}
+            <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+                {/* Tabs Chuyển đổi */}
+                <div className="flex items-center bg-slate-100/80 p-1 rounded-xl">
                     <button
                         type="button"
-                        onClick={activeTab === 'history' ? loadBatches : handleRunPreview}
-                        disabled={previewLoading || batchesLoading}
-                        title="Làm mới dữ liệu"
-                        className="p-2 rounded-xl text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-2xs transition-all active:scale-[0.98] cursor-pointer shrink-0"
+                        onClick={() => setActiveTab('generation')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'generation'
+                                ? 'bg-white text-sky-700 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                        }`}
                     >
-                        <RefreshCw className={`w-3.5 h-3.5 ${previewLoading || batchesLoading ? 'animate-spin text-sky-600' : ''}`} />
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Phát Hành Kỳ Này</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('history')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'history'
+                                ? 'bg-white text-sky-700 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Lịch Sử ({batches.length})</span>
                     </button>
                 </div>
             </div>
@@ -577,7 +608,7 @@ export const InvoiceBatchGeneration: React.FC = () => {
                         <div className="flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
                             <button
                                 type="button"
-                                onClick={handleRunPreview}
+                                onClick={() => handleRunPreview()}
                                 disabled={previewLoading}
                                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition-all disabled:opacity-50 cursor-pointer"
                             >
@@ -857,7 +888,7 @@ export const InvoiceBatchGeneration: React.FC = () => {
                         </div>
                         <button
                             type="button"
-                            onClick={loadBatches}
+                            onClick={() => loadBatches()}
                             disabled={batchesLoading}
                             className="p-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                         >

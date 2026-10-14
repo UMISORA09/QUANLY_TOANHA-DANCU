@@ -994,7 +994,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'sinh_hoa_don' || activeMenuId === 'invoice_generation' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="invoice_generation" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <InvoiceBatchGeneration />
             </div>
           ) : activeMenuId === 'payment_history' || activeMenuId === 'lich_su_giao_dich' ? (

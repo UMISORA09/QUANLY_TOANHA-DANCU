@@ -311,6 +311,25 @@ class InvoiceGenerationService
                 'errors_count' => count($errorLogs),
             ];
         });
+
+        try {
+            QuocTinRealtimeService::emit(
+                'invoices',
+                'invoice_batch',
+                'GENERATED',
+                (string) ($result['batch']->id ?? ''),
+                [
+                    'billing_period' => $billingPeriod,
+                    'total_invoices_created' => $result['total_invoices_created'],
+                    'total_amount' => $result['total_amount_calculated'],
+                ],
+                $executedByUserId
+            );
+        } catch (\Throwable) {
+            // Safe fallback if broadcast fails
+        }
+
+        return $result;
     }
 
     /**
