@@ -438,7 +438,7 @@ class SmartSearchDriver implements SearchDriverInterface
                 ]);
             }
 
-            // Có từ khóa tìm kiếm -> Lấy toàn bộ ứng viên đang hoạt động để chạy Smart Relevance Engine
+            // SQL prefiltering would discard valid Vietnamese fuzzy and synonym matches.
             $candidates = $baseQuery->get();
 
             $scored = [];
@@ -507,6 +507,8 @@ class SmartSearchDriver implements SearchDriverInterface
                     return ($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0);
                 } elseif ($sort === 'price_desc') {
                     return ($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0);
+                } elseif ($sort === 'created_at_asc') {
+                    return strcmp($a['created_at'] ?? '', $b['created_at'] ?? '');
                 } else {
                     return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
                 }
@@ -557,7 +559,8 @@ class SmartSearchDriver implements SearchDriverInterface
             return $this->executeSuggest($index, $prefix, $norm, $limit);
         }
 
-        $memoryKey = "{$index}_".mb_strtolower($prefix)."_{$limit}";
+        $version = Cache::get('amenities_data_version', 1);
+        $memoryKey = "{$index}_{$version}_".mb_strtolower($prefix)."_{$limit}";
         if (isset(self::$suggestMemoryCache[$memoryKey])) {
             return self::$suggestMemoryCache[$memoryKey];
         }
@@ -580,7 +583,7 @@ class SmartSearchDriver implements SearchDriverInterface
         $norm['corrected_tokens'] = $correction['corrected_tokens'];
 
         if ($index === 'amenities') {
-            $cacheKey = 'smart_search_candidates_suggest_amenities';
+            $cacheKey = 'smart_search_candidates_suggest_amenities_'.Cache::get('amenities_data_version', 1);
             $cachedCandidates = app()->environment('testing')
                 ? $this->fetchAmenitySuggestCandidates()
                 : Cache::remember($cacheKey, 120, fn () => $this->fetchAmenitySuggestCandidates());
@@ -665,18 +668,18 @@ class SmartSearchDriver implements SearchDriverInterface
     public function index(string $index, string $id, array $document): void
     {
         self::$suggestMemoryCache = [];
-        Cache::forget("smart_search_candidates_suggest_{$index}");
+        Cache::forget("smart_search_candidates_suggest_{$index}_".Cache::get('amenities_data_version', 1));
     }
 
     public function delete(string $index, string $id): void
     {
         self::$suggestMemoryCache = [];
-        Cache::forget("smart_search_candidates_suggest_{$index}");
+        Cache::forget("smart_search_candidates_suggest_{$index}_".Cache::get('amenities_data_version', 1));
     }
 
     public function flush(string $index): void
     {
         self::$suggestMemoryCache = [];
-        Cache::forget("smart_search_candidates_suggest_{$index}");
+        Cache::forget("smart_search_candidates_suggest_{$index}_".Cache::get('amenities_data_version', 1));
     }
 }

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Services\Search\Drivers\SmartSearchDriver;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\ResidentAmenityBookingFixtures;
@@ -14,6 +15,69 @@ class SearchEngineTest extends TestCase
 {
     use DatabaseTransactions;
     use ResidentAmenityBookingFixtures;
+
+    public function test_search_cache_separates_page_size_and_sort(): void
+    {
+        $this->createBookingFixture();
+        $row = (array) DB::table('amenities')->where('id', $this->amenityId)->first();
+        foreach (['Alpha', 'Zulu'] as $name) {
+            DB::table('amenities')->insert([...$row, 'id' => (string) Str::uuid(), 'amenity_name' => $name, 'amenity_code' => 'CACHE-'.Str::random(12)]);
+        }
+        $url = '/api/amenities/search?category_id='.$this->categoryId;
+        $this->withHeader('Authorization', '');
+        $this->getJson($url.'&limit=1&sort=name_asc')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.amenity_name', 'Alpha');
+        $this->getJson($url.'&limit=2&sort=name_asc')->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('total', 3);
+        $this->getJson($url.'&limit=1&sort=name_desc')->assertOk()->assertJsonPath('data.0.amenity_name', 'Zulu');
+        DB::table('amenities')->where('category_id', $this->categoryId)->where('amenity_name', 'Zulu')->update(['amenity_name' => 'Zzzz']);
+        Cache::add('amenities_data_version', 1);
+        Cache::increment('amenities_data_version');
+        $this->getJson($url.'&limit=1&sort=name_desc')->assertOk()->assertJsonPath('data.0.amenity_name', 'Zzzz');
+    }
+
+    public function test_suggestions_refresh_when_another_worker_changes_the_data_version(): void
+    {
+        $this->createBookingFixture();
+        $prefix = 'qax'.Str::lower(Str::random(8));
+        DB::table('amenities')->where('id', $this->amenityId)->update(['amenity_name' => $prefix.' Alpha']);
+        $this->app->detectEnvironment(fn (): string => 'local');
+        try {
+            $driver = app(SmartSearchDriver::class);
+            $this->assertSame($prefix.' Alpha', $driver->suggest('amenities', $prefix)[0]['label']);
+            DB::table('amenities')->where('id', $this->amenityId)->update(['amenity_name' => $prefix.' Updated']);
+            Cache::add('amenities_data_version', 1);
+            Cache::increment('amenities_data_version');
+            $this->assertSame($prefix.' Updated', $driver->suggest('amenities', $prefix)[0]['label']);
+        } finally {
+            $this->app->detectEnvironment(fn (): string => 'testing');
+        }
+    }
+
+    public function test_fuzzy_search_pagination_keeps_every_match_and_full_payload(): void
+    {
+        $this->createBookingFixture();
+        $template = (array) DB::table('amenities')->where('id', $this->amenityId)->first();
+        $ids = [];
+        for ($index = 0; $index < 37; $index++) {
+            $ids[] = $id = (string) Str::uuid();
+            DB::table('amenities')->insert([...$template, 'id' => $id, 'amenity_code' => 'PAGE-'.$index, 'amenity_name' => 'Sân Tennis QA '.$index, 'rules_and_regulations' => 'Nội quy kiểm thử', 'created_at' => now()->subDays(37 - $index)]);
+        }
+        $actualIds = [];
+        $driver = new SmartSearchDriver;
+        foreach ([1, 2, 3, 4] as $page) {
+            $result = $driver->search('amenities', 'san tenit', ['category_id' => $this->categoryId], ['page' => $page, 'per_page' => 15]);
+            $this->assertSame(37, $result->total);
+            $this->assertCount([1 => 15, 2 => 15, 3 => 7, 4 => 0][$page], $result->items);
+            foreach ($result->items as $item) {
+                $this->assertSame('Nội quy kiểm thử', $item['rules_and_regulations']);
+                $this->assertArrayHasKey('category_name', $item);
+                $this->assertArrayHasKey('relevance_score', $item);
+                $actualIds[] = $item['id'];
+            }
+        }
+        $this->assertEqualsCanonicalizing($ids, $actualIds);
+        $oldest = $driver->search('amenities', 'san tenit', ['category_id' => $this->categoryId], ['sort' => 'created_at_asc', 'per_page' => 1]);
+        $this->assertSame($ids[0], $oldest->items[0]['id']);
+    }
 
     protected function setUp(): void
     {

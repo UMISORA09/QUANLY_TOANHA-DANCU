@@ -56,7 +56,7 @@ class DatabaseResidentAmenityBookingRepository
 
     public function blackouts(string $amenityId, string $date, bool $lock = false): Collection
     {
-        $query = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->whereDate('blackout_date', $date);
+        $query = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->where('blackout_date', $date);
 
         return ($lock ? $query->lockForUpdate() : $query)->get();
     }
@@ -64,7 +64,7 @@ class DatabaseResidentAmenityBookingRepository
     public function holdingBookings(string $amenityId, string $date, bool $lock = false): Collection
     {
         $query = DB::table('amenity_bookings')->where('amenity_id', $amenityId)
-            ->whereDate('booking_date', $date)->whereNull('deleted_at')->whereIn('status', self::HOLDING_STATUSES);
+            ->where('booking_date', $date)->whereNull('deleted_at')->whereIn('status', self::HOLDING_STATUSES);
 
         $query = AmenityBookingPaymentService::holdingQuery($query);
 

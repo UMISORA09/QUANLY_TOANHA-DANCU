@@ -11,6 +11,7 @@ use App\Services\Search\VietnameseNormalizer;
 use App\Services\Search\VietnameseSpellCorrector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class SearchController extends Controller
 {
@@ -57,7 +58,10 @@ class SearchController extends Controller
         ], fn ($v) => $v !== null && $v !== '');
 
         $filterString = ! empty($filtersArray) ? md5(json_encode($filtersArray)) : 'none';
-        $cacheKey = "amenity_search:{$normalizedQuery}:{$filterString}:{$page}";
+        $queryKey = md5($rawQuery);
+        $sortKey = md5($sort);
+        $version = Cache::get('amenities_data_version', 1);
+        $cacheKey = "amenity_search:{$version}:{$normalizedQuery}:{$queryKey}:{$filterString}:{$page}:{$limit}:{$sortKey}";
 
         $startTime = microtime(true);
 

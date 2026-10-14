@@ -56,8 +56,8 @@ class DatabaseAmenityRepository implements AmenityRepositoryInterface
 
         $amenityIds = $rows->pluck('id')->toArray();
 
-        $categories = DB::table('amenity_categories')->get()->keyBy('id');
-        $blocks = DB::table('blocks')->get()->keyBy('id');
+        $categories = DB::table('amenity_categories')->whereIn('id', $rows->pluck('category_id')->unique())->get()->keyBy('id');
+        $blocks = DB::table('blocks')->whereIn('id', $rows->pluck('block_id')->filter()->unique())->get()->keyBy('id');
 
         $slotsCounts = [];
         $activeSlotsCounts = [];
