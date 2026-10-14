@@ -218,7 +218,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           >
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeItemId === item.id;
+              const isActive =
+                activeItemId === item.id ||
+                (item.id === 'meter_readings' && (activeItemId === 'metering' || activeItemId === 'chot_chi_so')) ||
+                (item.id === 'pricing_configs' && (activeItemId === 'pricing' || activeItemId === 'don_gia'));
 
               return (
                 <div key={item.id} className="relative group">

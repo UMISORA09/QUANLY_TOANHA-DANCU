@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Zap,
     Droplets,
@@ -39,11 +39,21 @@ import {
     MeterReadingBatchModel,
     MeterSummaryData
 } from '../../Services/meterReadingApi';
+import { CustomSelect } from '../../Components/Common/CustomSelect';
 
 interface BlockOption {
     id: string;
     block_code: string;
     block_name: string;
+}
+
+interface PaginationState {
+    current_page: number;
+    last_page: number;
+    total: number;
+    from?: number;
+    to?: number;
+    per_page?: number;
 }
 
 export const MeterReadingManagement: React.FC = () => {
@@ -58,14 +68,32 @@ export const MeterReadingManagement: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'meters' | 'readings' | 'abnormal' | 'import'>('meters');
 
+    // Đọc cache tức thời (0ms) từ sessionStorage để render ngay lập tức
+    const getCachedData = () => {
+        try {
+            const raw = sessionStorage.getItem(`smartcassavas_meter_cache_${currentMonthStr}`);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    };
+    const initialCache = getCachedData();
+
     // Dữ liệu từ API
-    const [summary, setSummary] = useState<MeterSummaryData | null>(null);
-    const [meters, setMeters] = useState<MeterModel[]>([]);
+    const [summary, setSummary] = useState<MeterSummaryData | null>(initialCache?.summary || null);
+    const [meters, setMeters] = useState<MeterModel[]>(initialCache?.meters || []);
     const [readings, setReadings] = useState<MeterReadingModel[]>([]);
     const [batches, setBatches] = useState<MeterReadingBatchModel[]>([]);
-    const [blocks, setBlocks] = useState<BlockOption[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [blocks, setBlocks] = useState<BlockOption[]>(() => {
+        try {
+            const raw = sessionStorage.getItem('smartcassavas_blocks_cache');
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    });
+    const [loading, setLoading] = useState<boolean>(!initialCache);
+    const [pagination, setPagination] = useState<PaginationState>(initialCache?.pagination || { current_page: 1, last_page: 1, total: 0 });
 
     // State Import Excel
     const [importFile, setImportFile] = useState<File | null>(null);
@@ -111,69 +139,109 @@ export const MeterReadingManagement: React.FC = () => {
 
     // Modal Xác nhận Khóa / Mở sổ
     const [isLockConfirmOpen, setIsLockConfirmOpen] = useState<boolean>(false);
+    const [isLockingCycle, setIsLockingCycle] = useState<boolean>(false);
 
     const showToast = (type: 'success' | 'error', message: string) => {
         setToast({ type, message });
         setTimeout(() => setToast(null), 4000);
     };
 
-    // Tải dữ liệu ban đầu
-    const fetchData = async () => {
-        setLoading(true);
+    // Tải dữ liệu song song (Promise.all) kết hợp silent background polling mượt mà không giật lag
+    const fetchData = async (isSilent = false) => {
+        if (!isSilent && meters.length === 0 && readings.length === 0) {
+            setLoading(true);
+        }
         try {
             const blockId = selectedBlock !== 'ALL' ? selectedBlock : undefined;
-            
-            // 1. Lấy Summary KPI
-            const sumData = await meterReadingApi.getSummary(selectedCycle, blockId);
-            setSummary(sumData);
 
-            // 2. Lấy danh sách theo Tab
+            // Chạy song song (Parallel) cả Summary KPI và dữ liệu tab để cắt giảm 50% thời gian chờ mạng
+            const [sumData, tabData] = await Promise.all([
+                meterReadingApi.getSummary(selectedCycle, blockId),
+                activeTab === 'meters'
+                    ? meterReadingApi.getMeters({
+                        cycle: selectedCycle,
+                        block_id: blockId,
+                        meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                        search: searchQuery,
+                        page: pagination.current_page,
+                        per_page: 15,
+                    })
+                    : activeTab === 'import'
+                    ? meterReadingApi.getBatches({
+                        cycle: selectedCycle,
+                        block_id: blockId,
+                        meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                        page: pagination.current_page,
+                        per_page: 10,
+                    })
+                    : meterReadingApi.getReadings({
+                        cycle: selectedCycle,
+                        block_id: blockId,
+                        meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
+                        is_abnormal: activeTab === 'abnormal' ? true : undefined,
+                        search: searchQuery,
+                        page: pagination.current_page,
+                        per_page: 15,
+                    }),
+            ]);
+
+            setSummary(prev => JSON.stringify(prev) === JSON.stringify(sumData) ? prev : sumData);
+
             if (activeTab === 'meters') {
-                const meterRes = await meterReadingApi.getMeters({
-                    cycle: selectedCycle,
-                    block_id: blockId,
-                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
-                    search: searchQuery,
-                    page: pagination.current_page,
-                    per_page: 15,
-                });
-                setMeters(meterRes.data);
-                setPagination(meterRes.meta);
+                const mData = (tabData as any).data || [];
+                const mMeta = (tabData as any).meta || pagination;
+                setMeters(prev => JSON.stringify(prev) === JSON.stringify(mData) ? prev : mData);
+                setPagination((prev: PaginationState) => JSON.stringify(prev) === JSON.stringify(mMeta) ? prev : mMeta);
+
+                // Lưu vào cache cho lần mở trang sau tức thì 0ms
+                if (selectedBlock === 'ALL' && selectedMeterType === 'ALL' && !searchQuery) {
+                    try {
+                        sessionStorage.setItem(`smartcassavas_meter_cache_${selectedCycle}`, JSON.stringify({
+                            summary: sumData,
+                            meters: mData,
+                            pagination: mMeta,
+                        }));
+                    } catch {}
+                }
             } else if (activeTab === 'import') {
-                const batchRes = await meterReadingApi.getBatches({
-                    cycle: selectedCycle,
-                    block_id: blockId,
-                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
-                    page: pagination.current_page,
-                    per_page: 10,
-                });
-                setBatches(batchRes.data);
-                setPagination(batchRes.meta);
+                const bData = (tabData as any).data || [];
+                const bMeta = (tabData as any).meta || pagination;
+                setBatches(prev => JSON.stringify(prev) === JSON.stringify(bData) ? prev : bData);
+                setPagination((prev: PaginationState) => JSON.stringify(prev) === JSON.stringify(bMeta) ? prev : bMeta);
             } else {
-                const readingRes = await meterReadingApi.getReadings({
-                    cycle: selectedCycle,
-                    block_id: blockId,
-                    meter_type: selectedMeterType !== 'ALL' ? selectedMeterType : undefined,
-                    is_abnormal: activeTab === 'abnormal' ? true : undefined,
-                    search: searchQuery,
-                    page: pagination.current_page,
-                    per_page: 15,
-                });
-                setReadings(readingRes.data);
-                setPagination(readingRes.meta);
+                const rData = (tabData as any).data || [];
+                const rMeta = (tabData as any).meta || pagination;
+                setReadings(prev => JSON.stringify(prev) === JSON.stringify(rData) ? prev : rData);
+                setPagination((prev: PaginationState) => JSON.stringify(prev) === JSON.stringify(rMeta) ? prev : rMeta);
             }
         } catch (err: any) {
-            showToast('error', err.message || 'Lỗi khi tải dữ liệu');
+            if (!isSilent) {
+                showToast('error', err.message || 'Lỗi khi tải dữ liệu');
+            }
         } finally {
-            setLoading(false);
+            if (!isSilent) {
+                setLoading(false);
+            }
         }
     };
 
-    // Tải file mẫu CSV
+    // Silent background polling: định kỳ 4s tự động cập nhật mượt mà
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            if (document.hidden || isEntryModalOpen || isLockConfirmOpen || selectedBatchForDetail || previewImageUrl) {
+                return;
+            }
+            fetchData(true);
+        }, 4000);
+
+        return () => clearInterval(intervalId);
+    }, [selectedCycle, selectedBlock, selectedMeterType, searchQuery, activeTab, pagination.current_page, isEntryModalOpen, isLockConfirmOpen, selectedBatchForDetail, previewImageUrl]);
+
+    // Tải file mẫu Excel
     const handleDownloadTemplate = async () => {
         try {
-            showToast('success', 'Đang kết xuất tệp mẫu CSV có sẵn dữ liệu căn hộ...');
-            await meterReadingApi.downloadTemplate(selectedCycle, selectedBlock, selectedMeterType);
+            showToast('success', 'Đang kết xuất biểu mẫu Excel doanh nghiệp có logo & khung chuẩn...');
+            await meterReadingApi.downloadTemplate(selectedCycle, selectedBlock, selectedMeterType, 'excel');
         } catch (err: any) {
             showToast('error', err.message || 'Lỗi khi tải tệp mẫu');
         }
@@ -212,16 +280,16 @@ export const MeterReadingManagement: React.FC = () => {
         }
     };
 
-    // Tải danh sách Block từ API
+    // Tải danh sách Block từ API (kết hợp cache lưu tức thời)
     useEffect(() => {
         const loadBlocks = async () => {
             try {
-                const res = await fetch('/api/v1/blocks', {
-                    headers: { 'Accept': 'application/json' }
-                });
-                const json = await res.json();
-                if (json.success && Array.isArray(json.data)) {
-                    setBlocks(json.data);
+                const data = await meterReadingApi.getBlocks();
+                if (Array.isArray(data) && data.length > 0) {
+                    setBlocks(data);
+                    try {
+                        sessionStorage.setItem('smartcassavas_blocks_cache', JSON.stringify(data));
+                    } catch {}
                 }
             } catch (e) {
                 // Ignore fallback
@@ -234,8 +302,13 @@ export const MeterReadingManagement: React.FC = () => {
         fetchData();
     }, [selectedCycle, selectedBlock, selectedMeterType, activeTab, pagination.current_page]);
 
-    // Tìm kiếm với debounce
+    // Tránh search debounce trigger fetch thừa ở lần mount đầu tiên
+    const isFirstSearch = useRef(true);
     useEffect(() => {
+        if (isFirstSearch.current) {
+            isFirstSearch.current = false;
+            return;
+        }
         const timer = setTimeout(() => {
             fetchData();
         }, 350);
@@ -350,18 +423,33 @@ export const MeterReadingManagement: React.FC = () => {
     // Khóa sổ / Mở khóa sổ kỳ này
     const handleToggleLockCycle = async () => {
         const blockId = selectedBlock !== 'ALL' ? selectedBlock : undefined;
+        const targetLocked = !summary?.is_cycle_locked;
+        setIsLockingCycle(true);
+
+        // Optimistic UI: Phản hồi lập tức 0ms trên giao diện
+        setSummary(prev => prev ? { ...prev, is_cycle_locked: targetLocked } : null);
+        setReadings(prev => prev.map(r => ({ ...r, is_locked_for_billing: targetLocked })));
         try {
-            if (summary?.is_cycle_locked) {
-                const res = await meterReadingApi.unlockCycle(selectedCycle, blockId);
+            sessionStorage.removeItem(`smartcassavas_meter_cache_${selectedCycle}`);
+        } catch {}
+
+        try {
+            if (targetLocked) {
+                const res = await meterReadingApi.lockCycle(selectedCycle, blockId);
                 showToast('success', res.message);
             } else {
-                const res = await meterReadingApi.lockCycle(selectedCycle, blockId);
+                const res = await meterReadingApi.unlockCycle(selectedCycle, blockId);
                 showToast('success', res.message);
             }
             setIsLockConfirmOpen(false);
-            fetchData();
+            await fetchData(true);
         } catch (err: any) {
+            // Rollback trạng thái nếu API gặp sự cố
+            setSummary(prev => prev ? { ...prev, is_cycle_locked: !targetLocked } : null);
+            setReadings(prev => prev.map(r => ({ ...r, is_locked_for_billing: !targetLocked })));
             showToast('error', err.message || 'Thao tác khóa sổ thất bại');
+        } finally {
+            setIsLockingCycle(false);
         }
     };
 
@@ -378,879 +466,885 @@ export const MeterReadingManagement: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans selection:bg-indigo-500 selection:text-white">
+        <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300">
             {/* Header & Title Bar */}
-            <div className="max-w-7xl mx-auto space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-amber-500/20 to-indigo-500/20 border border-amber-500/30 text-amber-400 shadow-lg shadow-amber-500/10">
-                                <Zap className="w-7 h-7" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/90">
+                <div>
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider font-mono text-sky-600">
+                        <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500 shrink-0" />
+                        <span>HỆ THỐNG GHI SỐ ĐIỆN NƯỚC & ĐỐI SOÁT</span>
+                    </div>
+                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 tracking-tight mt-1">
+                        Chốt Chỉ Số Điện & Nước Thủ Công
+                    </h1>
+                </div>
+            </div>
+
+            {/* KPI Overview Cards */}
+            {summary && (
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+                    {/* KPI 1: Tiến độ ghi số */}
+                    <div className="sass-db-kpi-card">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Tiến Độ Ghi Số</span>
+                            <div className="kpi-icon-wrapper bg-sky-50 text-sky-600">
+                                <Activity className="w-4 h-4" />
                             </div>
-                            <div>
-                                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
-                                    Chốt Chỉ Số Điện & Nước Thủ Công
-                                </h1>
-                                <p className="text-sm text-slate-400 mt-1 flex items-center gap-2">
-                                    <span>Phân hệ Quản lý & Kỹ thuật Tòa nhà</span>
-                                    <span className="inline-block w-1 h-1 rounded-full bg-slate-600"></span>
-                                    <span className="text-indigo-400 font-medium">Module 5 - Ghi số công tơ & Đối soát</span>
-                                </p>
-                            </div>
+                        </div>
+                        <div className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black text-neutral-900 font-mono">
+                            {summary.completion_rate}% <span className="text-xs font-normal text-slate-400">({summary.recorded_meters}/{summary.total_meters})</span>
+                        </div>
+                        <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                                className="bg-gradient-to-r from-sky-500 to-indigo-600 h-1.5 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(100, summary.completion_rate)}%` }}
+                            ></div>
+                        </div>
+                        <div className="mt-1 text-[10px] sm:text-[11px] text-slate-500 flex justify-between">
+                            <span>Còn lại: {summary.pending_meters} căn</span>
+                            <span className="font-semibold text-sky-700">{summary.completion_rate === 100 ? 'Đã hoàn tất' : 'Đang xử lý'}</span>
                         </div>
                     </div>
 
-                    {/* Bộ điều khiển Chu kỳ & Thao tác Khóa sổ */}
-                    <div className="flex flex-wrap items-center gap-3">
+                    {/* KPI 2: Tổng Điện Tiêu Thụ */}
+                    <div className="sass-db-kpi-card">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Sản Lượng Điện Kỳ Này</span>
+                            <div className="kpi-icon-wrapper bg-amber-50 text-amber-600">
+                                <Zap className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black text-amber-600 font-mono">
+                            {summary.total_electricity_kwh.toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-400">kWh</span>
+                        </div>
+                        <div className="mt-1 text-[10px] sm:text-[11px] text-amber-700 font-medium truncate">
+                            EVN Biểu giá 6 bậc lũy tiến
+                        </div>
+                    </div>
+
+                    {/* KPI 3: Tổng Nước Tiêu Thụ */}
+                    <div className="sass-db-kpi-card">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Sản Lượng Nước Kỳ Này</span>
+                            <div className="kpi-icon-wrapper bg-sky-50 text-sky-600">
+                                <Droplets className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black text-sky-600 font-mono">
+                            {summary.total_water_m3.toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-400">m³</span>
+                        </div>
+                        <div className="mt-1 text-[10px] sm:text-[11px] text-sky-700 font-medium truncate">
+                            Nước sinh hoạt định mức hộ
+                        </div>
+                    </div>
+
+                    {/* KPI 4: Cảnh Báo Bất Thường */}
+                    <div className="sass-db-kpi-card col-span-2 sm:col-span-1">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Cảnh Báo Bất Thường</span>
+                            <div className="kpi-icon-wrapper bg-rose-50 text-rose-600">
+                                <AlertTriangle className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className={`mt-1 sm:mt-2 text-xl sm:text-2xl font-black font-mono ${summary.abnormal_count > 0 ? 'text-rose-600' : 'text-neutral-900'}`}>
+                            {summary.abnormal_count} <span className="text-xs font-normal text-slate-400">căn hộ</span>
+                        </div>
+                        <div className="mt-1 text-[10px] sm:text-[11px] truncate">
+                            {summary.abnormal_count > 0 ? (
+                                <span className="text-rose-600 font-bold">Cần kỹ thuật kiểm tra rò rỉ</span>
+                            ) : (
+                                <span className="text-emerald-700 font-medium">Chỉ số trong ngưỡng an toàn</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Thanh Lọc & Chuyển Tab */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
+                {/* Tabs chuyển đổi */}
+                <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl">
+                    <button
+                        type="button"
+                        onClick={() => { setActiveTab('meters'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            activeTab === 'meters'
+                                ? 'bg-white text-sky-700 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        Danh Sách Đồng Hồ ({summary?.total_meters || 0})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setActiveTab('readings'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            activeTab === 'readings'
+                                ? 'bg-white text-sky-700 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        Đã Chốt Trong Kỳ ({summary?.recorded_meters || 0})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setActiveTab('abnormal'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'abnormal'
+                                ? 'bg-rose-600 text-white shadow-2xs'
+                                : 'text-rose-600 hover:bg-rose-50'
+                        }`}
+                    >
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                        <span>Bất Thường ({summary?.abnormal_count || 0})</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setActiveTab('import'); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'import'
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'text-emerald-700 hover:bg-emerald-50'
+                        }`}
+                    >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span>Import Excel / CSV</span>
+                    </button>
+                </div>
+
+                {/* Bộ lọc Tòa nhà & Loại Đồng Hồ */}
+                {activeTab !== 'import' && (
+                    <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                        type="button"
+                        onClick={handleDownloadTemplate}
+                        title="Tải tệp mẫu CSV/Excel có sẵn danh sách công tơ căn hộ"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                    >
+                        <Download className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Tải Mẫu Excel</span>
+                    </button>
+                    {/* Tìm kiếm */}
+                    <div className="relative min-w-[200px] flex-1 md:flex-initial">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Tìm mã công tơ, số căn hộ..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                        />
+                    </div>
+
+                    {/* Lọc Block */}
+                    <div className="min-w-[190px]">
+                        <CustomSelect<string>
+                            value={selectedBlock}
+                            onChange={(val) => { setSelectedBlock(val); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
+                            options={[
+                                { value: 'ALL', label: 'Tất cả Khối Tòa', icon: <Building2 className="w-3.5 h-3.5 text-slate-400" /> },
+                                ...blocks.map(b => ({
+                                    value: b.id,
+                                    label: `${b.block_name} (${b.block_code})`,
+                                    icon: <Building2 className="w-3.5 h-3.5 text-sky-500" />
+                                }))
+                            ]}
+                        />
+                    </div>
+
+                    {/* Lọc Loại đồng hồ */}
+                    <div className="min-w-[190px]">
+                        <CustomSelect<string>
+                            value={selectedMeterType}
+                            onChange={(val) => { setSelectedMeterType(val); setPagination((p: PaginationState) => ({ ...p, current_page: 1 })); }}
+                            options={[
+                                { value: 'ALL', label: 'Tất cả Loại Dịch Vụ', icon: <Activity className="w-3.5 h-3.5 text-slate-400" /> },
+                                { value: 'ELECTRICITY', label: 'Đồng Hồ Điện (kWh)', description: 'Công tơ điện sinh hoạt tòa nhà', icon: <Zap className="w-3.5 h-3.5 text-amber-500" /> },
+                                { value: 'WATER', label: 'Đồng Hồ Nước (m³)', description: 'Đồng hồ nước sạch sinh hoạt', icon: <Droplets className="w-3.5 h-3.5 text-sky-500" /> },
+                            ]}
+                        />
+                    </div>
+                </div>
+            )}
+            </div>
+
+            {/* BẢNG DỮ LIỆU CHÍNH */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                {/* Table Card Header & Actions */}
+                <div className="p-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+                    <div>
+                        <h3 className="text-sm font-bold text-neutral-900">
+                            {activeTab === 'meters' && 'Danh Sách Công Tơ Đo Điện & Nước'}
+                            {activeTab === 'readings' && 'Danh Sách Chỉ Số Đã Ghi Nhận Trong Kỳ'}
+                            {activeTab === 'abnormal' && 'Cảnh Báo Chỉ Số Biến Động Bất Thường'}
+                            {activeTab === 'import' && 'Import Chỉ Số Hàng Loạt Từ Excel / CSV'}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                            {activeTab === 'meters' && 'Theo dõi trạng thái chốt số, chỉ số kỳ trước và ghi số nhanh cho từng căn hộ'}
+                            {activeTab === 'readings' && `Các căn hộ đã hoàn tất đối soát số liệu điện nước trong chu kỳ ${selectedCycle}`}
+                            {activeTab === 'abnormal' && 'Các trường hợp tiêu thụ đột biến gấp 1.5 lần hoặc có chênh lệch âm cần kiểm tra'}
+                            {activeTab === 'import' && `Tải lên tệp bảng tính mẫu để nhập hàng loạt và tự động đối soát trong kỳ ${selectedCycle}`}
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                         {/* Chọn kỳ ghi số */}
-                        <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-sm shadow-inner">
-                            <Calendar className="w-4 h-4 text-indigo-400" />
-                            <span className="text-xs text-slate-400 font-medium uppercase">Kỳ chốt:</span>
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs shadow-2xs">
+                            <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                            <span className="text-[11px] text-slate-500 font-bold uppercase">Kỳ chốt:</span>
                             <input
                                 type="month"
                                 value={selectedCycle}
                                 onChange={(e) => setSelectedCycle(e.target.value)}
-                                className="bg-transparent border-0 text-slate-100 font-semibold focus:ring-0 focus:outline-none text-sm cursor-pointer"
+                                className="bg-transparent border-0 text-slate-900 font-bold focus:ring-0 focus:outline-none text-xs cursor-pointer font-mono"
                             />
                         </div>
 
                         {/* Nút Khóa / Mở Khóa Sổ */}
                         <button
+                            type="button"
                             onClick={() => setIsLockConfirmOpen(true)}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-md ${
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs cursor-pointer ${
                                 summary?.is_cycle_locked
-                                    ? 'bg-rose-500/15 border border-rose-500/40 text-rose-300 hover:bg-rose-500/25 shadow-rose-950/40'
-                                    : 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 shadow-emerald-950/40'
+                                    ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+                                    : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
                             }`}
                         >
                             {summary?.is_cycle_locked ? (
                                 <>
-                                    <Lock className="w-4 h-4 text-rose-400" />
+                                    <Lock className="w-3.5 h-3.5 text-rose-600" />
                                     <span>Kỳ Đã Khóa Sổ</span>
                                 </>
                             ) : (
                                 <>
-                                    <Unlock className="w-4 h-4 text-emerald-400" />
+                                    <Unlock className="w-3.5 h-3.5 text-emerald-600" />
                                     <span>Sổ Đang Mở (Ghi Số)</span>
                                 </>
                             )}
                         </button>
 
-                        {/* Nút Refresh */}
-                        <button
-                            onClick={fetchData}
-                            disabled={loading}
-                            title="Làm mới dữ liệu"
-                            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-colors"
-                        >
-                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                        </button>
+                        <span className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-mono shadow-2xs">
+                            Tổng cộng: {activeTab === 'meters' ? (summary?.total_meters || meters.length) : activeTab === 'readings' ? (summary?.recorded_meters || readings.length) : (summary?.abnormal_count || 0)} {activeTab === 'meters' ? 'Công tơ' : 'Bản ghi'}
+                        </span>
                     </div>
                 </div>
-
-                {/* KPI Overview Cards */}
-                {summary && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* KPI 1: Tiến độ ghi số */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-900/50 border border-slate-800 p-5 shadow-xl backdrop-blur-md">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tiến Độ Ghi Số</span>
-                                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                    <Activity className="w-4 h-4" />
-                                </div>
-                            </div>
-                            <div className="mt-3 flex items-baseline gap-2">
-                                <span className="text-3xl font-extrabold text-white">{summary.completion_rate}%</span>
-                                <span className="text-xs text-slate-400">
-                                    ({summary.recorded_meters}/{summary.total_meters} đồng hồ)
-                                </span>
-                            </div>
-                            <div className="mt-3 w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                                <div
-                                    className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-2 rounded-full transition-all duration-700"
-                                    style={{ width: `${Math.min(100, summary.completion_rate)}%` }}
-                                ></div>
-                            </div>
-                            <div className="mt-2 text-xs text-slate-500 flex justify-between">
-                                <span>Còn lại: {summary.pending_meters} căn</span>
-                                <span>{summary.completion_rate === 100 ? 'Đã hoàn tất' : 'Đang xử lý'}</span>
-                            </div>
-                        </div>
-
-                        {/* KPI 2: Tổng Điện Tiêu Thụ */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-900/50 border border-slate-800 p-5 shadow-xl backdrop-blur-md">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sản Lượng Điện Kỳ Này</span>
-                                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                    <Zap className="w-4 h-4" />
-                                </div>
-                            </div>
-                            <div className="mt-3 flex items-baseline gap-1.5">
-                                <span className="text-3xl font-extrabold text-amber-400">
-                                    {summary.total_electricity_kwh.toLocaleString('vi-VN')}
-                                </span>
-                                <span className="text-sm font-semibold text-slate-400">kWh</span>
-                            </div>
-                            <p className="mt-3 text-xs text-slate-400 flex items-center gap-1">
-                                <span className="text-emerald-400 font-medium">EVN Biểu giá 6 bậc</span>
-                                <span className="text-slate-600">•</span>
-                                <span>Sẵn sàng kết xuất hóa đơn</span>
-                            </p>
-                        </div>
-
-                        {/* KPI 3: Tổng Nước Tiêu Thụ */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-900/50 border border-slate-800 p-5 shadow-xl backdrop-blur-md">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sản Lượng Nước Kỳ Này</span>
-                                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                                    <Droplets className="w-4 h-4" />
-                                </div>
-                            </div>
-                            <div className="mt-3 flex items-baseline gap-1.5">
-                                <span className="text-3xl font-extrabold text-cyan-400">
-                                    {summary.total_water_m3.toLocaleString('vi-VN')}
-                                </span>
-                                <span className="text-sm font-semibold text-slate-400">m³</span>
-                            </div>
-                            <p className="mt-3 text-xs text-slate-400 flex items-center gap-1">
-                                <span className="text-cyan-300 font-medium">Nước sinh hoạt</span>
-                                <span className="text-slate-600">•</span>
-                                <span>Tính theo định mức hộ</span>
-                            </p>
-                        </div>
-
-                        {/* KPI 4: Cảnh Báo Bất Thường */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-900/50 border border-slate-800 p-5 shadow-xl backdrop-blur-md">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cảnh Báo Bất Thường</span>
-                                <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                    <AlertTriangle className="w-4 h-4" />
-                                </div>
-                            </div>
-                            <div className="mt-3 flex items-baseline gap-2">
-                                <span className={`text-3xl font-extrabold ${summary.abnormal_count > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
-                                    {summary.abnormal_count}
-                                </span>
-                                <span className="text-xs text-slate-400">căn hộ phát hiện đột biến</span>
-                            </div>
-                            <p className="mt-3 text-xs text-slate-400 flex items-center gap-1">
-                                {summary.abnormal_count > 0 ? (
-                                    <span className="text-rose-400 font-medium">Cần kỹ thuật kiểm tra rò rỉ/công tơ</span>
+                {loading ? (
+                    <div className="p-16 text-center text-slate-400">
+                        <RefreshCw className="w-6 h-6 animate-spin mx-auto text-sky-600 mb-2" />
+                        <p className="text-xs">Đang nạp dữ liệu đồng hồ và chỉ số đo...</p>
+                    </div>
+                ) : activeTab === 'meters' ? (
+                    /* TAB 1: DANH SÁCH ĐỒNG HỒ & GHI SỐ NHANH */
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-200/80 bg-slate-100/50 text-slate-500 font-bold uppercase text-[10px] tracking-wider font-mono">
+                                    <th className="py-3 px-4">Căn Hộ</th>
+                                    <th className="py-3 px-4">Mã Đồng Hồ</th>
+                                    <th className="py-3 px-4">Loại Thiết Bị</th>
+                                    <th className="py-3 px-4 text-right">Chỉ Số Kỳ Trước</th>
+                                    <th className="py-3 px-4 text-right">Chỉ Số Kỳ Này</th>
+                                    <th className="py-3 px-4 text-right">Tiêu Thụ</th>
+                                    <th className="py-3 px-4 text-center">Trạng Thái</th>
+                                    <th className="py-3 px-4 text-right">Thao Tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {meters.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={8} className="py-12 text-center text-slate-400">
+                                            Không tìm thấy đồng hồ đo nào phù hợp với bộ lọc.
+                                        </td>
+                                    </tr>
                                 ) : (
-                                    <span className="text-emerald-400 font-medium">Tất cả chỉ số trong ngưỡng bình thường</span>
+                                    meters.map((meter) => {
+                                        const reading = meter.readings && meter.readings.length > 0 ? meter.readings[0] : null;
+                                        const isRecorded = Boolean(reading);
+                                        const isElec = meter.meter_type === 'ELECTRICITY';
+
+                                        return (
+                                            <tr key={meter.id} className="hover:bg-slate-50/80 transition-colors">
+                                                {/* Căn hộ */}
+                                                <td className="py-3 px-4">
+                                                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                                        <Building2 className="w-3.5 h-3.5 text-sky-600" />
+                                                        <span>Căn {meter.apartment?.apartment_number || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-400">
+                                                        {meter.apartment?.block?.block_name || 'Khối'} - Tầng {meter.apartment?.floor?.floor_name || 'N/A'}
+                                                    </div>
+                                                </td>
+
+                                                {/* Mã đồng hồ */}
+                                                <td className="py-3 px-4 font-mono font-bold text-sky-700">
+                                                    <span className="px-2 py-0.5 rounded-lg bg-sky-50 border border-sky-100">
+                                                        {meter.meter_code}
+                                                    </span>
+                                                </td>
+
+                                                {/* Loại thiết bị */}
+                                                <td className="py-3 px-4">
+                                                    {isElec ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                                            <Zap className="w-3 h-3 text-amber-600" />
+                                                            <span>Điện (kWh)</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                                                            <Droplets className="w-3 h-3 text-sky-600" />
+                                                            <span>Nước (m³)</span>
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* Chỉ số cũ */}
+                                                <td className="py-3 px-4 text-right font-mono text-slate-500 font-semibold">
+                                                    {reading ? reading.previous_reading : meter.current_reading}
+                                                </td>
+
+                                                {/* Chỉ số mới */}
+                                                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                                                    {reading ? (
+                                                        reading.current_reading
+                                                    ) : (
+                                                        <span className="text-slate-400 font-normal italic">Chưa nhập</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Tiêu thụ */}
+                                                <td className="py-3 px-4 text-right font-mono font-black">
+                                                    {reading ? (
+                                                        <span className={isElec ? 'text-amber-600' : 'text-sky-600'}>
+                                                            +{reading.consumed_units} {isElec ? 'kWh' : 'm³'}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400">-</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Trạng thái */}
+                                                <td className="py-3 px-4 text-center">
+                                                    {isRecorded ? (
+                                                        reading?.is_abnormal_consumption ? (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                                                <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                                                <span>Bất thường</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                <span>Đã chốt</span>
+                                                            </span>
+                                                        )
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                                                            <Clock className="w-3 h-3 text-slate-400" />
+                                                            <span>Chờ chốt</span>
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* Thao tác */}
+                                                <td className="py-3 px-4 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenEntryModal(meter)}
+                                                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer ${
+                                                            isRecorded
+                                                                ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs'
+                                                                : 'bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white shadow-sm'
+                                                        }`}
+                                                    >
+                                                        {isRecorded ? (
+                                                            <>
+                                                                <Edit2 className="w-3 h-3" />
+                                                                <span>Sửa Số</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Plus className="w-3 h-3" />
+                                                                <span>Ghi Số</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
-                            </p>
+                            </tbody>
+                        </table>
+                    </div>
+                ) : activeTab === 'readings' || activeTab === 'abnormal' ? (
+                    /* TAB 2 & 3: DANH SÁCH BẢN GHI ĐÃ CHỐT HOẶC BẤT THƯỜNG */
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-200/80 bg-slate-100/50 text-slate-500 font-bold uppercase text-[10px] tracking-wider font-mono">
+                                    <th className="py-3 px-4">Căn Hộ</th>
+                                    <th className="py-3 px-4">Đồng Hồ</th>
+                                    <th className="py-3 px-4">Loại</th>
+                                    <th className="py-3 px-4 text-right">Chỉ Số Cũ</th>
+                                    <th className="py-3 px-4 text-right">Chỉ Số Mới</th>
+                                    <th className="py-3 px-4 text-right">Tiêu Thụ</th>
+                                    <th className="py-3 px-4 text-center">Ảnh Đối Soát</th>
+                                    <th className="py-3 px-4">Cảnh Báo / Ghi Chú</th>
+                                    <th className="py-3 px-4 text-right">Thao Tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {readings.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} className="py-12 text-center text-slate-400">
+                                            Chưa có bản ghi chỉ số đo nào trong danh sách.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    readings.map((reading) => {
+                                        const isElec = reading.meter?.meter_type === 'ELECTRICITY';
+
+                                        return (
+                                            <tr key={reading.id} className="hover:bg-slate-50/80 transition-colors">
+                                                {/* Căn hộ */}
+                                                <td className="py-3 px-4">
+                                                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                                        <Building2 className="w-3.5 h-3.5 text-sky-600" />
+                                                        <span>Căn {reading.apartment?.apartment_number || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-400">
+                                                        {reading.apartment?.block?.block_name || 'Khối'}
+                                                    </div>
+                                                </td>
+
+                                                {/* Mã đồng hồ */}
+                                                <td className="py-3 px-4 font-mono font-bold text-sky-700">
+                                                    <span className="px-2 py-0.5 rounded-lg bg-sky-50 border border-sky-100">
+                                                        {reading.meter?.meter_code || 'MTR-N/A'}
+                                                    </span>
+                                                </td>
+
+                                                {/* Loại */}
+                                                <td className="py-3 px-4">
+                                                    {isElec ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                                            <Zap className="w-3 h-3 text-amber-600" />
+                                                            <span>Điện</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                                                            <Droplets className="w-3 h-3 text-sky-600" />
+                                                            <span>Nước</span>
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* Cũ */}
+                                                <td className="py-3 px-4 text-right font-mono text-slate-500 font-semibold">
+                                                    {reading.previous_reading}
+                                                </td>
+
+                                                {/* Mới */}
+                                                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                                                    {reading.current_reading}
+                                                </td>
+
+                                                {/* Tiêu thụ */}
+                                                <td className="py-3 px-4 text-right font-mono font-black">
+                                                    <span className={isElec ? 'text-amber-600' : 'text-sky-600'}>
+                                                        {reading.consumed_units} {isElec ? 'kWh' : 'm³'}
+                                                    </span>
+                                                </td>
+
+                                                {/* Ảnh công tơ */}
+                                                <td className="py-3 px-4 text-center">
+                                                    {reading.meter_photo_url ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPreviewImageUrl(reading.meter_photo_url)}
+                                                            className="inline-flex items-center gap-1 text-xs text-sky-600 hover:text-sky-800 underline font-semibold cursor-pointer"
+                                                        >
+                                                            <Camera className="w-3.5 h-3.5" />
+                                                            <span>Xem ảnh</span>
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-slate-400">Không có</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Cảnh báo / Lý do */}
+                                                <td className="py-3 px-4">
+                                                    {reading.is_abnormal_consumption ? (
+                                                        <div className="flex items-start gap-1.5 text-xs text-rose-700 bg-rose-50 border border-rose-200 p-1.5 rounded-lg">
+                                                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                                                            <span>{reading.abnormal_reason || 'Đột biến bất thường'}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-500">{reading.reading_source || 'Thủ công'}</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Thao tác */}
+                                                <td className="py-3 px-4 text-right">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        {reading.meter && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenEntryModal(reading.meter!)}
+                                                                className="p-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                                                                title="Sửa bản ghi"
+                                                            >
+                                                                <Edit2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteReading(reading.id)}
+                                                            disabled={reading.is_locked_for_billing}
+                                                            className={`p-1.5 rounded-lg transition-all ${
+                                                                reading.is_locked_for_billing
+                                                                    ? 'text-slate-300 cursor-not-allowed'
+                                                                    : 'bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs cursor-pointer'
+                                                            }`}
+                                                            title={reading.is_locked_for_billing ? 'Đã khóa sổ' : 'Xóa bản ghi'}
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    /* TAB 4: IMPORT HÀNG LOẠT TỪ EXCEL / CSV */
+                    <div className="p-6 space-y-6">
+                        {/* Khu vực Upload & Hướng dẫn */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Cột 1 & 2: Form Upload File */}
+                            <div className="lg:col-span-2 bg-slate-50/50 border border-slate-200/80 rounded-2xl p-6">
+                                <div className="flex items-center justify-between pb-4 border-b border-slate-200/80">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                            <UploadCloud className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-neutral-900">Tải Lên Tệp Chỉ Số Đo</h3>
+                                            <p className="text-xs text-slate-500">Hỗ trợ biểu mẫu Excel (.xlsx, .xls) và tệp CSV</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadTemplate}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-xs font-semibold text-sky-700 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                                    >
+                                        <Download className="w-3.5 h-3.5" />
+                                        <span>Tải Mẫu Excel</span>
+                                    </button>
+                                </div>
+
+                                <form onSubmit={handleExecuteImport} className="mt-5 space-y-4">
+                                    <div className="border-2 border-dashed border-slate-300 hover:border-sky-500 rounded-2xl p-8 text-center bg-white hover:bg-sky-50/20 transition-all cursor-pointer relative">
+                                        <input
+                                            type="file"
+                                            accept=".xlsx,.xls,.csv,.txt"
+                                            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        />
+                                        <div className="space-y-2 pointer-events-none">
+                                            <div className="w-12 h-12 rounded-full bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center mx-auto">
+                                                <FileSpreadsheet className="w-6 h-6" />
+                                            </div>
+                                            {importFile ? (
+                                                <div>
+                                                    <p className="text-sm font-bold text-neutral-900">{importFile.name}</p>
+                                                    <p className="text-xs text-emerald-600 font-semibold mt-0.5">
+                                                        {(importFile.size / 1024).toFixed(1)} KB - Đã sẵn sàng import
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-700">
+                                                        Kéo thả tệp vào đây hoặc <span className="text-sky-600 underline font-bold">chọn từ thiết bị</span>
+                                                    </p>
+                                                    <p className="text-xs text-slate-400 mt-1">Dung lượng tối đa 10MB</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-2">
+                                        <div className="text-xs text-slate-500">
+                                            Kỳ chốt số mục tiêu: <span className="font-bold text-sky-600 font-mono">{selectedCycle}</span>
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            disabled={!importFile || importing || summary?.is_cycle_locked}
+                                            className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-2xs transition-all inline-flex items-center gap-2 cursor-pointer ${
+                                                !importFile || summary?.is_cycle_locked
+                                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                                    : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                                            }`}
+                                        >
+                                            {importing ? (
+                                                <>
+                                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                    <span>Đang phân tích & lưu...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <CheckCheck className="w-3.5 h-3.5" />
+                                                    <span>Bắt Đầu Import & Đối Soát</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            {/* Cột 3: Hướng Dẫn & Quy Tắc */}
+                            <div className="bg-slate-50/50 border border-slate-200/80 rounded-2xl p-5 space-y-3">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 font-mono">
+                                    <HelpCircle className="w-3.5 h-3.5 text-sky-600" />
+                                    <span>Quy Tắc Import & Validate</span>
+                                </h4>
+                                <ul className="text-xs text-slate-600 space-y-2.5">
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+                                        <span>File mẫu chứa đúng mã công tơ của từng căn hộ để tránh nhầm lẫn.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+                                        <span><strong>Chỉ số mới ≥ Chỉ số cũ:</strong> Hệ thống tự động chặn nếu chỉ số mới thấp hơn chỉ số cũ.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+                                        <span><strong>Thay đồng hồ:</strong> Điền giá trị <code>1</code> tại cột <i>Thay Đồng Hồ Mới</i> nếu vừa thay công tơ.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0"></span>
+                                        <span><strong>Khóa sổ:</strong> Không thể import khi chu kỳ đã được ban quản lý khóa sổ.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* Báo Cáo Kết Quả Đợt Import Mới Nhất (Nếu có) */}
+                        {lastImportBatch && (
+                            <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-neutral-900">Kết Quả Đợt Import:</span>
+                                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-sky-700 font-bold">
+                                            {lastImportBatch.batch_code}
+                                        </span>
+                                    </div>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                        lastImportBatch.import_status === 'COMPLETED'
+                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    }`}>
+                                        {lastImportBatch.import_status}
+                                    </span>
+                                </div>
+
+                                {/* Chỉ số nhanh */}
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
+                                        <div className="text-[11px] text-slate-500 font-medium">Tổng Bản Ghi</div>
+                                        <div className="text-lg font-black text-neutral-900 mt-1 font-mono">{lastImportBatch.total_records}</div>
+                                    </div>
+                                    <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-center">
+                                        <div className="text-[11px] text-emerald-700 font-medium">Thành Công</div>
+                                        <div className="text-lg font-black text-emerald-700 mt-1 font-mono">{lastImportBatch.success_records}</div>
+                                    </div>
+                                    <div className="bg-rose-50 p-3 rounded-xl border border-rose-200 text-center">
+                                        <div className="text-[11px] text-rose-700 font-medium">Dòng Lỗi Bị Chặn</div>
+                                        <div className="text-lg font-black text-rose-700 mt-1 font-mono">{lastImportBatch.failed_records}</div>
+                                    </div>
+                                </div>
+
+                                {/* Bảng Chi Tiết Lỗi (nếu có lỗi) */}
+                                {lastImportBatch.error_summary_json && lastImportBatch.error_summary_json.length > 0 && (
+                                    <div className="space-y-2 pt-2">
+                                        <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 uppercase tracking-wider font-mono">
+                                            <FileWarning className="w-3.5 h-3.5" />
+                                            <span>Chi Tiết {lastImportBatch.error_summary_json.length} Dòng Bị Lỗi Cần Sửa:</span>
+                                        </div>
+                                        <div className="max-h-60 overflow-y-auto border border-rose-200 rounded-xl overflow-hidden">
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead className="bg-rose-50 text-rose-700 uppercase font-semibold font-mono border-b border-rose-200">
+                                                    <tr>
+                                                        <th className="p-2.5">Dòng Excel</th>
+                                                        <th className="p-2.5">Mã Đồng Hồ</th>
+                                                        <th className="p-2.5">Căn Hộ</th>
+                                                        <th className="p-2.5">Nguyên Nhân Lỗi</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {lastImportBatch.error_summary_json.map((err, idx) => (
+                                                        <tr key={idx} className="hover:bg-rose-50/50">
+                                                            <td className="p-2.5 font-mono text-slate-500 font-bold">Dòng {err.line}</td>
+                                                            <td className="p-2.5 font-mono text-slate-800">{err.meter_code}</td>
+                                                            <td className="p-2.5 text-slate-600">{err.apartment || 'N/A'}</td>
+                                                            <td className="p-2.5 text-rose-600 font-medium">{err.error}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Bảng Lịch Sử Các Đợt Import (Batches) */}
+                        <div className="space-y-3 pt-2">
+                            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-600 flex items-center gap-2">
+                                <Clock className="w-3.5 h-3.5 text-sky-600" />
+                                <span>Lịch Sử Các Đợt Import Trong Kỳ</span>
+                            </h4>
+
+                            <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead className="bg-slate-50 border-b border-slate-200/80 uppercase font-semibold text-slate-500 text-[10px] tracking-wider font-mono">
+                                        <tr>
+                                            <th className="py-3 px-4">Mã Đợt (Batch Code)</th>
+                                            <th className="py-3 px-4">Tên Tệp</th>
+                                            <th className="py-3 px-4">Kỳ Chốt</th>
+                                            <th className="py-3 px-4 text-right">Tổng Dòng</th>
+                                            <th className="py-3 px-4 text-right">Thành Công</th>
+                                            <th className="py-3 px-4 text-right">Thất Bại</th>
+                                            <th className="py-3 px-4 text-center">Trạng Thái</th>
+                                            <th className="py-3 px-4 text-right">Thao Tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {batches.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={8} className="py-8 text-center text-slate-400">
+                                                    Chưa có đợt import nào trong kỳ này.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            batches.map((b) => (
+                                                <tr key={b.id} className="hover:bg-slate-50/60">
+                                                    <td className="py-3 px-4 font-mono font-bold text-sky-600">{b.batch_code}</td>
+                                                    <td className="py-3 px-4 text-slate-700">{b.file_name}</td>
+                                                    <td className="py-3 px-4 font-mono text-slate-500">{b.billing_month_year}</td>
+                                                    <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">{b.total_records}</td>
+                                                    <td className="py-3 px-4 text-right font-mono text-emerald-600 font-bold">{b.success_records}</td>
+                                                    <td className="py-3 px-4 text-right font-mono text-rose-600 font-bold">{b.failed_records}</td>
+                                                    <td className="py-3 px-4 text-center">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                            b.import_status === 'COMPLETED'
+                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                        }`}>
+                                                            {b.import_status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-right">
+                                                        {b.error_summary_json && b.error_summary_json.length > 0 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSelectedBatchForDetail(b)}
+                                                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold cursor-pointer"
+                                                            >
+                                                                Xem {b.error_summary_json.length} lỗi
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 )}
 
-                {/* Thanh Lọc & Chuyển Tab */}
-                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-slate-900/80 p-3 rounded-2xl border border-slate-800 shadow-md">
-                    {/* Tabs chuyển đổi */}
-                    <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80">
-                        <button
-                            onClick={() => { setActiveTab('meters'); setPagination(p => ({ ...p, current_page: 1 })); }}
-                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                                activeTab === 'meters'
-                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                            }`}
-                        >
-                            Danh Sách Đồng Hồ ({summary?.total_meters || 0})
-                        </button>
-                        <button
-                            onClick={() => { setActiveTab('readings'); setPagination(p => ({ ...p, current_page: 1 })); }}
-                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                                activeTab === 'readings'
-                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                            }`}
-                        >
-                            Đã Chốt Trong Kỳ ({summary?.recorded_meters || 0})
-                        </button>
-                        <button
-                            onClick={() => { setActiveTab('abnormal'); setPagination(p => ({ ...p, current_page: 1 })); }}
-                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
-                                activeTab === 'abnormal'
-                                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                                    : 'text-rose-400 hover:text-rose-300 hover:bg-slate-900'
-                            }`}
-                        >
-                            <ShieldAlert className="w-4 h-4" />
-                            <span>Bất Thường ({summary?.abnormal_count || 0})</span>
-                        </button>
-                        <button
-                            onClick={() => { setActiveTab('import'); setPagination(p => ({ ...p, current_page: 1 })); }}
-                            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
-                                activeTab === 'import'
-                                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                                    : 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900'
-                            }`}
-                        >
-                            <FileSpreadsheet className="w-4 h-4" />
-                            <span>Import Excel / CSV</span>
-                        </button>
+                {/* Phân trang */}
+                {pagination.total > (activeTab === 'import' ? 10 : 15) && (
+                    <div className="flex items-center justify-between p-4 bg-slate-50/70 border-t border-slate-100 text-xs text-slate-500">
+                        <span>
+                            Hiển thị trang {pagination.current_page} / {pagination.last_page} ({pagination.total} bản ghi)
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setPagination((p: PaginationState) => ({ ...p, current_page: Math.max(1, p.current_page - 1) }))}
+                                disabled={pagination.current_page <= 1}
+                                className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
+                            >
+                                Trang trước
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPagination((p: PaginationState) => ({ ...p, current_page: Math.min(pagination.last_page, p.current_page + 1) }))}
+                                disabled={pagination.current_page >= pagination.last_page}
+                                className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
+                            >
+                                Trang sau
+                            </button>
+                        </div>
                     </div>
-
-                    {/* Bộ lọc Tòa nhà & Loại Đồng Hồ & Nút Tải Mẫu */}
-                    <div className="flex flex-wrap items-center gap-3">
-                        {/* Nút Tải File Mẫu */}
-                        <button
-                            onClick={handleDownloadTemplate}
-                            title="Tải tệp mẫu CSV/Excel có sẵn danh sách công tơ căn hộ"
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 hover:text-white transition-colors"
-                        >
-                            <Download className="w-3.5 h-3.5 text-indigo-400" />
-                            <span>Tải Mẫu Excel</span>
-                        </button>
-
-                        {/* Tìm kiếm */}
-                        <div className="relative min-w-[180px] flex-1 md:flex-initial">
-                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                            <input
-                                type="text"
-                                placeholder="Tìm mã công tơ, căn hộ..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-                            />
-                        </div>
-
-                        {/* Lọc Block */}
-                        <select
-                            value={selectedBlock}
-                            onChange={(e) => { setSelectedBlock(e.target.value); setPagination(p => ({ ...p, current_page: 1 })); }}
-                            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500"
-                        >
-                            <option value="ALL">Tất cả Khối Tòa</option>
-                            {blocks.map(b => (
-                                <option key={b.id} value={b.id}>{b.block_name} ({b.block_code})</option>
-                            ))}
-                        </select>
-
-                        {/* Lọc Loại đồng hồ */}
-                        <select
-                            value={selectedMeterType}
-                            onChange={(e) => { setSelectedMeterType(e.target.value); setPagination(p => ({ ...p, current_page: 1 })); }}
-                            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500"
-                        >
-                            <option value="ALL">Tất cả Loại Dịch Vụ</option>
-                            <option value="ELECTRICITY">⚡ Đồng Hồ Điện</option>
-                            <option value="WATER">💧 Đồng Hồ Nước</option>
-                        </select>
-                    </div>
-                </div>
-
-                {/* BẢNG DỮ LIỆU CHÍNH */}
-                <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden backdrop-blur-md">
-                    {loading ? (
-                        <div className="p-16 text-center text-slate-400">
-                            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                            <p className="text-sm">Đang nạp dữ liệu đồng hồ và chỉ số đo...</p>
-                        </div>
-                    ) : activeTab === 'meters' ? (
-                        /* TAB 1: DANH SÁCH ĐỒNG HỒ & GHI SỐ NHANH */
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm text-slate-300">
-                                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs font-semibold uppercase text-slate-400">
-                                    <tr>
-                                        <th className="py-3.5 px-4">Căn Hộ</th>
-                                        <th className="py-3.5 px-4">Mã Đồng Hồ</th>
-                                        <th className="py-3.5 px-4">Loại Thiết Bị</th>
-                                        <th className="py-3.5 px-4 text-right">Chỉ Số Kỳ Trước</th>
-                                        <th className="py-3.5 px-4 text-right">Chỉ Số Kỳ Này</th>
-                                        <th className="py-3.5 px-4 text-right">Tiêu Thụ</th>
-                                        <th className="py-3.5 px-4 text-center">Trạng Thái</th>
-                                        <th className="py-3.5 px-4 text-right">Thao Tác</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/60">
-                                    {meters.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={8} className="py-12 text-center text-slate-500">
-                                                Không tìm thấy đồng hồ đo nào phù hợp với bộ lọc.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        meters.map((meter) => {
-                                            const reading = meter.readings && meter.readings.length > 0 ? meter.readings[0] : null;
-                                            const isRecorded = Boolean(reading);
-                                            const isElec = meter.meter_type === 'ELECTRICITY';
-
-                                            return (
-                                                <tr key={meter.id} className="hover:bg-slate-800/40 transition-colors">
-                                                    {/* Căn hộ */}
-                                                    <td className="py-3.5 px-4">
-                                                        <div className="font-bold text-white flex items-center gap-1.5">
-                                                            <Building2 className="w-4 h-4 text-indigo-400" />
-                                                            <span>Căn {meter.apartment?.apartment_number || 'N/A'}</span>
-                                                        </div>
-                                                        <div className="text-xs text-slate-400">
-                                                            {meter.apartment?.block?.block_name || 'Khối'} - Tầng {meter.apartment?.floor?.floor_name || 'N/A'}
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Mã đồng hồ */}
-                                                    <td className="py-3.5 px-4">
-                                                        <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
-                                                            {meter.meter_code}
-                                                        </span>
-                                                    </td>
-
-                                                    {/* Loại thiết bị */}
-                                                    <td className="py-3.5 px-4">
-                                                        {isElec ? (
-                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                                                <Zap className="w-3.5 h-3.5" />
-                                                                <span>Điện (kWh)</span>
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                                                                <Droplets className="w-3.5 h-3.5" />
-                                                                <span>Nước (m³)</span>
-                                                            </span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Chỉ số cũ */}
-                                                    <td className="py-3.5 px-4 text-right font-mono text-slate-400">
-                                                        {reading ? reading.previous_reading : meter.current_reading}
-                                                    </td>
-
-                                                    {/* Chỉ số mới */}
-                                                    <td className="py-3.5 px-4 text-right font-mono font-bold text-white">
-                                                        {reading ? (
-                                                            reading.current_reading
-                                                        ) : (
-                                                            <span className="text-slate-600 font-normal italic">Chưa nhập</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Tiêu thụ */}
-                                                    <td className="py-3.5 px-4 text-right font-mono font-extrabold">
-                                                        {reading ? (
-                                                            <span className={isElec ? 'text-amber-400' : 'text-cyan-400'}>
-                                                                +{reading.consumed_units} {isElec ? 'kWh' : 'm³'}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-slate-600">-</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Trạng thái */}
-                                                    <td className="py-3.5 px-4 text-center">
-                                                        {isRecorded ? (
-                                                            reading?.is_abnormal_consumption ? (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30">
-                                                                    <AlertTriangle className="w-3 h-3 text-rose-400" />
-                                                                    <span>Bất thường</span>
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                                                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                                                    <span>Đã chốt</span>
-                                                                </span>
-                                                            )
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
-                                                                <Clock className="w-3 h-3 text-slate-500" />
-                                                                <span>Chờ chốt</span>
-                                                            </span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Thao tác */}
-                                                    <td className="py-3.5 px-4 text-right">
-                                                        <button
-                                                            onClick={() => handleOpenEntryModal(meter)}
-                                                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all inline-flex items-center gap-1.5 ${
-                                                                isRecorded
-                                                                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                                                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 font-bold'
-                                                            }`}
-                                                        >
-                                                            {isRecorded ? (
-                                                                <>
-                                                                    <Edit2 className="w-3.5 h-3.5" />
-                                                                    <span>Sửa Số</span>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Plus className="w-3.5 h-3.5" />
-                                                                    <span>Ghi Số</span>
-                                                                </>
-                                                            )}
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : activeTab === 'readings' || activeTab === 'abnormal' ? (
-                        /* TAB 2 & 3: DANH SÁCH BẢN GHI ĐÃ CHỐT HOẶC BẤT THƯỜNG */
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm text-slate-300">
-                                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs font-semibold uppercase text-slate-400">
-                                    <tr>
-                                        <th className="py-3.5 px-4">Căn Hộ</th>
-                                        <th className="py-3.5 px-4">Đồng Hồ</th>
-                                        <th className="py-3.5 px-4">Loại</th>
-                                        <th className="py-3.5 px-4 text-right">Chỉ Số Cũ</th>
-                                        <th className="py-3.5 px-4 text-right">Chỉ Số Mới</th>
-                                        <th className="py-3.5 px-4 text-right">Tiêu Thụ</th>
-                                        <th className="py-3.5 px-4 text-center">Ảnh Đối Soát</th>
-                                        <th className="py-3.5 px-4">Cảnh Báo / Ghi Chú</th>
-                                        <th className="py-3.5 px-4 text-right">Thao Tác</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/60">
-                                    {readings.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={9} className="py-12 text-center text-slate-500">
-                                                Chưa có bản ghi chỉ số đo nào trong danh sách.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        readings.map((reading) => {
-                                            const isElec = reading.meter?.meter_type === 'ELECTRICITY';
-
-                                            return (
-                                                <tr key={reading.id} className="hover:bg-slate-800/40 transition-colors">
-                                                    {/* Căn hộ */}
-                                                    <td className="py-3.5 px-4">
-                                                        <div className="font-bold text-white flex items-center gap-1.5">
-                                                            <Building2 className="w-4 h-4 text-indigo-400" />
-                                                            <span>Căn {reading.apartment?.apartment_number || 'N/A'}</span>
-                                                        </div>
-                                                        <div className="text-xs text-slate-400">
-                                                            {reading.apartment?.block?.block_name || 'Khối'}
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Mã đồng hồ */}
-                                                    <td className="py-3.5 px-4 font-mono text-xs text-slate-300">
-                                                        {reading.meter?.meter_code || 'MTR-N/A'}
-                                                    </td>
-
-                                                    {/* Loại */}
-                                                    <td className="py-3.5 px-4">
-                                                        {isElec ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                                                <Zap className="w-3 h-3" />
-                                                                <span>Điện</span>
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                                                                <Droplets className="w-3 h-3" />
-                                                                <span>Nước</span>
-                                                            </span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Cũ */}
-                                                    <td className="py-3.5 px-4 text-right font-mono text-slate-400">
-                                                        {reading.previous_reading}
-                                                    </td>
-
-                                                    {/* Mới */}
-                                                    <td className="py-3.5 px-4 text-right font-mono font-bold text-white">
-                                                        {reading.current_reading}
-                                                    </td>
-
-                                                    {/* Tiêu thụ */}
-                                                    <td className="py-3.5 px-4 text-right font-mono font-extrabold">
-                                                        <span className={isElec ? 'text-amber-400' : 'text-cyan-400'}>
-                                                            {reading.consumed_units} {isElec ? 'kWh' : 'm³'}
-                                                        </span>
-                                                    </td>
-
-                                                    {/* Ảnh công tơ */}
-                                                    <td className="py-3.5 px-4 text-center">
-                                                        {reading.meter_photo_url ? (
-                                                            <button
-                                                                onClick={() => setPreviewImageUrl(reading.meter_photo_url)}
-                                                                className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 underline font-medium"
-                                                            >
-                                                                <Camera className="w-3.5 h-3.5" />
-                                                                <span>Xem ảnh</span>
-                                                            </button>
-                                                        ) : (
-                                                            <span className="text-xs text-slate-600">Không có</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Cảnh báo / Lý do */}
-                                                    <td className="py-3.5 px-4">
-                                                        {reading.is_abnormal_consumption ? (
-                                                            <div className="flex items-start gap-1.5 text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 p-1.5 rounded-lg">
-                                                                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                                                                <span>{reading.abnormal_reason || 'Đột biến bất thường'}</span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-xs text-slate-400">{reading.reading_source || 'Thủ công'}</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Thao tác */}
-                                                    <td className="py-3.5 px-4 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            {reading.meter && (
-                                                                <button
-                                                                    onClick={() => handleOpenEntryModal(reading.meter!)}
-                                                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
-                                                                    title="Sửa bản ghi"
-                                                                >
-                                                                    <Edit2 className="w-4 h-4" />
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={() => handleDeleteReading(reading.id)}
-                                                                disabled={reading.is_locked_for_billing}
-                                                                className={`p-1.5 rounded-lg transition-colors ${
-                                                                    reading.is_locked_for_billing
-                                                                        ? 'text-slate-600 cursor-not-allowed'
-                                                                        : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20'
-                                                                }`}
-                                                                title={reading.is_locked_for_billing ? 'Đã khóa sổ' : 'Xóa bản ghi'}
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        /* TAB 4: IMPORT HÀNG LOẠT TỪ EXCEL / CSV */
-                        <div className="p-6 space-y-6">
-                            {/* Khu vực Upload & Hướng dẫn */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Cột 1 & 2: Form Upload File */}
-                                <div className="lg:col-span-2 bg-slate-950/60 border border-slate-800 rounded-2xl p-6">
-                                    <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                                <UploadCloud className="w-5 h-5" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-base font-bold text-white">Tải Lên Tệp Chỉ Số Đo</h3>
-                                                <p className="text-xs text-slate-400">Hỗ trợ định dạng .csv, .txt tương thích Microsoft Excel</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleDownloadTemplate}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-indigo-300 border border-slate-700 transition-colors"
-                                        >
-                                            <Download className="w-3.5 h-3.5" />
-                                            <span>Tải Mẫu Excel</span>
-                                        </button>
-                                    </div>
-
-                                    <form onSubmit={handleExecuteImport} className="mt-5 space-y-4">
-                                        <div className="border-2 border-dashed border-slate-700/80 hover:border-indigo-500/60 rounded-2xl p-8 text-center bg-slate-900/40 hover:bg-slate-900/70 transition-all cursor-pointer relative">
-                                            <input
-                                                type="file"
-                                                accept=".csv,.txt"
-                                                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                            />
-                                            <div className="space-y-2 pointer-events-none">
-                                                <div className="w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto">
-                                                    <FileSpreadsheet className="w-6 h-6" />
-                                                </div>
-                                                {importFile ? (
-                                                    <div>
-                                                        <p className="text-sm font-bold text-white">{importFile.name}</p>
-                                                        <p className="text-xs text-emerald-400 font-medium mt-0.5">
-                                                            {(importFile.size / 1024).toFixed(1)} KB - Đã sẵn sàng import
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-slate-200">
-                                                            Kéo thả tệp vào đây hoặc <span className="text-indigo-400 underline">chọn từ thiết bị</span>
-                                                        </p>
-                                                        <p className="text-xs text-slate-500 mt-1">Dung lượng tối đa 10MB</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center justify-between pt-2">
-                                            <div className="text-xs text-slate-400">
-                                                Kỳ chốt số mục tiêu: <span className="font-bold text-indigo-400 font-mono">{selectedCycle}</span>
-                                            </div>
-                                            <button
-                                                type="submit"
-                                                disabled={!importFile || importing || summary?.is_cycle_locked}
-                                                className={`px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all inline-flex items-center gap-2 ${
-                                                    !importFile || summary?.is_cycle_locked
-                                                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                                                        : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
-                                                }`}
-                                            >
-                                                {importing ? (
-                                                    <>
-                                                        <RefreshCw className="w-4 h-4 animate-spin" />
-                                                        <span>Đang phân tích & lưu...</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <CheckCheck className="w-4 h-4" />
-                                                        <span>Bắt Đầu Import & Đối Soát</span>
-                                                    </>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </form>
-                                </div>
-
-                                {/* Cột 3: Hướng Dẫn & Quy Tắc */}
-                                <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                                        <HelpCircle className="w-4 h-4 text-indigo-400" />
-                                        <span>Quy Tắc Import & Validate</span>
-                                    </h4>
-                                    <ul className="text-xs text-slate-300 space-y-2.5">
-                                        <li className="flex items-start gap-2">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0"></span>
-                                            <span>File mẫu chứa đúng mã công tơ của từng căn hộ để tránh nhầm lẫn.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0"></span>
-                                            <span><strong>Chỉ số mới &ge; Chỉ số cũ:</strong> Hệ thống tự động chặn nếu chỉ số mới thấp hơn chỉ số cũ.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0"></span>
-                                            <span><strong>Thay đồng hồ:</strong> Điền giá trị <code>1</code> tại cột <i>Thay Đồng Hồ Mới</i> nếu vừa thay công tơ.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 mt-1.5 shrink-0"></span>
-                                            <span><strong>Khóa sổ:</strong> Không thể import khi chu kỳ đã được ban quản lý khóa sổ.</span>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-
-                            {/* Báo Cáo Kết Quả Đợt Import Mới Nhất (Nếu có) */}
-                            {lastImportBatch && (
-                                <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold text-white">Kết Quả Đợt Import:</span>
-                                            <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-indigo-300">
-                                                {lastImportBatch.batch_code}
-                                            </span>
-                                        </div>
-                                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                            lastImportBatch.import_status === 'COMPLETED'
-                                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                                : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                                        }`}>
-                                            {lastImportBatch.import_status}
-                                        </span>
-                                    </div>
-
-                                    {/* Chỉ số nhanh */}
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-center">
-                                            <div className="text-xs text-slate-400 font-medium">Tổng Bản Ghi</div>
-                                            <div className="text-xl font-extrabold text-white mt-1">{lastImportBatch.total_records}</div>
-                                        </div>
-                                        <div className="bg-emerald-950/20 p-3 rounded-xl border border-emerald-500/20 text-center">
-                                            <div className="text-xs text-emerald-400 font-medium">Thành Công</div>
-                                            <div className="text-xl font-extrabold text-emerald-400 mt-1">{lastImportBatch.success_records}</div>
-                                        </div>
-                                        <div className="bg-rose-950/20 p-3 rounded-xl border border-rose-500/20 text-center">
-                                            <div className="text-xs text-rose-400 font-medium">Dòng Lỗi Bị Chặn</div>
-                                            <div className="text-xl font-extrabold text-rose-400 mt-1">{lastImportBatch.failed_records}</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Bảng Chi Tiết Lỗi (nếu có lỗi) */}
-                                    {lastImportBatch.error_summary_json && lastImportBatch.error_summary_json.length > 0 && (
-                                        <div className="space-y-2 pt-2">
-                                            <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 uppercase tracking-wider">
-                                                <FileWarning className="w-4 h-4" />
-                                                <span>Chi Tiết {lastImportBatch.error_summary_json.length} Dòng Bị Lỗi Cần Sửa:</span>
-                                            </div>
-                                            <div className="max-h-60 overflow-y-auto border border-rose-500/20 rounded-xl overflow-hidden">
-                                                <table className="w-full text-left text-xs text-slate-300">
-                                                    <thead className="bg-rose-950/30 text-rose-300 uppercase font-semibold">
-                                                        <tr>
-                                                            <th className="p-2.5">Dòng Excel</th>
-                                                            <th className="p-2.5">Mã Đồng Hồ</th>
-                                                            <th className="p-2.5">Căn Hộ</th>
-                                                            <th className="p-2.5">Nguyên Nhân Lỗi</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-800">
-                                                        {lastImportBatch.error_summary_json.map((err, idx) => (
-                                                            <tr key={idx} className="hover:bg-rose-500/5">
-                                                                <td className="p-2.5 font-mono text-slate-400 font-bold">Dòng {err.line}</td>
-                                                                <td className="p-2.5 font-mono text-slate-200">{err.meter_code}</td>
-                                                                <td className="p-2.5 text-slate-300">{err.apartment || 'N/A'}</td>
-                                                                <td className="p-2.5 text-rose-300">{err.error}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Bảng Lịch Sử Các Đợt Import (Batches) */}
-                            <div className="space-y-3 pt-2">
-                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-indigo-400" />
-                                    <span>Lịch Sử Các Đợt Import Trong Kỳ</span>
-                                </h4>
-
-                                <div className="border border-slate-800 rounded-xl overflow-hidden">
-                                    <table className="w-full text-left text-xs text-slate-300">
-                                        <thead className="bg-slate-950/70 border-b border-slate-800 uppercase font-semibold text-slate-400">
-                                            <tr>
-                                                <th className="py-3 px-4">Mã Đợt (Batch Code)</th>
-                                                <th className="py-3 px-4">Tên Tệp</th>
-                                                <th className="py-3 px-4">Kỳ Chốt</th>
-                                                <th className="py-3 px-4 text-right">Tổng Dòng</th>
-                                                <th className="py-3 px-4 text-right">Thành Công</th>
-                                                <th className="py-3 px-4 text-right">Thất Bại</th>
-                                                <th className="py-3 px-4 text-center">Trạng Thái</th>
-                                                <th className="py-3 px-4 text-right">Thao Tác</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-800/60">
-                                            {batches.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={8} className="py-8 text-center text-slate-500">
-                                                        Chưa có đợt import nào trong kỳ này.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                batches.map((b) => (
-                                                    <tr key={b.id} className="hover:bg-slate-800/40">
-                                                        <td className="py-3 px-4 font-mono font-bold text-indigo-300">{b.batch_code}</td>
-                                                        <td className="py-3 px-4 text-slate-200">{b.file_name}</td>
-                                                        <td className="py-3 px-4 font-mono text-slate-400">{b.billing_month_year}</td>
-                                                        <td className="py-3 px-4 text-right font-mono font-bold">{b.total_records}</td>
-                                                        <td className="py-3 px-4 text-right font-mono text-emerald-400 font-bold">{b.success_records}</td>
-                                                        <td className="py-3 px-4 text-right font-mono text-rose-400 font-bold">{b.failed_records}</td>
-                                                        <td className="py-3 px-4 text-center">
-                                                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                                                                b.import_status === 'COMPLETED'
-                                                                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                                                    : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                                                            }`}>
-                                                                {b.import_status}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-3 px-4 text-right">
-                                                            {b.error_summary_json && b.error_summary_json.length > 0 && (
-                                                                <button
-                                                                    onClick={() => setSelectedBatchForDetail(b)}
-                                                                    className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 font-semibold"
-                                                                >
-                                                                    Xem {b.error_summary_json.length} lỗi
-                                                                </button>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Phân trang */}
-                    {pagination.total > 15 && (
-                        <div className="flex items-center justify-between p-4 bg-slate-950/60 border-t border-slate-800 text-xs text-slate-400">
-                            <span>
-                                Hiển thị trang {pagination.current_page} / {pagination.last_page} ({pagination.total} bản ghi)
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setPagination(p => ({ ...p, current_page: Math.max(1, p.current_page - 1) }))}
-                                    disabled={pagination.current_page <= 1}
-                                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200"
-                                >
-                                    Trang trước
-                                </button>
-                                <button
-                                    onClick={() => setPagination(p => ({ ...p, current_page: Math.min(pagination.last_page, p.current_page + 1) }))}
-                                    disabled={pagination.current_page >= pagination.last_page}
-                                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200"
-                                >
-                                    Trang sau
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
+                )}
             </div>
 
             {/* MODAL 1: FORM CHỐT CHỈ SỐ THỦ CÔNG THÔNG MINH */}
             {isEntryModalOpen && selectedMeterForEntry && (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
                         {/* Modal Header */}
-                        <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/60">
+                        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/70">
                             <div className="flex items-center gap-3">
-                                <div className={`p-2.5 rounded-xl border ${
+                                <div className={`p-2 rounded-xl border ${
                                     selectedMeterForEntry.meter_type === 'ELECTRICITY'
-                                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                                        : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                                        ? 'bg-amber-50 border-amber-200 text-amber-600'
+                                        : 'bg-sky-50 border-sky-200 text-sky-600'
                                 }`}>
                                     {selectedMeterForEntry.meter_type === 'ELECTRICITY' ? <Zap className="w-5 h-5" /> : <Droplets className="w-5 h-5" />}
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold text-white">
+                                    <h3 className="text-base font-bold text-slate-900">
                                         Chốt Chỉ Số: Căn {selectedMeterForEntry.apartment?.apartment_number}
                                     </h3>
-                                    <p className="text-xs text-slate-400 font-mono">
+                                    <p className="text-xs text-slate-500 font-mono">
                                         Mã công tơ: {selectedMeterForEntry.meter_code} ({selectedMeterForEntry.meter_type})
                                     </p>
                                 </div>
                             </div>
                             <button
+                                type="button"
                                 onClick={() => setIsEntryModalOpen(false)}
-                                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
                             >
-                                <X className="w-5 h-5" />
+                                <X className="w-4 h-4" />
                             </button>
                         </div>
 
                         {/* Modal Form */}
-                        <form onSubmit={(e) => handleSubmitEntry(e, false)} className="p-6 space-y-5">
+                        <form onSubmit={(e) => handleSubmitEntry(e, false)} className="p-6 space-y-4">
                             {/* Cảnh báo Validation / Bất thường nếu có */}
                             {validationWarning && (
-                                <div className={`p-4 rounded-xl text-xs flex items-start gap-3 border ${
+                                <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 border ${
                                     validationWarning.type === 'error'
-                                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-                                        : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                        ? 'bg-rose-50 border-rose-200 text-rose-700'
+                                        : 'bg-amber-50 border-amber-200 text-amber-800'
                                 }`}>
-                                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-                                    <div>{validationWarning.text}</div>
-                                </div>
+                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                <div>{validationWarning.text}</div>
+                            </div>
                             )}
 
                             {/* Hàng: Chỉ số cũ vs Chỉ số mới */}
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-700 uppercase">
                                         Chỉ Số Cũ (Kỳ Trước)
                                     </label>
                                     <input
@@ -1258,15 +1352,15 @@ export const MeterReadingManagement: React.FC = () => {
                                         step="0.01"
                                         value={entryForm.previous_reading}
                                         onChange={(e) => setEntryForm({ ...entryForm, previous_reading: parseFloat(e.target.value) || 0 })}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-base font-mono font-bold text-slate-300 focus:outline-none focus:border-indigo-500"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                                     />
-                                    <p className="text-[11px] text-slate-500">Chỉ số chốt liền trước của đồng hồ</p>
+                                    <p className="text-[10px] text-slate-400">Chỉ số chốt kỳ liền trước</p>
                                 </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-indigo-400 uppercase tracking-wider flex items-center justify-between">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-sky-700 uppercase flex items-center justify-between">
                                         <span>Chỉ Số Mới (*)</span>
-                                        <span className="text-[11px] font-normal lowercase">ghi hôm nay</span>
+                                        <span className="text-[10px] font-normal lowercase text-slate-400">hôm nay</span>
                                     </label>
                                     <input
                                         type="number"
@@ -1275,51 +1369,51 @@ export const MeterReadingManagement: React.FC = () => {
                                         required
                                         value={entryForm.current_reading}
                                         onChange={(e) => setEntryForm({ ...entryForm, current_reading: parseFloat(e.target.value) || 0 })}
-                                        className="w-full bg-slate-950 border-2 border-indigo-500/60 rounded-xl px-3.5 py-2.5 text-base font-mono font-bold text-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
+                                        className="w-full bg-white border-2 border-sky-500 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                                     />
-                                    <p className="text-[11px] text-slate-500">Nhập chỉ số hiển thị trên mặt công tơ</p>
+                                    <p className="text-[10px] text-slate-400">Mặt số công tơ hiện tại</p>
                                 </div>
                             </div>
 
                             {/* Card Hiển thị Lượng tiêu thụ tự động */}
-                            <div className="p-4 rounded-xl bg-gradient-to-r from-slate-950 to-slate-900 border border-slate-800 flex items-center justify-between">
+                            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                                 <div>
-                                    <span className="text-xs text-slate-400 font-medium">Sản lượng tiêu thụ tính toán:</span>
-                                    <div className="text-2xl font-black font-mono mt-0.5 flex items-baseline gap-1.5">
-                                        <span className={selectedMeterForEntry.meter_type === 'ELECTRICITY' ? 'text-amber-400' : 'text-cyan-400'}>
+                                    <span className="text-xs text-slate-500 font-medium">Sản lượng tiêu thụ tính toán:</span>
+                                    <div className="text-xl font-black font-mono mt-0.5 flex items-baseline gap-1.5">
+                                        <span className={selectedMeterForEntry.meter_type === 'ELECTRICITY' ? 'text-amber-600' : 'text-sky-600'}>
                                             +{calculatedConsumption.toLocaleString('vi-VN')}
                                         </span>
-                                        <span className="text-xs font-semibold text-slate-400">
+                                        <span className="text-xs font-bold text-slate-500">
                                             {selectedMeterForEntry.meter_type === 'ELECTRICITY' ? 'kWh' : 'm³'}
                                         </span>
                                     </div>
                                 </div>
                                 <div className="text-right text-xs text-slate-500">
                                     <div>Hệ số nhân: x{selectedMeterForEntry.multiplier_factor}</div>
-                                    <div className="text-slate-400 font-mono mt-0.5">
+                                    <div className="text-slate-700 font-mono mt-0.5 font-semibold">
                                         {entryForm.current_reading} - {entryForm.previous_reading}
                                     </div>
                                 </div>
                             </div>
 
                             {/* Tùy chọn Thay mới đồng hồ (Force reset) */}
-                            <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                                 <input
                                     type="checkbox"
                                     id="forceResetCheckbox"
                                     checked={entryForm.force_reset}
                                     onChange={(e) => setEntryForm({ ...entryForm, force_reset: e.target.checked })}
-                                    className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300"
                                 />
-                                <label htmlFor="forceResetCheckbox" className="text-xs text-slate-300 font-medium cursor-pointer">
+                                <label htmlFor="forceResetCheckbox" className="text-xs text-slate-700 font-medium cursor-pointer">
                                     Xác nhận vừa thay mới đồng hồ (Cho phép chỉ số mới nhỏ hơn chỉ số cũ)
                                 </label>
                             </div>
 
                             {/* Đính kèm ảnh công tơ */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                    <Camera className="w-3.5 h-3.5 text-indigo-400" />
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                                    <Camera className="w-3.5 h-3.5 text-sky-600" />
                                     <span>Ảnh Chụp Mặt Đồng Hồ (Đối Soát Minh Bạch)</span>
                                 </label>
                                 <div className="flex items-center gap-3">
@@ -1333,13 +1427,13 @@ export const MeterReadingManagement: React.FC = () => {
                                                 setPhotoPreview(URL.createObjectURL(file));
                                             }
                                         }}
-                                        className="block w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
+                                        className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
                                     />
                                     {photoPreview && (
                                         <button
                                             type="button"
                                             onClick={() => setPreviewImageUrl(photoPreview)}
-                                            className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 hover:bg-indigo-500/20 whitespace-nowrap"
+                                            className="px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-700 hover:bg-sky-100 whitespace-nowrap font-bold"
                                         >
                                             Xem trước
                                         </button>
@@ -1348,8 +1442,8 @@ export const MeterReadingManagement: React.FC = () => {
                             </div>
 
                             {/* Ghi chú */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-700 uppercase">
                                     Ghi Chú Kỹ Thuật Viên
                                 </label>
                                 <textarea
@@ -1357,16 +1451,16 @@ export const MeterReadingManagement: React.FC = () => {
                                     placeholder="Lý do tiêu thụ cao, tình trạng công tơ, v.v..."
                                     value={entryForm.notes}
                                     onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                                 />
                             </div>
 
                             {/* Nút Submit */}
-                            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 bg-slate-50/50 -mx-6 -mb-6 p-4">
                                 <button
                                     type="button"
                                     onClick={() => setIsEntryModalOpen(false)}
-                                    className="px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
                                 >
                                     Hủy Bỏ
                                 </button>
@@ -1374,17 +1468,17 @@ export const MeterReadingManagement: React.FC = () => {
                                     type="button"
                                     onClick={(e) => handleSubmitEntry(e, true)}
                                     disabled={submitting}
-                                    className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-indigo-300 hover:text-indigo-200 transition-colors inline-flex items-center gap-1.5"
+                                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-sky-700 hover:bg-sky-50 shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
                                 >
-                                    <Save className="w-4 h-4" />
+                                    <Save className="w-3.5 h-3.5" />
                                     <span>Lưu & Tiếp Căn Kế</span>
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={submitting}
-                                    className="px-5 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all inline-flex items-center gap-1.5"
+                                    className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
                                 >
-                                    {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                    {submitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                                     <span>Lưu Chỉ Số</span>
                                 </button>
                             </div>
@@ -1395,25 +1489,26 @@ export const MeterReadingManagement: React.FC = () => {
 
             {/* MODAL 2: XEM ẢNH CÔNG TƠ PHÓNG TO */}
             {previewImageUrl && (
-                <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="relative max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-                        <div className="flex items-center justify-between p-4 border-b border-slate-800">
-                            <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                <Camera className="w-4 h-4 text-indigo-400" />
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="relative max-w-2xl w-full bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xl">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/70">
+                            <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                                <Camera className="w-4 h-4 text-sky-600" />
                                 <span>Ảnh Chụp Bằng Chứng Công Tơ</span>
                             </h4>
                             <button
+                                type="button"
                                 onClick={() => setPreviewImageUrl(null)}
-                                className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
                             >
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
-                        <div className="p-4 flex items-center justify-center bg-black/40 max-h-[70vh] overflow-auto">
+                        <div className="p-4 flex items-center justify-center bg-slate-50 max-h-[70vh] overflow-auto">
                             <img
                                 src={previewImageUrl}
                                 alt="Ảnh công tơ đối soát"
-                                className="max-h-[60vh] object-contain rounded-lg shadow-lg"
+                                className="max-h-[60vh] object-contain rounded-xl shadow-md border border-slate-200"
                             />
                         </div>
                     </div>
@@ -1422,25 +1517,25 @@ export const MeterReadingManagement: React.FC = () => {
 
             {/* MODAL 3: XÁC NHẬN KHÓA SỔ / MỞ KHÓA KỲ */}
             {isLockConfirmOpen && (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
                         <div className="flex items-center gap-3">
-                            <div className={`p-3 rounded-xl border ${
+                            <div className={`p-2.5 rounded-xl border ${
                                 summary?.is_cycle_locked
-                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                    : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                                    : 'bg-rose-50 border-rose-200 text-rose-600'
                             }`}>
-                                {summary?.is_cycle_locked ? <Unlock className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+                                {summary?.is_cycle_locked ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
                             </div>
                             <div>
-                                <h4 className="text-lg font-bold text-white">
+                                <h4 className="text-base font-bold text-slate-900">
                                     {summary?.is_cycle_locked ? 'Mở Khóa Sổ Kỳ Chốt Số' : 'Khóa Sổ Kỳ Chốt Số'}
                                 </h4>
-                                <p className="text-xs text-slate-400">Chu kỳ: {selectedCycle}</p>
+                                <p className="text-xs text-slate-500 font-mono">Chu kỳ: {selectedCycle}</p>
                             </div>
                         </div>
 
-                        <p className="text-sm text-slate-300 leading-relaxed">
+                        <p className="text-xs text-slate-600 leading-relaxed">
                             {summary?.is_cycle_locked ? (
                                 'Mở khóa sổ sẽ cho phép ban quản lý tiếp tục chỉnh sửa hoặc nhập bổ sung chỉ số đo của các căn hộ.'
                             ) : (
@@ -1448,22 +1543,33 @@ export const MeterReadingManagement: React.FC = () => {
                             )}
                         </p>
 
-                        <div className="flex items-center justify-end gap-3 pt-2">
+                        <div className="flex items-center justify-end gap-2 pt-2">
                             <button
+                                type="button"
+                                disabled={isLockingCycle}
                                 onClick={() => setIsLockConfirmOpen(false)}
-                                className="px-4 py-2 rounded-xl text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700"
+                                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Hủy Bỏ
                             </button>
                             <button
+                                type="button"
+                                disabled={isLockingCycle}
                                 onClick={handleToggleLockCycle}
-                                className={`px-5 py-2 rounded-xl text-sm font-bold text-white shadow-lg ${
+                                className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                                     summary?.is_cycle_locked
-                                        ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
-                                        : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30'
+                                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                                        : 'bg-rose-600 hover:bg-rose-700'
                                 }`}
                             >
-                                {summary?.is_cycle_locked ? 'Xác Nhận Mở Sổ' : 'Xác Nhận Khóa Sổ'}
+                                {isLockingCycle ? (
+                                    <>
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                        <span>Đang cập nhật...</span>
+                                    </>
+                                ) : (
+                                    summary?.is_cycle_locked ? 'Xác Nhận Mở Sổ' : 'Xác Nhận Khóa Sổ'
+                                )}
                             </button>
                         </div>
                     </div>
@@ -1472,54 +1578,58 @@ export const MeterReadingManagement: React.FC = () => {
 
             {/* MODAL 4: XEM CHI TIẾT ĐỢT IMPORT & LỖI */}
             {selectedBatchForDetail && (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/70">
                             <div>
-                                <h4 className="text-base font-bold text-white flex items-center gap-2">
-                                    <FileWarning className="w-5 h-5 text-rose-400" />
+                                <h4 className="text-base font-bold text-neutral-900 flex items-center gap-2">
+                                    <FileWarning className="w-5 h-5 text-rose-600" />
                                     <span>Chi Tiết Lỗi Đợt Import: {selectedBatchForDetail.batch_code}</span>
                                 </h4>
-                                <p className="text-xs text-slate-400 mt-0.5">Tệp gốc: {selectedBatchForDetail.file_name}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">Tệp gốc: {selectedBatchForDetail.file_name}</p>
                             </div>
                             <button
+                                type="button"
                                 onClick={() => setSelectedBatchForDetail(null)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                             >
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
 
-                        <div className="max-h-80 overflow-y-auto border border-slate-800 rounded-xl overflow-hidden">
-                            <table className="w-full text-left text-xs text-slate-300">
-                                <thead className="bg-slate-950/80 uppercase font-semibold text-slate-400 sticky top-0">
-                                    <tr>
-                                        <th className="p-3">Dòng</th>
-                                        <th className="p-3">Mã Đồng Hồ</th>
-                                        <th className="p-3">Căn Hộ</th>
-                                        <th className="p-3">Nguyên Nhân Lỗi Cụ Thể</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800">
-                                    {selectedBatchForDetail.error_summary_json?.map((err, i) => (
-                                        <tr key={i} className="hover:bg-slate-800/40">
-                                            <td className="p-3 font-mono font-bold text-indigo-400">Dòng {err.line}</td>
-                                            <td className="p-3 font-mono text-slate-200">{err.meter_code}</td>
-                                            <td className="p-3 text-slate-300">{err.apartment || 'N/A'}</td>
-                                            <td className="p-3 text-rose-400 font-medium">{err.error}</td>
+                        <div className="p-6">
+                            <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-xl overflow-hidden">
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead className="bg-slate-50 text-slate-600 uppercase font-semibold font-mono sticky top-0 border-b border-slate-200">
+                                        <tr>
+                                            <th className="p-3">Dòng</th>
+                                            <th className="p-3">Mã Đồng Hồ</th>
+                                            <th className="p-3">Căn Hộ</th>
+                                            <th className="p-3">Nguyên Nhân Lỗi Cụ Thể</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {selectedBatchForDetail.error_summary_json?.map((err, i) => (
+                                            <tr key={i} className="hover:bg-slate-50/60 transition-colors">
+                                                <td className="p-3 font-mono font-bold text-sky-600">Dòng {err.line}</td>
+                                                <td className="p-3 font-mono font-semibold text-slate-800">{err.meter_code}</td>
+                                                <td className="p-3 text-slate-600">{err.apartment || 'N/A'}</td>
+                                                <td className="p-3 text-rose-600 font-medium">{err.error}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
 
-                        <div className="flex justify-end pt-2">
-                            <button
-                                onClick={() => setSelectedBatchForDetail(null)}
-                                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
-                            >
-                                Đóng
-                            </button>
+                            <div className="flex justify-end pt-5">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedBatchForDetail(null)}
+                                    className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 shadow-2xs cursor-pointer"
+                                >
+                                    Đóng
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1528,14 +1638,14 @@ export const MeterReadingManagement: React.FC = () => {
             {/* Toast Thông báo */}
             {toast && (
                 <div
-                    className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border animate-in slide-in-from-bottom-5 duration-200 ${
+                    className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 border animate-in slide-in-from-bottom duration-200 ${
                         toast.type === 'success'
-                            ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200 shadow-emerald-950/50'
-                            : 'bg-rose-950/90 border-rose-500/50 text-rose-200 shadow-rose-950/50'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : 'bg-rose-50 text-rose-800 border-rose-300'
                     }`}
                 >
-                    {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <AlertTriangle className="w-5 h-5 text-rose-400" />}
-                    <span className="text-sm font-medium">{toast.message}</span>
+                    {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-rose-600" />}
+                    <span className="text-xs font-semibold">{toast.message}</span>
                 </div>
             )}
         </div>
