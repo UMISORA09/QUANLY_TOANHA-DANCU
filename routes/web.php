@@ -33,6 +33,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
 use App\Http\Controllers\TemporaryRegistrationController;
+use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -201,6 +202,15 @@ Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelContro
 Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
 Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
 Route::put('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+
+Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('/', [TicketManagementController::class, 'index']);
+    Route::get('options', [TicketManagementController::class, 'options']);
+    Route::post('/', [TicketManagementController::class, 'store']);
+    Route::get('{id}', [TicketManagementController::class, 'show']);
+    Route::patch('{id}', [TicketManagementController::class, 'update']);
+    Route::delete('{id}', [TicketManagementController::class, 'destroy']);
+});
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');

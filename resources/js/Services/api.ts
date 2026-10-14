@@ -2100,6 +2100,15 @@ class ApiService {
     return this.request<{ success: boolean; data: TicketCategoryItem[] }>('/resident/tickets/categories');
   }
 
+  async getManagedTickets(params: URLSearchParams, signal?: AbortSignal) {
+    return this.request<{ data: ManagedTicket[]; current_page: number; last_page: number; total: number }>(`/admin/tickets?${params}`, { signal });
+  }
+  async getTicketOptions() { return this.request<TicketOptions>('/admin/tickets/options'); }
+  async getManagedTicket(id: string) { return this.request<ManagedTicket>(`/admin/tickets/${id}`); }
+  async createManagedTicket(payload: Record<string, unknown>) { return this.request<ManagedTicket>('/admin/tickets', { method: 'POST', body: JSON.stringify(payload) }); }
+  async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
+  async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
+
   async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
     if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
     const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
@@ -2195,6 +2204,17 @@ class ApiService {
   async getResidentTicketHistory(id: string) {
     return this.request<{ success: boolean; data: TicketHistoryItem[] }>(`/resident/tickets/${id}/history`);
   }
+}
+
+export interface ManagedTicket extends TicketItem {
+  actions: Record<string, boolean>;
+}
+export interface TicketOptions {
+  categories: TicketCategoryItem[];
+  blocks: { id: string; block_name: string }[];
+  apartments: { id: string; block_id: string; apartment_number: string }[];
+  residents: { id: string; apartment_id: string; full_name: string }[];
+  can_create: boolean;
 }
 
 export interface TicketCategoryItem {

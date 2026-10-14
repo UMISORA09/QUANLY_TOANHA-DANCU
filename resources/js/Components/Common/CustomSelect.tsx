@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 
 export interface SelectOption<T = string> {
@@ -45,6 +45,8 @@ export function CustomSelect<T extends string | number | null = string>({
 }: CustomSelectProps<T>) {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const generatedId = useId();
+    const selectId = id || generatedId;
 
     // Tìm option đang được chọn
     const selectedOption = options.find((opt) => opt.value === value);
@@ -78,12 +80,22 @@ export function CustomSelect<T extends string | number | null = string>({
         if (option.disabled) return;
         onChange(option.value);
         setIsOpen(false);
+        containerRef.current?.querySelector('button')?.focus();
     };
 
     return (
-        <div className={`relative ${isOpen ? 'z-40' : 'z-10'} ${className}`} ref={containerRef}>
+        <div className={`relative ${isOpen ? 'z-40' : 'z-10'} ${className}`} ref={containerRef} onKeyDown={(event) => {
+            if (event.key === 'Escape') { setIsOpen(false); containerRef.current?.querySelector('button')?.focus(); return; }
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            if (!isOpen) { setIsOpen(true); requestAnimationFrame(() => containerRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)')?.focus()); return; }
+            const buttons = Array.from(containerRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') || []);
+            const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length;
+            buttons[next]?.focus();
+        }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false); }}>
             {label && (
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                <label htmlFor={selectId} className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                     {label} {required && <span className="text-rose-500">*</span>}
                 </label>
             )}
@@ -91,7 +103,7 @@ export function CustomSelect<T extends string | number | null = string>({
             {/* Trigger Button */}
             <button
                 type="button"
-                id={id}
+                id={selectId}
                 disabled={disabled}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 aria-haspopup="listbox"

@@ -18,6 +18,7 @@ import {
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
+import { TicketManagementPanel } from '../../Components/TicketManagementPanel';
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -487,6 +488,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         )}
 
         {/* TAB 5: CI/CD & DEVOPS */}
+        {activeTab === 'tickets' && <TicketManagementPanel />}
         {activeTab === 'cicd' && (
           <div className="space-y-6">
             <CicdDashboard userRole="admin" />
