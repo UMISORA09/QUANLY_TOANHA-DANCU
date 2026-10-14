@@ -138,7 +138,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   initialTab = 'list',
   onNavigateOverview,
 }) => {
-  const [viewMode, setViewMode] = useState<'list' | 'create' | 'detail'>(initialTab);
+  const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(initialTab === 'create');
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [counters, setCounters] = useState({
     all: 0,
@@ -429,7 +430,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         });
         setSelectedFiles([]);
         setFilePreviews([]);
-        // Quay về danh sách và refresh
+        // Đóng modal, quay về danh sách và refresh
+        setIsCreateModalOpen(false);
         setViewMode('list');
         fetchTickets();
       }
@@ -645,7 +647,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
             <button
               id="ticket-open-create-btn"
               type="button"
-              onClick={() => setViewMode('create')}
+              onClick={() => setIsCreateModalOpen(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow-md transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 text-amber-400" />
@@ -758,320 +760,353 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         </div>
       </div>
 
-      {/* ================= VIEW 1: FORM BÁO CÁO SỰ CỐ MỚI ================= */}
-      {viewMode === 'create' && (
-        <div className="bg-white/90 backdrop-blur-md border border-neutral-200/80 rounded-2xl shadow-xs overflow-hidden p-6 sm:p-8 animate-in fade-in duration-200">
-          <div className="border-b border-neutral-100 pb-5 mb-6">
-            <h2 className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-              <Wrench className="w-5 h-5 text-amber-500" />
-              <span>Gửi yêu cầu Báo cáo Sự cố Kỹ thuật</span>
-            </h2>
-            <p className="text-xs text-neutral-500 mt-1">
-              Vui lòng điền thông tin chính xác về tình trạng hư hỏng để kỹ thuật viên chuẩn bị dụng cụ phù hợp.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmitTicket} className="space-y-8">
-            {/* SECTION 1: THÔNG TIN CƯ DÂN & CĂN HỘ */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
-                  1
-                </span>
-                <span>Thông tin Cư dân & Căn hộ xảy ra sự cố</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-neutral-50/70 p-4 rounded-xl border border-neutral-200/60 text-xs">
-                <div>
-                  <label className="block text-neutral-500 font-medium mb-1">Họ tên cư dân</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={currentUser?.full_name || 'Nguyễn Văn An'}
-                    className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
-                  />
+      {/* ================= MODAL: FORM BÁO CÁO SỰ CỐ MỚI (POPUP GIỮA MÀN HÌNH) ================= */}
+      {isCreateModalOpen && (
+        <div
+          id="ticket-create-modal"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsCreateModalOpen(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-8 animate-in zoom-in-95 duration-200 my-auto relative">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-neutral-100 pb-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                  <Wrench className="w-5 h-5" />
                 </div>
-
                 <div>
-                  <label className="block text-neutral-500 font-medium mb-1">Số điện thoại liên hệ</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={currentUser?.phone_number || '0909 123 456'}
-                    className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-neutral-500 font-medium mb-1">Căn hộ / Tòa nhà</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={
-                      apartments.length > 0
-                        ? `Căn ${apartments[0].apartment_number} (${apartments[0].block_name || 'Tòa Ruby'})`
-                        : 'Căn hộ mặc định'
-                    }
-                    className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
-                  />
+                  <h2 className="text-base sm:text-lg font-bold text-neutral-900">
+                    Gửi yêu cầu Báo cáo Sự cố Kỹ thuật
+                  </h2>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Vui lòng điền thông tin chính xác về tình trạng hư hỏng để kỹ thuật viên chuẩn bị dụng cụ phù hợp.
+                  </p>
                 </div>
               </div>
-            </div>
-
-            {/* SECTION 2: CHI TIẾT SỰ CỐ KỸ THUẬT */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
-                  2
-                </span>
-                <span>Nội dung chi tiết sự cố</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Tiêu đề sự cố */}
-                <div className="sm:col-span-2">
-                  <label htmlFor="ticket-title-input" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                    Tiêu đề sự cố <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="ticket-title-input"
-                    type="text"
-                    placeholder="Ví dụ: Rò rỉ vòi rửa chén, chập công tắc đèn phòng khách..."
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
-                      formErrors.title ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
-                    }`}
-                  />
-                  {formErrors.title && (
-                    <p className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>{formErrors.title}</span>
-                    </p>
-                  )}
-                </div>
-
-                {/* Loại sự cố (Category) */}
-                <div>
-                  <label htmlFor="ticket-category-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                    Phân loại sự cố <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    id="ticket-category-select"
-                    value={formData.category_id}
-                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
-                      formErrors.category_id ? 'border-rose-400' : 'border-neutral-200'
-                    }`}
-                  >
-                    <option value="">-- Chọn danh mục sự cố --</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.category_name}
-                      </option>
-                    ))}
-                  </select>
-                  {formErrors.category_id && (
-                    <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.category_id}</p>
-                  )}
-                </div>
-
-                {/* Vị trí sự cố (Location) */}
-                <div>
-                  <label htmlFor="ticket-location-input" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                    Vị trí xảy ra sự cố <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="ticket-location-input"
-                    type="text"
-                    placeholder="Ví dụ: Phòng tắm lớn, Ban công, Khu bếp..."
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
-                      formErrors.location ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
-                    }`}
-                  />
-                  {/* Quick location chips */}
-                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    <span className="text-[10px] text-neutral-400 font-medium">Gợi ý nhanh:</span>
-                    {['Phòng khách', 'Khu vực bếp', 'Phòng tắm', 'Ban công', 'Cửa ra vào', 'Hành lang'].map((loc) => (
-                      <button
-                        type="button"
-                        key={loc}
-                        onClick={() => setFormData({ ...formData, location: loc })}
-                        className="text-[10px] px-2 py-0.5 rounded-md bg-neutral-100 hover:bg-neutral-200 text-neutral-600 transition-colors"
-                      >
-                        {loc}
-                      </button>
-                    ))}
-                  </div>
-                  {formErrors.location && (
-                    <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.location}</p>
-                  )}
-                </div>
-
-                {/* Mức độ khẩn cấp (Priority) */}
-                <div>
-                  <label htmlFor="ticket-priority-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                    Mức độ khẩn cấp
-                  </label>
-                  <select
-                    id="ticket-priority-select"
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
-                  >
-                    <option value="LOW">Thấp (Chưa ảnh hưởng sinh hoạt ngay)</option>
-                    <option value="MEDIUM">Bình thường (Cần kiểm tra trong 24h)</option>
-                    <option value="HIGH">Ưu tiên cao (Ảnh hưởng trực tiếp sinh hoạt)</option>
-                    <option value="URGENT">Khẩn cấp (Rò rỉ nước lớn, chập điện nguy hiểm)</option>
-                  </select>
-                </div>
-
-                {/* Giờ mong muốn tiếp nhận */}
-                <div>
-                  <label htmlFor="ticket-preferred-time-input" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                    Thời gian thuận tiện kỹ thuật đến kiểm tra
-                  </label>
-                  <input
-                    id="ticket-preferred-time-input"
-                    type="datetime-local"
-                    value={formData.preferred_service_time}
-                    onChange={(e) => setFormData({ ...formData, preferred_service_time: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
-                  />
-                  <span className="text-[10px] text-neutral-400 mt-1 block">
-                    Không bắt buộc. Kỹ thuật viên sẽ liên hệ trước khi đến.
-                  </span>
-                </div>
-
-                {/* Mô tả chi tiết sự cố */}
-                <div className="sm:col-span-2">
-                  <label htmlFor="ticket-description-textarea" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                    Mô tả chi tiết sự cố <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    id="ticket-description-textarea"
-                    rows={4}
-                    placeholder="Mô tả hiện tượng, triệu chứng hỏng hóc, thời điểm bắt đầu xảy ra..."
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
-                      formErrors.description ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
-                    }`}
-                  />
-                  {formErrors.description && (
-                    <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.description}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* SECTION 3: HÌNH ẢNH MINH CHỨNG */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                  <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
-                    3
-                  </span>
-                  <span>Hình ảnh minh chứng thực tế (Tối đa 5 ảnh)</span>
-                </div>
-                <span className="text-[11px] text-neutral-400 font-medium font-mono">
-                  {selectedFiles.length} / 5 ảnh
-                </span>
-              </div>
-
-              {/* Upload Dropzone */}
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-neutral-300 hover:border-neutral-900 rounded-2xl p-6 text-center cursor-pointer transition-all bg-neutral-50/50 hover:bg-neutral-50 group"
-              >
-                <input
-                  ref={fileInputRef}
-                  id="ticket-photo-upload"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/jpg"
-                  multiple
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <div className="w-10 h-10 rounded-full bg-white shadow-2xs border border-neutral-200 flex items-center justify-center mx-auto text-neutral-500 group-hover:scale-110 group-hover:text-neutral-900 transition-all">
-                  <Camera className="w-5 h-5" />
-                </div>
-                <p className="text-xs font-bold text-neutral-800 mt-2">
-                  Bấm để tải ảnh lên hoặc kéo thả vào đây
-                </p>
-                <p className="text-[11px] text-neutral-400 mt-0.5">
-                  Định dạng: JPG, PNG, WebP · Dung lượng tối đa: 5MB/ảnh
-                </p>
-              </div>
-
-              {/* Previews Thumbnails */}
-              {filePreviews.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
-                  {filePreviews.map((url, idx) => (
-                    <div
-                      key={idx}
-                      className="relative group rounded-xl overflow-hidden border border-neutral-200 bg-neutral-100 aspect-square"
-                    >
-                      <img src={url} alt={`preview-${idx}`} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewImage(url)}
-                          className="p-1.5 rounded-lg bg-white/90 text-neutral-800 hover:bg-white text-xs"
-                          title="Xem ảnh lớn"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(idx)}
-                          className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-xs"
-                          title="Xóa ảnh này"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-mono">
-                        {Math.round(selectedFiles[idx]?.size / 1024)} KB
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="pt-6 border-t border-neutral-100 flex flex-col sm:flex-row items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={handleResetForm}
-                disabled={isSubmitting}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-100 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-700 p-1.5 rounded-xl hover:bg-neutral-100 transition-colors"
+                title="Đóng cửa sổ"
               >
-                Đặt lại biểu mẫu
-              </button>
-              <button
-                id="ticket-submit-btn"
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Đang gửi báo cáo sự cố...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Gửi yêu cầu hỗ trợ</span>
-                  </>
-                )}
+                <X className="w-5 h-5" />
               </button>
             </div>
-          </form>
+
+            <form onSubmit={handleSubmitTicket} className="space-y-6">
+              {/* SECTION 1: THÔNG TIN CƯ DÂN & CĂN HỘ */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
+                  <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
+                    1
+                  </span>
+                  <span>Thông tin Cư dân & Căn hộ xảy ra sự cố</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-neutral-50/70 p-3.5 rounded-xl border border-neutral-200/60 text-xs">
+                  <div>
+                    <label className="block text-neutral-500 font-medium mb-1">Họ tên cư dân</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={currentUser?.full_name || 'Nguyễn Văn An'}
+                      className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-500 font-medium mb-1">Số điện thoại liên hệ</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={currentUser?.phone_number || '0909 123 456'}
+                      className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-500 font-medium mb-1">Căn hộ / Tòa nhà</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={
+                        apartments.length > 0
+                          ? `Căn ${apartments[0].apartment_number} (${apartments[0].block_name || 'Tòa Ruby'})`
+                          : 'Căn hộ mặc định'
+                      }
+                      className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: CHI TIẾT SỰ CỐ KỸ THUẬT */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
+                  <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
+                    2
+                  </span>
+                  <span>Nội dung chi tiết sự cố</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Tiêu đề sự cố */}
+                  <div className="sm:col-span-2">
+                    <label htmlFor="ticket-title-input" className="block text-xs font-bold text-neutral-800 mb-1.5">
+                      Tiêu đề sự cố <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      id="ticket-title-input"
+                      type="text"
+                      placeholder="Ví dụ: Rò rỉ vòi rửa chén, chập công tắc đèn phòng khách..."
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
+                        formErrors.title ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
+                      }`}
+                    />
+                    {formErrors.title && (
+                      <p className="text-[11px] text-rose-600 font-medium mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        <span>{formErrors.title}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Loại sự cố (Category) */}
+                  <div>
+                    <label htmlFor="ticket-category-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
+                      Phân loại sự cố <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      id="ticket-category-select"
+                      value={formData.category_id}
+                      onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
+                        formErrors.category_id ? 'border-rose-400' : 'border-neutral-200'
+                      }`}
+                    >
+                      <option value="">-- Chọn danh mục sự cố --</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.category_name}
+                        </option>
+                      ))}
+                    </select>
+                    {formErrors.category_id && (
+                      <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.category_id}</p>
+                    )}
+                  </div>
+
+                  {/* Vị trí sự cố (Location) */}
+                  <div>
+                    <label htmlFor="ticket-location-input" className="block text-xs font-bold text-neutral-800 mb-1.5">
+                      Vị trí xảy ra sự cố <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      id="ticket-location-input"
+                      type="text"
+                      placeholder="Ví dụ: Phòng tắm lớn, Ban công, Khu bếp..."
+                      value={formData.location}
+                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
+                        formErrors.location ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
+                      }`}
+                    />
+                    {/* Quick location chips */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="text-[10px] text-neutral-400 font-medium">Gợi ý nhanh:</span>
+                      {['Phòng khách', 'Khu vực bếp', 'Phòng tắm', 'Ban công', 'Cửa ra vào', 'Hành lang'].map((loc) => (
+                        <button
+                          type="button"
+                          key={loc}
+                          onClick={() => setFormData({ ...formData, location: loc })}
+                          className="text-[10px] px-2 py-0.5 rounded-md bg-neutral-100 hover:bg-neutral-200 text-neutral-600 transition-colors"
+                        >
+                          {loc}
+                        </button>
+                      ))}
+                    </div>
+                    {formErrors.location && (
+                      <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.location}</p>
+                    )}
+                  </div>
+
+                  {/* Mức độ khẩn cấp (Priority) */}
+                  <div>
+                    <label htmlFor="ticket-priority-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
+                      Mức độ khẩn cấp
+                    </label>
+                    <select
+                      id="ticket-priority-select"
+                      value={formData.priority}
+                      onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
+                    >
+                      <option value="LOW">Thấp (Chưa ảnh hưởng sinh hoạt ngay)</option>
+                      <option value="MEDIUM">Bình thường (Cần kiểm tra trong 24h)</option>
+                      <option value="HIGH">Ưu tiên cao (Ảnh hưởng trực tiếp sinh hoạt)</option>
+                      <option value="URGENT">Khẩn cấp (Rò rỉ nước lớn, chập điện nguy hiểm)</option>
+                    </select>
+                  </div>
+
+                  {/* Giờ mong muốn tiếp nhận */}
+                  <div>
+                    <label htmlFor="ticket-preferred-time-input" className="block text-xs font-bold text-neutral-800 mb-1.5">
+                      Thời gian thuận tiện kỹ thuật đến kiểm tra
+                    </label>
+                    <input
+                      id="ticket-preferred-time-input"
+                      type="datetime-local"
+                      value={formData.preferred_service_time}
+                      onChange={(e) => setFormData({ ...formData, preferred_service_time: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
+                    />
+                    <span className="text-[10px] text-neutral-400 mt-1 block">
+                      Không bắt buộc. Kỹ thuật viên sẽ liên hệ trước khi đến.
+                    </span>
+                  </div>
+
+                  {/* Mô tả chi tiết sự cố */}
+                  <div className="sm:col-span-2">
+                    <label htmlFor="ticket-description-textarea" className="block text-xs font-bold text-neutral-800 mb-1.5">
+                      Mô tả chi tiết sự cố <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      id="ticket-description-textarea"
+                      rows={4}
+                      placeholder="Mô tả hiện tượng, triệu chứng hỏng hóc, thời điểm bắt đầu xảy ra..."
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
+                        formErrors.description ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
+                      }`}
+                    />
+                    {formErrors.description && (
+                      <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.description}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: HÌNH ẢNH MINH CHỨNG */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
+                    <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
+                      3
+                    </span>
+                    <span>Hình ảnh minh chứng thực tế (Tối đa 5 ảnh)</span>
+                  </div>
+                  <span className="text-[11px] text-neutral-400 font-medium font-mono">
+                    {selectedFiles.length} / 5 ảnh
+                  </span>
+                </div>
+
+                {/* Upload Dropzone */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-neutral-300 hover:border-neutral-900 rounded-2xl p-5 text-center cursor-pointer transition-all bg-neutral-50/50 hover:bg-neutral-50 group"
+                >
+                  <input
+                    ref={fileInputRef}
+                    id="ticket-photo-upload"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg"
+                    multiple
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <div className="w-10 h-10 rounded-full bg-white shadow-2xs border border-neutral-200 flex items-center justify-center mx-auto text-neutral-500 group-hover:scale-110 group-hover:text-neutral-900 transition-all">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-bold text-neutral-800 mt-2">
+                    Bấm để tải ảnh lên hoặc kéo thả vào đây
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Định dạng: JPG, PNG, WebP · Dung lượng tối đa: 5MB/ảnh
+                  </p>
+                </div>
+
+                {/* Previews Thumbnails */}
+                {filePreviews.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
+                    {filePreviews.map((url, idx) => (
+                      <div
+                        key={idx}
+                        className="relative group rounded-xl overflow-hidden border border-neutral-200 bg-neutral-100 aspect-square"
+                      >
+                        <img src={url} alt={`preview-${idx}`} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImage(url)}
+                            className="p-1.5 rounded-lg bg-white/90 text-neutral-800 hover:bg-white text-xs"
+                            title="Xem ảnh lớn"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(idx)}
+                            className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-xs"
+                            title="Xóa ảnh này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-mono">
+                          {Math.round(selectedFiles[idx]?.size / 1024)} KB
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-5 border-t border-neutral-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
+                <button
+                  id="ticket-back-to-list-btn"
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-200 text-neutral-700 hover:bg-neutral-100 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetForm}
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-100 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Đặt lại biểu mẫu
+                </button>
+                <button
+                  id="ticket-submit-btn"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Đang gửi báo cáo sự cố...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Gửi yêu cầu hỗ trợ</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1183,7 +1218,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setViewMode('create')}
+                  onClick={() => setIsCreateModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
