@@ -64,12 +64,12 @@ class ReceptionParcelService
             $query->where('courier_company', $filters['courier_company']);
         }
 
-        // 4. Lọc theo khoảng ngày tiếp nhận
+        // 4. Lọc theo khoảng ngày tiếp nhận (Sargable datetime range)
         if (! empty($filters['from_date'])) {
-            $query->whereDate('received_at', '>=', $filters['from_date']);
+            $query->where('received_at', '>=', Carbon::parse($filters['from_date'])->startOfDay());
         }
         if (! empty($filters['to_date'])) {
-            $query->whereDate('received_at', '<=', $filters['to_date']);
+            $query->where('received_at', '<=', Carbon::parse($filters['to_date'])->endOfDay());
         }
 
         // 5. Tìm kiếm (Mã vận đơn, Tên người nhận, SĐT, Căn hộ)
