@@ -37,6 +37,7 @@ import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
+import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -79,6 +80,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
     try {
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab) return urlTab;
+      if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) return 'tickets';
     } catch {
       // ignore
     }
@@ -90,6 +92,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab) {
         setActiveMenuId(urlTab);
+      } else if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) {
+        setActiveMenuId('tickets');
       } else if (residentType === 'TENANT') {
         setActiveMenuId('rentals');
       }
@@ -99,7 +103,16 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   }, [residentType]);
 
   useEffect(() => {
-    const syncTab = () => setActiveMenuId(new URLSearchParams(window.location.search).get('tab') || (residentType === 'TENANT' ? 'rentals' : 'overview'));
+    const syncTab = () => {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab) {
+        setActiveMenuId(tab);
+      } else if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) {
+        setActiveMenuId('tickets');
+      } else {
+        setActiveMenuId(residentType === 'TENANT' ? 'rentals' : 'overview');
+      }
+    };
     window.addEventListener('popstate', syncTab);
     return () => window.removeEventListener('popstate', syncTab);
   }, [residentType]);
@@ -519,6 +532,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           <ResidentAmenityBookingPanel />
         ) : activeMenuId === 'visitors' ? (
           <ResidentVisitorRegistrationPanel />
+        ) : activeMenuId === 'tickets' ? (
+          <ResidentTicketPanel onNavigateOverview={() => selectMenu('overview')} />
         ) : activeMenuId === 'overview' ? (
           /* ================= VIEW 2: TỔNG QUAN CƯ DÂN ================= */
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
@@ -572,7 +587,11 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
+              <div
+                onClick={() => selectMenu('tickets')}
+                className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between cursor-pointer group"
+                title="Bấm để xem danh sách yêu cầu sự cố"
+              >
                 <div className="flex items-center justify-between text-xs text-neutral-500 font-medium">
                   <span>Yêu cầu đang xử lý</span>
                   <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
@@ -668,7 +687,11 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                           </span>
                         </td>
                       </tr>
-                      <tr className="hover:bg-neutral-50/80 transition-colors">
+                      <tr
+                        onClick={() => selectMenu('tickets')}
+                        className="hover:bg-neutral-50/80 transition-colors cursor-pointer"
+                        title="Bấm để xem danh sách sự cố"
+                      >
                         <td className="py-3.5 px-4 font-semibold text-neutral-900 flex items-center gap-2">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                           Sửa vòi nước phòng tắm
