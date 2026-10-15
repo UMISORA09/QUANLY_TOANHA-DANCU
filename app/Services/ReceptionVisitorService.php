@@ -200,7 +200,7 @@ class ReceptionVisitorService
                 WHEN vcl.checkout_time IS NOT NULL THEN 3
                 ELSE 4
             END ASC
-        ')->orderBy('visitor_registrations.expected_arrival_time', 'desc');
+        ')->orderBy('visitor_registrations.expected_arrival_time', 'desc')->orderBy('visitor_registrations.id');
 
         $rows = $query->offset($offset)->limit($perPage)->get();
 
