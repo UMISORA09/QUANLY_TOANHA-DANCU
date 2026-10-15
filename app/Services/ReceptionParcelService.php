@@ -64,15 +64,20 @@ class ReceptionParcelService
             $query->where('courier_company', $filters['courier_company']);
         }
 
-        // 4. Lọc theo khoảng ngày tiếp nhận
+        // 4. Lọc theo khoảng ngày tiếp nhận (Sargable datetime range)
         if (! empty($filters['from_date'])) {
-            $query->whereDate('received_at', '>=', $filters['from_date']);
+            $query->where('received_at', '>=', Carbon::parse($filters['from_date'])->startOfDay());
         }
         if (! empty($filters['to_date'])) {
-            $query->whereDate('received_at', '<=', $filters['to_date']);
+            $query->where('received_at', '<=', Carbon::parse($filters['to_date'])->endOfDay());
         }
 
-        // 5. Tìm kiếm (Mã vận đơn, Tên người nhận, SĐT, Căn hộ)
+        // 5. Lọc chính xác theo mã PIN nhận hàng (Hỗ trợ xác thực giao nhận / Kiosk Smart Locker qua B-Tree Index idx_parcels_pin_code)
+        if (! empty($filters['pin_code'])) {
+            $query->where('pickup_pin_code', trim($filters['pin_code']));
+        }
+
+        // 6. Tìm kiếm (Mã vận đơn, Tên người nhận, SĐT, Căn hộ)
         if (! empty($filters['search'])) {
             $search = trim($filters['search']);
             $query->where(function ($q) use ($search) {
@@ -168,7 +173,7 @@ class ReceptionParcelService
         if (! $staffId) {
             // Fallback lấy nhân viên lễ tân/admin đầu tiên nếu chạy CLI/Unit Test không có session
             $staffId = User::whereHas('roles', function ($q) {
-                $q->whereIn('name', ['RECEPTIONIST', 'STAFF', 'ADMIN', 'SUPER_ADMIN']);
+                $q->whereIn('roles.role_code', ['RECEPTIONIST', 'STAFF', 'ADMIN', 'SUPER_ADMIN', 'SECURITY_GUARD']);
             })->value('id') ?? User::value('id');
 
             if (! $staffId) {
@@ -197,11 +202,8 @@ class ReceptionParcelService
 
         if ($photoFile) {
             $this->validateImageFile($photoFile);
-            $extension = $photoFile->getClientOriginalExtension() ?: 'jpg';
-            $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.strtolower($extension);
-
-            $storedPath = $photoFile->storeAs('parcels', $safeFileName, 'public');
-            $photoUrl = Storage::disk('public')->url($storedPath);
+            $storedPath = $this->optimizeAndStoreImage($photoFile);
+            $photoUrl = '/storage/'.$storedPath;
         }
 
         if (empty($photoUrl)) {
@@ -324,11 +326,8 @@ class ReceptionParcelService
         // Nếu có upload ảnh thay thế
         if ($newPhotoFile) {
             $this->validateImageFile($newPhotoFile);
-            $extension = $newPhotoFile->getClientOriginalExtension() ?: 'jpg';
-            $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.strtolower($extension);
-
-            $newStoredPath = $newPhotoFile->storeAs('parcels', $safeFileName, 'public');
-            $newPhotoUrl = Storage::disk('public')->url($newStoredPath);
+            $newStoredPath = $this->optimizeAndStoreImage($newPhotoFile);
+            $newPhotoUrl = '/storage/'.$newStoredPath;
 
             // Ghi nhớ ảnh cũ để xóa sau khi DB commit thành công
             $oldUrl = $parcel->parcel_photo_url;
@@ -408,6 +407,55 @@ class ReceptionParcelService
         }
 
         return $parcel;
+    }
+
+    /**
+     * Xóa phiếu tiếp nhận bưu phẩm (chỉ cho phép xóa khi bưu phẩm chưa bàn giao)
+     *
+     * @throws ValidationException|Throwable
+     */
+    public function deleteParcel(string $id, ?User $staffUser = null): bool
+    {
+        $parcel = Parcel::findOrFail($id);
+
+        if (in_array($parcel->status, ['DELIVERED', 'RETURNED'])) {
+            throw ValidationException::withMessages([
+                'status' => ['Không thể xóa kiện hàng đã hoàn tất bàn giao hoặc đã hoàn trả.'],
+            ]);
+        }
+
+        $photoUrl = $parcel->parcel_photo_url;
+        $trackingNumber = $parcel->tracking_number;
+        $parcelId = $parcel->id;
+
+        // Xóa file ảnh vật lý nếu có
+        if ($photoUrl && str_contains($photoUrl, '/storage/parcels/')) {
+            $photoPath = 'parcels/'.basename($photoUrl);
+            if (Storage::disk('public')->exists($photoPath)) {
+                Storage::disk('public')->delete($photoPath);
+            }
+        }
+
+        $parcel->delete();
+
+        // Phát sự kiện realtime DELETED
+        try {
+            QuocTinRealtimeService::emit(
+                module: 'parcels',
+                entity: 'parcel',
+                action: 'DELETED',
+                entityId: $parcelId,
+                extra: [
+                    'tracking_number' => $trackingNumber,
+                ],
+                actorId: $staffUser?->id,
+                triggerCooldown: false
+            );
+        } catch (Throwable $e) {
+            Log::warning('Lỗi broadcast realtime delete parcel: '.$e->getMessage());
+        }
+
+        return true;
     }
 
     /**
@@ -520,5 +568,97 @@ class ReceptionParcelService
                 'photo' => ['Phần mở rộng file không được chấp nhận. Vui lòng chọn ảnh định dạng hợp lệ.'],
             ]);
         }
+    }
+
+    /**
+     * Tự động nén và tối ưu hóa ảnh bưu kiện bằng GD (nếu khả dụng)
+     */
+    protected function optimizeAndStoreImage(UploadedFile $photoFile): string
+    {
+        $extension = strtolower($photoFile->getClientOriginalExtension() ?: 'jpg');
+        $safeFileName = 'pkg_'.date('Ymd_His').'_'.Str::random(12).'.'.$extension;
+        $destinationDir = storage_path('app/public/parcels');
+
+        if (! file_exists($destinationDir)) {
+            @mkdir($destinationDir, 0755, true);
+        }
+
+        $targetPath = $destinationDir.'/'.$safeFileName;
+
+        // Nếu GD extension khả dụng và file là JPEG/PNG/WebP, tiến hành resize & compress
+        if (extension_loaded('gd') && in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+            try {
+                $image = match ($extension) {
+                    'jpg', 'jpeg' => @imagecreatefromjpeg($photoFile->getRealPath()),
+                    'png' => @imagecreatefrompng($photoFile->getRealPath()),
+                    'webp' => @imagecreatefromwebp($photoFile->getRealPath()),
+                    default => null,
+                };
+
+                if ($image) {
+                    $origWidth = imagesx($image);
+                    $origHeight = imagesy($image);
+                    $maxDim = 1280;
+
+                    if ($origWidth > $maxDim || $origHeight > $maxDim) {
+                        if ($origWidth > $origHeight) {
+                            $newWidth = $maxDim;
+                            $newHeight = (int) round(($origHeight * $maxDim) / $origWidth);
+                        } else {
+                            $newHeight = $maxDim;
+                            $newWidth = (int) round(($origWidth * $maxDim) / $origHeight);
+                        }
+
+                        $resized = imagecreatetruecolor($newWidth, $newHeight);
+
+                        if (in_array($extension, ['png', 'webp'], true)) {
+                            imagealphablending($resized, false);
+                            imagesavealpha($resized, true);
+                        }
+
+                        imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
+                        imagedestroy($image);
+                        $image = $resized;
+                    }
+
+                    if ($extension === 'webp') {
+                        imagewebp($image, $targetPath, 82);
+                    } elseif ($extension === 'png') {
+                        imagepng($image, $targetPath, 6);
+                    } else {
+                        imagejpeg($image, $targetPath, 82);
+                    }
+
+                    imagedestroy($image);
+
+                    return 'parcels/'.$safeFileName;
+                }
+            } catch (Throwable $e) {
+                // Fallback nếu có lỗi xử lý GD
+            }
+        }
+
+        return $photoFile->storeAs('parcels', $safeFileName, 'public');
+    }
+
+    /**
+     * Tra cứu bưu phẩm bằng mã PIN nhận hàng (Sử dụng trực tiếp B-Tree Index idx_parcels_pin_code)
+     */
+    public function findParcelByPin(string $pinCode): ?Parcel
+    {
+        $cleanPin = trim($pinCode);
+        if ($cleanPin === '') {
+            return null;
+        }
+
+        return Parcel::query()
+            ->with([
+                'apartment:id,apartment_number,block_id',
+                'apartment.block:id,block_name,block_code',
+                'recipientUser:id,full_name,phone_number',
+                'receivedByStaff:id,full_name',
+            ])
+            ->where('pickup_pin_code', $cleanPin)
+            ->first();
     }
 }

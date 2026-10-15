@@ -669,4 +669,274 @@ class ReceptionVisitorCheckinTest extends TestCase
         $residentDetailRes->assertStatus(200);
         $this->assertEquals('USED', $residentDetailRes->json('data.qr_pass_status'));
     }
+
+    /**
+     * Helper tạo log checkin cho registration
+     */
+    protected function insertTestCheckinLog(string $registrationId, array $attributes = []): string
+    {
+        $id = (string) Str::uuid();
+        DB::table('visitor_checkin_logs')->insert(array_merge([
+            'id' => $id,
+            'registration_id' => $registrationId,
+            'apartment_id' => $this->apartment->id,
+            'visitor_name' => 'Khách Test Log',
+            'visitor_phone' => '0901112233',
+            'checkin_time' => Carbon::now(),
+            'checkout_time' => null,
+            'receptionist_user_id' => $this->receptionist->id,
+            'created_at' => Carbon::now(),
+        ], $attributes));
+
+        return $id;
+    }
+
+    /**
+     * Test 14: Lượt khách có nhiều log checkin không bị nhân bản dòng và không làm sai lệch COUNT / Pagination
+     */
+    public function test_14_multi_checkin_logs_do_not_duplicate_rows_or_inflate_pagination(): void
+    {
+        $regMulti = $this->createVisitorRegistration([
+            'visitor_name' => 'Khách Nhiều Lượt Checkin',
+            'qr_pass_status' => 'ACTIVE',
+        ]);
+
+        // Thêm 3 logs: 2 lần checkin/checkout cũ trong quá khứ, 1 lần checkin hiện tại (đang bên trong)
+        $this->insertTestCheckinLog($regMulti->id, [
+            'checkin_time' => Carbon::now()->subDays(2),
+            'checkout_time' => Carbon::now()->subDays(2)->addHours(2),
+            'created_at' => Carbon::now()->subDays(2),
+        ]);
+        $this->insertTestCheckinLog($regMulti->id, [
+            'checkin_time' => Carbon::now()->subDay(),
+            'checkout_time' => Carbon::now()->subDay()->addHours(1),
+            'created_at' => Carbon::now()->subDay(),
+        ]);
+        $latestLogId = $this->insertTestCheckinLog($regMulti->id, [
+            'checkin_time' => Carbon::now()->subMinutes(30),
+            'checkout_time' => null,
+            'created_at' => Carbon::now()->subMinutes(30),
+        ]);
+
+        // Lượt khách thứ 2: Chưa từng check-in (EXPECTED)
+        $regSingle = $this->createVisitorRegistration([
+            'visitor_name' => 'Khách Chưa Checkin',
+            'qr_pass_status' => 'ACTIVE',
+        ]);
+
+        // 1. Tìm kiếm theo mã của regMulti
+        $resMulti = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$regMulti->registration_code}");
+
+        $resMulti->assertStatus(200);
+        $this->assertEquals(1, $resMulti->json('pagination.total_items'), 'Total items must be exactly 1, not inflated by multiple logs');
+        $this->assertCount(1, $resMulti->json('data'), 'Data array must contain exactly 1 row');
+        $this->assertEquals('INSIDE', $resMulti->json('data.0.status'), 'Status must reflect the latest log (currently inside)');
+        $this->assertEquals($latestLogId, $resMulti->json('data.0.checkin_log.id'), 'Checkin log must be the latest log');
+
+        // 2. Tìm kiếm theo mã của regSingle
+        $resSingle = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$regSingle->registration_code}");
+
+        $resSingle->assertStatus(200);
+        $this->assertEquals(1, $resSingle->json('pagination.total_items'));
+        $this->assertCount(1, $resSingle->json('data'));
+        $this->assertEquals('EXPECTED', $resSingle->json('data.0.status'));
+        $this->assertNull($resSingle->json('data.0.checkin_log'));
+    }
+
+    /**
+     * Test 15: Lọc theo trạng thái nghiệp vụ (INSIDE, CHECKED_OUT, EXPECTED) chuẩn xác khi có lịch sử nhiều log
+     */
+    public function test_15_status_filtering_with_multi_log_history_uses_latest_log(): void
+    {
+        $uniqueTag = 'ST_TEST_'.Str::random(6);
+
+        // Khách A: Từng checkout hôm qua, hôm nay checkin lại chưa ra -> Trạng thái mới nhất: INSIDE
+        $regA = $this->createVisitorRegistration([
+            'visitor_name' => "{$uniqueTag} Khách A",
+            'qr_pass_status' => 'ACTIVE',
+        ]);
+        $this->insertTestCheckinLog($regA->id, [
+            'checkin_time' => Carbon::now()->subDay(),
+            'checkout_time' => Carbon::now()->subDay()->addHours(2),
+            'created_at' => Carbon::now()->subDay(),
+        ]);
+        $this->insertTestCheckinLog($regA->id, [
+            'checkin_time' => Carbon::now()->subMinutes(15),
+            'checkout_time' => null,
+            'created_at' => Carbon::now()->subMinutes(15),
+        ]);
+
+        // Khách B: Từng checkin trước đó, hôm nay checkin và ĐÃ checkout -> Trạng thái mới nhất: CHECKED_OUT
+        $regB = $this->createVisitorRegistration([
+            'visitor_name' => "{$uniqueTag} Khách B",
+            'qr_pass_status' => 'ACTIVE',
+        ]);
+        $this->insertTestCheckinLog($regB->id, [
+            'checkin_time' => Carbon::now()->subHours(5),
+            'checkout_time' => Carbon::now()->subHours(4),
+            'created_at' => Carbon::now()->subHours(5),
+        ]);
+        $this->insertTestCheckinLog($regB->id, [
+            'checkin_time' => Carbon::now()->subHours(2),
+            'checkout_time' => Carbon::now()->subHour(),
+            'created_at' => Carbon::now()->subHours(2),
+        ]);
+
+        // Khách C: Chưa từng check-in -> Trạng thái: EXPECTED
+        $regC = $this->createVisitorRegistration([
+            'visitor_name' => "{$uniqueTag} Khách C",
+            'qr_pass_status' => 'ACTIVE',
+        ]);
+
+        // 1. Lọc INSIDE: Chỉ trả về Khách A
+        $resInside = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$uniqueTag}&status=INSIDE");
+
+        $resInside->assertStatus(200);
+        $insideIds = collect($resInside->json('data'))->pluck('id')->all();
+        $this->assertContains($regA->id, $insideIds);
+        $this->assertNotContains($regB->id, $insideIds);
+        $this->assertNotContains($regC->id, $insideIds);
+        $this->assertCount(1, $insideIds);
+
+        // 2. Lọc CHECKED_OUT: Chỉ trả về Khách B (không được chứa Khách A dù Khách A có log checkout cũ)
+        $resCheckedOut = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$uniqueTag}&status=CHECKED_OUT");
+
+        $resCheckedOut->assertStatus(200);
+        $checkedOutIds = collect($resCheckedOut->json('data'))->pluck('id')->all();
+        $this->assertContains($regB->id, $checkedOutIds);
+        $this->assertNotContains($regA->id, $checkedOutIds);
+        $this->assertNotContains($regC->id, $checkedOutIds);
+        $this->assertCount(1, $checkedOutIds);
+
+        // 3. Lọc EXPECTED: Chỉ trả về Khách C
+        $resExpected = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$uniqueTag}&status=EXPECTED");
+
+        $resExpected->assertStatus(200);
+        $expectedIds = collect($resExpected->json('data'))->pluck('id')->all();
+        $this->assertContains($regC->id, $expectedIds);
+        $this->assertNotContains($regA->id, $expectedIds);
+        $this->assertNotContains($regB->id, $expectedIds);
+        $this->assertCount(1, $expectedIds);
+    }
+
+    /**
+     * Test 16: Cơ chế Tie-breaker xác định chính xác log khi 2 log trùng checkin_time
+     */
+    public function test_16_deterministic_tie_breaker_for_identical_checkin_times(): void
+    {
+        $regTie = $this->createVisitorRegistration([
+            'visitor_name' => 'Khách Trùng Checkin Time',
+            'qr_pass_status' => 'ACTIVE',
+        ]);
+
+        $sameCheckinTime = Carbon::parse('2026-10-14 09:00:00');
+
+        // Log cũ hơn (đã checkout)
+        $this->insertTestCheckinLog($regTie->id, [
+            'checkin_time' => $sameCheckinTime,
+            'checkout_time' => Carbon::parse('2026-10-14 10:00:00'),
+            'created_at' => Carbon::parse('2026-10-14 09:00:00'),
+        ]);
+
+        // Log mới hơn (chưa checkout - INSIDE, được tạo sau)
+        $newerLogId = $this->insertTestCheckinLog($regTie->id, [
+            'checkin_time' => $sameCheckinTime,
+            'checkout_time' => null,
+            'created_at' => Carbon::parse('2026-10-14 09:00:10'),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$regTie->registration_code}");
+
+        $res->assertStatus(200);
+        $this->assertEquals(1, $res->json('pagination.total_items'));
+        $this->assertCount(1, $res->json('data'));
+        $this->assertEquals('INSIDE', $res->json('data.0.status'));
+        $this->assertEquals($newerLogId, $res->json('data.0.checkin_log.id'));
+    }
+
+    /**
+     * Test 17: Phân trang danh sách nhiều khách với lịch sử log phức tạp bảo toàn tính toàn vẹn (không lặp, không sót)
+     */
+    public function test_17_pagination_integrity_with_multiple_visitors_and_multi_logs(): void
+    {
+        $groupPrefix = 'PAG_INTEG_'.Str::random(6);
+        $createdIds = [];
+
+        for ($i = 1; $i <= 5; $i++) {
+            $reg = $this->createVisitorRegistration([
+                'visitor_name' => "{$groupPrefix} Khách {$i}",
+                'qr_pass_status' => 'ACTIVE',
+            ]);
+            $createdIds[] = $reg->id;
+
+            // Mỗi khách có 2 logs
+            $this->insertTestCheckinLog($reg->id, [
+                'checkin_time' => Carbon::now()->subHours(3),
+                'checkout_time' => Carbon::now()->subHours(2),
+                'created_at' => Carbon::now()->subHours(3),
+            ]);
+            $this->insertTestCheckinLog($reg->id, [
+                'checkin_time' => Carbon::now()->subHour(),
+                'checkout_time' => null,
+                'created_at' => Carbon::now()->subHour(),
+            ]);
+        }
+
+        // Trang 1: per_page = 2
+        $resPage1 = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$groupPrefix}&limit=2&page=1");
+
+        $resPage1->assertStatus(200);
+        $this->assertEquals(5, $resPage1->json('pagination.total_items'), 'Total items must be 5, not 10 or 15');
+        $this->assertEquals(3, $resPage1->json('pagination.total_pages'));
+        $this->assertCount(2, $resPage1->json('data'));
+        $page1Ids = collect($resPage1->json('data'))->pluck('id')->all();
+
+        // Trang 2: per_page = 2
+        $resPage2 = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$groupPrefix}&limit=2&page=2");
+
+        $resPage2->assertStatus(200);
+        $this->assertCount(2, $resPage2->json('data'));
+        $page2Ids = collect($resPage2->json('data'))->pluck('id')->all();
+
+        // Trang 3: per_page = 2
+        $resPage3 = $this->withHeaders([
+            'Authorization' => "Bearer {$this->receptionistToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/reception/visitors?search={$groupPrefix}&limit=2&page=3");
+
+        $resPage3->assertStatus(200);
+        $this->assertCount(1, $resPage3->json('data'));
+        $page3Ids = collect($resPage3->json('data'))->pluck('id')->all();
+
+        // Kiểm tra không có ID nào bị trùng lặp giữa các trang
+        $allRetrievedIds = array_merge($page1Ids, $page2Ids, $page3Ids);
+        $this->assertCount(5, array_unique($allRetrievedIds));
+        sort($createdIds);
+        sort($allRetrievedIds);
+        $this->assertEquals($createdIds, $allRetrievedIds);
+    }
 }
