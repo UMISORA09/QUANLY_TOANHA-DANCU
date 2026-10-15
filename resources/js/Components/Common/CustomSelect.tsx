@@ -85,7 +85,7 @@ export function CustomSelect<T extends string | number | null = string>({
 
     return (
         <div className={`relative ${isOpen ? 'z-40' : 'z-10'} ${className}`} ref={containerRef} onKeyDown={(event) => {
-            if (event.key === 'Escape') { setIsOpen(false); containerRef.current?.querySelector('button')?.focus(); return; }
+            if (event.key === 'Escape' && isOpen) { event.stopPropagation(); setIsOpen(false); containerRef.current?.querySelector('button')?.focus(); return; }
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
             if (!isOpen) { setIsOpen(true); requestAnimationFrame(() => containerRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)')?.focus()); return; }

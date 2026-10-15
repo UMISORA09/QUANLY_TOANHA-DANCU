@@ -10,6 +10,7 @@ use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\User;
+use App\Services\TicketNotificationService;
 use Database\Seeders\TicketPermissionsSeeder;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
@@ -195,6 +196,102 @@ class ResidentTicketTest extends TestCase
         $this->getJson('/api/v1/admin/tickets/'.$id)->assertNotFound();
         $this->getJson('/api/v1/resident/tickets/'.$id)->assertNotFound();
         $this->patchJson('/api/v1/admin/tickets/'.$id, ['version' => 1, 'priority' => 'LOW'])->assertNotFound();
+    }
+
+    public function test_ticket_workflow_notifies_the_right_people_and_preserves_resident_acceptance(): void
+    {
+        $block = DB::table('apartments')->where('id', $this->apartmentId)->value('block_id');
+        $manager = $this->ticketStaff('BUILDING_MANAGER', $block);
+        $technician = $this->ticketStaff('TECHNICIAN', $block);
+        $otherTech = $this->ticketStaff('TECHNICIAN', $block);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/tickets', ['title' => 'Kiểm tra luồng sửa chữa', 'description' => 'Vòi nước bị rò rỉ cần sửa.', 'location' => 'Phòng bếp', 'category_id' => $this->categoryId])->assertCreated()->json('data.id');
+        $notification = DB::table('user_in_app_notifications')->where('recipient_user_id', $manager->id)->where('category', 'TICKET')->first();
+        $this->assertNotNull($notification);
+        $this->postJson('/api/v1/ticket-notifications/'.$notification->id.'/read')->assertNotFound();
+        $path = '/api/v1/admin/tickets/'.$id;
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($manager));
+        $this->postJson($path.'/workflow', ['action' => 'receive', 'version' => 1])->assertOk()->assertJsonPath('status', 'RECEIVED');
+        $this->postJson($path.'/workflow', ['action' => 'assign', 'version' => 2, 'technician_user_id' => $technician->id])->assertOk()->assertJsonPath('version', 3);
+        $this->postJson($path.'/workflow', ['action' => 'resolve', 'version' => 3, 'note' => 'Đã kiểm tra và sửa'])->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($otherTech));
+        $this->postJson($path.'/workflow', ['action' => 'start', 'version' => 3])->assertNotFound();
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($technician));
+        $this->patchJson($path, ['version' => 3, 'priority' => 'LOW'])->assertForbidden();
+        $this->postJson($path.'/workflow', ['action' => 'start', 'version' => 3])->assertOk()->assertJsonPath('version', 4);
+        $this->postJson($path.'/workflow', ['action' => 'resolve', 'version' => 3, 'note' => 'Đã kiểm tra và sửa'])->assertConflict();
+        $this->post('/api/v1/resident/tickets/'.$id.'/attachments', ['version' => 4, 'attachments' => [UploadedFile::fake()->image('proof.png')]])->assertOk()->assertJsonPath('data.attachments.0.is_resolution_proof', true);
+        $this->postJson($path.'/workflow', ['action' => 'resolve', 'version' => 5, 'note' => 'Đã thay van nước'])->assertOk()->assertJsonPath('version', 6);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $residentPath = '/api/v1/resident/tickets/'.$id;
+        $this->postJson($residentPath.'/reopen', ['version' => 6, 'reason' => 'Vẫn bị rò nước'])->assertOk()->assertJsonPath('data.status', 'IN_PROGRESS');
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($technician));
+        $this->postJson($path.'/workflow', ['action' => 'resolve', 'version' => 7, 'note' => 'Đã xử lý dứt điểm'])->assertOk()->assertJsonPath('version', 8);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $this->postJson($residentPath.'/confirm', ['version' => 8])->assertOk()->assertJsonPath('data.status', 'CLOSED');
+        $this->postJson($residentPath.'/confirm', ['version' => 8])->assertConflict();
+        $this->getJson('/api/v1/ticket-notifications')->assertOk()->assertJsonPath('unread_count', 4);
+        $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $id)->where('new_status', 'CLOSED')->count());
+        $this->assertDatabaseHas('user_in_app_notifications', ['recipient_user_id' => $technician->id, 'category' => 'TICKET']);
+    }
+
+    public function test_workflow_transition_matrix_rejects_invalid_states_without_side_effects(): void
+    {
+        $block = DB::table('apartments')->where('id', $this->apartmentId)->value('block_id');
+        $manager = $this->ticketStaff('BUILDING_MANAGER', $block);
+        $technician = $this->ticketStaff('TECHNICIAN', $block);
+        $managerToken = $this->createSessionToken($manager);
+        $technicianToken = $this->createSessionToken($technician);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/tickets', ['title' => 'Kiểm tra ma trận trạng thái', 'description' => 'Sự cố kiểm thử chuyển trạng thái.', 'location' => 'Bếp', 'category_id' => $this->categoryId])->assertCreated()->json('data.id');
+        $transitions = ['receive' => ['NEW'], 'assign' => ['NEW', 'RECEIVED', 'IN_PROGRESS'], 'start' => ['RECEIVED'], 'resolve' => ['IN_PROGRESS'], 'confirm' => ['RESOLVED'], 'reopen' => ['RESOLVED'], 'cancel' => ['NEW', 'RECEIVED']];
+        foreach (['NEW', 'RECEIVED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'CANCELLED'] as $status) {
+            foreach ($transitions as $action => $allowed) {
+                Ticket::whereKey($id)->update(['status' => $status, 'version' => 1, 'current_technician_user_id' => $technician->id]);
+                $history = DB::table('ticket_history')->where('ticket_id', $id)->count();
+                $notifications = DB::table('user_in_app_notifications')->where('category', 'TICKET')->count();
+                $resident = in_array($action, ['confirm', 'reopen', 'cancel'], true);
+                $token = $resident ? $this->residentToken : (in_array($action, ['start', 'resolve'], true) ? $technicianToken : $managerToken);
+                $path = '/api/v1/'.($resident ? 'resident' : 'admin').'/tickets/'.$id.'/'.($resident ? $action : 'workflow');
+                $response = $this->withHeader('Authorization', 'Bearer '.$token)->postJson($path, ['version' => 1, 'action' => $action, 'technician_user_id' => $technician->id, 'reason' => 'Lý do kiểm thử trạng thái', 'note' => 'Ghi chú kiểm thử trạng thái']);
+                $valid = in_array($status, $allowed, true);
+                $response->assertStatus($valid ? 200 : 409);
+                $this->assertSame($valid ? 2 : 1, Ticket::findOrFail($id)->version);
+                $this->assertSame($history + (int) $valid, DB::table('ticket_history')->where('ticket_id', $id)->count());
+                if (! $valid) {
+                    $this->assertSame($notifications, DB::table('user_in_app_notifications')->where('category', 'TICKET')->count());
+                }
+            }
+        }
+    }
+
+    public function test_ticket_notification_failure_rolls_back_transition_history_and_audit(): void
+    {
+        $admin = $this->ticketStaff('SUPER_ADMIN', profile: false);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/tickets', ['title' => 'Kiểm tra rollback workflow', 'description' => 'Sự cố kiểm thử rollback.', 'location' => 'Bếp', 'category_id' => $this->categoryId])->assertCreated()->json('data.id');
+        $notifications = \Mockery::mock(TicketNotificationService::class);
+        $notifications->shouldReceive('changed')->once()->andThrow(new \RuntimeException('QA injected notification failure'));
+        $this->app->instance(TicketNotificationService::class, $notifications);
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($admin))
+            ->postJson('/api/v1/admin/tickets/'.$id.'/workflow', ['version' => 1, 'action' => 'receive'])->assertServerError();
+        $this->assertDatabaseHas('tickets', ['id' => $id, 'status' => 'NEW', 'version' => 1]);
+        $this->assertSame(0, DB::table('ticket_history')->where('ticket_id', $id)->where('action_type', 'STATUS_CHANGED')->count());
+        $this->assertSame(0, DB::table('audit_logs')->where('record_id', $id)->count());
+    }
+
+    public function test_ticket_creation_failure_removes_only_newly_written_private_files(): void
+    {
+        Storage::disk('local')->put('tickets/existing.png', 'keep-existing');
+        $notifications = \Mockery::mock(TicketNotificationService::class);
+        $notifications->shouldReceive('changed')->once()->andThrow(new \RuntimeException('QA injected notification failure'));
+        $this->app->instance(TicketNotificationService::class, $notifications);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->post('/api/v1/resident/tickets', [
+            'title' => 'Kiểm tra rollback file', 'description' => 'Ảnh kiểm thử rollback transaction.', 'location' => 'Bếp', 'category_id' => $this->categoryId,
+            'attachments' => [UploadedFile::fake()->image('new.png')],
+        ], ['Accept' => 'application/json'])->assertServerError();
+        $this->assertSame(0, Ticket::where('creator_user_id', $this->residentUser->id)->count());
+        $this->assertSame(['tickets/existing.png'], Storage::disk('local')->allFiles());
     }
 
     public function test_resident_can_create_ticket_successfully(): void
@@ -444,6 +541,7 @@ class ResidentTicketTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
             ->postJson("/api/v1/resident/tickets/{$ticket->id}/cancel", [
                 'reason' => 'Đã tự vặn chặt van nước, hoạt động bình thường.',
+                'version' => 1,
             ]);
 
         $response->assertOk()
@@ -472,6 +570,7 @@ class ResidentTicketTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
             ->postJson("/api/v1/resident/tickets/{$ticket->id}/confirm", [
                 'note' => 'Đèn sáng tốt, kỹ thuật viên rất nhiệt tình.',
+                'version' => 2,
             ]);
 
         $response->assertOk()
@@ -497,6 +596,7 @@ class ResidentTicketTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
             ->postJson("/api/v1/resident/tickets/{$ticket->id}/reopen", [
                 'reason' => 'Điều hòa vẫn bị chảy nước và phát ra tiếng kêu cọc cọc.',
+                'version' => 2,
             ]);
 
         $response->assertOk()
@@ -657,11 +757,11 @@ class ResidentTicketTest extends TestCase
         DB::enableQueryLog();
         DB::flushQueryLog();
         try {
-            $this->postJson('/api/v1/resident/tickets/'.$ticket.'/cancel')->assertOk();
+            $this->postJson('/api/v1/resident/tickets/'.$ticket.'/cancel', ['version' => 1, 'reason' => 'Đã tự khắc phục'])->assertOk();
             $this->assertTrue(collect(DB::getQueryLog())->contains(
                 fn (array $query): bool => str_contains($query['query'], 'from `tickets`') && str_contains($query['query'], 'for update')
             ));
-            $this->postJson('/api/v1/resident/tickets/'.$ticket.'/cancel')->assertConflict();
+            $this->postJson('/api/v1/resident/tickets/'.$ticket.'/cancel', ['version' => 1, 'reason' => 'Đã tự khắc phục'])->assertConflict();
             $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $ticket)->where('new_status', 'CANCELLED')->count());
         } finally {
             DB::disableQueryLog();
