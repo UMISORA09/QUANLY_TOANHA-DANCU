@@ -153,6 +153,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'pricing_configs', label: 'Cài đặt đơn giá & Bậc thang', icon: Tag, badge: 'EVN', badgeType: 'info', isNew: true },
       { id: 'meter_readings', label: 'Chốt chỉ số điện & nước', icon: Zap, badge: 'IoT', badgeType: 'info', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
+      { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: FileText },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
       { id: 'cicd', label: 'CI/CD & DevOps Pipeline', icon: Terminal, badge: 'Live', badgeType: 'success', isNew: true },

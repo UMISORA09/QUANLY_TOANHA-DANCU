@@ -50,6 +50,7 @@ import {
 } from 'lucide-react';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';
+import { TicketManagementPanel, ticketStatuses } from '../Components/TicketManagementPanel';
 import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
 import { RbacManagement } from './Admin/RbacManagement';
 import { ResidentManagement } from './Admin/ResidentManagement';
@@ -84,9 +85,9 @@ interface TicketItem {
   title: string;
   location: string;
   timeAgo?: string;
-  status: 'new' | 'processing' | 'received' | 'done';
+  status: string;
   statusText: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: string;
   description?: string;
   creatorName?: string;
   creatorPhone?: string;
@@ -561,49 +562,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     [kpis, unreadNotificationCount, userRole]
   );
 
-  // Ticket Data matching database seed
-  const [tickets, setTickets] = useState<TicketItem[]>([
-    {
-      id: 'TK-1082',
-      title: 'Rò rỉ nước tại ban công',
-      location: 'Căn hộ A012 · 2 giờ trước',
-      status: 'new',
-      statusText: 'MỚI',
-      priority: 'high',
-    },
-    {
-      id: 'TK-1081',
-      title: 'Đăng ký thẻ cư dân mới',
-      location: 'Căn hộ A013 · 2 giờ trước',
-      status: 'processing',
-      statusText: 'ĐANG XỬ LÝ',
-      priority: 'medium',
-    },
-    {
-      id: 'TK-1080',
-      title: 'Đèn hành lang tầng 8',
-      location: 'Căn hộ A014 · 2 giờ trước',
-      status: 'processing',
-      statusText: 'ĐANG XỬ LÝ',
-      priority: 'medium',
-    },
-    {
-      id: 'TK-1079',
-      title: 'Khóa vân tay sảnh chính tháp B',
-      location: 'Căn hộ B201 · 3 giờ trước',
-      status: 'received',
-      statusText: 'ĐÃ TIẾP NHẬN',
-      priority: 'high',
-    },
-    {
-      id: 'TK-1078',
-      title: 'Khiếu nại tiếng ồn sau 22h',
-      location: 'Căn hộ C505 · Hôm qua',
-      status: 'done',
-      statusText: 'ĐÃ XONG',
-      priority: 'low',
-    },
-  ]);
+  const [tickets, setTickets] = useState<TicketItem[]>([]);
+  useEffect(() => {
+    let active = true;
+    api.getManagedTickets(new URLSearchParams({ page: '1' })).then((result) => {
+      if (active) setTickets(result.data.slice(0, 5).map((ticket) => ({ id: ticket.id, title: ticket.title, description: ticket.description, location: `Căn hộ ${ticket.apartment?.apartment_number || ''}`, status: ticket.status.toLowerCase(), statusText: ticketStatuses[ticket.status as keyof typeof ticketStatuses], priority: ticket.priority.toLowerCase(), creatorName: ticket.creator?.full_name, creatorPhone: ticket.creator?.phone_number || '' })));
+    }).catch(() => { if (active) setTickets([]); });
+    return () => { active = false; };
+  }, [activeMenuId]);
 
   // Activity Rows matching database seed
   const [activities, setActivities] = useState<ActivityRow[]>([
@@ -689,9 +655,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         }
         if (data.revenueSummary) {
           setRevenueSummary(data.revenueSummary);
-        }
-        if (data.tickets?.length) {
-          setTickets(data.tickets);
         }
         if (data.activities?.length) {
           setActivities(data.activities);
@@ -941,7 +904,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           </div>
         </div>
       )}
-          {activeMenuId === 'cicd' ? (
+          {activeMenuId === 'tickets' ? <TicketManagementPanel /> : activeMenuId === 'cicd' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 transition-all duration-300 ease-in-out">
               <CicdDashboard userRole={userRole} />
             </div>
@@ -1349,7 +1312,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                   {tickets.map((ticket) => (
                     <div
                       key={ticket.id}
-                      onClick={() => setSelectedTicket(ticket)}
+                      onClick={() => handleMenuClick('tickets')}
                       className="p-3.5 rounded-xl bg-white/90 hover:bg-white border border-slate-200/70 hover:border-sky-300/60 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group relative"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1367,7 +1330,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                           className={`text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-md shrink-0 ${
                             ticket.status === 'new'
                               ? 'bg-sky-100 text-sky-800 border border-sky-200 animate-pulse-subtle'
-                              : ticket.status === 'processing'
+                              : ticket.status === 'in_progress'
                               ? 'bg-amber-100 text-amber-800 border border-amber-200'
                               : ticket.status === 'received'
                               ? 'bg-purple-100 text-purple-800 border border-purple-200'
@@ -1385,7 +1348,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
               {/* Bottom Quick Action */}
               <div className="pt-4 mt-4 border-t border-slate-100">
                 <button
-                  onClick={() => showToast('Mở biểu mẫu tiếp nhận yêu cầu hỗ trợ mới')}
+                  onClick={() => handleMenuClick('tickets')}
                   className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Wrench className="w-3.5 h-3.5 text-slate-500" />
