@@ -1383,21 +1383,6 @@ class ApiService {
     return this.request<any>(`/resident/overview${query}`);
   }
 
-  async createResidentTicket(payload: {
-    title: string;
-    description: string;
-    category_id?: string;
-    priority?: string;
-    preferred_service_time?: string;
-    apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    return this.request<any>('/resident/tickets', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
   async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
     return this.request('/resident/amenities', { signal, cache: 'no-store' });
   }
@@ -2115,6 +2100,188 @@ class ApiService {
       body: JSON.stringify(payload),
     });
   }
+
+  // ================= RESIDENT TICKETS =================
+  async getResidentTicketCategories() {
+    return this.request<{ success: boolean; data: TicketCategoryItem[] }>('/resident/tickets/categories');
+  }
+
+  async getResidentTickets(filters?: {
+    status?: string;
+    category_id?: string;
+    priority?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  }, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.category_id && filters.category_id !== 'ALL') params.append('category_id', filters.category_id);
+    if (filters?.priority && filters.priority !== 'ALL') params.append('priority', filters.priority);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.per_page) params.append('per_page', String(filters.per_page));
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<TicketListResponse>(`/resident/tickets${query}`, { signal });
+  }
+
+  async getResidentTicketDetail(id: string) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`);
+  }
+
+  async createResidentTicket(payload: FormData | Record<string, any>, idempotencyKey?: string) {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers['X-Idempotency-Key'] = idempotencyKey;
+    }
+    const isFormData = payload instanceof FormData;
+    return this.request<{ success: boolean; message: string; data: TicketItem }>('/resident/tickets', {
+      method: 'POST',
+      body: isFormData ? payload : JSON.stringify(payload),
+      headers,
+    });
+  }
+
+  async updateResidentTicket(id: string, payload: {
+    title: string;
+    description: string;
+    location: string;
+    priority?: string;
+    preferred_service_time?: string | null;
+    version: number;
+    updated_at?: string;
+  }) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async cancelResidentTicket(id: string, reason?: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async confirmResidentTicket(id: string, note?: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    });
+  }
+
+  async reopenResidentTicket(id: string, reason: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/reopen`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async getResidentTicketHistory(id: string) {
+    return this.request<{ success: boolean; data: TicketHistoryItem[] }>(`/resident/tickets/${id}/history`);
+  }
+}
+
+export interface TicketCategoryItem {
+  id: string;
+  category_code: string;
+  category_name: string;
+  default_priority?: string;
+  sla_response_time_minutes?: number;
+  sla_resolution_time_hours?: number;
+}
+
+export interface TicketAttachmentItem {
+  id: string;
+  ticket_id: string;
+  file_name: string;
+  file_url: string;
+  storage_path?: string;
+  file_type: string;
+  mime_type?: string;
+  file_size_bytes?: number;
+  created_at: string;
+}
+
+export interface TicketHistoryItem {
+  id: string;
+  ticket_id: string;
+  action_type: string;
+  old_status?: string | null;
+  new_status?: string | null;
+  notes?: string | null;
+  created_at: string;
+  performer?: {
+    id: string;
+    full_name: string;
+    email: string;
+  } | null;
+}
+
+export interface TicketItem {
+  id: string;
+  ticket_number: string;
+  category_id: string;
+  apartment_id: string;
+  creator_user_id: string;
+  title: string;
+  description: string;
+  location: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'NEW' | 'RECEIVED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'CANCELLED';
+  current_technician_user_id?: string | null;
+  preferred_service_time?: string | null;
+  sla_deadline?: string | null;
+  resolved_at?: string | null;
+  closed_at?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  category?: TicketCategoryItem;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block?: {
+      id: string;
+      block_name: string;
+      block_code: string;
+    };
+  };
+  creator?: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone_number?: string;
+  };
+  technician?: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone_number?: string;
+  } | null;
+  attachments?: TicketAttachmentItem[];
+  history?: TicketHistoryItem[];
+}
+
+export interface TicketListResponse {
+  success: boolean;
+  data: TicketItem[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+  counters: {
+    all: number;
+    new: number;
+    in_progress: number;
+    resolved: number;
+    closed: number;
+    cancelled: number;
+  };
 }
 
 export interface TemporaryRegistrationItem {
