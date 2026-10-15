@@ -7,6 +7,7 @@ use App\Models\TicketCategory;
 use App\Models\User;
 use App\Services\ResidentTicketService;
 use App\Services\TicketManagementService;
+use App\Services\TicketWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -90,6 +91,44 @@ class TicketManagementController extends Controller
     {
         $data = $request->validate(['version' => 'required|integer|min:1', 'reason' => 'required|string|min:5|max:500']);
         $this->tickets->archive($request->user(), $id, $data);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function workflow(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate(['version' => 'required|integer|min:1', 'action' => 'required|in:receive,assign,start,resolve,cancel', 'technician_user_id' => 'required_if:action,assign|nullable|uuid', 'note' => 'required_if:action,resolve|nullable|string|min:5|max:500', 'reason' => 'required_if:action,cancel|nullable|string|min:5|max:500']);
+        app(TicketWorkflowService::class)->perform($request->user(), $id, $data['action'], (int) $data['version'], $data);
+
+        return response()->json($this->tickets->detail($request->user(), $id));
+    }
+
+    public function technicians(Request $request, string $id): JsonResponse
+    {
+        $this->tickets->access->manage($request->user(), 'TICKET:ASSIGN');
+        $ticket = $this->tickets->detail($request->user(), $id);
+        $block = $ticket->apartment->block_id;
+        $users = User::where('status', 'ACTIVE')->whereHas('roles', fn ($q) => $q->whereIn('role_code', ['TECHNICIAN', 'TECHNICAL_STAFF']))
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('staff_profiles')->whereColumn('staff_profiles.user_id', 'users.id')->where(fn ($scope) => $scope->whereNull('assigned_block_id')->orWhere('assigned_block_id', $block)))->get();
+
+        return response()->json($users->filter(fn (User $user) => $this->tickets->access->technician($user) && $user->hasPermission('TICKET:VIEW') && $user->hasPermission('TICKET:UPDATE') && $user->hasPermission('TICKET:RESOLVE'))->map(fn (User $user) => ['id' => $user->id, 'full_name' => $user->full_name])->values());
+    }
+
+    public function notifications(Request $request): JsonResponse
+    {
+        $data = $request->validate(['page' => 'nullable|integer|min:1']);
+        $query = DB::table('user_in_app_notifications')->where('recipient_user_id', $request->user()->id)->where('category', 'TICKET');
+        $unread = (clone $query)->where('is_read', 0)->count();
+        $page = $query->orderByDesc('created_at')->orderByDesc('id')->paginate(15, ['id', 'title', 'body_message', 'deep_link_url', 'is_read', 'created_at'], 'page', $data['page'] ?? 1);
+
+        return response()->json(['items' => $page->items(), 'unread_count' => $unread, 'page' => $page->currentPage(), 'total_pages' => $page->lastPage()]);
+    }
+
+    public function readNotification(Request $request, string $id): JsonResponse
+    {
+        $query = DB::table('user_in_app_notifications')->where('recipient_user_id', $request->user()->id)->where('category', 'TICKET')->where('id', $id);
+        abort_unless((clone $query)->exists(), 404);
+        $query->where('is_read', 0)->update(['is_read' => 1, 'read_at' => now()]);
 
         return response()->json(['success' => true]);
     }

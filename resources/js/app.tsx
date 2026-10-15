@@ -1,6 +1,10 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../css/scss/custom.scss';
+import { TicketManagementPanel } from './Components/TicketManagementPanel';
+import { AppLayout } from './Components/Layout/AppLayout';
+import { Wrench } from 'lucide-react';
+import { api } from './Services/api';
 import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
 import PageLoadingFallback from './Components/Common/PageLoadingFallback';
 
@@ -66,6 +70,7 @@ const App: React.FC = () => {
       role === 'admin' ||
       role.toLowerCase() === 'admin' ||
       role.toLowerCase() === 'super_admin';
+    const isTechnician = ['technician', 'technical_staff'].includes(role.toLowerCase());
     const isManager =
       role === 'manager' ||
       role.toLowerCase() === 'manager' ||
@@ -81,6 +86,8 @@ const App: React.FC = () => {
 
     const normalizedRole = isAdmin || isDev
       ? 'admin'
+      : isTechnician
+      ? 'technician'
       : isManager
       ? 'manager'
       : isReceptionist
@@ -102,7 +109,7 @@ const App: React.FC = () => {
           : isReceptionist
           ? 'letan@cassavas.vn'
           : 'nguyenvanan@cassavas.vn'),
-      name:
+      name: api.getUser()?.full_name || (isTechnician ? 'Nhân viên kỹ thuật' :
         isDev
           ? 'Dev Team'
           : isAdmin
@@ -111,7 +118,7 @@ const App: React.FC = () => {
           ? 'Ban Quản Lý'
           : isReceptionist
           ? 'Lễ Tân Sảnh Chính'
-          : (residentType === 'TENANT' ? 'Khách Thuê Căn Hộ' : 'Nguyễn Văn An'),
+          : (residentType === 'TENANT' ? 'Khách Thuê Căn Hộ' : 'Nguyễn Văn An')),
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
@@ -128,6 +135,8 @@ const App: React.FC = () => {
       setTimeout(() => {
         navigateTo('/admin');
       }, 350);
+    } else if (isTechnician) {
+      navigateTo('/quan-ly?tab=tickets');
     } else if (isManager) {
       setTimeout(() => {
         navigateTo('/quan-ly');
@@ -251,6 +260,9 @@ const App: React.FC = () => {
       isResidentAdminPath ||
       isTemporaryRegistrationAdminPath);
 
+  if (currentUser?.role === 'technician' && currentPath !== '/login' && !currentPath.startsWith('/home')) {
+    return <AppLayout role="manager" userRole="manager" userName={currentUser.name} userEmail={currentUser.email} activeItemId="tickets" customItems={[{ id: 'tickets', label: 'Công việc được giao', icon: Wrench }]} onItemClick={() => navigateTo('/quan-ly?tab=tickets')} onLogout={handleLogout} onNavigateHome={() => navigateTo('/home?landing=true')}><TicketManagementPanel /></AppLayout>;
+  }
   if (isUnifiedAdminDevPath) {
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
     if (currentUser && currentUser.role !== 'admin' && !currentUser.isDev) {

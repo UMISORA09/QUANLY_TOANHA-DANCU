@@ -112,8 +112,8 @@ class ResidentTicketService
             });
         }
 
-        $perPage = min(max((int) ($filters['per_page'] ?? 10), 5), 50);
-        $paginated = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $perPage = min(max((int) ($filters['per_page'] ?? 15), 5), 50);
+        $paginated = $query->orderBy('created_at', 'desc')->orderBy('id')->paginate($perPage);
 
         return [
             'tickets' => $paginated,
@@ -243,6 +243,8 @@ class ResidentTicketService
                     'created_at' => $now,
                 ]);
 
+                app(TicketNotificationService::class)->changed($ticket, 'created');
+
                 return $ticket;
             });
 
@@ -319,123 +321,6 @@ class ResidentTicketService
                 'new_status' => $ticket->status,
                 'performed_by_user_id' => $user->id,
                 'notes' => 'Cư dân cập nhật nội dung sự cố',
-                'created_at' => $now,
-            ]);
-
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
-        });
-    }
-
-    /**
-     * Cư dân hủy Ticket (Chỉ cho phép khi ở trạng thái NEW hoặc RECEIVED).
-     */
-    public function cancel(User $user, string $ticketId, ?string $reason = null): Ticket
-    {
-        return DB::transaction(function () use ($user, $ticketId, $reason) {
-            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
-            if (! $ticket) {
-                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-            }
-
-            app(TicketAccessService::class)->resident($user, $ticket);
-
-            if (! in_array($ticket->status, ['NEW', 'RECEIVED'], true)) {
-                throw new TicketConflictException('Không thể hủy yêu cầu khi nhân viên kỹ thuật đang trong quá trình sửa chữa hoặc sự cố đã kết thúc.', 409);
-            }
-
-            $now = Carbon::now();
-            $oldStatus = $ticket->status;
-
-            $ticket->status = 'CANCELLED';
-            $ticket->version = ((int) $ticket->version) + 1;
-            $ticket->updated_at = $now;
-            $ticket->save();
-
-            TicketHistory::create([
-                'ticket_id' => $ticket->id,
-                'action_type' => 'STATUS_CHANGED',
-                'old_status' => $oldStatus,
-                'new_status' => 'CANCELLED',
-                'performed_by_user_id' => $user->id,
-                'notes' => 'Cư dân hủy yêu cầu: '.($reason ?: 'Không nêu lý do'),
-                'created_at' => $now,
-            ]);
-
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
-        });
-    }
-
-    /**
-     * Cư dân xác nhận đã khắc phục xong (Chuyển RESOLVED sang CLOSED).
-     */
-    public function confirm(User $user, string $ticketId, ?string $note = null): Ticket
-    {
-        return DB::transaction(function () use ($user, $ticketId, $note) {
-            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
-            if (! $ticket) {
-                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-            }
-
-            app(TicketAccessService::class)->resident($user, $ticket);
-
-            if ($ticket->status !== 'RESOLVED') {
-                throw new TicketConflictException('Chỉ có thể xác nhận hoàn thành khi bộ phận kỹ thuật đã báo khắc phục (RESOLVED).', 409);
-            }
-
-            $now = Carbon::now();
-
-            $ticket->status = 'CLOSED';
-            $ticket->closed_at = $now;
-            $ticket->version = ((int) $ticket->version) + 1;
-            $ticket->updated_at = $now;
-            $ticket->save();
-
-            TicketHistory::create([
-                'ticket_id' => $ticket->id,
-                'action_type' => 'STATUS_CHANGED',
-                'old_status' => 'RESOLVED',
-                'new_status' => 'CLOSED',
-                'performed_by_user_id' => $user->id,
-                'notes' => 'Cư dân đã nghiệm thu và xác nhận xử lý đạt yêu cầu.'.($note ? ' Ghi chú: '.$note : ''),
-                'created_at' => $now,
-            ]);
-
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
-        });
-    }
-
-    /**
-     * Cư dân báo chưa khắc phục xong (Reopen từ RESOLVED về IN_PROGRESS).
-     */
-    public function reopen(User $user, string $ticketId, string $reason): Ticket
-    {
-        return DB::transaction(function () use ($user, $ticketId, $reason) {
-            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
-            if (! $ticket) {
-                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-            }
-
-            app(TicketAccessService::class)->resident($user, $ticket);
-
-            if ($ticket->status !== 'RESOLVED') {
-                throw new TicketConflictException('Chỉ có thể phản hồi chưa hoàn tất khi yêu cầu đang ở trạng thái Chờ xác nhận (RESOLVED).', 409);
-            }
-
-            $now = Carbon::now();
-
-            $ticket->status = 'IN_PROGRESS';
-            $ticket->resolved_at = null;
-            $ticket->version = ((int) $ticket->version) + 1;
-            $ticket->updated_at = $now;
-            $ticket->save();
-
-            TicketHistory::create([
-                'ticket_id' => $ticket->id,
-                'action_type' => 'STATUS_CHANGED',
-                'old_status' => 'RESOLVED',
-                'new_status' => 'IN_PROGRESS',
-                'performed_by_user_id' => $user->id,
-                'notes' => 'Cư dân phản hồi sự cố chưa được xử lý dứt điểm: '.trim($reason),
                 'created_at' => $now,
             ]);
 

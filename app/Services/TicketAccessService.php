@@ -75,6 +75,11 @@ class TicketAccessService
         return [
             'edit' => $manager && $user->hasPermission('TICKET:UPDATE') && ! in_array($ticket->status, ['CLOSED', 'CANCELLED'], true),
             'archive' => $user->isSuperAdmin() && in_array($ticket->status, ['CLOSED', 'CANCELLED'], true),
+            'receive' => $manager && $user->hasPermission('TICKET:UPDATE') && $ticket->status === 'NEW',
+            'assign' => $manager && $user->hasPermission('TICKET:ASSIGN') && in_array($ticket->status, ['NEW', 'RECEIVED', 'IN_PROGRESS'], true),
+            'cancel' => $manager && $user->hasPermission('TICKET:UPDATE') && in_array($ticket->status, ['NEW', 'RECEIVED'], true),
+            'start' => $this->technician($user) && $ticket->current_technician_user_id === $user->id && $user->hasPermission('TICKET:UPDATE') && $ticket->status === 'RECEIVED',
+            'resolve' => $this->technician($user) && $ticket->current_technician_user_id === $user->id && $user->hasPermission('TICKET:RESOLVE') && $ticket->status === 'IN_PROGRESS',
         ];
     }
 }

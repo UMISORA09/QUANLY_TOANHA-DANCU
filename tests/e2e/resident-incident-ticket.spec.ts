@@ -16,7 +16,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
         return;
       }
       const apartment = { id: 'qa-apartment', apartment_number: 'QA-01' };
-      const data = path.endsWith('/tickets/categories')
+      const data = path.endsWith('/ticket-notifications') ? { items: [], unread_count: 0, page: 1, total_pages: 1 } : path.endsWith('/tickets/categories')
         ? { success: true, data: [{ id: 'qa-category', category_name: 'Điện nước', default_priority: 'MEDIUM' }] }
         : path.includes('/resident/tickets')
           ? { success: true, data: [], pagination: { current_page: 1, last_page: 1, total: 0, per_page: 10 }, counters: { all: 0, new: 0, in_progress: 0, resolved: 0, closed: 0, cancelled: 0 } }
@@ -25,7 +25,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     });
     await page.goto('/cu-dan?tab=tickets');
     await page.click('#ticket-open-create-btn');
-    await page.locator('#ticket-category-select').selectOption('qa-category');
+    await page.locator('#ticket-category-select').click();
+    await page.getByRole('option', { name: 'Điện nước', exact: true }).click();
     await page.fill('#ticket-title-input', 'Kiểm tra vòi nước');
     await page.fill('#ticket-location-input', 'Phòng bếp');
     await page.fill('#ticket-description-textarea', 'Vòi nước bị rò rỉ cần hỗ trợ.');
@@ -40,6 +41,15 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
   });
 
   test.beforeEach(async ({ page }) => {
+    await page.route('**/api/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const apartment = { id: 'qa-apartment', apartment_number: 'QA-01' };
+      const data = path.endsWith('/ticket-notifications') ? { items: [], unread_count: 0, page: 1, total_pages: 1 }
+        : path.endsWith('/tickets/categories') ? { success: true, data: [{ id: 'qa-category', category_name: 'Điện nước', default_priority: 'MEDIUM' }] }
+        : path.includes('/resident/tickets') ? { success: true, data: [], pagination: { current_page: 1, last_page: 1, total: 0, per_page: 15 }, counters: { all: 0, new: 0, in_progress: 0, resolved: 0, closed: 0, cancelled: 0 } }
+        : { user: { full_name: 'Cư dân QA' }, apartment, apartments: [apartment] };
+      await route.fulfill({ json: data });
+    });
     // Giả lập phiên cư dân trong localStorage trước khi mount app
     await page.addInitScript(() => {
       const mockSession = {
@@ -119,7 +129,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(page.locator('#ticket-location-input')).toHaveValue('Khu vực bếp');
 
     // Chọn mức độ ưu tiên
-    await page.selectOption('#ticket-priority-select', 'HIGH');
+    await page.locator('#ticket-priority-select').click();
+    await page.getByRole('option', { name: 'Ưu tiên cao', exact: true }).click();
 
     // Nhập mô tả
     await page.fill(

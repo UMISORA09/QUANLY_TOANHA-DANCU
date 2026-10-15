@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TicketImage } from './TicketImage';
-import { ConfirmDialog } from './Admin/ConfirmDialog';
+import { TicketDialog } from './TicketDialog';
+import { TicketNotifications } from './TicketNotifications';
+import { CustomSelect } from './Common/CustomSelect';
 import {
   AlertCircle,
   AlertTriangle,
@@ -201,6 +203,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createRequestKey = useRef<string | null>(null);
+  const listRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => listRequest.current?.abort(), []);
 
   useEffect(() => {
     createRequestKey.current = null;
@@ -229,6 +233,23 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     version: 1,
   });
   const [isUpdating, setIsUpdating] = useState(false);
+  const modalBusy = useRef(false);
+  modalBusy.current = isSubmitting || isCancelling || isConfirming || isReopening || isUpdating || imageBusy;
+  useEffect(() => {
+    if (!isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const bodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const dialog = document.querySelector<HTMLElement>('[data-ticket-modal]');
+    const controls = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]') || []).filter((node) => node.offsetParent !== null);
+    const frame = requestAnimationFrame(() => controls()[0]?.focus());
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !modalBusy.current) { setIsCreateModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setIsEditModalOpen(false); setRemoveImageId(null); }
+      if (event.key === 'Tab') { const nodes = controls(); const first = nodes[0], last = nodes[nodes.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
+    };
+    document.addEventListener('keydown', keyboard);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', keyboard); document.body.style.overflow = bodyOverflow; previous?.focus(); };
+  }, [isCreateModalOpen, isCancelModalOpen, isConfirmModalOpen, isReopenModalOpen, isEditModalOpen, removeImageId]);
 
   // Debounce search input
   useEffect(() => {
@@ -286,6 +307,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
   // Fetch tickets list with filters
   const fetchTickets = useCallback(async () => {
+    listRequest.current?.abort();
+    const controller = new AbortController();
+    listRequest.current = controller;
     setIsLoading(true);
     setLoadError(null);
     try {
@@ -295,10 +319,10 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         priority: priorityFilter,
         search: debouncedSearch,
         page: currentPage,
-        per_page: 10,
-      });
+        per_page: 15,
+      }, controller.signal);
 
-      if (res && res.success) {
+      if (!controller.signal.aborted && res && res.success) {
         setTickets(res.data || []);
         if (res.counters) {
           setCounters(res.counters);
@@ -310,9 +334,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         }
       }
     } catch (err: any) {
-      setLoadError(err?.message || 'Không thể tải danh sách sự cố. Vui lòng kiểm tra lại kết nối.');
+      if (!controller.signal.aborted) setLoadError(err?.message || 'Không thể tải danh sách sự cố. Vui lòng kiểm tra lại kết nối.');
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   }, [statusFilter, categoryFilter, priorityFilter, debouncedSearch, currentPage]);
 
@@ -338,6 +362,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       setIsLoadingDetail(false);
     }
   };
+  useEffect(() => { const id = new URLSearchParams(location.search).get('ticket_id'); if (id) void fetchTicketDetail(id); }, []);
 
   // Xử lý upload ảnh minh chứng
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -488,7 +513,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     if (!detailTicket) return;
     setIsCancelling(true);
     try {
-      const res = await api.cancelResidentTicket(detailTicket.id, cancelReason);
+      if (cancelReason.trim().length < 5) { showToast('Vui lòng nhập lý do hủy ít nhất 5 ký tự.', 'error'); return; }
+      const res = await api.cancelResidentTicket(detailTicket.id, detailTicket.version, cancelReason);
       if (res && res.success) {
         showToast('Hủy yêu cầu sự cố thành công.', 'success');
         setDetailTicket(res.data);
@@ -498,6 +524,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Không thể hủy yêu cầu sự cố.', 'error');
+      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
     } finally {
       setIsCancelling(false);
     }
@@ -508,7 +535,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     if (!detailTicket) return;
     setIsConfirming(true);
     try {
-      const res = await api.confirmResidentTicket(detailTicket.id, confirmNote);
+      const res = await api.confirmResidentTicket(detailTicket.id, detailTicket.version, confirmNote);
       if (res && res.success) {
         showToast('Cảm ơn bạn đã xác nhận và nghiệm thu công tác sửa chữa.', 'success');
         setDetailTicket(res.data);
@@ -518,6 +545,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Không thể xác nhận hoàn thành.', 'error');
+      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
     } finally {
       setIsConfirming(false);
     }
@@ -532,7 +560,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     }
     setIsReopening(true);
     try {
-      const res = await api.reopenResidentTicket(detailTicket.id, reopenReason);
+      const res = await api.reopenResidentTicket(detailTicket.id, detailTicket.version, reopenReason);
       if (res && res.success) {
         showToast('Đã gửi phản hồi. Kỹ thuật viên sẽ tiếp tục kiểm tra lại sự cố.', 'success');
         setDetailTicket(res.data);
@@ -542,6 +570,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Không thể gửi phản hồi.', 'error');
+      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
     } finally {
       setIsReopening(false);
     }
@@ -593,6 +622,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Cập nhật thất bại. Vui lòng tải lại dữ liệu mới nhất.', 'error');
+      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
     } finally {
       setIsUpdating(false);
     }
@@ -600,6 +630,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
+      <TicketNotifications onChange={() => { void fetchTickets(); if (selectedTicketId && viewMode === 'detail' && !isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId) void fetchTicketDetail(selectedTicketId); }} />
       {/* Toast Notification */}
       {toast && (
         <div
@@ -787,9 +818,10 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       {isCreateModalOpen && (
         <div
           id="ticket-create-modal"
+          data-ticket-modal role="dialog" aria-modal="true" aria-label="Gửi yêu cầu báo cáo sự cố"
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
           onClick={(e) => {
-            if (e.target === e.currentTarget) {
+            if (e.target === e.currentTarget && !isSubmitting) {
               setIsCreateModalOpen(false);
             }
           }}
@@ -836,7 +868,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     <input
                       type="text"
                       disabled
-                      value={currentUser?.full_name || 'Nguyễn Văn An'}
+                      value={currentUser?.full_name || 'Chưa tải được thông tin'}
                       className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
                     />
                   </div>
@@ -846,7 +878,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     <input
                       type="text"
                       disabled
-                      value={currentUser?.phone_number || '0909 123 456'}
+                      value={currentUser?.phone_number || 'Chưa cập nhật'}
                       className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
                     />
                   </div>
@@ -856,23 +888,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Căn hộ / Tòa nhà <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <select
-                        id="ticket-apartment-select"
-                        value={formData.apartment_id}
-                        onChange={(e) => setFormData({ ...formData, apartment_id: e.target.value })}
-                        className="w-full appearance-none px-3.5 py-2 pr-9 bg-white border border-neutral-200 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900 rounded-xl text-xs text-neutral-900 font-semibold outline-none cursor-pointer shadow-2xs transition-all resident-ticket-select"
-                      >
-                        {apartments.length === 0 ? (
-                          <option value="">Căn hộ mặc định</option>
-                        ) : (
-                          apartments.map((apt) => (
-                            <option key={apt.id} value={apt.id}>
-                              Căn {apt.apartment_number} {apt.block_name ? `(${apt.block_name})` : ''}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                      <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                      <CustomSelect id="ticket-apartment-select" value={formData.apartment_id} onChange={(value) => setFormData({ ...formData, apartment_id: value })} placeholder="Chọn căn hộ đang cư trú" options={apartments.map((apt) => ({ value: apt.id, label: `Căn ${apt.apartment_number} ${apt.block_name || ''}` }))} />
                     </div>
                   </div>
                 </div>
@@ -917,22 +933,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Phân loại sự cố <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <select
-                        id="ticket-category-select"
-                        value={formData.category_id}
-                        onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                        className={`w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs resident-ticket-select ${
-                          formErrors.category_id ? 'border-rose-400' : 'border-neutral-200'
-                        }`}
-                      >
-                        <option value="">-- Chọn danh mục sự cố --</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.category_name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                      <CustomSelect id="ticket-category-select" value={formData.category_id} onChange={(value) => setFormData({ ...formData, category_id: value })} options={categories.map((c) => ({ value: c.id, label: c.category_name }))} placeholder="Chọn danh mục sự cố" />
                     </div>
                     {formErrors.category_id && (
                       <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.category_id}</p>
@@ -979,18 +980,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Mức độ khẩn cấp
                     </label>
                     <div className="relative">
-                      <select
-                        id="ticket-priority-select"
-                        value={formData.priority}
-                        onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                        className="w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border border-neutral-200 text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs resident-ticket-select"
-                      >
-                        <option value="LOW">Thấp (Chưa ảnh hưởng sinh hoạt ngay)</option>
-                        <option value="MEDIUM">Bình thường (Cần kiểm tra trong 24h)</option>
-                        <option value="HIGH">Ưu tiên cao (Ảnh hưởng trực tiếp sinh hoạt)</option>
-                        <option value="URGENT">Khẩn cấp (Rò rỉ nước lớn, chập điện nguy hiểm)</option>
-                      </select>
-                      <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                      <CustomSelect id="ticket-priority-select" value={formData.priority} onChange={(value) => setFormData({ ...formData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
                     </div>
                   </div>
 
@@ -1172,44 +1162,12 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
               {/* Status Filter */}
               <div className="relative">
-                <select
-                  id="ticket-status-filter"
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-800 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 cursor-pointer shadow-2xs resident-ticket-select transition-all"
-                >
-                  <option value="ALL">-- Tất cả trạng thái --</option>
-                  <option value="NEW">Mới gửi</option>
-                  <option value="IN_PROGRESS">Đang xử lý</option>
-                  <option value="RESOLVED">Chờ nghiệm thu</option>
-                  <option value="CLOSED">Đã hoàn tất</option>
-                  <option value="CANCELLED">Đã hủy</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                <CustomSelect id="ticket-status-filter" label="Trạng thái yêu cầu" value={statusFilter} onChange={(value) => { setStatusFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả trạng thái' }, ...Object.entries(STATUS_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
               </div>
 
               {/* Category Filter */}
               <div className="relative">
-                <select
-                  id="ticket-category-filter"
-                  value={categoryFilter}
-                  onChange={(e) => {
-                    setCategoryFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-800 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 cursor-pointer shadow-2xs resident-ticket-select transition-all"
-                >
-                  <option value="ALL">-- Tất cả loại sự cố --</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.category_name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                <CustomSelect id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
               </div>
             </div>
 
@@ -1591,7 +1549,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: HỦY TICKET ================= */}
       {isCancelModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Hủy yêu cầu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2 text-rose-600">
@@ -1611,7 +1569,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
             </p>
             <div>
               <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Lý do hủy yêu cầu (Không bắt buộc)
+                Lý do hủy yêu cầu (Bắt buộc, ít nhất 5 ký tự)
               </label>
               <textarea
                 rows={3}
@@ -1644,7 +1602,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: XÁC NHẬN HOÀN TẤT ================= */}
       {isConfirmModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Xác nhận nghiệm thu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2 text-emerald-600">
@@ -1697,7 +1655,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: CHƯA KHẮC PHỤC XONG (REOPEN) ================= */}
       {isReopenModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Phản hồi chưa đạt" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2 text-amber-600">
@@ -1749,15 +1707,15 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       )}
 
       {/* ================= MODAL: CHỈNH SỬA TICKET ================= */}
-      <ConfirmDialog isOpen={!!removeImageId} title="Bỏ ảnh sự cố" message="Bạn muốn bỏ ảnh này khỏi yêu cầu?" confirmLabel="Bỏ ảnh" isDangerous isLoading={imageBusy} onCancel={() => { if (!imageBusy) setRemoveImageId(null); }} onConfirm={async () => {
+      <TicketDialog open={!!removeImageId} title="Bỏ ảnh sự cố" busy={imageBusy} onClose={() => setRemoveImageId(null)}><p className="text-sm">Bạn muốn bỏ ảnh này khỏi yêu cầu?</p><div className="mt-4 flex justify-end gap-2"><button type="button" disabled={imageBusy} className="rounded-xl border px-4 py-2 cursor-pointer" onClick={() => setRemoveImageId(null)}>Đóng</button><button type="button" disabled={imageBusy} className="rounded-xl bg-rose-600 px-4 py-2 text-white cursor-pointer" onClick={async () => {
         if (!detailTicket || !removeImageId || imageBusy) return;
         setImageBusy(true);
         try { const res = await api.removeTicketImage(detailTicket.id, removeImageId, detailTicket.version); setDetailTicket(res.data); setRemoveImageId(null); showToast('Đã bỏ ảnh.'); }
         catch (error: any) { showToast(error.message, 'error'); if (error.status === 409) void fetchTicketDetail(detailTicket.id); }
         finally { setImageBusy(false); }
-      }} />
+      }}>Bỏ ảnh</button></div></TicketDialog>
       {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Sửa yêu cầu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl border border-neutral-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-start justify-between border-b border-neutral-100 pb-3">
               <div className="flex items-center gap-2">
@@ -1797,17 +1755,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 <div>
                   <label className="block font-bold text-neutral-800 mb-1">Mức độ ưu tiên</label>
                   <div className="relative">
-                    <select
-                      value={editFormData.priority}
-                      onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value })}
-                      className="w-full appearance-none px-3.5 py-2.5 pr-8 rounded-xl border border-neutral-200 text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 cursor-pointer shadow-2xs resident-ticket-select"
-                    >
-                      <option value="LOW">Thấp</option>
-                      <option value="MEDIUM">Bình thường</option>
-                      <option value="HIGH">Ưu tiên cao</option>
-                      <option value="URGENT">Khẩn cấp</option>
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-neutral-400 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+                    <CustomSelect label="Ưu tiên yêu cầu" value={editFormData.priority} onChange={(value) => setEditFormData({ ...editFormData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
                   </div>
                 </div>
               </div>

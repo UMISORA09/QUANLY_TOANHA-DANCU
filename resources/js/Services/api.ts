@@ -2114,6 +2114,10 @@ class ApiService {
   async createManagedTicket(payload: Record<string, unknown>) { return this.request<ManagedTicket>('/admin/tickets', { method: 'POST', body: JSON.stringify(payload) }); }
   async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
   async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
+  async getTicketTechnicians(id: string) { return this.request<{ id: string; full_name: string }[]>(`/admin/tickets/${id}/technicians`); }
+  async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
+  async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
+  async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
 
   async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
     if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
@@ -2186,24 +2190,24 @@ class ApiService {
     });
   }
 
-  async cancelResidentTicket(id: string, reason?: string) {
+  async cancelResidentTicket(id: string, version: number, reason: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/cancel`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, version }),
     });
   }
 
-  async confirmResidentTicket(id: string, note?: string) {
+  async confirmResidentTicket(id: string, version: number, note?: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
       method: 'POST',
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note, version }),
     });
   }
 
-  async reopenResidentTicket(id: string, reason: string) {
+  async reopenResidentTicket(id: string, version: number, reason: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/reopen`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, version }),
     });
   }
 
@@ -2215,6 +2219,7 @@ class ApiService {
 export interface ManagedTicket extends TicketItem {
   actions: Record<string, boolean>;
 }
+export interface TicketNotification { id: string; title: string; body_message: string; deep_link_url: string; is_read: boolean | number; created_at: string; }
 export interface TicketOptions {
   categories: TicketCategoryItem[];
   blocks: { id: string; block_name: string }[];
