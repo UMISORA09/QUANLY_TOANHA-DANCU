@@ -38,6 +38,7 @@ import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
 import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
+import { ResidentPushNotificationToggle } from '../Components/ResidentPushNotificationToggle';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -566,6 +567,9 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            {/* Web Push Notification Activation for Resident */}
+            <ResidentPushNotificationToggle />
 
             {/* 4 Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

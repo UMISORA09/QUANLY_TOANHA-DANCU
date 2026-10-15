@@ -19,6 +19,7 @@ use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PushNotificationController;
 use App\Http\Controllers\RealtimeStreamController;
 use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
@@ -216,6 +217,12 @@ Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(f
 });
 Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
 Route::post('/api/v1/ticket-notifications/{id}/read', [TicketManagementController::class, 'readNotification'])->middleware('auth.bearer:strict');
+
+// API Web Push Notifications (Module #10: Tự động thông báo bưu phẩm)
+Route::post('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'subscribe']);
+Route::delete('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'unsubscribe']);
+Route::get('/api/v1/notifications/push-status', [PushNotificationController::class, 'status']);
+Route::get('/api/v1/notifications/vapid-public-key', [PushNotificationController::class, 'vapidPublicKey']);
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
