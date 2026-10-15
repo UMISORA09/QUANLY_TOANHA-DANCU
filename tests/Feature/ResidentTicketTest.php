@@ -6,6 +6,7 @@ use App\Models\Block;
 use App\Models\Floor;
 use App\Models\Resident;
 use App\Models\Ticket;
+use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -38,6 +39,8 @@ class ResidentTicketTest extends TestCase
     {
         parent::setUp();
         Storage::fake('public');
+        Storage::fake('local');
+        config(['tickets.attachment_disk' => 'local']);
 
         // Setup users
         $this->residentUser = User::factory()->create(['status' => 'ACTIVE']);
@@ -178,8 +181,9 @@ class ResidentTicketTest extends TestCase
 
     public function test_resident_can_create_ticket_with_photo_attachments(): void
     {
-        $file1 = UploadedFile::fake()->create('leak1.jpg', 150, 'image/jpeg');
-        $file2 = UploadedFile::fake()->create('leak2.png', 200, 'image/png');
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5ZkAAAAASUVORK5CYII=');
+        $file1 = UploadedFile::fake()->createWithContent('leak1.jpg', $png);
+        $file2 = UploadedFile::fake()->createWithContent('leak2.png', $png);
 
         $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
             ->post('/api/v1/resident/tickets', [
@@ -493,6 +497,67 @@ class ResidentTicketTest extends TestCase
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/resident/tickets')->assertUnauthorized();
+    }
+
+    public function test_private_photos_require_ticket_access_and_preserve_storage_privacy(): void
+    {
+        $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->post('/api/v1/resident/tickets', [
+            'title' => 'Kiểm tra ảnh riêng tư', 'description' => 'Ảnh hiện trường sự cố trong căn hộ.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+            'attachments' => [UploadedFile::fake()->image('photo.png')],
+        ])->assertCreated();
+        $attachment = TicketAttachment::findOrFail($response->json('data.attachments.0.id'));
+        Storage::disk('local')->assertExists($attachment->storage_path);
+        Storage::disk('public')->assertMissing($attachment->storage_path);
+        $response->assertJsonMissingPath('data.attachments.0.storage_path');
+        $url = $response->json('data.attachments.0.file_url');
+        $this->get($url)->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->withHeader('Authorization', 'Bearer '.$this->otherToken)->get($url)->assertForbidden();
+        $this->withHeader('Authorization', '')->get($url)->assertUnauthorized();
+    }
+
+    public function test_private_photos_reject_corrupt_content_and_roll_back_created_files(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->post('/api/v1/resident/tickets', [
+            'title' => 'Kiểm tra ảnh bị hỏng', 'description' => 'Ảnh hiện trường sự cố trong căn hộ.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+            'attachments' => [UploadedFile::fake()->image('good.png'), UploadedFile::fake()->create('broken.png', 1, 'image/png')],
+        ], ['Accept' => 'application/json'])->assertUnprocessable();
+        $this->assertSame(0, Ticket::where('creator_user_id', $this->residentUser->id)->count());
+        $this->assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    public function test_private_photo_addition_checks_total_limit_and_version(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/tickets', [
+            'title' => 'Kiểm tra bổ sung ảnh', 'description' => 'Ảnh hiện trường sự cố trong căn hộ.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+        ])->assertCreated()->json('data.id');
+        $path = '/api/v1/resident/tickets/'.$id.'/attachments';
+        $first = $this->post($path, ['version' => '1', 'attachments' => [UploadedFile::fake()->image('first.png')]])->assertOk();
+        $first->assertJsonPath('data.version', 2);
+        $this->post($path, ['version' => 1, 'attachments' => [UploadedFile::fake()->image('stale.png')]])->assertConflict();
+        $this->post($path, ['version' => 2, 'attachments' => array_map(fn (int $i) => UploadedFile::fake()->image($i.'.png'), range(1, 5))], ['Accept' => 'application/json'])->assertUnprocessable();
+        $this->deleteJson($path.'/'.$first->json('data.attachments.0.id'), ['version' => 2])->assertOk()->assertJsonCount(0, 'data.attachments');
+    }
+
+    public function test_legacy_photo_migration_is_dry_run_until_apply_and_verifies_private_copy(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/tickets', [
+            'title' => 'Kiểm tra chuyển kho ảnh', 'description' => 'Ảnh hiện trường sự cố trong căn hộ.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+        ])->assertCreated()->json('data.id');
+        $path = 'tickets/'.$id.'/legacy.png';
+        Storage::disk('public')->put($path, 'legacy-bytes');
+        $attachment = TicketAttachment::create(['ticket_id' => $id, 'file_name' => 'legacy.png', 'file_url' => '/storage/'.$path, 'file_type' => 'IMAGE', 'storage_path' => $path, 'uploaded_by_user_id' => $this->residentUser->id]);
+        $this->artisan('tickets:migrate-attachments')->assertSuccessful();
+        Storage::disk('local')->assertMissing($path);
+        $this->artisan('tickets:migrate-attachments', ['--apply' => true, '--remove-public' => true])->assertSuccessful();
+        $this->assertSame('local', $attachment->fresh()->storage_disk);
+        $this->assertSame('legacy-bytes', Storage::disk('local')->get($path));
+        Storage::disk('public')->assertMissing($path);
     }
 
     public function test_ticket_retry_survives_cache_loss_and_the_old_ten_minute_window(): void

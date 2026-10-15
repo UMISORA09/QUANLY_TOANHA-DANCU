@@ -20,12 +20,20 @@ class TicketAttachment extends Model
         'file_name',
         'file_url',
         'storage_path',
+        'storage_disk',
         'file_type',
         'mime_type',
         'file_size_bytes',
         'is_resolution_proof',
         'uploaded_by_user_id',
     ];
+
+    protected $hidden = ['storage_path', 'storage_disk'];
+
+    public function getFileUrlAttribute(): string
+    {
+        return '/api/v1/resident/tickets/'.$this->ticket_id.'/attachments/'.$this->id;
+    }
 
     protected function casts(): array
     {

@@ -2106,6 +2106,25 @@ class ApiService {
     return this.request<{ success: boolean; data: TicketCategoryItem[] }>('/resident/tickets/categories');
   }
 
+  async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
+    if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
+    const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
+    const response = await fetch(url, { signal, headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    if (!response.ok) throw new Error('Không tải được ảnh sự cố.');
+    return response.blob();
+  }
+
+  async addTicketImages(id: string, files: File[], version: number) {
+    const body = new FormData();
+    files.forEach((file) => body.append('attachments[]', file));
+    body.append('version', String(version));
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments`, { method: 'POST', body });
+  }
+
+  async removeTicketImage(id: string, attachmentId: string, version: number) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) });
+  }
+
   async getResidentTickets(filters?: {
     status?: string;
     category_id?: string;
