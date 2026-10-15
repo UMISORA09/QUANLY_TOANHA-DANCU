@@ -160,12 +160,29 @@ class ResidentTicketSeeder extends Seeder
             ->orWhere('apartment_number', '1508')
             ->first();
         if (! $apt2 && $blockB) {
+            $floorId = DB::table('floors')->where('block_id', $blockB->id)->where('floor_number', 2)->value('id');
+            if (! $floorId) {
+                $floorId = (string) Str::uuid();
+                DB::table('floors')->insert([
+                    'id' => $floorId,
+                    'block_id' => $blockB->id,
+                    'floor_number' => 2,
+                    'floor_code' => 'B-F02',
+                    'floor_name' => 'Tầng 02',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
             $apt2Id = (string) Str::uuid();
             DB::table('apartments')->insert([
                 'id' => $apt2Id,
                 'block_id' => $blockB->id,
+                'floor_id' => $floorId,
                 'apartment_number' => 'B2-08',
                 'room_type' => '3_BEDROOM',
+                'gross_floor_area_sqm' => 100,
+                'net_usable_area_sqm' => 95,
+                'bedroom_count' => 3,
                 'status' => 'OCCUPIED',
                 'created_at' => $now,
                 'updated_at' => $now,
