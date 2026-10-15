@@ -1644,8 +1644,14 @@ class ApiService {
   async updateParcel(id: string, formData: FormData | object): Promise<{ success: boolean; message: string; data: ParcelItem }> {
     const isFormData = formData instanceof FormData;
     return this.request<{ success: boolean; message: string; data: ParcelItem }>(`/reception/parcels/${id}`, {
-      method: 'PUT',
+      method: isFormData ? 'POST' : 'PUT',
       body: isFormData ? formData : JSON.stringify(formData),
+    });
+  }
+
+  async deleteParcel(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/reception/parcels/${id}`, {
+      method: 'DELETE',
     });
   }
 
