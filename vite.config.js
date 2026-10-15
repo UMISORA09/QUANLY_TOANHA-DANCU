@@ -14,6 +14,16 @@ export default defineConfig({
         tailwindcss(),
     ],
     server: {
+        proxy: {
+            '/storage': {
+                target: 'http://127.0.0.1:8000',
+                changeOrigin: true,
+            },
+            '/images': {
+                target: 'http://127.0.0.1:8000',
+                changeOrigin: true,
+            },
+        },
         watch: {
             ignored: ['**/storage/framework/views/**'],
         },

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Parcel;
+use App\Services\RbacService;
 use App\Services\ReceptionParcelService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class ReceptionParcelController extends Controller
             'courier_company' => $request->query('courier_company'),
             'from_date' => $request->query('from_date'),
             'to_date' => $request->query('to_date'),
+            'pin_code' => $request->query('pin_code'),
             'search' => $request->query('search'),
         ];
 
@@ -69,9 +71,10 @@ class ReceptionParcelController extends Controller
         $photoFile = $request->file('photo');
 
         try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
             $parcel = $this->service->receiveParcel(
                 data: $validated,
-                staffUser: $request->user(),
+                staffUser: $staffUser,
                 photoFile: $photoFile
             );
 
@@ -138,10 +141,11 @@ class ReceptionParcelController extends Controller
         $newPhotoFile = $request->file('photo');
 
         try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
             $parcel = $this->service->updateParcel(
                 id: $id,
                 data: $validated,
-                staffUser: $request->user(),
+                staffUser: $staffUser,
                 newPhotoFile: $newPhotoFile
             );
 
@@ -160,6 +164,36 @@ class ReceptionParcelController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Lỗi khi cập nhật kiện hàng.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Xóa phiếu tiếp nhận bưu phẩm
+     */
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $this->service->deleteParcel(
+                id: $id,
+                staffUser: $staffUser
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Đã xóa kiện hàng bưu phẩm thành công.',
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Không thể xóa kiện hàng.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Lỗi khi xóa kiện hàng.',
             ], 500);
         }
     }
