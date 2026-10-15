@@ -430,6 +430,40 @@ export const CustomSelectModal: React.FC<{
   );
 };
 
+// Helper lấy prefix mã mẫu theo đơn vị vận chuyển
+const getCourierPrefix = (courier: string): string => {
+  switch (courier) {
+    case 'Shopee Express':
+    case 'SPX Express':
+      return 'SPX';
+    case 'Giao Hàng Tiết Kiệm (GHTK)':
+      return 'GHTK';
+    case 'Giao Hàng Nhanh (GHN)':
+      return 'GHN';
+    case 'Viettel Post':
+      return 'VTP';
+    case 'J&T Express':
+      return 'JNT';
+    case 'GrabExpress':
+      return 'GRAB';
+    case 'Ninja Van':
+      return 'NINJA';
+    case 'Bưu điện VNPost':
+      return 'VNP';
+    case 'BeDelivery':
+      return 'BE';
+    default:
+      return 'PKG';
+  }
+};
+
+// Tự động tạo mã vận đơn ngẫu nhiên theo đơn vị vận chuyển
+const generateRandomTrackingNumber = (courier: string): string => {
+  const prefix = getCourierPrefix(courier || 'Shopee Express');
+  const randomNumber = Math.floor(100000000 + Math.random() * 900000000);
+  return `${prefix}${randomNumber}`;
+};
+
 export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embedded = false }) => {
   const initialCache = useMemo(() => getInitialParcelCache(), []);
 
@@ -492,8 +526,8 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   // 4. Create Form States
-  const [formData, setFormData] = useState({
-    tracking_number: '',
+  const [formData, setFormData] = useState(() => ({
+    tracking_number: generateRandomTrackingNumber('Shopee Express'),
     courier_company: 'Shopee Express',
     apartment_id: '',
     recipient_name: '',
@@ -501,7 +535,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     recipient_user_id: '',
     stored_location_type: 'RECEPTION_DESK',
     notes: '',
-  });
+  }));
   const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -787,7 +821,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
         setIsCreateModalOpen(false);
         // Reset form
         setFormData({
-          tracking_number: '',
+          tracking_number: generateRandomTrackingNumber('Shopee Express'),
           courier_company: 'Shopee Express',
           apartment_id: '',
           recipient_name: '',
@@ -806,58 +840,23 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }
   };
 
-  // Helper lấy prefix mã mẫu theo đơn vị vận chuyển
-  const getCourierPrefix = (courier: string): string => {
-    switch (courier) {
-      case 'Shopee Express':
-      case 'SPX Express':
-        return 'SPX';
-      case 'Giao Hàng Tiết Kiệm (GHTK)':
-        return 'GHTK';
-      case 'Giao Hàng Nhanh (GHN)':
-        return 'GHN';
-      case 'Viettel Post':
-        return 'VTP';
-      case 'J&T Express':
-        return 'JNT';
-      case 'GrabExpress':
-        return 'GRAB';
-      case 'Ninja Van':
-        return 'NINJA';
-      case 'Bưu điện VNPost':
-        return 'VNP';
-      case 'BeDelivery':
-        return 'BE';
-      default:
-        return 'PKG';
-    }
-  };
 
-  // Quick Random tracking number for testing theo đúng Đơn vị vận chuyển đang chọn
-  const handleGenerateSampleTracking = (selectedCourier?: string) => {
-    const courier = selectedCourier || formData.courier_company || 'Shopee Express';
-    const prefix = getCourierPrefix(courier);
-    const randomNumber = Math.floor(100000000 + Math.random() * 900000000);
-    const code = `${prefix}${randomNumber}`;
-    setFormData((prev) => ({ ...prev, tracking_number: code }));
-  };
-
-  // Đổi đơn vị vận chuyển: nếu mã vận đơn đã tạo mẫu thì tự động đổi prefix theo hãng mới
+  // Đổi đơn vị vận chuyển: tự động tạo mã vận đơn ngẫu nhiên theo hãng
   const handleCourierChange = (newCourier: string) => {
-    setFormData((prev) => {
-      const knownPrefixes = ['SPX', 'GHTK', 'GHN', 'VTP', 'JNT', 'GRAB', 'NINJA', 'VNP', 'BE', 'PKG'];
-      const isAutoSample = knownPrefixes.some((p) => prev.tracking_number.startsWith(p));
-      const newPrefix = getCourierPrefix(newCourier);
-      const newTracking = isAutoSample
-        ? `${newPrefix}${Math.floor(100000000 + Math.random() * 900000000)}`
-        : prev.tracking_number;
+    setFormData((prev) => ({
+      ...prev,
+      courier_company: newCourier,
+      tracking_number: generateRandomTrackingNumber(newCourier),
+    }));
+  };
 
-      return {
-        ...prev,
-        courier_company: newCourier,
-        tracking_number: newTracking,
-      };
-    });
+  // Đổi đơn vị vận chuyển ở modal chỉnh sửa: tự động tạo mã vận đơn ngẫu nhiên theo hãng
+  const handleEditCourierChange = (newCourier: string) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      courier_company: newCourier,
+      tracking_number: generateRandomTrackingNumber(newCourier),
+    }));
   };
 
   // Xử lý mở Modal Chỉnh sửa
@@ -1052,6 +1051,12 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
             type="button"
             onClick={() => {
               setFormError(null);
+              const defaultCourier = 'Shopee Express';
+              setFormData((prev) => ({
+                ...prev,
+                courier_company: prev.courier_company || defaultCourier,
+                tracking_number: generateRandomTrackingNumber(prev.courier_company || defaultCourier),
+              }));
               setIsCreateModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition shadow-sm cursor-pointer"
@@ -1781,29 +1786,21 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       />
                     </div>
 
-                    {/* 2. Mã vận đơn (nhập sau & tạo mã mẫu tương ứng hãng) */}
+                    {/* 2. Mã vận đơn (tự động tạo ngẫu nhiên theo ĐVVC, không cho phép chỉnh sửa) */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-slate-700">
                           Mã vận đơn <span className="text-rose-500">*</span>
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateSampleTracking()}
-                          className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
-                          title="Tạo mã mẫu ngẫu nhiên khớp với đơn vị vận chuyển đang chọn"
-                        >
-                          + Tạo mã mẫu
-                        </button>
                       </div>
                       <input
                         type="text"
                         value={formData.tracking_number}
-                        onChange={(e) =>
-                          setFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
-                        }
+                        readOnly
+                        tabIndex={-1}
                         placeholder={`VD: ${getCourierPrefix(formData.courier_company)}672781726`}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-slate-700 bg-slate-100/80 cursor-not-allowed select-all focus:outline-hidden font-bold uppercase tracking-wider"
+                        title="Mã vận đơn được tạo tự động ngẫu nhiên khi chọn Đơn vị vận chuyển và không được phép chỉnh sửa"
                       />
                     </div>
                   </div>
@@ -2165,9 +2162,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     </label>
                     <CustomSelectModal
                       value={editFormData.courier_company}
-                      onChange={(val) =>
-                        setEditFormData((prev) => ({ ...prev, courier_company: val }))
-                      }
+                      onChange={(val) => handleEditCourierChange(val)}
                       options={courierOptions.map((c) => ({
                         value: c,
                         label: c,
@@ -2177,7 +2172,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     />
                   </div>
 
-                  {/* Mã vận đơn */}
+                  {/* Mã vận đơn (tự động tạo ngẫu nhiên theo ĐVVC, không cho phép chỉnh sửa) */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       Mã vận đơn <span className="text-rose-500">*</span>
@@ -2185,10 +2180,10 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     <input
                       type="text"
                       value={editFormData.tracking_number}
-                      onChange={(e) =>
-                        setEditFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
+                      readOnly
+                      tabIndex={-1}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-slate-700 bg-slate-100/80 cursor-not-allowed select-all focus:outline-hidden font-bold uppercase tracking-wider"
+                      title="Mã vận đơn được tạo tự động ngẫu nhiên khi chọn Đơn vị vận chuyển và không được phép chỉnh sửa"
                     />
                   </div>
 

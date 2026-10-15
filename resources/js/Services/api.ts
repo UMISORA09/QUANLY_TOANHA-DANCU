@@ -1668,6 +1668,33 @@ class ApiService {
     return this.request<{ success: boolean; data: any[] }>(`/reception/parcels/apartments/search?${q.toString()}`);
   }
 
+  // ================= WEB PUSH NOTIFICATIONS =================
+  async registerPushSubscription(subscriptionData: {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+    content_encoding?: string;
+  }): Promise<{ success: boolean; message: string; subscription_id?: string }> {
+    return this.request<{ success: boolean; message: string; subscription_id?: string }>('/notifications/push-subscription', {
+      method: 'POST',
+      body: JSON.stringify(subscriptionData),
+    });
+  }
+
+  async unregisterPushSubscription(endpoint: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/notifications/push-subscription', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
+  async getPushNotificationStatus(): Promise<{ success: boolean; is_subscribed: boolean; active_devices: number }> {
+    return this.request<{ success: boolean; is_subscribed: boolean; active_devices: number }>('/notifications/push-status');
+  }
+
+  async getVapidPublicKey(): Promise<{ success: boolean; public_key: string | null; is_configured: boolean }> {
+    return this.request<{ success: boolean; public_key: string | null; is_configured: boolean }>('/notifications/vapid-public-key');
+  }
+
   // ================= RBAC MANAGEMENT =================
   async getUsers(params: { search?: string; role?: string; status?: string; page?: number; limit?: number } = {}) {
     const q = new URLSearchParams();
