@@ -877,6 +877,7 @@ class ReceptionVisitorCheckinTest extends TestCase
      */
     public function test_17_pagination_integrity_with_multiple_visitors_and_multi_logs(): void
     {
+        Carbon::setTestNow(Carbon::now()->startOfSecond());
         $groupPrefix = 'PAG_INTEG_'.Str::random(6);
         $createdIds = [];
 
