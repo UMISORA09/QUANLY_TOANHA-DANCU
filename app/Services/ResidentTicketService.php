@@ -267,7 +267,7 @@ class ResidentTicketService
                 abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
             }
 
-            $this->assertOwnership($user, $ticket);
+            app(TicketAccessService::class)->resident($user, $ticket);
 
             if ($ticket->status !== 'NEW') {
                 throw new TicketConflictException('Không thể chỉnh sửa yêu cầu khi đã được ban quản lý tiếp nhận hoặc xử lý.', 409);
@@ -337,7 +337,7 @@ class ResidentTicketService
                 abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
             }
 
-            $this->assertOwnership($user, $ticket);
+            app(TicketAccessService::class)->resident($user, $ticket);
 
             if (! in_array($ticket->status, ['NEW', 'RECEIVED'], true)) {
                 throw new TicketConflictException('Không thể hủy yêu cầu khi nhân viên kỹ thuật đang trong quá trình sửa chữa hoặc sự cố đã kết thúc.', 409);
@@ -376,7 +376,7 @@ class ResidentTicketService
                 abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
             }
 
-            $this->assertOwnership($user, $ticket);
+            app(TicketAccessService::class)->resident($user, $ticket);
 
             if ($ticket->status !== 'RESOLVED') {
                 throw new TicketConflictException('Chỉ có thể xác nhận hoàn thành khi bộ phận kỹ thuật đã báo khắc phục (RESOLVED).', 409);
@@ -415,7 +415,7 @@ class ResidentTicketService
                 abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
             }
 
-            $this->assertOwnership($user, $ticket);
+            app(TicketAccessService::class)->resident($user, $ticket);
 
             if ($ticket->status !== 'RESOLVED') {
                 throw new TicketConflictException('Chỉ có thể phản hồi chưa hoàn tất khi yêu cầu đang ở trạng thái Chờ xác nhận (RESOLVED).', 409);
@@ -466,23 +466,7 @@ class ResidentTicketService
      */
     private function assertOwnership(User $user, Ticket $ticket): void
     {
-        // Nếu người tạo là chính user này
-        if ($ticket->creator_user_id === $user->id) {
-            return;
-        }
-
-        // Hoặc user có vai trò quản lý / kỹ thuật / admin
-        if ($user->roles()->whereIn('role_code', ['SUPER_ADMIN', 'BUILDING_MANAGER', 'TECHNICAL_STAFF'])->exists()) {
-            return;
-        }
-
-        // Hoặc user đang cư trú cùng căn hộ xảy ra sự cố
-        $apartments = $this->residentApartments($user);
-        if ($apartments->contains('id', $ticket->apartment_id)) {
-            return;
-        }
-
-        abort(403, 'Bạn không có quyền truy cập hoặc thao tác trên yêu cầu báo cáo sự cố này.');
+        app(TicketAccessService::class)->view($user, $ticket);
     }
 
     /**

@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\Block;
 use App\Models\Floor;
 use App\Models\Resident;
+use App\Models\Role;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\User;
+use Database\Seeders\TicketPermissionsSeeder;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
@@ -137,6 +139,62 @@ class ResidentTicketTest extends TestCase
         ]);
 
         return $token;
+    }
+
+    private function ticketStaff(string $role, ?string $blockId = null, bool $profile = true): User
+    {
+        $user = User::factory()->create(['status' => 'ACTIVE']);
+        Role::firstOrCreate(['role_code' => $role], ['role_name' => $role]);
+        $user->assignRole($role);
+        (new TicketPermissionsSeeder)->run();
+        if ($profile) {
+            $departmentId = (string) Str::uuid();
+            DB::table('departments')->insert(['id' => $departmentId, 'department_code' => 'QA-'.Str::random(8), 'department_name' => 'QA Technical']);
+            DB::table('staff_profiles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'department_id' => $departmentId, 'employee_code' => 'QA-'.Str::random(8), 'job_title' => $role, 'hire_date' => today(), 'assigned_block_id' => $blockId]);
+        }
+
+        return $user;
+    }
+
+    public function test_ticket_management_roles_scope_creation_version_and_archive(): void
+    {
+        $admin = $this->ticketStaff('SUPER_ADMIN', profile: false);
+        $blockId = DB::table('apartments')->where('id', $this->apartmentId)->value('block_id');
+        $manager = $this->ticketStaff('BUILDING_MANAGER', $blockId);
+        $missing = $this->ticketStaff('BUILDING_MANAGER', profile: false);
+        $path = '/api/v1/admin/tickets';
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->getJson($path)->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($missing))->getJson($path)->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($manager));
+        $created = $this->postJson($path, ['reporter_user_id' => $this->residentUser->id, 'apartment_id' => $this->apartmentId, 'title' => 'Tạo hộ cư dân', 'description' => 'Kiểm tra vòi nước tại phòng bếp.', 'location' => 'Phòng bếp', 'category_id' => $this->categoryId, 'priority' => 'HIGH', 'idempotency_key' => Str::uuid()->toString()])->assertCreated();
+        $id = $created->json('id');
+        $created->assertJsonPath('creator_user_id', $this->residentUser->id)->assertJsonPath('actions.edit', true);
+        $this->assertDatabaseHas('ticket_history', ['ticket_id' => $id, 'action_type' => 'CREATED', 'performed_by_user_id' => $manager->id]);
+        $this->getJson($path)->assertOk()->assertJsonPath('per_page', 15)->assertJsonPath('total', 1);
+        $this->patchJson($path.'/'.$id, ['version' => 1, 'priority' => 'LOW'])->assertOk()->assertJsonPath('version', 2);
+        $this->patchJson($path.'/'.$id, ['version' => 1, 'priority' => 'HIGH'])->assertConflict();
+        $this->patchJson($path.'/'.$id, ['version' => 2, 'status' => 'CLOSED'])->assertUnprocessable();
+        $this->deleteJson($path.'/'.$id, ['version' => 2, 'reason' => 'Lưu trữ yêu cầu'])->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($admin));
+        $this->deleteJson($path.'/'.$id, ['version' => 2, 'reason' => 'Lưu trữ yêu cầu'])->assertConflict();
+        Ticket::whereKey($id)->update(['status' => 'CANCELLED']);
+        $this->deleteJson($path.'/'.$id, ['version' => 2, 'reason' => 'Lưu trữ yêu cầu'])->assertOk();
+        $this->assertSoftDeleted('tickets', ['id' => $id]);
+        $this->getJson($path.'/'.$id)->assertNotFound();
+    }
+
+    public function test_ticket_management_denies_cross_building_access_including_resident_alias(): void
+    {
+        $otherBlock = (string) Str::uuid();
+        DB::table('blocks')->insert(['id' => $otherBlock, 'block_code' => 'OUT-'.Str::random(8), 'block_name' => 'Other block']);
+        $manager = $this->ticketStaff('BUILDING_MANAGER', $otherBlock);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/tickets', ['title' => 'Sự cố riêng tư', 'description' => 'Sự cố tại căn hộ của tôi.', 'location' => 'Bếp', 'category_id' => $this->categoryId])->assertCreated()->json('data.id');
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($manager));
+        $this->getJson('/api/v1/admin/tickets')->assertOk()->assertJsonPath('total', 0);
+        $this->getJson('/api/v1/admin/tickets/'.$id)->assertNotFound();
+        $this->getJson('/api/v1/resident/tickets/'.$id)->assertNotFound();
+        $this->patchJson('/api/v1/admin/tickets/'.$id, ['version' => 1, 'priority' => 'LOW'])->assertNotFound();
     }
 
     public function test_resident_can_create_ticket_successfully(): void
