@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Ticket;
-use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\TicketHistory;
 use App\Models\User;
@@ -14,7 +13,6 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -230,32 +228,8 @@ class ResidentTicketService
                     'updated_at' => $now,
                 ]);
 
-                // Xử lý tệp đính kèm an toàn
                 if (! empty($files)) {
-                    foreach ($files as $file) {
-                        if ($file instanceof UploadedFile) {
-                            $this->validateImageFile($file);
-
-                            $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
-                            $safeFilename = 'tck_'.date('Ymd_His').'_'.Str::random(12).'.'.$ext;
-                            $storedPath = $file->storeAs("tickets/{$ticket->id}", $safeFilename, 'public');
-                            $createdFiles[] = $storedPath;
-                            $fileUrl = Storage::disk('public')->url($storedPath);
-
-                            TicketAttachment::create([
-                                'ticket_id' => $ticket->id,
-                                'file_name' => $file->getClientOriginalName() ?: $safeFilename,
-                                'file_url' => $fileUrl,
-                                'storage_path' => $storedPath,
-                                'file_type' => 'IMAGE',
-                                'mime_type' => $file->getMimeType() ?: 'image/jpeg',
-                                'file_size_bytes' => $file->getSize(),
-                                'is_resolution_proof' => false,
-                                'uploaded_by_user_id' => $user->id,
-                                'created_at' => $now,
-                            ]);
-                        }
-                    }
+                    app(TicketAttachmentService::class)->store($ticket, $user->id, $files, $createdFiles);
                 }
 
                 // Ghi nhận lịch sử trạng thái ban đầu
@@ -272,14 +246,12 @@ class ResidentTicketService
                 return $ticket;
             });
 
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
         } catch (\Throwable $e) {
-            // Dọn dẹp file đã lưu nếu transaction thất bại
-            foreach ($createdFiles as $path) {
-                Storage::disk('public')->delete($path);
-            }
+            app(TicketAttachmentService::class)->cleanup($createdFiles);
             throw $e;
         }
+
+        return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
     }
 
     /**
@@ -527,39 +499,5 @@ class ResidentTicketService
         }
 
         return $prefix.sprintf('%05d', mt_rand(10000, 99999));
-    }
-
-    /**
-     * Validate an toàn tệp ảnh tải lên.
-     */
-    private function validateImageFile(UploadedFile $file): void
-    {
-        if (! $file->isValid()) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Quá trình tải tệp ảnh lên gặp sự cố. Vui lòng thử lại.',
-            ]);
-        }
-
-        // Dung lượng tối đa 5MB
-        if ($file->getSize() > 5 * 1024 * 1024) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Dung lượng ảnh đính kèm không được vượt quá 5MB/ảnh.',
-            ]);
-        }
-
-        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (! in_array($file->getMimeType(), $allowedMimes, true)) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Định dạng tệp không được hỗ trợ. Chỉ chấp nhận JPG, JPEG, PNG, WEBP.',
-            ]);
-        }
-
-        $allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
-        $ext = strtolower($file->getClientOriginalExtension());
-        if (! in_array($ext, $allowedExts, true)) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Phần mở rộng tệp không hợp lệ.',
-            ]);
-        }
     }
 }
