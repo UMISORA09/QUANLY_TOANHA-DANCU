@@ -77,12 +77,9 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(page.locator('#ticket-category-filter')).toBeVisible();
 
     // Kiểm tra 6 thẻ thống kê
-    await expect(page.locator('text=Tất cả yêu cầu')).toBeVisible();
-    await expect(page.locator('text=Mới gửi')).toBeVisible();
-    await expect(page.locator('text=Đang xử lý')).toBeVisible();
-    await expect(page.locator('text=Chờ nghiệm thu')).toBeVisible();
-    await expect(page.locator('text=Đã hoàn tất')).toBeVisible();
-    await expect(page.locator('text=Đã hủy')).toBeVisible();
+    for (const label of ['Tất cả yêu cầu', 'Mới gửi', 'Đang xử lý', 'Chờ nghiệm thu', 'Đã hoàn tất', 'Đã hủy']) {
+      await expect(page.getByText(label, { exact: true }).and(page.locator('div'))).toBeVisible();
+    }
   });
 
   test('Chuyển sang form tạo Ticket và kiểm tra validation form', async ({ page }) => {
