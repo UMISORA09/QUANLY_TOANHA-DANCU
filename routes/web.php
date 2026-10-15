@@ -210,7 +210,11 @@ Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(f
     Route::get('{id}', [TicketManagementController::class, 'show']);
     Route::patch('{id}', [TicketManagementController::class, 'update']);
     Route::delete('{id}', [TicketManagementController::class, 'destroy']);
+    Route::get('{id}/technicians', [TicketManagementController::class, 'technicians']);
+    Route::post('{id}/workflow', [TicketManagementController::class, 'workflow']);
 });
+Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/ticket-notifications/{id}/read', [TicketManagementController::class, 'readNotification'])->middleware('auth.bearer:strict');
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');

@@ -15,7 +15,7 @@ class TicketPermissionsSeeder extends Seeder
      */
     public function run(): void
     {
-        foreach (['BUILDING_MANAGER' => ['VIEW', 'CREATE', 'UPDATE'], 'TECHNICIAN' => ['VIEW'], 'TECHNICAL_STAFF' => ['VIEW']] as $code => $actions) {
+        foreach (['BUILDING_MANAGER' => ['VIEW', 'CREATE', 'UPDATE', 'ASSIGN'], 'TECHNICIAN' => ['VIEW', 'UPDATE', 'RESOLVE'], 'TECHNICAL_STAFF' => ['VIEW', 'UPDATE', 'RESOLVE']] as $code => $actions) {
             $role = Role::where('role_code', $code)->first();
             if (! $role) {
                 continue;
