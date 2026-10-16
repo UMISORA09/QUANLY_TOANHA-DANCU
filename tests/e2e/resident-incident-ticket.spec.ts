@@ -127,8 +127,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
       'Ổ cắm phát ra tiếng xẹt điện khi cắm lò vi sóng, có mùi khét nhẹ cần kiểm tra gấp.'
     );
 
-    // Nút quay lại danh sách hoạt động đúng
-    await page.click('#ticket-back-to-list-btn');
+    // Nút Đóng form tạo mới hoạt động đúng
+    await page.click('#ticket-close-create-btn');
     await expect(page.locator('#ticket-search-input')).toBeVisible();
   });
 });
