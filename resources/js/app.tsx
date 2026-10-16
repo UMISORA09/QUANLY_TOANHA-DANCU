@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client';
 import '../css/scss/custom.scss';
 import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
 import PageLoadingFallback from './Components/Common/PageLoadingFallback';
+import { api } from './Services/api';
+import Home from './Pages/Home';
 
-// Tách nhỏ bundle (Code Splitting) với React.lazy để tải trang ban đầu tức thì
-const Home = lazy(() => import('./Pages/Home'));
+// Tách nhỏ bundle (Code Splitting) với React.lazy cho các trang nội bộ
 const ManagementHome = lazy(() => import('./Pages/ManagementHome'));
 const ResidentHome = lazy(() => import('./Pages/ResidentHome'));
 const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
@@ -149,9 +150,13 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     try {
+      api.logout();
       localStorage.removeItem('smartcassavas_session');
       sessionStorage.removeItem('smartcassavas_active_admin_tab');
       localStorage.removeItem('smartcassavas_active_admin_tab');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      sessionStorage.clear();
     } catch {
       // ignore
     }
@@ -252,8 +257,12 @@ const App: React.FC = () => {
       isTemporaryRegistrationAdminPath);
 
   if (isUnifiedAdminDevPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
-    if (currentUser && currentUser.role !== 'admin' && !currentUser.isDev) {
+    if (currentUser.role !== 'admin' && !currentUser.isDev) {
       if (currentUser.role === 'manager') {
         navigateTo('/quan-ly');
         return null;
@@ -393,8 +402,12 @@ const App: React.FC = () => {
     isRfidPath;
 
   if (isManagerPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
-    if (currentUser && currentUser.role !== 'manager' && currentUser.role !== 'admin') {
+    if (currentUser.role !== 'manager' && currentUser.role !== 'admin') {
       if (currentUser.role === 'receptionist') {
         navigateTo('/le-tan');
         return null;
@@ -444,25 +457,24 @@ const App: React.FC = () => {
   }
 
   // 3. Phân hệ Cổng Cư Dân (Resident Portal)
-  const isExplicitLanding = window.location.search.includes('landing=true');
-  const isResidentSession =
-    currentUser?.role === 'resident' || currentUser?.role?.toLowerCase().includes('resident');
-
   const isResidentPath =
     currentPath === '/cu-dan' ||
     currentPath.startsWith('/cu-dan') ||
     currentPath === '/resident' ||
     currentPath.startsWith('/resident') ||
-    currentPath === '/resident-portal' ||
-    (isResidentSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
+    currentPath === '/resident-portal';
 
   if (isResidentPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     const isUserAdmin = currentUser?.role === 'admin';
     const effectiveRole = isUserAdmin ? 'admin' : 'resident';
     return (
       <ResidentHome
         onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home?landing=true')}
+        onNavigateHome={() => navigateTo('/home')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
         residentType={currentUser?.resident_type}
@@ -473,11 +485,6 @@ const App: React.FC = () => {
   }
 
   // 4. Phân hệ Cổng Lễ Tân & Bảo Vệ (Reception Portal)
-  const isReceptionistSession =
-    currentUser?.role === 'receptionist' ||
-    currentUser?.role?.toLowerCase().includes('receptionist') ||
-    currentUser?.role?.toLowerCase().includes('letan');
-
   const isSecurityPath =
     currentPath === '/an-ninh' ||
     currentPath.startsWith('/an-ninh') ||
@@ -501,10 +508,13 @@ const App: React.FC = () => {
     currentPath === '/receptionist' ||
     currentPath.startsWith('/receptionist') ||
     isSecurityPath ||
-    isReceptionistVehiclePath ||
-    (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
+    isReceptionistVehiclePath;
 
   if (isReceptionistPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     const isUserAdmin = currentUser?.role === 'admin';
     const effectiveRole = isUserAdmin ? 'admin' : (isSecurityPath ? 'security' : 'receptionist');
     const receptionUrlTab = new URLSearchParams(window.location.search).get('tab');
@@ -514,7 +524,7 @@ const App: React.FC = () => {
     return (
       <ReceptionHome
         onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home?landing=true')}
+        onNavigateHome={() => navigateTo('/home')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : (isSecurityPath ? 'Đội Trực An Ninh' : 'Lễ Tân Sảnh Chính'))}
