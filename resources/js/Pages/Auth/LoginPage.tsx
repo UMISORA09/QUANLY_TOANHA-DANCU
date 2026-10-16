@@ -176,9 +176,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                 SMART CASSAVAS
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </span>
-              <span className="text-[10px] tracking-wider text-neutral-600 font-medium -mt-1 uppercase">
-                Building OS
-              </span>
             </div>
           </a>
 
@@ -227,7 +224,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   Tài khoản dùng thử nhanh:
                 </span>
-                <span className="text-[10px] text-neutral-500 font-mono">1-click điền</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {DEMO_ROLES.map((item) => {

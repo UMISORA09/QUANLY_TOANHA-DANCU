@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TicketImage } from './TicketImage';
 import { TicketDialog } from './TicketDialog';
-import { TicketNotifications } from './TicketNotifications';
+import { useTicketNotificationRefresh } from './TicketNotifications';
 import { CustomSelect } from './Common/CustomSelect';
 import {
   AlertCircle,
@@ -68,14 +68,14 @@ const formatDateTime = (isoStr?: string | null) => {
 // Map nhãn và style cho Trạng thái Ticket
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
   NEW: {
-    label: 'Mới tiếp nhận',
+    label: 'Mới gửi',
     bg: 'bg-sky-50',
     text: 'text-sky-700',
     border: 'border-sky-200/80',
     dot: 'bg-sky-500',
   },
   RECEIVED: {
-    label: 'Đã ghi nhận',
+    label: 'Đã tiếp nhận',
     bg: 'bg-blue-50',
     text: 'text-blue-700',
     border: 'border-blue-200/80',
@@ -89,7 +89,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; b
     dot: 'bg-amber-500',
   },
   RESOLVED: {
-    label: 'Đã khắc phục (Chờ duyệt)',
+    label: 'Chờ nghiệm thu',
     bg: 'bg-purple-50',
     text: 'text-purple-700',
     border: 'border-purple-200/80',
@@ -149,6 +149,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [counters, setCounters] = useState({
     all: 0,
     new: 0,
+    received: 0,
     in_progress: 0,
     resolved: 0,
     closed: 0,
@@ -236,7 +237,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const modalBusy = useRef(false);
   modalBusy.current = isSubmitting || isCancelling || isConfirming || isReopening || isUpdating || imageBusy;
   useEffect(() => {
-    if (!isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId) return;
+    if (!isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen) return;
     const previous = document.activeElement as HTMLElement | null;
     const bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -244,6 +245,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     const controls = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]') || []).filter((node) => node.offsetParent !== null);
     const frame = requestAnimationFrame(() => controls()[0]?.focus());
     const keyboard = (event: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (event.key === 'Escape' && !modalBusy.current) { setIsCreateModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setIsEditModalOpen(false); setRemoveImageId(null); }
       if (event.key === 'Tab') { const nodes = controls(); const first = nodes[0], last = nodes[nodes.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
     };
@@ -325,7 +327,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       if (!controller.signal.aborted && res && res.success) {
         setTickets(res.data || []);
         if (res.counters) {
-          setCounters(res.counters);
+          setCounters((prev) => ({ ...prev, ...res.counters, received: res.counters.received ?? prev.received ?? 0 }));
         }
         if (res.pagination) {
           setCurrentPage(res.pagination.current_page);
@@ -628,9 +630,10 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     }
   };
 
+  useTicketNotificationRefresh(() => { void fetchTickets(); if (selectedTicketId && viewMode === 'detail' && !isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId) void fetchTicketDetail(selectedTicketId); });
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
-      <TicketNotifications onChange={() => { void fetchTickets(); if (selectedTicketId && viewMode === 'detail' && !isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId) void fetchTicketDetail(selectedTicketId); }} />
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* Toast Notification */}
       {toast && (
         <div
@@ -662,25 +665,22 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       )}
 
       {/* Top Header & Breadcrumbs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400 uppercase tracking-wider font-semibold">
-            <Wrench className="w-3.5 h-3.5 text-amber-500" />
+          <div className="flex items-center gap-1.5 text-xs text-neutral-400 uppercase tracking-wider font-semibold mb-2">
+            <Wrench className="w-4 h-4 text-emerald-600" />
             <span>HỖ TRỢ KỸ THUẬT & VẬN HÀNH</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight flex items-center gap-2.5">
+          <h1 className="text-2xl font-extrabold tracking-tight text-neutral-950 sm:text-3xl">
             Báo cáo Sự cố & Sửa chữa
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60">
-              Cư dân
-            </span>
           </h1>
-          <p className="text-xs sm:text-sm text-neutral-500">
-            Tiếp nhận và theo dõi tiến độ xử lý sự cố điện, nước, tiện ích tòa nhà 24/7.
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
+            Gửi yêu cầu hỗ trợ, theo dõi kỹ thuật xử lý và xác nhận khi sự cố đã được khắc phục.
           </p>
         </div>
 
         {/* Tab Switcher Action Buttons */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
           {viewMode !== 'list' && (
             <button
               id="ticket-back-to-list-btn"
@@ -702,185 +702,74 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               id="ticket-open-create-btn"
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow-md transition-all cursor-pointer"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 text-amber-400" />
+              <Plus className="w-4 h-4" />
               <span>Gửi báo cáo sự cố mới</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* 4 Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div
-          onClick={() => {
-            setStatusFilter('ALL');
-            setViewMode('list');
-          }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'ALL' && viewMode === 'list'
-              ? 'bg-neutral-950 text-white border-neutral-950 shadow-md'
-              : 'bg-white/80 backdrop-blur-md border-neutral-200/80 hover:border-neutral-300 shadow-2xs'
-          }`}
-        >
-          <div className="text-[11px] font-semibold opacity-75">Tất cả yêu cầu</div>
-          <div className="text-xl font-extrabold font-mono mt-1">{counters.all}</div>
-        </div>
 
-        <div
-          onClick={() => {
-            setStatusFilter('NEW');
-            setViewMode('list');
-          }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'NEW' && viewMode === 'list'
-              ? 'bg-sky-600 text-white border-sky-600 shadow-md'
-              : 'bg-white/80 backdrop-blur-md border-neutral-200/80 hover:border-sky-300 shadow-2xs'
-          }`}
-        >
-          <div className="text-[11px] font-semibold opacity-75">Mới gửi</div>
-          <div className="text-xl font-extrabold font-mono mt-1 text-sky-600 data-selected:text-white">
-            {counters.new}
-          </div>
-        </div>
-
-        <div
-          onClick={() => {
-            setStatusFilter('IN_PROGRESS');
-            setViewMode('list');
-          }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'IN_PROGRESS' && viewMode === 'list'
-              ? 'bg-amber-600 text-white border-amber-600 shadow-md'
-              : 'bg-white/80 backdrop-blur-md border-neutral-200/80 hover:border-amber-300 shadow-2xs'
-          }`}
-        >
-          <div className="text-[11px] font-semibold opacity-75">Đang xử lý</div>
-          <div className="text-xl font-extrabold font-mono mt-1 text-amber-600 data-selected:text-white">
-            {counters.in_progress}
-          </div>
-        </div>
-
-        <div
-          onClick={() => {
-            setStatusFilter('RESOLVED');
-            setViewMode('list');
-          }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'RESOLVED' && viewMode === 'list'
-              ? 'bg-purple-600 text-white border-purple-600 shadow-md'
-              : 'bg-white/80 backdrop-blur-md border-neutral-200/80 hover:border-purple-300 shadow-2xs'
-          }`}
-        >
-          <div className="text-[11px] font-semibold opacity-75">Chờ nghiệm thu</div>
-          <div className="text-xl font-extrabold font-mono mt-1 text-purple-600 data-selected:text-white">
-            {counters.resolved}
-          </div>
-        </div>
-
-        <div
-          onClick={() => {
-            setStatusFilter('CLOSED');
-            setViewMode('list');
-          }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'CLOSED' && viewMode === 'list'
-              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
-              : 'bg-white/80 backdrop-blur-md border-neutral-200/80 hover:border-emerald-300 shadow-2xs'
-          }`}
-        >
-          <div className="text-[11px] font-semibold opacity-75">Đã hoàn tất</div>
-          <div className="text-xl font-extrabold font-mono mt-1 text-emerald-600 data-selected:text-white">
-            {counters.closed}
-          </div>
-        </div>
-
-        <div
-          onClick={() => {
-            setStatusFilter('CANCELLED');
-            setViewMode('list');
-          }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-            statusFilter === 'CANCELLED' && viewMode === 'list'
-              ? 'bg-neutral-600 text-white border-neutral-600 shadow-md'
-              : 'bg-white/80 backdrop-blur-md border-neutral-200/80 hover:border-neutral-300 shadow-2xs'
-          }`}
-        >
-          <div className="text-[11px] font-semibold opacity-75">Đã hủy</div>
-          <div className="text-xl font-extrabold font-mono mt-1 text-neutral-500 data-selected:text-white">
-            {counters.cancelled}
-          </div>
-        </div>
-      </div>
 
       {/* ================= MODAL: FORM BÁO CÁO SỰ CỐ MỚI (POPUP GIỮA MÀN HÌNH) ================= */}
       {isCreateModalOpen && (
-        <div
-          id="ticket-create-modal"
-          data-ticket-modal role="dialog" aria-modal="true" aria-label="Gửi yêu cầu báo cáo sự cố"
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !isSubmitting) {
-              setIsCreateModalOpen(false);
-            }
-          }}
-        >
-          <div className="bg-white rounded-3xl border border-neutral-200/90 shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto custom-scrollbar p-5 sm:p-8 animate-in zoom-in-95 duration-200 my-auto relative">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-neutral-100 pb-4 mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
-                  <Wrench className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-neutral-900">
-                    Gửi yêu cầu Báo cáo Sự cố Kỹ thuật
-                  </h2>
-                  <p className="text-xs text-neutral-500 mt-0.5">
-                    Vui lòng điền thông tin chính xác về tình trạng hư hỏng để kỹ thuật viên chuẩn bị dụng cụ phù hợp.
-                  </p>
-                </div>
+        <TicketDialog open={isCreateModalOpen} title="Gửi yêu cầu báo cáo sự cố" busy={isSubmitting} onClose={() => setIsCreateModalOpen(false)} footer={
+<div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-5 pb-4 pt-3">
+                <button
+                  id="ticket-close-create-btn"
+                  type="button"
+                  disabled={isSubmitting} onClick={() => setIsCreateModalOpen(false)}
+                  className="order-1 min-h-11 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-100 cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetForm}
+                  disabled={isSubmitting}
+                  className="order-3 min-h-8 w-full rounded-lg px-2 text-xs font-medium text-neutral-500 underline underline-offset-4 hover:text-neutral-900 cursor-pointer disabled:opacity-50 sm:order-none sm:mr-auto sm:w-auto"
+                >
+                  Đặt lại biểu mẫu
+                </button>
+                <button
+                  id="ticket-submit-btn" form="ticket-create-modal"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="order-2 inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-neutral-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:flex-none"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Đang gửi báo cáo sự cố...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Gửi yêu cầu hỗ trợ</span>
+                    </>
+                  )}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700 p-1.5 rounded-xl hover:bg-neutral-100 transition-colors"
-                title="Đóng cửa sổ"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitTicket} className="space-y-6">
+        }>
+          <p className="mb-5 text-sm leading-6 text-neutral-500">Mô tả sự cố và vị trí để ban quản lý sắp xếp hỗ trợ. Các trường có dấu * là bắt buộc.</p>
+            <form id="ticket-create-modal" onSubmit={handleSubmitTicket} className="space-y-6">
               {/* SECTION 1: THÔNG TIN CƯ DÂN & CĂN HỘ */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                  <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
-                    1
-                  </span>
-                  <span>Thông tin Cư dân & Căn hộ xảy ra sự cố</span>
+                <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                  <span>Thông tin liên hệ</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-neutral-50/70 p-3.5 rounded-xl border border-neutral-200/60 text-xs">
                   <div>
-                    <label className="block text-neutral-500 font-medium mb-1">Họ tên cư dân</label>
-                    <input
-                      type="text"
-                      disabled
-                      value={currentUser?.full_name || 'Chưa tải được thông tin'}
-                      className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
-                    />
+                    <p className="mb-1 text-neutral-500">Họ tên cư dân</p>
+                    <p className="break-words py-2 text-sm font-medium text-neutral-900">{currentUser?.full_name || 'Chưa tải được thông tin'}</p>
                   </div>
 
                   <div>
-                    <label className="block text-neutral-500 font-medium mb-1">Số điện thoại liên hệ</label>
-                    <input
-                      type="text"
-                      disabled
-                      value={currentUser?.phone_number || 'Chưa cập nhật'}
-                      className="w-full px-3 py-2 bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-semibold cursor-not-allowed"
-                    />
+                    <p className="mb-1 text-neutral-500">Số điện thoại liên hệ</p>
+                    <p className="py-2 text-sm font-medium text-neutral-900">{currentUser?.phone_number || 'Chưa cập nhật'}</p>
                   </div>
 
                   <div>
@@ -888,7 +777,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Căn hộ / Tòa nhà <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <CustomSelect id="ticket-apartment-select" value={formData.apartment_id} onChange={(value) => setFormData({ ...formData, apartment_id: value })} placeholder="Chọn căn hộ đang cư trú" options={apartments.map((apt) => ({ value: apt.id, label: `Căn ${apt.apartment_number} ${apt.block_name || ''}` }))} />
+                      <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-apartment-select" value={formData.apartment_id} onChange={(value) => setFormData({ ...formData, apartment_id: value })} placeholder="Chọn căn hộ đang cư trú" options={apartments.map((apt) => ({ value: apt.id, label: `Căn ${apt.apartment_number} ${apt.block_name || ''}` }))} />
                     </div>
                   </div>
                 </div>
@@ -896,10 +785,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
               {/* SECTION 2: CHI TIẾT SỰ CỐ KỸ THUẬT */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                  <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
-                    2
-                  </span>
+                <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
                   <span>Nội dung chi tiết sự cố</span>
                 </div>
 
@@ -915,7 +801,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       placeholder="Ví dụ: Rò rỉ vòi rửa chén, chập công tắc đèn phòng khách..."
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
                         formErrors.title ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
                       }`}
                     />
@@ -933,7 +819,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Phân loại sự cố <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <CustomSelect id="ticket-category-select" value={formData.category_id} onChange={(value) => setFormData({ ...formData, category_id: value })} options={categories.map((c) => ({ value: c.id, label: c.category_name }))} placeholder="Chọn danh mục sự cố" />
+                      <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-category-select" value={formData.category_id} onChange={(value) => setFormData({ ...formData, category_id: value })} options={categories.map((c) => ({ value: c.id, label: c.category_name }))} placeholder="Chọn danh mục sự cố" />
                     </div>
                     {formErrors.category_id && (
                       <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.category_id}</p>
@@ -951,7 +837,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       placeholder="Ví dụ: Phòng tắm lớn, Ban công, Khu bếp..."
                       value={formData.location}
                       onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
                         formErrors.location ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
                       }`}
                     />
@@ -980,7 +866,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Mức độ khẩn cấp
                     </label>
                     <div className="relative">
-                      <CustomSelect id="ticket-priority-select" value={formData.priority} onChange={(value) => setFormData({ ...formData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
+                      <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-priority-select" value={formData.priority} onChange={(value) => setFormData({ ...formData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
                     </div>
                   </div>
 
@@ -995,7 +881,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       min={new Date().toISOString().split('T')[0]}
                       value={formData.preferred_service_time}
                       onChange={(e) => setFormData({ ...formData, preferred_service_time: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs"
                     />
                     <span className="text-[10px] text-neutral-400 mt-1 block">
                       Không bắt buộc. Kỹ thuật viên sẽ liên hệ hẹn giờ cụ thể trước khi đến.
@@ -1013,7 +899,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       placeholder="Mô tả hiện tượng, triệu chứng hỏng hóc, thời điểm bắt đầu xảy ra..."
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all ${
                         formErrors.description ? 'border-rose-400 bg-rose-50/20' : 'border-neutral-200'
                       }`}
                     />
@@ -1027,11 +913,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               {/* SECTION 3: HÌNH ẢNH MINH CHỨNG */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                    <span className="w-5 h-5 rounded-full bg-neutral-900 text-white flex items-center justify-center text-[11px]">
-                      3
-                    </span>
-                    <span>Hình ảnh minh chứng thực tế (Tối đa 5 ảnh)</span>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                    <span>Ảnh hiện trường</span>
                   </div>
                   <span className="text-[11px] text-neutral-400 font-medium font-mono">
                     {selectedFiles.length} / 5 ảnh
@@ -1039,9 +922,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 </div>
 
                 {/* Upload Dropzone */}
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-neutral-300 hover:border-neutral-900 rounded-2xl p-5 text-center cursor-pointer transition-all bg-neutral-50/50 hover:bg-neutral-50 group"
+                <label
+                  htmlFor="ticket-photo-upload"
+                  className="block rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-5 text-center cursor-pointer hover:border-neutral-500 focus-within:ring-2 focus-within:ring-emerald-500 group"
                 >
                   <input
                     ref={fileInputRef}
@@ -1050,18 +933,18 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     accept="image/jpeg,image/png,image/webp,image/jpg"
                     multiple
                     onChange={handleFileChange}
-                    className="hidden"
+                    className="sr-only" aria-label="Chọn ảnh hiện trường" disabled={isSubmitting}
                   />
                   <div className="w-10 h-10 rounded-full bg-white shadow-2xs border border-neutral-200 flex items-center justify-center mx-auto text-neutral-500 group-hover:scale-110 group-hover:text-neutral-900 transition-all">
                     <Camera className="w-5 h-5" />
                   </div>
                   <p className="text-xs font-bold text-neutral-800 mt-2">
-                    Bấm để tải ảnh lên hoặc kéo thả vào đây
+                    Chọn ảnh hiện trường (không bắt buộc)
                   </p>
                   <p className="text-[11px] text-neutral-400 mt-0.5">
                     Định dạng: JPG, PNG, WebP · Dung lượng tối đa: 5MB/ảnh
                   </p>
-                </div>
+                </label>
 
                 {/* Previews Thumbnails */}
                 {filePreviews.length > 0 && (
@@ -1072,12 +955,12 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                         className="relative group rounded-xl overflow-hidden border border-neutral-200 bg-neutral-100 aspect-square"
                       >
                         <img src={url} alt={`preview-${idx}`} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <div className="absolute inset-0 bg-black/40 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex items-center justify-center gap-2">
                           <button
                             type="button"
                             onClick={() => setPreviewImage(url)}
                             className="p-1.5 rounded-lg bg-white/90 text-neutral-800 hover:bg-white text-xs"
-                            title="Xem ảnh lớn"
+                            aria-label={`Xem ảnh đã chọn ${idx + 1}`} title="Xem ảnh lớn"
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
@@ -1085,7 +968,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                             type="button"
                             onClick={() => removeFile(idx)}
                             className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-xs"
-                            title="Xóa ảnh này"
+                            aria-label={`Bỏ ảnh đã chọn ${idx + 1}`} title="Xóa ảnh này"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1099,75 +982,52 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-5 border-t border-neutral-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
-                <button
-                  id="ticket-back-to-list-btn"
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-200 text-neutral-700 hover:bg-neutral-100 text-xs font-semibold transition-all cursor-pointer"
-                >
-                  Đóng
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetForm}
-                  disabled={isSubmitting}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-100 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
-                >
-                  Đặt lại biểu mẫu
-                </button>
-                <button
-                  id="ticket-submit-btn"
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Đang gửi báo cáo sự cố...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Gửi yêu cầu hỗ trợ</span>
-                    </>
-                  )}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
+        </TicketDialog>
       )}
 
       {/* ================= VIEW 2: DANH SÁCH TICKET ================= */}
       {viewMode === 'list' && (
-        <div className="space-y-4">
+        <div className="rounded-2xl border border-neutral-200 bg-white shadow-xs">
           {/* Filter Bar */}
-          <div className="bg-white/80 backdrop-blur-md border border-neutral-200/80 rounded-2xl p-4 shadow-xs space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="space-y-4 p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-neutral-900">Yêu cầu của tôi</h2><p className="text-xs text-neutral-500">Theo dõi tiến độ và phản hồi sau xử lý</p></div>
+            <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Lọc nhanh yêu cầu">
+              {[
+                { status: 'ALL', label: 'Tất cả yêu cầu', count: counters.all },
+                { status: 'NEW', label: 'Mới gửi', count: counters.new },
+                { status: 'IN_PROGRESS', label: `Đang xử lý${(counters.received ?? 0) > 0 ? ` (${counters.received} đã ghi nhận)` : ''}`, count: counters.in_progress, title: (counters.received ?? 0) > 0 ? `Gồm ${counters.received} yêu cầu Đã ghi nhận` : undefined },
+                { status: 'RESOLVED', label: 'Chờ nghiệm thu', count: counters.resolved },
+                { status: 'CLOSED', label: 'Đã hoàn tất', count: counters.closed },
+                { status: 'CANCELLED', label: 'Đã hủy', count: counters.cancelled },
+              ].map((item) => <button key={item.status} type="button" aria-pressed={statusFilter === item.status} title={item.title} onClick={() => { setStatusFilter(item.status); setCurrentPage(1); }} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-emerald-600 ${statusFilter === item.status ? 'bg-neutral-950 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}>
+                <span className={statusFilter === item.status ? 'text-white' : 'text-neutral-600'}>{item.label}</span><span className={`rounded-md px-1.5 py-0.5 text-xs tabular-nums ${statusFilter === item.status ? 'bg-white/15 text-white' : 'bg-neutral-100 text-neutral-600'}`}>{item.count}</span>
+              </button>)}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 border-t border-neutral-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
               {/* Search Box */}
-              <div className="sm:col-span-2 relative">
-                <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <div className="relative sm:col-span-2">
+                <label htmlFor="ticket-search-input" className="mb-1.5 block text-xs font-bold uppercase text-slate-700">Tìm yêu cầu</label>
+                <Search aria-hidden="true" className="pointer-events-none absolute bottom-3.5 left-3.5 h-4 w-4 text-neutral-400" />
                 <input
                   id="ticket-search-input"
                   type="text"
                   placeholder="Tìm theo mã ticket, tiêu đề, vị trí sự cố..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
+                  className="min-h-11 w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
                 />
               </div>
 
               {/* Status Filter */}
               <div className="relative">
-                <CustomSelect id="ticket-status-filter" label="Trạng thái yêu cầu" value={statusFilter} onChange={(value) => { setStatusFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả trạng thái' }, ...Object.entries(STATUS_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
+                <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-status-filter" label="Trạng thái yêu cầu" value={statusFilter} onChange={(value) => { setStatusFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả trạng thái' }, ...Object.entries(STATUS_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
               </div>
 
               {/* Category Filter */}
               <div className="relative">
-                <CustomSelect id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
+                <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
               </div>
             </div>
 
@@ -1188,7 +1048,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
           </div>
 
           {/* Table Container */}
-          <div className="border border-neutral-200/80 bg-white/90 backdrop-blur-md rounded-2xl overflow-hidden shadow-xs">
+          <div className="overflow-hidden rounded-b-2xl border-t border-neutral-200 bg-white">
             {isLoading ? (
               <div className="p-12 text-center space-y-3">
                 <Loader2 className="w-8 h-8 animate-spin text-neutral-400 mx-auto" />
@@ -1227,7 +1087,15 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <><ul aria-label="Danh sách yêu cầu của tôi" className="divide-y divide-neutral-100 lg:hidden">{tickets.map((ticket) => {
+                const status = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.NEW;
+                return <li key={ticket.id} className="space-y-3 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono text-xs text-neutral-500">{ticket.ticket_number}</span><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.bg} ${status.text}`}>{status.label}</span></div>
+                  <h3 className="break-words text-sm font-semibold text-neutral-900">{ticket.title}</h3>
+                  <p className="text-sm text-neutral-600">{ticket.location || 'Tại căn hộ'} · {ticket.category?.category_name || 'Kỹ thuật'}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><time dateTime={ticket.created_at} className="text-xs text-neutral-500">{formatDateTime(ticket.created_at)}</time><button type="button" className="min-h-11 cursor-pointer rounded-xl border border-neutral-200 px-4 text-sm font-medium hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-sky-600" onClick={() => fetchTicketDetail(ticket.id)}>Xem chi tiết</button></div>
+                </li>;
+              })}</ul><div className="hidden overflow-x-auto lg:block">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-neutral-200/70 bg-neutral-50/70 text-neutral-500 font-semibold uppercase text-[11px] tracking-wider">
@@ -1297,7 +1165,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                               }}
                               className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-900 hover:text-white text-neutral-700 font-semibold text-xs transition-all cursor-pointer"
                             >
-                              Chi tiết →
+                              Xem chi tiết
                             </button>
                           </td>
                         </tr>
@@ -1305,7 +1173,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     })}
                   </tbody>
                 </table>
-              </div>
+              </div></>
             )}
 
             {/* Pagination Controls */}
@@ -1317,7 +1185,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    disabled={currentPage <= 1}
+                    aria-label="Trang yêu cầu trước" disabled={isLoading || currentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     className="p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
@@ -1325,7 +1193,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   </button>
                   <button
                     type="button"
-                    disabled={currentPage >= lastPage}
+                    aria-label="Trang yêu cầu tiếp theo" disabled={isLoading || currentPage >= lastPage}
                     onClick={() => setCurrentPage((p) => Math.min(lastPage, p + 1))}
                     className="p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
@@ -1576,7 +1444,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 placeholder="Ví dụ: Đã tự khắc phục được, gửi nhầm căn hộ..."
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
               />
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -1629,7 +1497,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 placeholder="Ví dụ: Kỹ thuật viên nhiệt tình, sửa chữa nhanh và sạch sẽ..."
                 value={confirmNote}
                 onChange={(e) => setConfirmNote(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
               />
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -1682,7 +1550,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 placeholder="Mô tả hiện tượng chưa xử lý dứt điểm (ví dụ: nước vẫn rò, bật công tắc đèn vẫn nháy...)"
                 value={reopenReason}
                 onChange={(e) => setReopenReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
               />
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -1738,7 +1606,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   type="text"
                   value={editFormData.title}
                   onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                 />
               </div>
 
@@ -1749,13 +1617,13 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     type="text"
                     value={editFormData.location}
                     onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-neutral-800 mb-1">Mức độ ưu tiên</label>
                   <div className="relative">
-                    <CustomSelect label="Ưu tiên yêu cầu" value={editFormData.priority} onChange={(value) => setEditFormData({ ...editFormData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
+                    <CustomSelect overlay buttonClassName="min-h-11 text-sm" label="Ưu tiên yêu cầu" value={editFormData.priority} onChange={(value) => setEditFormData({ ...editFormData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
                   </div>
                 </div>
               </div>
@@ -1766,7 +1634,18 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   rows={4}
                   value={editFormData.description}
                   onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">Ngày thuận tiện kỹ thuật đến kiểm tra</label>
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={editFormData.preferred_service_time ? editFormData.preferred_service_time.substring(0, 10) : ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, preferred_service_time: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                 />
               </div>
 
@@ -1791,24 +1670,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         </div>
       )}
 
-      {/* ================= LIGHTBOX PREVIEW ẢNH ================= */}
-      {previewImage && (
-        <div
-          onClick={() => setPreviewImage(null)}
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-150"
-        >
-          <div className="relative max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-black">
-            <img src={previewImage} alt="Large preview" className="max-w-full max-h-[85vh] object-contain mx-auto" />
-            <button
-              type="button"
-              onClick={() => setPreviewImage(null)}
-              className="absolute top-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <TicketDialog open={!!previewImage} title="Xem ảnh sự cố" onClose={() => setPreviewImage(null)}>
+        {previewImage && <img src={previewImage} alt="Ảnh sự cố phóng to" className="max-h-[70dvh] w-full rounded-xl object-contain" />}
+      </TicketDialog>
     </div>
   );
 };

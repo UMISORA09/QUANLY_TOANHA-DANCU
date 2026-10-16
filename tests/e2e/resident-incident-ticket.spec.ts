@@ -1,6 +1,48 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Resident Incident Ticket Feature E2E Tests', () => {
+  for (const width of [375, 768, 1440]) {
+    test(`Danh mục dài không bị che trong form cư dân ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.route('**/api/v1/resident/tickets/categories', (route) => route.fulfill({ json: {
+        success: true,
+        data: Array.from({ length: 30 }, (_, i) => ({ id: `category-${i}`, category_name: `Danh mục QA ${i}`, default_priority: 'MEDIUM' })),
+      } }));
+      await page.route('**/api/v1/resident/tickets?*', (route) => route.fulfill({ json: {
+        success: true,
+        data: ['NEW', 'IN_PROGRESS'].map((status, i) => ({ id: `ticket-qa-${i}`, ticket_number: `TCK-QA-00${i + 1}`, title: i ? 'Đèn hành lang tầng 5 không sáng' : 'Rò nước dưới bồn rửa bếp', description: 'Yêu cầu hỗ trợ kiểm tra.', location: i ? 'Hành lang tầng 5' : 'Phòng bếp', priority: 'HIGH', category: { category_name: 'Điện nước' }, status, created_at: '2026-10-16T08:00:00Z' })),
+        pagination: { current_page: 1, last_page: 1, total: 2, per_page: 15 },
+        counters: { all: 2, new: 1, in_progress: 1, resolved: 0, closed: 0, cancelled: 0 },
+      } }));
+      await page.goto('/cu-dan?tab=tickets');
+      await expect(page.locator('#ticket-open-create-btn')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Xem chi tiết', exact: true }).first()).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('ticket-list.png'), fullPage: true });
+      await page.locator('#ticket-open-create-btn').click();
+      const category = page.locator('#ticket-category-select');
+      await category.click();
+      const menu = page.getByRole('listbox');
+      await expect.poll(() => menu.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight
+          && document.elementFromPoint(rect.left + rect.width / 2, rect.bottom - 8)?.closest('[role="listbox"]') === element;
+      })).toBe(true);
+      await category.press('End');
+      await page.getByRole('option', { name: 'Danh mục QA 29', exact: true }).click();
+      await expect(category).toContainText('Danh mục QA 29');
+      await category.click();
+      await category.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(page.getByRole('dialog', { name: 'Gửi yêu cầu báo cáo sự cố', exact: true })).toBeVisible();
+      await expect(category).toBeFocused();
+      expect(await category.evaluate((element) => {
+        const footer = element.closest('dialog')?.querySelector('#ticket-submit-btn')?.parentElement?.getBoundingClientRect();
+        return Boolean(footer && element.getBoundingClientRect().bottom <= footer.top);
+      })).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath('ticket-create.png') });
+    });
+  }
+
   test('Gửi lại sau lỗi mạng giữ cùng khóa chống trùng', async ({ page }) => {
     const keys: string[] = [];
     await page.route('**/api/**', async (route) => {
@@ -86,11 +128,38 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(page.locator('#ticket-status-filter')).toBeVisible();
     await expect(page.locator('#ticket-category-filter')).toBeVisible();
 
-    // Kiểm tra 6 thẻ thống kê
+    // Các bộ lọc nhanh giữ nhãn và số lượng yêu cầu.
     for (const label of ['Tất cả yêu cầu', 'Mới gửi', 'Đang xử lý', 'Chờ nghiệm thu', 'Đã hoàn tất', 'Đã hủy']) {
-      await expect(page.getByText(label, { exact: true }).and(page.locator('div'))).toBeVisible();
+      await expect(page.getByRole('button', { name: `${label} 0`, exact: true })).toBeVisible();
     }
   });
+
+  for (const width of [375, 1440]) {
+    test(`Số và nhãn luôn tương phản khi đổi trạng thái ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/cu-dan?tab=tickets');
+      const filters = page.getByLabel('Lọc nhanh yêu cầu', { exact: true });
+      for (const label of ['Tất cả yêu cầu', 'Mới gửi', 'Đang xử lý', 'Chờ nghiệm thu', 'Đã hoàn tất', 'Đã hủy']) {
+        const button = filters.getByRole('button', { name: `${label} 0`, exact: true });
+        await button.click();
+        await expect(button).toHaveAttribute('aria-pressed', 'true');
+        expect(await button.evaluate((element) => {
+          const context = document.createElement('canvas').getContext('2d')!;
+          const rgb = (color: string) => {
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3));
+          };
+          return {
+            background: rgb(getComputedStyle(element).backgroundColor),
+            label: rgb(getComputedStyle(element.children[0]).color),
+            count: rgb(getComputedStyle(element.children[1]).color),
+          };
+        })).toEqual({ background: [10, 10, 10], label: [255, 255, 255], count: [255, 255, 255] });
+        await expect(filters.locator('button[aria-pressed="true"]')).toHaveCount(1);
+      }
+    });
+  }
 
   test('Chuyển sang form tạo Ticket và kiểm tra validation form', async ({ page }) => {
     await page.goto('/cu-dan?tab=tickets');
@@ -100,7 +169,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await page.click('#ticket-open-create-btn');
 
     // Kiểm tra các trường form hiển thị
-    await expect(page.locator('text=Gửi yêu cầu Báo cáo Sự cố Kỹ thuật')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Gửi yêu cầu báo cáo sự cố', exact: true })).toBeVisible();
     await expect(page.locator('#ticket-title-input')).toBeVisible();
     await expect(page.locator('#ticket-category-select')).toBeVisible();
     await expect(page.locator('#ticket-location-input')).toBeVisible();
@@ -138,8 +207,39 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
       'Ổ cắm phát ra tiếng xẹt điện khi cắm lò vi sóng, có mùi khét nhẹ cần kiểm tra gấp.'
     );
 
-    // Nút quay lại danh sách hoạt động đúng
-    await page.click('#ticket-back-to-list-btn');
+    // Nút Đóng form tạo mới hoạt động đúng
+    await page.click('#ticket-close-create-btn');
     await expect(page.locator('#ticket-search-input')).toBeVisible();
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+  });
+
+  test('Ảnh đã chọn có thao tác rõ trên điện thoại và đóng phóng to bằng Escape', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto('/cu-dan?tab=tickets');
+    await page.locator('#ticket-open-create-btn').click();
+    await page.getByLabel('Chọn ảnh hiện trường', { exact: true }).setInputFiles({ name: 'anh-qa.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNy0AAAAASUVORK5CYII=', 'base64') });
+    await page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true }).click();
+    const preview = page.getByRole('dialog', { name: 'Xem ảnh sự cố', exact: true });
+    await expect(preview.getByRole('img')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(preview).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'Gửi yêu cầu báo cáo sự cố', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Bỏ ảnh đã chọn 1', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true })).toHaveCount(0);
+  });
+
+  test('Danh sách cư dân trên điện thoại hiển thị đúng trạng thái gửi, tiếp nhận và nghiệm thu', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.route('**/api/v1/resident/tickets?*', (route) => route.fulfill({ json: {
+      success: true,
+      data: ['NEW', 'RECEIVED', 'RESOLVED'].map((status, i) => ({ id: `ticket-${i}`, ticket_number: `TCK-QA-${i}`, title: `Yêu cầu QA ${i}`, location: 'Bếp', priority: 'HIGH', status, created_at: '2026-10-16T08:00:00Z' })),
+      pagination: { current_page: 1, last_page: 1, total: 3, per_page: 15 },
+      counters: { all: 3, new: 1, in_progress: 0, resolved: 1, closed: 0, cancelled: 0 },
+    } }));
+    await page.goto('/cu-dan?tab=tickets');
+    const list = page.getByRole('list', { name: 'Danh sách yêu cầu của tôi', exact: true });
+    for (const label of ['Mới gửi', 'Đã tiếp nhận', 'Chờ nghiệm thu']) await expect(list.getByText(label, { exact: true })).toBeVisible();
+    await expect(list.getByRole('button', { name: 'Xem chi tiết', exact: true })).toHaveCount(3);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 });

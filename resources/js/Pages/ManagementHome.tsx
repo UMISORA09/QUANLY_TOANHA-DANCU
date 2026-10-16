@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import {
   LayoutDashboard,
   Building2,
@@ -48,28 +48,32 @@ import {
   History,
   CreditCard
 } from 'lucide-react';
-import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
-import { AmenityManagement } from './Admin/AmenityManagement';
-import { TicketManagementPanel, ticketStatuses } from '../Components/TicketManagementPanel';
-import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
-import { RbacManagement } from './Admin/RbacManagement';
-import { ResidentManagement } from './Admin/ResidentManagement';
-import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
-import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
-import { VehicleManagement } from './Admin/VehicleManagement';
-import { ServicePricingManagement } from './Admin/ServicePricingManagement';
-import { MeterReadingManagement } from './Admin/MeterReadingManagement';
-import { InvoiceBatchGeneration } from './Admin/InvoiceBatchGeneration';
-import { InvoiceManagement } from './Admin/InvoiceManagement';
-import { PaymentHistoryManagement } from './Admin/PaymentHistoryManagement';
-import { RevenueAnalyticsDashboard } from './Admin/RevenueAnalyticsDashboard';
-import { FinancialReportManagement } from './Admin/FinancialReportManagement';
 import { InvoiceNavTabs } from '../Components/Admin/InvoiceNavTabs';
-import { RfidManagement } from './Admin/RfidManagement';
+import { PageLoadingFallback } from '../Components/Common/PageLoadingFallback';
+import { ticketStatuses } from '../Components/TicketManagementPanel';
+
+const BuildingListManagement = lazy(() => import('../Components/Admin/BuildingListManagement').then(m => ({ default: m.BuildingListManagement })));
+const AmenityManagement = lazy(() => import('./Admin/AmenityManagement').then(m => ({ default: m.AmenityManagement })));
+const TicketManagementPanel = lazy(() => import('../Components/TicketManagementPanel').then(m => ({ default: m.TicketManagementPanel })));
+const CicdDashboard = lazy(() => import('../Components/Cicd/CicdDashboard').then(m => ({ default: m.CicdDashboard })));
+const RbacManagement = lazy(() => import('./Admin/RbacManagement').then(m => ({ default: m.RbacManagement })));
+const ResidentManagement = lazy(() => import('./Admin/ResidentManagement').then(m => ({ default: m.ResidentManagement })));
+const TemporaryRegistrationManagement = lazy(() => import('./Admin/TemporaryRegistrationManagement').then(m => ({ default: m.TemporaryRegistrationManagement })));
+const AccountProvisioningManagement = lazy(() => import('./Admin/AccountProvisioningManagement').then(m => ({ default: m.AccountProvisioningManagement })));
+const VehicleManagement = lazy(() => import('./Admin/VehicleManagement').then(m => ({ default: m.VehicleManagement })));
+const ServicePricingManagement = lazy(() => import('./Admin/ServicePricingManagement').then(m => ({ default: m.ServicePricingManagement })));
+const MeterReadingManagement = lazy(() => import('./Admin/MeterReadingManagement').then(m => ({ default: m.MeterReadingManagement })));
+const InvoiceBatchGeneration = lazy(() => import('./Admin/InvoiceBatchGeneration').then(m => ({ default: m.InvoiceBatchGeneration })));
+const InvoiceManagement = lazy(() => import('./Admin/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
+const PaymentHistoryManagement = lazy(() => import('./Admin/PaymentHistoryManagement').then(m => ({ default: m.PaymentHistoryManagement })));
+const RevenueAnalyticsDashboard = lazy(() => import('./Admin/RevenueAnalyticsDashboard').then(m => ({ default: m.RevenueAnalyticsDashboard })));
+const FinancialReportManagement = lazy(() => import('./Admin/FinancialReportManagement').then(m => ({ default: m.FinancialReportManagement })));
+const RfidManagement = lazy(() => import('./Admin/RfidManagement').then(m => ({ default: m.RfidManagement })));
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
 import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
+import { TicketNotificationList, useTicketNotifications } from '../Components/TicketNotifications';
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -312,8 +316,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
   // Navigation & Interactive states
   const [activeMenuId, setActiveMenuId] = useState<string>(resolveInitialTab);
-  const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
-  const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
@@ -477,6 +479,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   });
 
   // Notifications state
+  const ticketNotices = useTicketNotifications();
   const notices = useAmenityNotifications('admin');
   const { items: amenityNotifications, unreadCount: amenityUnreadCount, alert: bookingAlert, setAlert: setBookingAlert } = notices;
   const [notifications, setNotifications] = useState<Array<{
@@ -487,15 +490,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     timeAgo?: string;
     isRead?: boolean;
   }>>([
-    { id: '1', title: 'Sự cố nước ban công', message: 'Căn hộ A012 yêu cầu kỹ thuật kiểm tra van tổng.', timeAgo: '10 phút trước', isRead: false },
     { id: '2', title: 'Hóa đơn quá hạn', message: '8 hóa đơn dịch vụ tháng 8 chưa hoàn tất thanh toán.', timeAgo: '45 phút trước', isRead: false },
     { id: '3', title: 'Đồng bộ chỉ số', message: 'Đã đồng bộ 270 chỉ số công tơ điện nước thông minh.', timeAgo: '2 giờ trước', isRead: false },
     { id: '4', title: 'Lịch bảo trì thang máy', message: 'Đội kỹ thuật Otis tiến hành kiểm định thang T2 Tháp A.', timeAgo: '3 giờ trước', isRead: false },
     { id: '5', title: 'Cư dân đăng ký mới', message: 'Hộ gia đình căn B1405 hoàn tất xác thực eKYC.', timeAgo: '5 giờ trước', isRead: false },
   ]);
 
-  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || ''))];
-  const unreadNotificationCount = amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || '')).length;
+  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING', 'TICKET'].includes(item.category || ''))];
+  const unreadNotificationCount = ticketNotices.unread + amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING', 'TICKET'].includes(item.category || '')).length;
 
   const openBookingNotification = async (notification: AmenityBookingNotification) => {
     const target = new URL(notification.deepLink, window.location.origin);
@@ -786,70 +788,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       userEmail={userEmail}
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
-      onNotificationClick={() => setIsNotificationOpen(!isNotificationOpen)}
+      onNotificationClick={() => { setIsNotificationOpen(!isNotificationOpen); ticketNotices.retry(); }}
       onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
       unreadNotificationCount={unreadNotificationCount}
-      extraTopbarActions={
-        <>
-
-          {/* Building Selector Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsBuildingDropdownOpen(!isBuildingDropdownOpen)}
-              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-neutral-800 border border-slate-200/80 shadow-xs hover:shadow-sm transition-all cursor-pointer"
-            >
-              <Building className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-              <span className="max-w-[80px] sm:max-w-[140px] md:max-w-none truncate">{selectedBuilding}</span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${
-                  isBuildingDropdownOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            {isBuildingDropdownOpen && (
-              <>
-                <div
-                  onClick={() => setIsBuildingDropdownOpen(false)}
-                  className="fixed inset-0 z-40"
-                />
-                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div className="text-[10px] uppercase font-bold text-slate-400 px-3 py-1.5 font-mono">
-                    Chọn phạm vi quản lý
-                  </div>
-                  {['Khu A - Tất cả tòa nhà', 'Khu B - Tháp Ruby', 'Khu C - Tháp Sapphire', 'Toàn bộ khu đô thị'].map(
-                    (bldg) => (
-                      <button
-                        key={bldg}
-                        type="button"
-                        onClick={() => {
-                          setSelectedBuilding(bldg);
-                          setIsBuildingDropdownOpen(false);
-                          showToast(`Đã chuyển bộ lọc: ${bldg}`);
-                        }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                          selectedBuilding === bldg
-                            ? 'bg-neutral-900 text-white'
-                            : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span>{bldg}</span>
-                        {selectedBuilding === bldg && <Check className="w-3.5 h-3.5 text-sky-400" />}
-                      </button>
-                    )
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </>
-      }
     >
       {/* Notifications Dropdown Panel */}
       {bookingAlert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{bookingAlert.title}</p><p className="mt-1 text-xs text-neutral-600">{bookingAlert.message}</p></div><button type="button" aria-label="Đóng cảnh báo đăng ký mới" onClick={() => setBookingAlert(null)} className="rounded-lg p-1 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openBookingNotification(bookingAlert)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
       {isNotificationOpen && (
-        <div className="fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div role="region" aria-label="Thông báo vận hành" className="max-h-[calc(100dvh-6rem)] overflow-y-auto fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
@@ -902,9 +848,16 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
             <div className="mt-2 flex items-center justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div>
           </div>
+          <TicketNotificationList feed={ticketNotices} />
         </div>
       )}
-          {activeMenuId === 'tickets' ? <TicketManagementPanel /> : activeMenuId === 'cicd' ? (
+      {activeMenuId !== 'overview' && activeMenuId !== 'dashboard' && activeMenuId !== 'tong_quan' ? (
+        <Suspense fallback={<PageLoadingFallback message="Đang nạp phân hệ..." />}>
+          {activeMenuId === 'tickets' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <TicketManagementPanel />
+            </div>
+          ) : activeMenuId === 'cicd' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 transition-all duration-300 ease-in-out">
               <CicdDashboard userRole={userRole} />
             </div>
@@ -974,12 +927,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <InvoiceNavTabs activeTab="financial_reports" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <FinancialReportManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
+            </div>
           ) : activeMenuId === 'rfid_cards' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <RfidManagement embedded={true} />
             </div>
-            </div>
-          ) : (
+          ) : null}
+        </Suspense>
+      ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">
           {/* Top Title & Subtitle + Export Report Button */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
