@@ -34,6 +34,7 @@ import {
   ShieldCheck,
   Maximize2,
   Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import api, { ParcelItem } from '../Services/api';
 import { useRealtimeSync } from '../Hooks/useRealtimeSync';
@@ -484,6 +485,12 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   });
   const [loading, setLoading] = useState<boolean>(() => !initialCache);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [lastReceivedParcel, setLastReceivedParcel] = useState<{
+    id: string;
+    tracking_number: string;
+    pickup_pin_code?: string;
+    apartment_number?: string;
+  } | null>(null);
 
   // 2. Filter & Search States
   const [searchTerm, setSearchTerm] = useState('');
@@ -817,6 +824,12 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
       const res = await api.receiveParcel(formPayload);
       if (res.success) {
+        setLastReceivedParcel({
+          id: res.data.id,
+          tracking_number: res.data.tracking_number,
+          pickup_pin_code: res.data.pickup_pin_code,
+          apartment_number: res.data.apartment?.apartment_number,
+        });
         showToast(`✅ Đã tiếp nhận thành công kiện hàng [${res.data.tracking_number}]!`);
         setIsCreateModalOpen(false);
         // Reset form
@@ -1007,15 +1020,41 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     <div className={`space-y-6 ${embedded ? '' : 'p-6 max-w-7xl mx-auto'}`}>
       {/* Toast Notification (Chuẩn phong cách RFID Management) */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-[9999] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border bg-emerald-50 text-emerald-900 border-emerald-300">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-          <span>{toastMessage}</span>
+        <div className="fixed top-5 right-5 z-[9999] flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-medium border bg-emerald-50 text-emerald-950 border-emerald-300">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{toastMessage}</span>
+          </div>
+
+          {lastReceivedParcel && (
+            <div className="flex items-center gap-2 pl-7 sm:pl-0">
+              {lastReceivedParcel.pickup_pin_code && (
+                <span className="text-xs bg-emerald-200/80 text-emerald-900 px-2.5 py-1 rounded-lg font-mono font-bold tracking-wider">
+                  PIN: {lastReceivedParcel.pickup_pin_code}
+                </span>
+              )}
+              <a
+                href={`/cu-dan?tab=overview&view_parcel=${lastReceivedParcel.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 cursor-pointer text-decoration-none"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Xem bưu phẩm qua Cư dân</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={() => setToastMessage(null)}
-            className="ml-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+            onClick={() => {
+              setToastMessage(null);
+              setLastReceivedParcel(null);
+            }}
+            className="ml-auto text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-emerald-100/50 transition cursor-pointer"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
