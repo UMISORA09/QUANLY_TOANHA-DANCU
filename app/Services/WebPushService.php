@@ -218,20 +218,96 @@ class WebPushService
             'sub' => $subject,
         ];
 
-        $encodedHeader = $this->base64UrlEncode(json_encode($header, JSON_UNESCAPED_SLASHES));
-        $encodedPayload = $this->base64UrlEncode(json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $encodedHeader = $this->base64UrlEncode((string) json_encode($header, JSON_UNESCAPED_SLASHES));
+        $encodedPayload = $this->base64UrlEncode((string) json_encode($payload, JSON_UNESCAPED_SLASHES));
         $dataToSign = "{$encodedHeader}.{$encodedPayload}";
 
         try {
-            $signature = '';
-            if (openssl_sign($dataToSign, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
-                return "{$dataToSign}.".$this->base64UrlEncode($signature);
+            $pem = $this->formatEcPrivateKeyToPem($privateKey, $publicKey);
+            if ($pem) {
+                $key = openssl_pkey_get_private($pem);
+                if ($key) {
+                    $signature = '';
+                    if (openssl_sign($dataToSign, $signature, $key, OPENSSL_ALGO_SHA256)) {
+                        $rawSig = $this->derSignatureToRaw64($signature);
+                        if ($rawSig) {
+                            return "{$dataToSign}.".$this->base64UrlEncode($rawSig);
+                        }
+                    }
+                }
             }
         } catch (Throwable $e) {
             Log::debug("VAPID token signing fallback: {$e->getMessage()}");
         }
 
-        return "{$dataToSign}.".$this->base64UrlEncode(hash_hmac('sha256', $dataToSign, $privateKey, true));
+        return null;
+    }
+
+    /**
+     * Chuyển raw base64url private scalar thành PKCS#8 PEM cho OpenSSL
+     */
+    protected function formatEcPrivateKeyToPem(string $rawPrivBase64, ?string $rawPubBase64): ?string
+    {
+        if (str_contains($rawPrivBase64, '-----BEGIN')) {
+            return $rawPrivBase64;
+        }
+
+        $privBin = base64_decode(strtr($rawPrivBase64, '-_', '+/'));
+        if (strlen($privBin) !== 32) {
+            return null;
+        }
+
+        $pubBin = $rawPubBase64 ? base64_decode(strtr($rawPubBase64, '-_', '+/')) : '';
+        if (strlen($pubBin) !== 65) {
+            $der = hex2bin('30770201010420').$privBin.hex2bin('a00aa6082a8648ce3d030107');
+
+            return "-----BEGIN EC PRIVATE KEY-----\n".chunk_split(base64_encode($der), 64, "\n")."-----END EC PRIVATE KEY-----\n";
+        }
+
+        $der = hex2bin('308187020100301306072a8648ce3d020106082a8648ce3d030107046d306b0201010420')
+            .$privBin
+            .hex2bin('a144034200')
+            .$pubBin;
+
+        return "-----BEGIN PRIVATE KEY-----\n".chunk_split(base64_encode($der), 64, "\n")."-----END PRIVATE KEY-----\n";
+    }
+
+    /**
+     * Chuyển chữ ký ECDSA từ định dạng ASN.1 DER sang định dạng thô 64 byte (IEEE P1363)
+     */
+    protected function derSignatureToRaw64(string $der): ?string
+    {
+        if (strlen($der) < 8 || ord($der[0]) !== 0x30) {
+            return null;
+        }
+
+        $offset = 2;
+        if (ord($der[1]) & 0x80) {
+            $offset += (ord($der[1]) & 0x7F);
+        }
+
+        if ($offset >= strlen($der) || ord($der[$offset++]) !== 0x02) {
+            return null;
+        }
+
+        $rLen = ord($der[$offset++]);
+        $r = substr($der, $offset, $rLen);
+        $offset += $rLen;
+
+        if ($offset >= strlen($der) || ord($der[$offset++]) !== 0x02) {
+            return null;
+        }
+
+        $sLen = ord($der[$offset++]);
+        $s = substr($der, $offset, $sLen);
+
+        $r = ltrim($r, "\x00");
+        $s = ltrim($s, "\x00");
+
+        $r = str_pad($r, 32, "\x00", STR_PAD_LEFT);
+        $s = str_pad($s, 32, "\x00", STR_PAD_LEFT);
+
+        return $r.$s;
     }
 
     /**
