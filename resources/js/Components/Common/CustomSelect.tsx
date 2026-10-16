@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useId } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useId } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 
 export interface SelectOption<T = string> {
@@ -26,6 +26,7 @@ export interface CustomSelectProps<T = string> {
     required?: boolean;
     prefixIcon?: React.ReactNode;
     align?: 'left' | 'right';
+    overlay?: boolean;
 }
 
 export function CustomSelect<T extends string | number | null = string>({
@@ -42,14 +43,44 @@ export function CustomSelect<T extends string | number | null = string>({
     required = false,
     prefixIcon,
     align = 'left',
+    overlay = false,
 }: CustomSelectProps<T>) {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
     const generatedId = useId();
     const selectId = id || generatedId;
 
     // Tìm option đang được chọn
     const selectedOption = options.find((opt) => opt.value === value);
+
+    useLayoutEffect(() => {
+        const menu = menuRef.current;
+        if (!isOpen || !overlay || !menu) return;
+        // The top layer escapes scroll clipping, including inside a modal dialog.
+        menu.showPopover();
+        const position = () => {
+            const trigger = containerRef.current?.querySelector('button')?.getBoundingClientRect();
+            if (!trigger) return;
+            const below = Math.max(0, window.innerHeight - trigger.bottom - 14);
+            const above = Math.max(0, trigger.top - 14);
+            const upwards = below < Math.min(menu.scrollHeight, 384) && above > below;
+            const height = Math.min(384, upwards ? above : below);
+            const width = Math.min(Math.max(trigger.width, 200), window.innerWidth - 16);
+            Object.assign(menu.style, {
+                width: `${width}px`, maxHeight: `${height}px`,
+                left: `${Math.max(8, Math.min(align === 'right' ? trigger.right - width : trigger.left, window.innerWidth - width - 8))}px`,
+                top: `${upwards ? Math.max(8, trigger.top - Math.min(menu.scrollHeight, height) - 6) : trigger.bottom + 6}px`,
+            });
+        };
+        position();
+        window.addEventListener('resize', position);
+        window.addEventListener('scroll', position, true);
+        return () => {
+            window.removeEventListener('resize', position);
+            window.removeEventListener('scroll', position, true);
+        };
+    }, [isOpen, overlay, align, options]);
 
     // Đóng dropdown khi click ra ngoài
     useEffect(() => {
@@ -85,7 +116,7 @@ export function CustomSelect<T extends string | number | null = string>({
 
     return (
         <div className={`relative ${isOpen ? 'z-40' : 'z-10'} ${className}`} ref={containerRef} onKeyDown={(event) => {
-            if (event.key === 'Escape') { setIsOpen(false); containerRef.current?.querySelector('button')?.focus(); return; }
+            if (event.key === 'Escape' && isOpen) { event.preventDefault(); event.stopPropagation(); setIsOpen(false); containerRef.current?.querySelector('button')?.focus(); return; }
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
             if (!isOpen) { setIsOpen(true); requestAnimationFrame(() => containerRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)')?.focus()); return; }
@@ -96,7 +127,7 @@ export function CustomSelect<T extends string | number | null = string>({
         }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false); }}>
             {label && (
                 <label htmlFor={selectId} className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    {label} {required && <span className="text-rose-500">*</span>}
+                    {label} {required && <span aria-hidden="true" className="text-rose-500">*</span>}
                 </label>
             )}
 
@@ -107,6 +138,7 @@ export function CustomSelect<T extends string | number | null = string>({
                 disabled={disabled}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 aria-haspopup="listbox"
+                aria-label={label}
                 aria-expanded={isOpen}
                 className={`w-full px-3 py-2 bg-white border rounded-xl text-xs flex items-center justify-between gap-2 shadow-2xs transition-all text-left cursor-pointer select-none ${
                     disabled
@@ -145,6 +177,9 @@ export function CustomSelect<T extends string | number | null = string>({
             {/* Dropdown Menu Panel */}
             {isOpen && (
                 <div
+                    ref={menuRef}
+                    popover={overlay ? 'manual' : undefined}
+                    style={overlay ? { position: 'fixed', inset: 'auto', margin: 0 } : undefined}
                     role="listbox"
                     className={`absolute top-full z-50 mt-1.5 w-full min-w-[200px] bg-white border border-slate-200/90 rounded-xl shadow-xl py-1 max-h-96 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150 ${
                         align === 'right' ? 'right-0' : 'left-0'

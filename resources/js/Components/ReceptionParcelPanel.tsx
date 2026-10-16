@@ -34,6 +34,7 @@ import {
   ShieldCheck,
   Maximize2,
   Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import api, { ParcelItem } from '../Services/api';
 import { useRealtimeSync } from '../Hooks/useRealtimeSync';
@@ -430,6 +431,40 @@ export const CustomSelectModal: React.FC<{
   );
 };
 
+// Helper lấy prefix mã mẫu theo đơn vị vận chuyển
+const getCourierPrefix = (courier: string): string => {
+  switch (courier) {
+    case 'Shopee Express':
+    case 'SPX Express':
+      return 'SPX';
+    case 'Giao Hàng Tiết Kiệm (GHTK)':
+      return 'GHTK';
+    case 'Giao Hàng Nhanh (GHN)':
+      return 'GHN';
+    case 'Viettel Post':
+      return 'VTP';
+    case 'J&T Express':
+      return 'JNT';
+    case 'GrabExpress':
+      return 'GRAB';
+    case 'Ninja Van':
+      return 'NINJA';
+    case 'Bưu điện VNPost':
+      return 'VNP';
+    case 'BeDelivery':
+      return 'BE';
+    default:
+      return 'PKG';
+  }
+};
+
+// Tự động tạo mã vận đơn ngẫu nhiên theo đơn vị vận chuyển
+const generateRandomTrackingNumber = (courier: string): string => {
+  const prefix = getCourierPrefix(courier || 'Shopee Express');
+  const randomNumber = Math.floor(100000000 + Math.random() * 900000000);
+  return `${prefix}${randomNumber}`;
+};
+
 export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embedded = false }) => {
   const initialCache = useMemo(() => getInitialParcelCache(), []);
 
@@ -450,6 +485,12 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   });
   const [loading, setLoading] = useState<boolean>(() => !initialCache);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [lastReceivedParcel, setLastReceivedParcel] = useState<{
+    id: string;
+    tracking_number: string;
+    pickup_pin_code?: string;
+    apartment_number?: string;
+  } | null>(null);
 
   // 2. Filter & Search States
   const [searchTerm, setSearchTerm] = useState('');
@@ -460,6 +501,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [fromDateFilter, setFromDateFilter] = useState<string>('');
   const [toDateFilter, setToDateFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState<number>(4);
 
   // Custom Dropdown Open States (Chuẩn Ảnh 2)
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState<boolean>(false);
@@ -492,8 +534,8 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   // 4. Create Form States
-  const [formData, setFormData] = useState({
-    tracking_number: '',
+  const [formData, setFormData] = useState(() => ({
+    tracking_number: generateRandomTrackingNumber('Shopee Express'),
     courier_company: 'Shopee Express',
     apartment_id: '',
     recipient_name: '',
@@ -501,7 +543,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     recipient_user_id: '',
     stored_location_type: 'RECEPTION_DESK',
     notes: '',
-  });
+  }));
   const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -603,7 +645,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
       try {
         const res = await api.getReceptionParcels({
           page,
-          limit: 15,
+          limit: perPage,
           search: debouncedSearch,
           status: statusFilter,
           courier_company: courierFilter !== 'ALL' ? courierFilter : undefined,
@@ -638,7 +680,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
         if (showSpinner) setLoading(false);
       }
     },
-    [debouncedSearch, statusFilter, courierFilter, apartmentFilter, fromDateFilter, toDateFilter, showToast]
+    [debouncedSearch, statusFilter, courierFilter, apartmentFilter, fromDateFilter, toDateFilter, showToast, perPage]
   );
 
   useEffect(() => {
@@ -783,11 +825,27 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
       const res = await api.receiveParcel(formPayload);
       if (res.success) {
+        setLastReceivedParcel({
+          id: res.data.id,
+          tracking_number: res.data.tracking_number,
+          pickup_pin_code: res.data.pickup_pin_code,
+          apartment_number: res.data.apartment?.apartment_number,
+        });
         showToast(`✅ Đã tiếp nhận thành công kiện hàng [${res.data.tracking_number}]!`);
+        try {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('smartcassavas:parcel_received', { detail: res.data }));
+          }
+          if (typeof BroadcastChannel !== 'undefined') {
+            const bc = new BroadcastChannel('smartcassavas_parcels');
+            bc.postMessage({ type: 'PARCEL_RECEIVED', parcel: res.data });
+            bc.close();
+          }
+        } catch {}
         setIsCreateModalOpen(false);
         // Reset form
         setFormData({
-          tracking_number: '',
+          tracking_number: generateRandomTrackingNumber('Shopee Express'),
           courier_company: 'Shopee Express',
           apartment_id: '',
           recipient_name: '',
@@ -806,58 +864,23 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }
   };
 
-  // Helper lấy prefix mã mẫu theo đơn vị vận chuyển
-  const getCourierPrefix = (courier: string): string => {
-    switch (courier) {
-      case 'Shopee Express':
-      case 'SPX Express':
-        return 'SPX';
-      case 'Giao Hàng Tiết Kiệm (GHTK)':
-        return 'GHTK';
-      case 'Giao Hàng Nhanh (GHN)':
-        return 'GHN';
-      case 'Viettel Post':
-        return 'VTP';
-      case 'J&T Express':
-        return 'JNT';
-      case 'GrabExpress':
-        return 'GRAB';
-      case 'Ninja Van':
-        return 'NINJA';
-      case 'Bưu điện VNPost':
-        return 'VNP';
-      case 'BeDelivery':
-        return 'BE';
-      default:
-        return 'PKG';
-    }
-  };
 
-  // Quick Random tracking number for testing theo đúng Đơn vị vận chuyển đang chọn
-  const handleGenerateSampleTracking = (selectedCourier?: string) => {
-    const courier = selectedCourier || formData.courier_company || 'Shopee Express';
-    const prefix = getCourierPrefix(courier);
-    const randomNumber = Math.floor(100000000 + Math.random() * 900000000);
-    const code = `${prefix}${randomNumber}`;
-    setFormData((prev) => ({ ...prev, tracking_number: code }));
-  };
-
-  // Đổi đơn vị vận chuyển: nếu mã vận đơn đã tạo mẫu thì tự động đổi prefix theo hãng mới
+  // Đổi đơn vị vận chuyển: tự động tạo mã vận đơn ngẫu nhiên theo hãng
   const handleCourierChange = (newCourier: string) => {
-    setFormData((prev) => {
-      const knownPrefixes = ['SPX', 'GHTK', 'GHN', 'VTP', 'JNT', 'GRAB', 'NINJA', 'VNP', 'BE', 'PKG'];
-      const isAutoSample = knownPrefixes.some((p) => prev.tracking_number.startsWith(p));
-      const newPrefix = getCourierPrefix(newCourier);
-      const newTracking = isAutoSample
-        ? `${newPrefix}${Math.floor(100000000 + Math.random() * 900000000)}`
-        : prev.tracking_number;
+    setFormData((prev) => ({
+      ...prev,
+      courier_company: newCourier,
+      tracking_number: generateRandomTrackingNumber(newCourier),
+    }));
+  };
 
-      return {
-        ...prev,
-        courier_company: newCourier,
-        tracking_number: newTracking,
-      };
-    });
+  // Đổi đơn vị vận chuyển ở modal chỉnh sửa: tự động tạo mã vận đơn ngẫu nhiên theo hãng
+  const handleEditCourierChange = (newCourier: string) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      courier_company: newCourier,
+      tracking_number: generateRandomTrackingNumber(newCourier),
+    }));
   };
 
   // Xử lý mở Modal Chỉnh sửa
@@ -1008,15 +1031,41 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     <div className={`space-y-6 ${embedded ? '' : 'p-6 max-w-7xl mx-auto'}`}>
       {/* Toast Notification (Chuẩn phong cách RFID Management) */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-[9999] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border bg-emerald-50 text-emerald-900 border-emerald-300">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-          <span>{toastMessage}</span>
+        <div className="fixed top-5 right-5 z-[9999] flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-medium border bg-emerald-50 text-emerald-950 border-emerald-300">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{toastMessage}</span>
+          </div>
+
+          {lastReceivedParcel && (
+            <div className="flex items-center gap-2 pl-7 sm:pl-0">
+              {lastReceivedParcel.pickup_pin_code && (
+                <span className="text-xs bg-emerald-200/80 text-emerald-900 px-2.5 py-1 rounded-lg font-mono font-bold tracking-wider">
+                  PIN: {lastReceivedParcel.pickup_pin_code}
+                </span>
+              )}
+              <a
+                href={`/cu-dan?tab=overview&view_parcel=${lastReceivedParcel.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 cursor-pointer text-decoration-none"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Xem bưu phẩm qua Cư dân</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={() => setToastMessage(null)}
-            className="ml-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+            onClick={() => {
+              setToastMessage(null);
+              setLastReceivedParcel(null);
+            }}
+            className="ml-auto text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-emerald-100/50 transition cursor-pointer"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -1052,6 +1101,12 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
             type="button"
             onClick={() => {
               setFormError(null);
+              const defaultCourier = 'Shopee Express';
+              setFormData((prev) => ({
+                ...prev,
+                courier_company: prev.courier_company || defaultCourier,
+                tracking_number: generateRandomTrackingNumber(prev.courier_company || defaultCourier),
+              }));
               setIsCreateModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition shadow-sm cursor-pointer"
@@ -1571,21 +1626,41 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
         {/* Pagination Bar */}
         {pagination.total_pages > 1 && (
-          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between text-xs text-slate-500">
-            <span>
-              Hiển thị{' '}
-              <strong className="text-slate-800">
-                {(pagination.current_page - 1) * pagination.per_page + 1}
-              </strong>{' '}
-              đến{' '}
-              <strong className="text-slate-800">
-                {Math.min(
-                  pagination.current_page * pagination.per_page,
-                  pagination.total_items
-                )}
-              </strong>{' '}
-              trên tổng <strong className="text-slate-800">{pagination.total_items}</strong> kiện
-            </span>
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+            <div className="flex items-center gap-3">
+              <span>
+                Hiển thị{' '}
+                <strong className="text-slate-800">
+                  {(pagination.current_page - 1) * pagination.per_page + 1}
+                </strong>{' '}
+                đến{' '}
+                <strong className="text-slate-800">
+                  {Math.min(
+                    pagination.current_page * pagination.per_page,
+                    pagination.total_items
+                  )}
+                </strong>{' '}
+                trên tổng <strong className="text-slate-800">{pagination.total_items}</strong> kiện
+              </span>
+
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="hidden sm:inline">Hiển thị:</span>
+                <select
+                  value={perPage}
+                  onChange={(e) => {
+                    const nextLimit = Number(e.target.value);
+                    setPerPage(nextLimit);
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
+                >
+                  <option value={4}>4 kiện / trang</option>
+                  <option value={10}>10 kiện / trang</option>
+                  <option value={15}>15 kiện / trang</option>
+                  <option value={20}>20 kiện / trang</option>
+                </select>
+              </div>
+            </div>
 
             <div className="flex items-center gap-1.5">
               <button
@@ -1781,29 +1856,21 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                       />
                     </div>
 
-                    {/* 2. Mã vận đơn (nhập sau & tạo mã mẫu tương ứng hãng) */}
+                    {/* 2. Mã vận đơn (tự động tạo ngẫu nhiên theo ĐVVC, không cho phép chỉnh sửa) */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-slate-700">
                           Mã vận đơn <span className="text-rose-500">*</span>
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateSampleTracking()}
-                          className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 cursor-pointer"
-                          title="Tạo mã mẫu ngẫu nhiên khớp với đơn vị vận chuyển đang chọn"
-                        >
-                          + Tạo mã mẫu
-                        </button>
                       </div>
                       <input
                         type="text"
                         value={formData.tracking_number}
-                        onChange={(e) =>
-                          setFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
-                        }
+                        readOnly
+                        tabIndex={-1}
                         placeholder={`VD: ${getCourierPrefix(formData.courier_company)}672781726`}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-slate-700 bg-slate-100/80 cursor-not-allowed select-all focus:outline-hidden font-bold uppercase tracking-wider"
+                        title="Mã vận đơn được tạo tự động ngẫu nhiên khi chọn Đơn vị vận chuyển và không được phép chỉnh sửa"
                       />
                     </div>
                   </div>
@@ -2165,9 +2232,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     </label>
                     <CustomSelectModal
                       value={editFormData.courier_company}
-                      onChange={(val) =>
-                        setEditFormData((prev) => ({ ...prev, courier_company: val }))
-                      }
+                      onChange={(val) => handleEditCourierChange(val)}
                       options={courierOptions.map((c) => ({
                         value: c,
                         label: c,
@@ -2177,7 +2242,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     />
                   </div>
 
-                  {/* Mã vận đơn */}
+                  {/* Mã vận đơn (tự động tạo ngẫu nhiên theo ĐVVC, không cho phép chỉnh sửa) */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       Mã vận đơn <span className="text-rose-500">*</span>
@@ -2185,10 +2250,10 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     <input
                       type="text"
                       value={editFormData.tracking_number}
-                      onChange={(e) =>
-                        setEditFormData((prev) => ({ ...prev, tracking_number: e.target.value }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-bold uppercase"
+                      readOnly
+                      tabIndex={-1}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-slate-700 bg-slate-100/80 cursor-not-allowed select-all focus:outline-hidden font-bold uppercase tracking-wider"
+                      title="Mã vận đơn được tạo tự động ngẫu nhiên khi chọn Đơn vị vận chuyển và không được phép chỉnh sửa"
                     />
                   </div>
 
