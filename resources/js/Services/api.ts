@@ -1630,6 +1630,23 @@ class ApiService {
     return this.request<ParcelListResponse>(`/reception/parcels?${q.toString()}`, options);
   }
 
+  async getParcels(
+    params: {
+      search?: string;
+      status?: string;
+      apartment_id?: string;
+      courier_company?: string;
+      from_date?: string;
+      to_date?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ParcelListResponse> {
+    return this.getReceptionParcels(params, options);
+  }
+
   async receiveParcel(formData: FormData): Promise<{ success: boolean; message: string; data: ParcelItem }> {
     return this.request<{ success: boolean; message: string; data: ParcelItem }>('/reception/parcels', {
       method: 'POST',

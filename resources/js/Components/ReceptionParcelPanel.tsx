@@ -831,6 +831,16 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
           apartment_number: res.data.apartment?.apartment_number,
         });
         showToast(`✅ Đã tiếp nhận thành công kiện hàng [${res.data.tracking_number}]!`);
+        try {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('smartcassavas:parcel_received', { detail: res.data }));
+          }
+          if (typeof BroadcastChannel !== 'undefined') {
+            const bc = new BroadcastChannel('smartcassavas_parcels');
+            bc.postMessage({ type: 'PARCEL_RECEIVED', parcel: res.data });
+            bc.close();
+          }
+        } catch {}
         setIsCreateModalOpen(false);
         // Reset form
         setFormData({

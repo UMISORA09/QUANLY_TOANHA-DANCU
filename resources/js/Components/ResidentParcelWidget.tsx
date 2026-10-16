@@ -1,12 +1,47 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Package, KeyRound, QrCode, Copy, Check, RefreshCw, Clock, Building, ShieldCheck, ChevronRight, X } from 'lucide-react';
-import { api, ParcelItem } from '../Services/api';
+import {
+  Package,
+  KeyRound,
+  QrCode,
+  Copy,
+  Check,
+  RefreshCw,
+  Clock,
+  Building,
+  ShieldCheck,
+  X,
+  ExternalLink,
+  Sparkles,
+} from 'lucide-react';
+import api, { ParcelItem } from '../Services/api';
+
+export const getParcelImageUrl = (url?: string | null): string => {
+  if (!url) return '';
+  let cleanPath = url.trim();
+  if (cleanPath.includes('/storage/parcels/')) {
+    const parts = cleanPath.split('/storage/parcels/');
+    cleanPath = `/storage/parcels/${parts[parts.length - 1]}`;
+  }
+  if (cleanPath.startsWith('storage/')) {
+    cleanPath = `/${cleanPath}`;
+  }
+  // Khi chạy dev server port 5173, tự động chuyển hướng /storage/ về backend 8000
+  if (
+    typeof window !== 'undefined' &&
+    window.location.port === '5173' &&
+    (cleanPath.startsWith('/storage/') || cleanPath.startsWith('/images/'))
+  ) {
+    return `http://127.0.0.1:8000${cleanPath}`;
+  }
+  return cleanPath;
+};
 
 export const ResidentParcelWidget: React.FC = () => {
   const [parcels, setParcels] = useState<ParcelItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [copiedPin, setCopiedPin] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [selectedQrCode, setSelectedQrCode] = useState<{ pin: string; qr: string; tracking: string } | null>(null);
   const [highlightedParcelId, setHighlightedParcelId] = useState<string | null>(() => {
     try {
       return new URLSearchParams(window.location.search).get('view_parcel');
@@ -18,11 +53,30 @@ export const ResidentParcelWidget: React.FC = () => {
   const fetchResidentParcels = useCallback(async () => {
     setLoading(true);
     try {
-      // Lấy các bưu kiện đang chờ nhận tại quầy lễ tân
-      const res = await api.getParcels({ status: 'PENDING', limit: 10 });
-      if (res.success && Array.isArray(res.data)) {
-        setParcels(res.data);
+      // 1. Gọi API lấy bưu phẩm đang chờ nhận (PENDING maps to RECEIVED_AT_RECEPTION in backend)
+      const res = await (api.getReceptionParcels
+        ? api.getReceptionParcels({ status: 'PENDING', limit: 20 })
+        : api.getParcels({ status: 'PENDING', limit: 20 }));
+
+      let items: ParcelItem[] = [];
+      if (res && res.success && Array.isArray(res.data)) {
+        items = res.data;
       }
+
+      // 2. Nếu có param view_parcel nhưng bưu phẩm chưa có trong danh sách top 20, fetch chi tiết
+      const currentParamId = new URLSearchParams(window.location.search).get('view_parcel');
+      if (currentParamId && !items.some((p) => p.id === currentParamId)) {
+        try {
+          const detailRes = await api.getParcelDetail(currentParamId);
+          if (detailRes && detailRes.success && detailRes.data) {
+            items = [detailRes.data, ...items];
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      setParcels(items);
     } catch (err) {
       console.warn('Không thể tải danh sách bưu phẩm cư dân:', err);
     } finally {
@@ -30,17 +84,62 @@ export const ResidentParcelWidget: React.FC = () => {
     }
   }, []);
 
+  // Lấy dữ liệu lúc mount
   useEffect(() => {
     fetchResidentParcels();
   }, [fetchResidentParcels]);
 
+  // Lắng nghe thay đổi URL (popstate) để cập nhật highlightedParcelId
+  useEffect(() => {
+    const handleUrlChange = () => {
+      try {
+        const id = new URLSearchParams(window.location.search).get('view_parcel');
+        if (id) {
+          setHighlightedParcelId(id);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  // Lắng nghe sự kiện tiếp nhận kiện hàng theo thời gian thực (Realtime & Broadcast across tabs)
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('smartcassavas_parcels');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'PARCEL_RECEIVED') {
+            fetchResidentParcels();
+          }
+        };
+      }
+    } catch {
+      // BroadcastChannel không khả dụng
+    }
+
+    const handleCustomEvent = () => fetchResidentParcels();
+    window.addEventListener('smartcassavas:parcel_received', handleCustomEvent);
+
+    return () => {
+      if (bc) bc.close();
+      window.removeEventListener('smartcassavas:parcel_received', handleCustomEvent);
+    };
+  }, [fetchResidentParcels]);
+
   // Cuộn tới bưu phẩm được highlight từ URL query view_parcel
   useEffect(() => {
-    if (highlightedParcelId) {
-      const el = document.getElementById(`parcel-card-${highlightedParcelId}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+    if (highlightedParcelId && parcels.length > 0) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`parcel-card-${highlightedParcelId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
     }
   }, [highlightedParcelId, parcels]);
 
@@ -54,10 +153,15 @@ export const ResidentParcelWidget: React.FC = () => {
     }
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr?: string | null) => {
+    if (!dateStr) return 'Vừa mới tiếp nhận';
     try {
       const d = new Date(dateStr);
-      return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ', ' + d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      return (
+        d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) +
+        ', ' +
+        d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      );
     } catch {
       return dateStr;
     }
@@ -109,40 +213,56 @@ export const ResidentParcelWidget: React.FC = () => {
         <div className="py-6 text-center text-xs text-neutral-500 bg-neutral-50 rounded-xl border border-dashed border-neutral-200">
           <Package className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
           <p className="font-medium text-neutral-600">Hiện tại không có bưu phẩm nào đang chờ nhận.</p>
-          <p className="text-neutral-400 text-2xs mt-0.5">Khi có bưu phẩm mới, Lễ tân tiếp nhận và hệ thống sẽ gửi thông báo tức thì đến bạn.</p>
+          <p className="text-neutral-400 text-2xs mt-0.5">
+            Khi có bưu phẩm mới, Lễ tân tiếp nhận và hệ thống sẽ gửi thông báo tức thì đến bạn.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {parcels.map((parcel) => {
             const isTarget = highlightedParcelId === parcel.id;
+            const photoUrl = getParcelImageUrl(parcel.parcel_photo_url);
+
             return (
               <div
                 key={parcel.id}
                 id={`parcel-card-${parcel.id}`}
                 className={`p-4 rounded-xl border transition-all ${
                   isTarget
-                    ? 'border-indigo-500 bg-indigo-50/40 shadow-md ring-2 ring-indigo-200'
+                    ? 'border-indigo-500 bg-indigo-50/50 shadow-md ring-2 ring-indigo-200 relative'
                     : 'border-neutral-200 bg-neutral-50/60 hover:bg-white hover:border-neutral-300 hover:shadow-xs'
                 }`}
               >
+                {isTarget && (
+                  <span className="absolute -top-2.5 right-3 px-2 py-0.5 text-3xs font-bold bg-indigo-600 text-white rounded-full flex items-center gap-1 shadow-xs">
+                    <Sparkles className="w-2.5 h-2.5" />
+                    Kiện hàng vừa chọn
+                  </span>
+                )}
+
                 <div className="flex items-start gap-3">
                   {/* Thumbnail ảnh bưu kiện */}
                   <div className="relative shrink-0">
-                    {parcel.parcel_photo_url ? (
-                      <img
-                        src={parcel.parcel_photo_url}
-                        alt="Ảnh kiện hàng"
-                        onClick={() => setSelectedPhoto(parcel.parcel_photo_url)}
-                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover border border-neutral-200 cursor-pointer hover:opacity-90 shadow-2xs"
-                      />
+                    {photoUrl ? (
+                      <div className="group relative">
+                        <img
+                          src={photoUrl}
+                          alt="Ảnh kiện hàng"
+                          onClick={() => setSelectedPhoto(photoUrl)}
+                          className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover border border-neutral-200 cursor-pointer group-hover:opacity-90 shadow-2xs"
+                        />
+                        <span
+                          onClick={() => setSelectedPhoto(photoUrl)}
+                          className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 text-3xs font-semibold px-1.5 py-0.2 rounded bg-neutral-900/80 text-white whitespace-nowrap cursor-pointer hover:bg-black"
+                        >
+                          Xem ảnh
+                        </span>
+                      </div>
                     ) : (
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-neutral-200/70 border border-neutral-300 flex items-center justify-center text-neutral-400">
                         <Package className="w-6 h-6" />
                       </div>
                     )}
-                    <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 text-3xs font-semibold px-1.5 py-0.2 rounded bg-neutral-900/80 text-white whitespace-nowrap">
-                      Xem ảnh
-                    </span>
                   </div>
 
                   {/* Thông tin kiện hàng */}
@@ -164,7 +284,9 @@ export const ResidentParcelWidget: React.FC = () => {
                     {parcel.apartment && (
                       <div className="text-2xs text-neutral-500 flex items-center gap-1.5">
                         <Building className="w-3 h-3 text-neutral-400 shrink-0" />
-                        <span>Căn hộ: <strong className="text-neutral-700">{parcel.apartment.apartment_number}</strong></span>
+                        <span>
+                          Căn hộ: <strong className="text-neutral-700">{parcel.apartment.apartment_number}</strong>
+                        </span>
                       </div>
                     )}
 
@@ -173,29 +295,48 @@ export const ResidentParcelWidget: React.FC = () => {
                       <div className="flex items-center gap-1.5">
                         <KeyRound className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                         <span className="text-2xs text-emerald-700 font-medium">MÃ PIN:</span>
-                        <span className="text-xs sm:text-sm font-extrabold text-emerald-900 font-mono tracking-wider">
+                        <span className="text-sm sm:text-base font-extrabold text-emerald-900 font-mono tracking-wider">
                           {parcel.pickup_pin_code || '123456'}
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleCopyPin(parcel.pickup_pin_code || '')}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 text-3xs font-semibold text-emerald-700 bg-white border border-emerald-300 rounded hover:bg-emerald-100/50 transition cursor-pointer"
-                        title="Sao chép mã PIN"
-                      >
-                        {copiedPin === parcel.pickup_pin_code ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            <span>Đã chép</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            <span>Chép mã</span>
-                          </>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPin(parcel.pickup_pin_code || '')}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-3xs font-semibold text-emerald-700 bg-white border border-emerald-300 rounded hover:bg-emerald-100/50 transition cursor-pointer"
+                          title="Sao chép mã PIN"
+                        >
+                          {copiedPin === parcel.pickup_pin_code ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span>Đã chép</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Chép</span>
+                            </>
+                          )}
+                        </button>
+
+                        {parcel.pickup_qr_code && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedQrCode({
+                                pin: parcel.pickup_pin_code || '',
+                                qr: parcel.pickup_qr_code || '',
+                                tracking: parcel.tracking_number,
+                              })
+                            }
+                            className="p-1 text-emerald-700 bg-white border border-emerald-300 rounded hover:bg-emerald-100/50 transition cursor-pointer"
+                            title="Xem mã QR lấy hàng"
+                          >
+                            <QrCode className="w-3 h-3" />
+                          </button>
                         )}
-                      </button>
+                      </div>
                     </div>
 
                     <p className="text-3xs text-neutral-400 pt-0.5 italic">
@@ -213,7 +354,7 @@ export const ResidentParcelWidget: React.FC = () => {
       {selectedPhoto && (
         <div
           onClick={() => setSelectedPhoto(null)}
-          className="fixed inset-0 z-[10000] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-[10000] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -231,6 +372,54 @@ export const ResidentParcelWidget: React.FC = () => {
               alt="Ảnh bưu phẩm phóng to"
               className="w-full max-h-[80vh] object-contain rounded-xl"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Modal xem Mã QR & PIN nhận hàng lớn */}
+      {selectedQrCode && (
+        <div
+          onClick={() => setSelectedQrCode(null)}
+          className="fixed inset-0 z-[10000] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-sm w-full bg-white rounded-2xl overflow-hidden shadow-2xl p-6 text-center space-y-4"
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedQrCode(null)}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-600 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+              <KeyRound className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h4 className="text-base font-bold text-neutral-900">Mã PIN nhận bưu phẩm</h4>
+              <p className="text-xs text-neutral-500 font-mono mt-0.5">Vận đơn: {selectedQrCode.tracking}</p>
+            </div>
+
+            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+              <span className="text-xs text-emerald-700 font-medium block mb-1">MÃ PIN 6 SỐ:</span>
+              <span className="text-3xl font-black text-emerald-900 font-mono tracking-widest">
+                {selectedQrCode.pin}
+              </span>
+            </div>
+
+            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
+              <span className="text-2xs text-neutral-500 font-medium block mb-1">MÃ QR CHECK-OUT:</span>
+              <span className="text-xs font-mono font-bold text-neutral-800">
+                {selectedQrCode.qr}
+              </span>
+            </div>
+
+            <p className="text-xs text-neutral-500">
+              Đọc mã PIN hoặc quét mã QR này tại quầy Lễ tân để hoàn tất nhận kiện hàng.
+            </p>
           </div>
         </div>
       )}

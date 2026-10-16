@@ -286,7 +286,7 @@ class SendParcelNotificationJob implements ShouldQueue
                 'parcel_id' => $parcel->id,
                 'tracking_number' => $parcel->tracking_number,
                 'apartment_number' => $parcel->apartment?->apartment_number,
-                'url' => '/cu-dan?tab=overview',
+                'url' => '/cu-dan?tab=overview&view_parcel='.$parcel->id,
             ],
         ];
 
