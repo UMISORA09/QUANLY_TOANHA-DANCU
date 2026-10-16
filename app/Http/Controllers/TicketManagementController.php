@@ -3,14 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Ticket;
+use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\User;
 use App\Services\ResidentTicketService;
+use App\Services\TicketConflictException;
 use App\Services\TicketManagementService;
 use App\Services\TicketWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class TicketManagementController extends Controller
@@ -112,6 +115,26 @@ class TicketManagementController extends Controller
             ->whereExists(fn ($q) => $q->selectRaw('1')->from('staff_profiles')->whereColumn('staff_profiles.user_id', 'users.id')->where(fn ($scope) => $scope->whereNull('assigned_block_id')->orWhere('assigned_block_id', $block)))->get();
 
         return response()->json($users->filter(fn (User $user) => $this->tickets->access->technician($user) && $user->hasPermission('TICKET:VIEW') && $user->hasPermission('TICKET:UPDATE') && $user->hasPermission('TICKET:RESOLVE'))->map(fn (User $user) => ['id' => $user->id, 'full_name' => $user->full_name])->values());
+    }
+
+    public function removeAttachment(Request $request, string $id, string $attachmentId): JsonResponse
+    {
+        $data = $request->validate(['version' => 'required|integer|min:1']);
+        $this->tickets->access->manage($request->user());
+        DB::transaction(function () use ($request, $id, $attachmentId, $data): void {
+            $ticket = $this->tickets->access->scope($request->user(), Ticket::query())->whereKey($id)->lockForUpdate()->firstOrFail();
+            $this->tickets->version($ticket, (int) $data['version']);
+            if (in_array($ticket->status, ['CLOSED', 'CANCELLED'], true)) {
+                throw new TicketConflictException('Không thể sửa ảnh của yêu cầu đã kết thúc.');
+            }
+            $attachment = TicketAttachment::where('ticket_id', $id)->whereKey($attachmentId)->firstOrFail();
+            $attachment->delete();
+            $ticket->increment('version');
+            $this->tickets->record($request->user(), $ticket, 'UPDATED', 'Quản lý bỏ ảnh sự cố.');
+            DB::afterCommit(fn () => Storage::disk($attachment->storage_disk ?: 'public')->delete($attachment->storage_path));
+        });
+
+        return response()->json($this->tickets->detail($request->user(), $id));
     }
 
     public function notifications(Request $request): JsonResponse
