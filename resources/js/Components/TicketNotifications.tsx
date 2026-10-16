@@ -56,7 +56,9 @@ export function useTicketNotifications() {
     await api.readTicketNotification(item.id);
     setItems((current) => current.map((notice) => notice.id === item.id ? { ...notice, is_read: true } : notice));
     if (!item.is_read) setUnread((count) => Math.max(0, count - 1));
-    location.assign(target.href);
+    window.history.pushState({}, '', target.pathname + target.search);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    window.dispatchEvent(new Event('TICKET_NOTIFICATION_RECEIVED'));
   };
   return { items, unread, page, pages, setPage, error, loading, retry, open };
 }
