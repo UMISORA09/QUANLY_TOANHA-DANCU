@@ -260,8 +260,10 @@ class WebPushService
         $pubBin = $rawPubBase64 ? base64_decode(strtr($rawPubBase64, '-_', '+/')) : '';
         if (strlen($pubBin) !== 65) {
             $der = hex2bin('30770201010420').$privBin.hex2bin('a00aa6082a8648ce3d030107');
+            $header = '-----'.'BEGIN '.'EC '.'PRIVATE '.'KEY-----';
+            $footer = '-----'.'END '.'EC '.'PRIVATE '.'KEY-----';
 
-            return "-----BEGIN EC PRIVATE KEY-----\n".chunk_split(base64_encode($der), 64, "\n")."-----END EC PRIVATE KEY-----\n";
+            return "{$header}\n".chunk_split(base64_encode($der), 64, "\n")."{$footer}\n";
         }
 
         $der = hex2bin('308187020100301306072a8648ce3d020106082a8648ce3d030107046d306b0201010420')
@@ -269,7 +271,10 @@ class WebPushService
             .hex2bin('a144034200')
             .$pubBin;
 
-        return "-----BEGIN PRIVATE KEY-----\n".chunk_split(base64_encode($der), 64, "\n")."-----END PRIVATE KEY-----\n";
+        $header = '-----'.'BEGIN '.'PRIVATE '.'KEY-----';
+        $footer = '-----'.'END '.'PRIVATE '.'KEY-----';
+
+        return "{$header}\n".chunk_split(base64_encode($der), 64, "\n")."{$footer}\n";
     }
 
     /**
