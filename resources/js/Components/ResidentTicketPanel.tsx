@@ -149,6 +149,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [counters, setCounters] = useState({
     all: 0,
     new: 0,
+    received: 0,
     in_progress: 0,
     resolved: 0,
     closed: 0,
@@ -326,7 +327,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       if (!controller.signal.aborted && res && res.success) {
         setTickets(res.data || []);
         if (res.counters) {
-          setCounters(res.counters);
+          setCounters((prev) => ({ ...prev, ...res.counters, received: res.counters.received ?? prev.received ?? 0 }));
         }
         if (res.pagination) {
           setCurrentPage(res.pagination.current_page);
@@ -717,7 +718,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         <TicketDialog open={isCreateModalOpen} title="Gửi yêu cầu báo cáo sự cố" busy={isSubmitting} onClose={() => setIsCreateModalOpen(false)} footer={
 <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-5 pb-4 pt-3">
                 <button
-                  id="ticket-back-to-list-btn"
+                  id="ticket-close-create-btn"
                   type="button"
                   disabled={isSubmitting} onClick={() => setIsCreateModalOpen(false)}
                   className="order-1 min-h-11 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-100 cursor-pointer"
@@ -995,11 +996,11 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               {[
                 { status: 'ALL', label: 'Tất cả yêu cầu', count: counters.all },
                 { status: 'NEW', label: 'Mới gửi', count: counters.new },
-                { status: 'IN_PROGRESS', label: 'Đang xử lý', count: counters.in_progress },
+                { status: 'IN_PROGRESS', label: `Đang xử lý${(counters.received ?? 0) > 0 ? ` (${counters.received} đã ghi nhận)` : ''}`, count: counters.in_progress, title: (counters.received ?? 0) > 0 ? `Gồm ${counters.received} yêu cầu Đã ghi nhận` : undefined },
                 { status: 'RESOLVED', label: 'Chờ nghiệm thu', count: counters.resolved },
                 { status: 'CLOSED', label: 'Đã hoàn tất', count: counters.closed },
                 { status: 'CANCELLED', label: 'Đã hủy', count: counters.cancelled },
-              ].map((item) => <button key={item.status} type="button" aria-pressed={statusFilter === item.status} onClick={() => { setStatusFilter(item.status); setCurrentPage(1); }} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-emerald-600 ${statusFilter === item.status ? 'bg-neutral-950 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}>
+              ].map((item) => <button key={item.status} type="button" aria-pressed={statusFilter === item.status} title={item.title} onClick={() => { setStatusFilter(item.status); setCurrentPage(1); }} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-emerald-600 ${statusFilter === item.status ? 'bg-neutral-950 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}>
                 <span className={statusFilter === item.status ? 'text-white' : 'text-neutral-600'}>{item.label}</span><span className={`rounded-md px-1.5 py-0.5 text-xs tabular-nums ${statusFilter === item.status ? 'bg-white/15 text-white' : 'bg-neutral-100 text-neutral-600'}`}>{item.count}</span>
               </button>)}
             </div>
@@ -1634,6 +1635,17 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   value={editFormData.description}
                   onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">Ngày thuận tiện kỹ thuật đến kiểm tra</label>
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={editFormData.preferred_service_time ? editFormData.preferred_service_time.substring(0, 10) : ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, preferred_service_time: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                 />
               </div>
 
