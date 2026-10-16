@@ -48,7 +48,7 @@ class TicketManagementController extends Controller
         $manager = $this->tickets->access->manager($user);
         $residents = $manager ? DB::table('residents')->join('users', 'users.id', '=', 'residents.user_id')
             ->whereIn('residents.apartment_id', $apartments->pluck('id'))->where('residents.is_active', 1)->whereNull('residents.deleted_at')
-            ->whereDate('stay_start_date', '<=', today())->where(fn ($q) => $q->whereNull('stay_end_date')->orWhereDate('stay_end_date', '>=', today()))
+            ->where('stay_start_date', '<=', today()->toDateString())->where(fn ($q) => $q->whereNull('stay_end_date')->orWhere('stay_end_date', '>=', today()->toDateString()))
             ->where('users.status', 'ACTIVE')->whereNull('users.deleted_at')->select('users.id', 'users.full_name', 'residents.apartment_id')->distinct()->get() : collect();
 
         return response()->json(['categories' => TicketCategory::orderBy('category_name')->get(), 'blocks' => $blocks, 'apartments' => $manager ? $apartments : [], 'residents' => $residents,

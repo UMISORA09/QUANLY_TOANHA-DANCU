@@ -2271,6 +2271,7 @@ export interface TicketAttachmentItem {
   file_url: string;
   storage_path?: string;
   file_type: string;
+  is_resolution_proof?: boolean;
   mime_type?: string;
   file_size_bytes?: number;
   created_at: string;

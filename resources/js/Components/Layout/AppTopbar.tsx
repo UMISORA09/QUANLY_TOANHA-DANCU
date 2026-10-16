@@ -346,6 +346,7 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
               onClick={onNotificationClick}
               className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 border border-slate-200/70 shadow-xs transition-all relative group cursor-pointer active:scale-95"
               title="Thông báo hệ thống"
+              aria-label={`Thông báo hệ thống (${unreadNotificationCount} chưa đọc)`}
             >
               <Bell className="w-4 h-4 group-hover:scale-110 transition-transform" />
               {unreadNotificationCount > 0 && (
