@@ -1,5 +1,8 @@
 .git
 .github
+.codex
+.vscode
+.idea
 node_modules
 vendor
 storage/logs/*
@@ -8,6 +11,14 @@ storage/framework/sessions/*
 storage/framework/views/*
 .env*
 *.sql
+dump_quanly_toanha.sql
+CSDL_CHUNGCU&DANCU.sql
+*.docx
+BAOCAO_NHOM_G.docx
 *.md
+docs/
+tests/
+playwright-report/
+test-results/
 database/*.sqlite
 storage/app/**

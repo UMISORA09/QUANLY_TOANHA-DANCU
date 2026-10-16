@@ -439,56 +439,41 @@ export interface SwrOptions<T> {
 
 class ApiService {
   private getToken(): string | null {
-    let token = localStorage.getItem('smart_cassavas_token');
-    if (!token) {
-      const sessionStr = localStorage.getItem('smartcassavas_session');
-      if (sessionStr) {
-        try {
-          const session = JSON.parse(sessionStr);
-          if (session.token || session.access_token) {
-            token = session.token || session.access_token;
-          } else if (session.role === 'admin' || session.isDev) {
-            token = 'smart_token_admin_demo';
-          } else if (session.role === 'receptionist' || session.role === 'security') {
-            token = 'smart_token_reception_demo';
-          } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
-            token = 'smart_token_resident_demo';
-          } else {
-            token = 'smart_token_manager_demo';
-          }
-        } catch {
-          // ignore
-        }
+    let token = typeof window !== 'undefined' ? localStorage.getItem('smart_cassavas_token') : null;
+    const sessionStr = typeof window !== 'undefined' ? localStorage.getItem('smartcassavas_session') : null;
+
+    // Dọn dẹp token demo sót lại nếu người dùng không hề có phiên đăng nhập active
+    if (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr) {
+      try {
+        localStorage.removeItem('smart_cassavas_token');
+        localStorage.removeItem('smart_cassavas_user');
+      } catch {
+        // ignore
       }
+      token = null;
     }
 
-    if (!token) {
-      const path = typeof window !== 'undefined' ? window.location.pathname : '';
-      const isReceptionPath =
-        path.startsWith('/le-tan') ||
-        path.startsWith('/an-ninh') ||
-        path.startsWith('/bao-ve') ||
-        path.startsWith('/reception') ||
-        path.includes('/visitors') ||
-        path.includes('/parcels') ||
-        path.includes('/vehicles');
-      const isResidentPath =
-        path.startsWith('/cu-dan') ||
-        path.startsWith('/resident') ||
-        path.startsWith('/cudan');
-      token = isReceptionPath
-        ? 'smart_token_reception_demo'
-        : isResidentPath
-        ? 'smart_token_resident_demo'
-        : 'smart_token_manager_demo';
+    if (!token && sessionStr) {
       try {
-        localStorage.setItem('smart_cassavas_token', token);
+        const session = JSON.parse(sessionStr);
+        if (session.token || session.access_token) {
+          token = session.token || session.access_token;
+        } else if (session.role === 'admin' || session.isDev) {
+          token = 'smart_token_admin_demo';
+        } else if (session.role === 'receptionist' || session.role === 'security') {
+          token = 'smart_token_reception_demo';
+        } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
+          token = 'smart_token_resident_demo';
+        } else if (session.role === 'manager' || session.role?.toLowerCase?.().includes('manager')) {
+          token = 'smart_token_manager_demo';
+        }
       } catch {
         // ignore
       }
     }
 
-    return token;
+    // Nếu không có token và không có phiên đăng nhập, tuyệt đối không tự động sinh token demo giả lập
+    return token || null;
   }
 
   public getAuthToken(): string | null {
@@ -510,6 +495,10 @@ class ApiService {
       return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
     }
     try {
+      const token = this.getToken();
+      if (!token) {
+        return null;
+      }
       const u = localStorage.getItem('smart_cassavas_user');
       return u ? JSON.parse(u) : null;
     } catch {
@@ -527,7 +516,16 @@ class ApiService {
 
   public logout() {
     this.removeToken();
-    localStorage.removeItem('smart_cassavas_user');
+    try {
+      localStorage.removeItem('smart_cassavas_user');
+      localStorage.removeItem('smartcassavas_session');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     amenityCache.clearAll();
   }
 
@@ -1630,6 +1628,23 @@ class ApiService {
     return this.request<ParcelListResponse>(`/reception/parcels?${q.toString()}`, options);
   }
 
+  async getParcels(
+    params: {
+      search?: string;
+      status?: string;
+      apartment_id?: string;
+      courier_company?: string;
+      from_date?: string;
+      to_date?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ParcelListResponse> {
+    return this.getReceptionParcels(params, options);
+  }
+
   async receiveParcel(formData: FormData): Promise<{ success: boolean; message: string; data: ParcelItem }> {
     return this.request<{ success: boolean; message: string; data: ParcelItem }>('/reception/parcels', {
       method: 'POST',
@@ -2142,6 +2157,7 @@ class ApiService {
   async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
   async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
   async getTicketTechnicians(id: string) { return this.request<{ id: string; full_name: string }[]>(`/admin/tickets/${id}/technicians`); }
+  async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
   async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
   async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
@@ -2349,6 +2365,7 @@ export interface TicketListResponse {
   counters: {
     all: number;
     new: number;
+    received?: number;
     in_progress: number;
     resolved: number;
     closed: number;

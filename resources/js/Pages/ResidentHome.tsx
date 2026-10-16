@@ -40,6 +40,7 @@ import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookin
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
 import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
 import { ResidentPushNotificationToggle } from '../Components/ResidentPushNotificationToggle';
+import { ResidentParcelWidget } from '../Components/ResidentParcelWidget';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -572,6 +573,9 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
 
             {/* Web Push Notification Activation for Resident */}
             <ResidentPushNotificationToggle />
+
+            {/* Resident Parcels & PIN Pickup Codes Widget */}
+            <ResidentParcelWidget />
 
             {/* 4 Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

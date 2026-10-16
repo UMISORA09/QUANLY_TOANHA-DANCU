@@ -5,7 +5,7 @@ import { TicketDialog } from './TicketDialog';
 import { TicketImage } from './TicketImage';
 import { useTicketNotificationRefresh } from './TicketNotifications';
 
-export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy' };
+export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã hoàn tất', CANCELLED: 'Đã hủy' };
 export const ticketPriorities = { LOW: 'Thấp', MEDIUM: 'Bình thường', HIGH: 'Cao', URGENT: 'Khẩn cấp' };
 const button = 'min-h-11 rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium cursor-pointer hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:opacity-40 disabled:cursor-not-allowed';
 const input = 'min-h-11 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-sky-600';
@@ -74,8 +74,8 @@ export function TicketManagementPanel() {
       if (mode === 'workflow' && selected) { setSelected(await api.performTicketAction(selected.id, { action, version: form.version, technician_user_id: technician || undefined, reason: reason || undefined, note: reason || undefined })); }
       else if (mode === 'archive' && selected) { await api.archiveTicket(selected.id, form.version, reason); setSelected(null); }
       else if (mode === 'create') {
-        const { block_id, version, ...payload } = form;
-        setSelected(await api.createManagedTicket(payload));
+        const { block_id, version, preferred_service_time, ...payload } = form;
+        setSelected(await api.createManagedTicket(preferred_service_time ? { ...payload, preferred_service_time } : payload));
       } else if (selected) {
         const payload: Record<string, unknown> = { version: form.version, category_id: form.category_id, priority: form.priority };
         if (selected.status === 'NEW') Object.assign(payload, { title: form.title, description: form.description, location: form.location, preferred_service_time: form.preferred_service_time || null });
@@ -123,7 +123,7 @@ export function TicketManagementPanel() {
         {Object.entries({ 'Người báo': selected.creator?.full_name || '—', 'Căn hộ': `${selected.apartment?.apartment_number || '—'}${selected.apartment?.block?.block_name ? ` · ${selected.apartment.block.block_name}` : ''}`, 'Danh mục': selected.category?.category_name || options?.categories.find((item) => item.id === selected.category_id)?.category_name || '—', 'Mức độ ưu tiên': ticketPriorities[selected.priority], 'Vị trí': selected.location || '—', 'Kỹ thuật viên': selected.technician?.full_name || 'Chưa phân công' }).map(([label, value]) => <div key={label}><dt className="text-xs text-neutral-500">{label}</dt><dd className="mt-1 break-words font-medium">{value}</dd></div>)}
       </dl>
       <section className="space-y-2"><h4 className="text-sm font-semibold">Mô tả sự cố</h4><p className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-700">{selected.description}</p></section>
-      <section className="space-y-2"><h4 className="text-sm font-semibold">Ảnh đính kèm ({selected.attachments?.length || 0}/5)</h4>{selected.attachments?.length ? <div className="grid grid-cols-2 gap-3">{selected.attachments.map((att) => <div key={att.id} className="grid gap-1"><TicketImage name={att.file_name} url={att.file_url} onPreview={setPreview} /><p className="text-xs text-neutral-500">{att.is_resolution_proof ? 'Kết quả xử lý' : 'Hiện trường'}</p></div>)}</div> : <p className="text-sm text-neutral-500">Chưa có ảnh đính kèm.</p>}</section>
+      <section className="space-y-2"><h4 className="text-sm font-semibold">Ảnh đính kèm ({selected.attachments?.length || 0}/5)</h4>{selected.attachments?.length ? <div className="grid grid-cols-2 gap-3">{selected.attachments.map((att) => <div key={att.id} className="grid gap-1"><TicketImage name={att.file_name} url={att.file_url} onPreview={setPreview} /><p className="text-xs text-neutral-500">{att.is_resolution_proof ? 'Kết quả xử lý' : 'Hiện trường'}</p>{selected.actions.edit && !busy && <button type="button" className="text-left text-xs text-rose-700 underline cursor-pointer" onClick={async () => { setBusy(true); try { setSelected(await api.removeManagedTicketImage(selected.id, att.id, selected.version)); setMessage('Đã bỏ ảnh sự cố.'); } catch (err) { await fail(err); } finally { setBusy(false); } }}>Bỏ ảnh {att.file_name}</button>}</div>)}</div> : <p className="text-sm text-neutral-500">Chưa có ảnh đính kèm.</p>}</section>
       {selected.actions.resolve && <label className="block space-y-2 text-sm">Ảnh kết quả xử lý<span className="block text-xs text-neutral-500">Tối đa 5 ảnh cho cả yêu cầu, JPG/PNG/WebP, mỗi ảnh tối đa 5 MB.</span><input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy || (selected.attachments?.length || 0) >= 5} className="mt-2 block" onChange={async (event) => {
         const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return;
         if (files.length + (selected.attachments?.length || 0) > 5 || files.some((file) => file.size > 5 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type))) { setError('Chỉ nhận tối đa 5 ảnh JPG, PNG, WebP cho mỗi yêu cầu, tối đa 5 MB/ảnh.'); return; }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
   Menu as MenuData,
@@ -66,7 +66,7 @@ import {
   LayoutDashboard
 } from 'lucide-react';
 import { api } from '../Services/api';
-import { Building3DModel } from '../Components/Building3DModel';
+const Building3DModel = lazy(() => import('../Components/Building3DModel').then(m => ({ default: m.Building3DModel })));
 import { AuthModal, UserRole } from '../Components/AuthModal';
 
 type WorkspaceTab = 'overview' | 'residents' | 'billing' | 'maintenance';
@@ -112,8 +112,15 @@ export const Home: React.FC<HomeProps> = ({
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const [liveUptimeSeconds, setLiveUptimeSeconds] = useState(0);
 
-  // Authenticated user state
-  const [currentUser, setCurrentUser] = useState<any>(() => api.getUser());
+  // Authenticated user state: Chỉ coi là đã đăng nhập nếu có phiên session hợp lệ
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    const sessionStr = typeof window !== 'undefined' ? localStorage.getItem('smartcassavas_session') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('smart_cassavas_token') : null;
+    if (!sessionStr || (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr)) {
+      return null;
+    }
+    return api.getUser();
+  });
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -127,7 +134,23 @@ export const Home: React.FC<HomeProps> = ({
   }, []);
 
   useEffect(() => {
+    const sessionStr = localStorage.getItem('smartcassavas_session');
     const token = localStorage.getItem('smart_cassavas_token');
+
+    // Nếu không có phiên session hoặc token là demo sót lại mà chưa login -> đảm bảo trạng thái khách vãng lai
+    if (!sessionStr || (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr)) {
+      if (token && token.startsWith('smart_token_') && token.endsWith('_demo')) {
+        try {
+          localStorage.removeItem('smart_cassavas_token');
+          localStorage.removeItem('smart_cassavas_user');
+        } catch {
+          // ignore
+        }
+      }
+      setCurrentUser(null);
+      return;
+    }
+
     if (token) {
       api.getMe()
         .then((user) => {
@@ -146,6 +169,15 @@ export const Home: React.FC<HomeProps> = ({
 
   const handleLogout = () => {
     api.logout();
+    try {
+      localStorage.removeItem('smartcassavas_session');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     setCurrentUser(null);
     setLoginFeedback('Đã đăng xuất tài khoản thành công.');
     setTimeout(() => setLoginFeedback(null), 3000);
@@ -342,9 +374,6 @@ export const Home: React.FC<HomeProps> = ({
               <span className="font-bold tracking-tight text-lg text-neutral-950 flex items-center gap-1.5">
                 SMART CASSAVAS
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </span>
-              <span className="text-[10px] tracking-wider text-neutral-600 font-medium -mt-1 uppercase">
-                Building OS
               </span>
             </div>
           </a>
@@ -1813,7 +1842,7 @@ export const Home: React.FC<HomeProps> = ({
         <div className="space-y-4 mb-10">
           <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full glass-pill text-xs font-bold text-neutral-800 tracking-wider uppercase shadow-xs">
             <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-            <span className="animate-text-light-brand font-bold">Bản sao kỹ thuật số 3D • Digital Twin Building OS</span>
+            <span className="animate-text-light-brand font-bold">Bản sao kỹ thuật số 3D • Digital Twin</span>
           </div>
 
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -1863,11 +1892,22 @@ export const Home: React.FC<HomeProps> = ({
         </div>
 
         {/* 3D Model Component */}
-        <Building3DModel
-          nightMode={buildingNightMode}
-          highAlert={highAlertMode}
-          isCompact={false}
-        />
+        <Suspense
+          fallback={
+            <div className="w-full h-[520px] rounded-3xl bg-neutral-900/40 border border-neutral-800 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-mono text-neutral-400">Đang tải mô hình 3D tòa nhà...</span>
+              </div>
+            </div>
+          }
+        >
+          <Building3DModel
+            nightMode={buildingNightMode}
+            highAlert={highAlertMode}
+            isCompact={false}
+          />
+        </Suspense>
       </section>
 
       {/* ================= CORE CAPABILITIES / NĂNG LỰC CỐT LÕI ================= */}

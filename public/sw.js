@@ -32,9 +32,13 @@ self.addEventListener('push', function (event) {
         icon: payload.icon,
         badge: payload.badge,
         data: payload.data,
-        tag: 'parcel-notification-' + (payload.data.parcel_id || Date.now()),
+        tag: 'parcel-notification-' + (payload.data?.parcel_id || Date.now()),
         renotify: true,
         vibrate: [200, 100, 200],
+        actions: [
+            { action: 'view_parcel', title: '📦 Xem bưu phẩm' },
+            { action: 'close', title: 'Đóng' },
+        ],
     };
 
     event.waitUntil(
@@ -45,23 +49,41 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
     event.notification.close();
 
-    const targetUrl = (event.notification.data && event.notification.data.url) 
-        ? event.notification.data.url 
+    if (event.action === 'close') {
+        return;
+    }
+
+    const relativeUrl = (event.notification.data && event.notification.data.url)
+        ? event.notification.data.url
         : '/cu-dan?tab=overview';
+    const targetUrl = new URL(relativeUrl, self.location.origin).href;
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
-            // Nếu đã có tab đang mở trang cư dân, focus tab đó
+            // 1. Nếu có tab nào đang mở trên trang web, chuyển hướng tab đó và focus
             for (let i = 0; i < clientList.length; i++) {
                 const client = clientList[i];
-                if (client.url.includes('/cu-dan') && 'focus' in client) {
+                if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+                    if ('navigate' in client) {
+                        return client.navigate(targetUrl).then(function (c) {
+                            return c ? c.focus() : client.focus();
+                        });
+                    }
                     return client.focus();
                 }
             }
-            // Nếu chưa có tab nào mở, mở tab mới đến URL tương ứng
+            // 2. Nếu chưa có tab nào mở, mở cửa sổ mới với URL tuyệt đối
             if (clients.openWindow) {
                 return clients.openWindow(targetUrl);
             }
         })
     );
+});
+
+self.addEventListener('install', function (event) {
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', function (event) {
+    event.waitUntil(clients.claim());
 });

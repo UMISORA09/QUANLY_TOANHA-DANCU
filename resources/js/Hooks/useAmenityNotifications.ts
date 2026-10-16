@@ -53,7 +53,14 @@ export function useAmenityNotifications(audience: 'resident' | 'admin') {
         if (!stopped) timer = setTimeout(() => void load(), delay);
       }
     };
-    const visible = () => { if (!document.hidden) void load(); };
+    const visible = () => {
+      if (!document.hidden) {
+        void load();
+      } else {
+        clearTimeout(timer);
+        controller?.abort();
+      }
+    };
     void load();
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('focus', visible);

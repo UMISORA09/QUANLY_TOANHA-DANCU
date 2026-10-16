@@ -674,6 +674,70 @@ class ResidentTicketTest extends TestCase
         $this->withHeader('Authorization', '')->get($url)->assertUnauthorized();
     }
 
+    public function test_supabase_photos_use_mysql_metadata_and_authenticated_downloads(): void
+    {
+        config([
+            'tickets.attachment_disk' => 'supabase',
+            'filesystems.disks.supabase.key' => 'qa-access-key',
+            'filesystems.disks.supabase.secret' => 'qa-secret-key',
+            'filesystems.disks.supabase.region' => 'ap-northeast-1',
+            'filesystems.disks.supabase.endpoint' => 'https://qa.storage.supabase.co/storage/v1/s3',
+        ]);
+        Storage::fake('supabase');
+        $this->assertSame('mysql', DB::connection()->getDriverName());
+        $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->post('/api/v1/resident/tickets', [
+            'title' => 'Ảnh lưu tại Supabase', 'description' => 'Kiểm thử ảnh riêng tư và dữ liệu MySQL.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+            'attachments' => [UploadedFile::fake()->image('photo.png')],
+        ])->assertCreated();
+        $attachment = TicketAttachment::findOrFail($response->json('data.attachments.0.id'));
+        $this->assertSame('supabase', $attachment->storage_disk);
+        $this->assertSame('', $attachment->getRawOriginal('file_url'));
+        Storage::disk('supabase')->assertExists($attachment->storage_path);
+        Storage::disk('local')->assertMissing($attachment->storage_path);
+        $response->assertJsonMissingPath('data.attachments.0.storage_path');
+        $url = $response->json('data.attachments.0.file_url');
+        $this->assertStringNotContainsString('supabase.co', $url);
+        $this->get($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+        $this->withHeader('Authorization', 'Bearer '.$this->otherToken)->get($url)->assertForbidden();
+        $this->withHeader('Authorization', '')->get($url)->assertUnauthorized();
+    }
+
+    public function test_incomplete_supabase_configuration_rejects_upload_without_creating_a_ticket(): void
+    {
+        config(['tickets.attachment_disk' => 'supabase', 'filesystems.disks.supabase.secret' => null]);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->post('/api/v1/resident/tickets', [
+            'title' => 'Thiếu cấu hình kho ảnh', 'description' => 'Không được tự lưu ảnh vào local.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+            'attachments' => [UploadedFile::fake()->image('photo.png')],
+        ], ['Accept' => 'application/json'])->assertStatus(503);
+        $this->assertSame(0, Ticket::where('creator_user_id', $this->residentUser->id)->count());
+        $this->assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    public function test_supabase_photo_rolls_back_when_database_transaction_fails(): void
+    {
+        config([
+            'tickets.attachment_disk' => 'supabase',
+            'filesystems.disks.supabase.key' => 'qa-access-key',
+            'filesystems.disks.supabase.secret' => 'qa-secret-key',
+            'filesystems.disks.supabase.region' => 'ap-northeast-1',
+            'filesystems.disks.supabase.endpoint' => 'https://qa.storage.supabase.co/storage/v1/s3',
+        ]);
+        Storage::fake('supabase');
+        Storage::disk('supabase')->put('tickets/existing.png', 'keep-existing');
+        $notifications = \Mockery::mock(TicketNotificationService::class);
+        $notifications->shouldReceive('changed')->once()->andThrow(new \RuntimeException('QA injected notification failure'));
+        $this->app->instance(TicketNotificationService::class, $notifications);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->post('/api/v1/resident/tickets', [
+            'title' => 'Rollback ảnh Supabase', 'description' => 'Lỗi transaction phải dọn đúng ảnh vừa ghi.',
+            'category_id' => $this->categoryId, 'location' => 'Phòng bếp',
+            'attachments' => [UploadedFile::fake()->image('photo.png')],
+        ], ['Accept' => 'application/json'])->assertServerError();
+        $this->assertSame(0, Ticket::where('creator_user_id', $this->residentUser->id)->count());
+        $this->assertSame(['tickets/existing.png'], Storage::disk('supabase')->allFiles());
+    }
+
     public function test_private_photos_reject_corrupt_content_and_roll_back_created_files(): void
     {
         $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->post('/api/v1/resident/tickets', [
