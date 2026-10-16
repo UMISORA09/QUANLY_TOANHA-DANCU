@@ -36,7 +36,7 @@ export interface JobItem {
   name: string;
   status: PipelineStatus;
   duration: string;
-  started_at: string;
+  started_at: string | null;
   completed_at?: string | null;
   steps: StepItem[];
 }
@@ -47,9 +47,9 @@ export interface DeploymentItem {
   version: string;
   image_tag: string;
   commit_sha: string;
-  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'not_deployed' | 'not_configured';
+  status: 'healthy' | 'degraded' | 'deploying' | 'failed' | 'stopped' | 'unknown' | 'not_deployed' | 'not_configured';
   deployed_by: string;
-  deployed_at: string;
+  deployed_at: string | null;
   response_time_ms: number;
   release_notes?: string;
 }
@@ -116,12 +116,13 @@ export interface CicdOverviewStats {
 
 export interface ActivityItem {
   id: string;
-  type: 'build' | 'deploy' | 'test' | 'security' | 'rollback';
+  type: 'build' | 'deploy' | 'test' | 'security' | 'rollback' | 'commit';
   title: string;
   description: string;
-  status: 'success' | 'failed' | 'running';
+  status: PipelineStatus | 'recorded';
   actor: string;
   timestamp: string;
+  url?: string | null;
 }
 
 export type FreshnessState = 'FRESH' | 'STALE' | 'CRITICAL' | 'UNKNOWN' | 'UNAVAILABLE';
@@ -211,6 +212,14 @@ export interface FreshnessOverviewData {
   incidents: FreshnessIncidentItem[];
 }
 
+async function authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(options.headers);
+  headers.set('Accept', 'application/json');
+  const token = localStorage.getItem('smart_cassavas_token');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url, { ...options, headers });
+}
+
 const API_BASE = '/api/admin/cicd';
 
 export interface DashboardBundleData {
@@ -226,6 +235,14 @@ export interface DashboardBundleData {
 }
 
 export const cicdApi = {
+  async getHistoryPage(page: number, force = false, signal?: AbortSignal): Promise<{ pipelines: PipelineItem[]; activities: ActivityItem[]; has_more: boolean; total_pipelines: number }> {
+    const res = await authenticatedFetch(`${API_BASE}/history?page=${page}${force ? '&force=1' : ''}`, { signal });
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || 'Không thể đồng bộ lịch sử GitHub.');
+    }
+    return (await res.json()).data;
+  },
   async getDashboardBundle(filters?: { status?: string; branch?: string; workflow?: string; search?: string }, force = false): Promise<DashboardBundleData> {
     const params = new URLSearchParams();
     if (filters?.status && filters.status !== 'all') params.append('status', filters.status);
@@ -234,14 +251,14 @@ export const cicdApi = {
     if (filters?.search) params.append('search', filters.search);
     if (force) params.append('force', '1');
 
-    const res = await fetch(`${API_BASE}/bundle?${params.toString()}`);
+    const res = await authenticatedFetch(`${API_BASE}/bundle?${params.toString()}`);
     if (!res.ok) throw new Error('Không thể tải dữ liệu CI/CD');
     const json = await res.json();
     return json.data;
   },
 
   async getOverview(): Promise<CicdOverviewStats> {
-    const res = await fetch(`${API_BASE}/overview`);
+    const res = await authenticatedFetch(`${API_BASE}/overview`);
     if (!res.ok) throw new Error('Không thể tải dữ liệu tổng quan CI/CD');
     const json = await res.json();
     return json.data;
@@ -254,57 +271,59 @@ export const cicdApi = {
     if (filters?.workflow && filters.workflow !== 'all') params.append('workflow', filters.workflow);
     if (filters?.search) params.append('search', filters.search);
 
-    const res = await fetch(`${API_BASE}/pipelines?${params.toString()}`);
+    const res = await authenticatedFetch(`${API_BASE}/pipelines?${params.toString()}`);
     if (!res.ok) throw new Error('Không thể tải danh sách pipelines');
     const json = await res.json();
     return json.data;
   },
 
   async getPipelineDetail(id: string): Promise<PipelineItem> {
-    const res = await fetch(`${API_BASE}/pipelines/${id}`);
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}`);
     if (!res.ok) throw new Error(`Không tìm thấy pipeline #${id}`);
     const json = await res.json();
     return json.data;
   },
 
-  async getPipelineJobs(id: string): Promise<JobItem[]> {
-    const res = await fetch(`${API_BASE}/pipelines/${id}/jobs`);
+  async getPipelineJobs(id: string, signal?: AbortSignal): Promise<JobItem[]> {
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}/jobs`, { signal });
     if (!res.ok) throw new Error(`Không thể tải jobs của pipeline #${id}`);
     const json = await res.json();
     return json.data;
   },
 
-  async getPipelineLogs(id: string, jobId?: string): Promise<string> {
-    const url = jobId ? `${API_BASE}/pipelines/${id}/logs?job_id=${jobId}` : `${API_BASE}/pipelines/${id}/logs`;
-    const res = await fetch(url);
+  async getPipelineLogs(id: string, jobId?: string, stepNumber?: number, signal?: AbortSignal): Promise<string> {
+    const params = new URLSearchParams();
+    if (jobId) params.set('job_id', jobId);
+    if (stepNumber !== undefined) params.set('step_number', String(stepNumber));
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}/logs?${params}`, { signal });
     if (!res.ok) throw new Error(`Không thể tải logs của pipeline #${id}`);
     const json = await res.json();
     return json.data?.logs || 'Không có dữ liệu log.';
   },
 
   async getDeployments(): Promise<DeploymentItem[]> {
-    const res = await fetch(`${API_BASE}/deployments`);
+    const res = await authenticatedFetch(`${API_BASE}/deployments`);
     if (!res.ok) throw new Error('Không thể tải lịch sử deployments');
     const json = await res.json();
     return json.data;
   },
 
   async getEnvironments(): Promise<EnvironmentItem[]> {
-    const res = await fetch(`${API_BASE}/environments`);
+    const res = await authenticatedFetch(`${API_BASE}/environments`);
     if (!res.ok) throw new Error('Không thể tải danh sách environments');
     const json = await res.json();
     return json.data;
   },
 
   async getHealth(): Promise<SystemHealthStatus> {
-    const res = await fetch(`${API_BASE}/health`);
+    const res = await authenticatedFetch(`${API_BASE}/health`);
     if (!res.ok) throw new Error('Không thể tải trạng thái sức khỏe hệ thống');
     const json = await res.json();
     return json.data;
   },
 
   async getSecurity(): Promise<SecurityAuditData> {
-    const res = await fetch(`${API_BASE}/security`);
+    const res = await authenticatedFetch(`${API_BASE}/security`);
     if (!res.ok) throw new Error('Không thể tải kết quả kiểm tra bảo mật');
     const json = await res.json();
     return json.data;
@@ -312,21 +331,21 @@ export const cicdApi = {
 
   async getActivities(force = false): Promise<ActivityItem[]> {
     const url = force ? `${API_BASE}/activities?force=1` : `${API_BASE}/activities`;
-    const res = await fetch(url);
+    const res = await authenticatedFetch(url);
     if (!res.ok) throw new Error('Không thể tải hoạt động gần đây');
     const json = await res.json();
     return json.data;
   },
 
   async getBranches(): Promise<string[]> {
-    const res = await fetch(`${API_BASE}/branches`);
+    const res = await authenticatedFetch(`${API_BASE}/branches`);
     if (!res.ok) return ['main'];
     const json = await res.json();
     return json.data || ['main'];
   },
 
   async runPipeline(payload: { workflow: string; branch?: string; environment?: string; inputs?: Record<string, string> }): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/pipelines/run`, {
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload),
@@ -337,7 +356,7 @@ export const cicdApi = {
   },
 
   async retryPipeline(id: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/pipelines/${id}/retry`, {
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}/retry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     });
@@ -347,7 +366,7 @@ export const cicdApi = {
   },
 
   async cancelPipeline(id: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/pipelines/${id}/cancel`, {
+    const res = await authenticatedFetch(`${API_BASE}/pipelines/${id}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     });
@@ -357,7 +376,7 @@ export const cicdApi = {
   },
 
   async deploy(environment: string, imageTag?: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/deploy`, {
+    const res = await authenticatedFetch(`${API_BASE}/deploy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ environment, image_tag: imageTag }),
@@ -368,7 +387,7 @@ export const cicdApi = {
   },
 
   async rollback(environment: string, targetVersion: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/rollback`, {
+    const res = await authenticatedFetch(`${API_BASE}/rollback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ environment, target_version: targetVersion }),
@@ -379,7 +398,7 @@ export const cicdApi = {
   },
 
   async getFreshness(force = false): Promise<FreshnessOverviewData> {
-    const res = await fetch(`/api/monitoring/freshness${force ? '?force=1' : ''}`);
+    const res = await authenticatedFetch(`/api/monitoring/freshness${force ? '?force=1' : ''}`);
     if (!res.ok) throw new Error('Không thể tải dữ liệu Freshness Observability');
     return await res.json();
   },

@@ -171,4 +171,12 @@ class Apartment extends Model
     {
         return $this->hasMany(Invoice::class, 'apartment_id');
     }
+
+    /**
+     * Danh sách kiện hàng / bưu phẩm của căn hộ
+     */
+    public function parcels(): HasMany
+    {
+        return $this->hasMany(Parcel::class, 'apartment_id');
+    }
 }

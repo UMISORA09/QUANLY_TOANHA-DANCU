@@ -18,8 +18,8 @@ import {
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
-import { ResidentManagement } from '../Admin/ResidentManagement';
-import { TemporaryRegistrationManagement } from '../Admin/TemporaryRegistrationManagement';
+import { TicketManagementPanel } from '../../Components/TicketManagementPanel';
+import { TicketNotificationList, useTicketNotifications } from '../../Components/TicketNotifications';
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -39,6 +39,8 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
   initialTab = 'overview',
 }) => {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const ticketNotices = useTicketNotifications();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
 
@@ -144,8 +146,11 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText="Hệ thống Quản trị & Kỹ thuật (Admin / Dev) đang vận hành ổn định"
+      unreadNotificationCount={ticketNotices.unread}
+      onNotificationClick={() => { setNotificationsOpen(!notificationsOpen); ticketNotices.retry(); }}
     >
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+      {notificationsOpen && <section aria-label="Thông báo quản trị" className="fixed right-4 top-20 z-[60] max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 shadow-lg" onKeyDown={(event) => { if (event.key === 'Escape') setNotificationsOpen(false); }}><div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold">Thông báo · {ticketNotices.unread} chưa đọc</h2><button type="button" aria-label="Đóng thông báo quản trị" className="min-h-9 rounded-lg px-2 text-xs hover:bg-neutral-100" onClick={() => setNotificationsOpen(false)}>Đóng</button></div><TicketNotificationList feed={ticketNotices} /></section>}
+      <div className="p-4 sm:p-6 lg:p-8 w-full max-w-[2000px] mx-auto space-y-6 animate-in fade-in duration-200">
         {/* Breadcrumb & Title Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
           <div>
@@ -489,6 +494,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         )}
 
         {/* TAB 5: CI/CD & DEVOPS */}
+        {activeTab === 'tickets' && <TicketManagementPanel />}
         {activeTab === 'cicd' && (
           <div className="space-y-6">
             <CicdDashboard userRole="admin" />
@@ -501,17 +507,51 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <RbacManagement embedded={true} />
           </div>
         )}
-        {/* TAB 7: QUẢN LÝ CƯ DÂN & CĂN HỘ */}
+        {/* TAB 7: QUẢN LÝ CHỦ HỘ & NHÂN KHẨU (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
         {activeTab === 'residents' && (
-          <div className="space-y-6">
-            <ResidentManagement embedded={true} />
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Quản Lý Chủ Hộ & Thông Tin Nhân Khẩu</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Quản lý Chủ hộ và Nhân khẩu căn hộ đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác vận hành thường nhật của tòa nhà.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         )}
 
-        {/* TAB 8: ĐĂNG KÝ & DUYỆT TẠM TRÚ / TẠM VẮNG (CÔNG AN) */}
+        {/* TAB 8: ĐĂNG KÝ & QUẢN LÝ TẠM TRÚ / TẠM VẮNG (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
         {activeTab === 'temporary_registrations' && (
-          <div className="space-y-6">
-            <TemporaryRegistrationManagement embedded={true} />
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+              <FileText className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Đăng ký & Quản lý Tạm trú / Tạm vắng đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác hành chính và nhân khẩu với cơ quan Công an.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>

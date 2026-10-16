@@ -5,6 +5,10 @@ use Illuminate\Http\Request;
 
 define('LARAVEL_START', microtime(true));
 
+// The rewrite target is not the application's public /api URL prefix.
+$_SERVER['SCRIPT_NAME'] = '/index.php';
+$_SERVER['PHP_SELF'] = '/index.php';
+
 // Setup writable storage directory in /tmp for Vercel Serverless environment
 $storagePath = '/tmp/storage';
 putenv('LARAVEL_STORAGE_PATH='.$storagePath);

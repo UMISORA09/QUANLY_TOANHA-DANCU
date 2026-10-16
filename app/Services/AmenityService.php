@@ -10,6 +10,7 @@ use App\Repositories\Contracts\AmenityRepositoryInterface;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -347,6 +348,11 @@ class AmenityService
             if ($this->repository->countActiveBookings($id) > 0) {
                 throw new AmenityConflictException;
             }
+            abort_if(DB::table('amenity_booking_payments as p')
+                ->join('amenity_bookings as b', 'b.id', '=', 'p.booking_id')
+                ->where('b.amenity_id', $id)
+                ->where(fn (Builder $query): Builder => $query->whereIn('p.status', ['REPORTED', 'REVIEW'])->orWhere('p.refund_required', true))
+                ->exists(), 409, 'Không thể xóa tiện ích khi còn khoản thanh toán cần đối soát hoặc hoàn tiền.');
             $this->repository->softDelete($id);
             $this->audit($id, 'DELETE', (array) $existing, ['deleted_at' => now()->toIso8601String(), 'is_active' => false]);
             AmenityDeleted::dispatch($id);
