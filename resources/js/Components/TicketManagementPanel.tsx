@@ -5,7 +5,7 @@ import { TicketDialog } from './TicketDialog';
 import { TicketImage } from './TicketImage';
 import { useTicketNotificationRefresh } from './TicketNotifications';
 
-export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy' };
+export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã hoàn tất', CANCELLED: 'Đã hủy' };
 export const ticketPriorities = { LOW: 'Thấp', MEDIUM: 'Bình thường', HIGH: 'Cao', URGENT: 'Khẩn cấp' };
 const button = 'min-h-11 rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium cursor-pointer hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:opacity-40 disabled:cursor-not-allowed';
 const input = 'min-h-11 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-sky-600';
@@ -68,8 +68,8 @@ export function TicketManagementPanel() {
       if (mode === 'workflow' && selected) { setSelected(await api.performTicketAction(selected.id, { action, version: form.version, technician_user_id: technician || undefined, reason: reason || undefined, note: reason || undefined })); }
       else if (mode === 'archive' && selected) { await api.archiveTicket(selected.id, form.version, reason); setSelected(null); }
       else if (mode === 'create') {
-        const { block_id, version, ...payload } = form;
-        setSelected(await api.createManagedTicket(payload));
+        const { block_id, version, preferred_service_time, ...payload } = form;
+        setSelected(await api.createManagedTicket(preferred_service_time ? { ...payload, preferred_service_time } : payload));
       } else if (selected) {
         const payload: Record<string, unknown> = { version: form.version, category_id: form.category_id, priority: form.priority };
         if (selected.status === 'NEW') Object.assign(payload, { title: form.title, description: form.description, location: form.location, preferred_service_time: form.preferred_service_time || null });
