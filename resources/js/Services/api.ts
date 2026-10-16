@@ -2140,6 +2140,7 @@ class ApiService {
   async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
   async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
   async getTicketTechnicians(id: string) { return this.request<{ id: string; full_name: string }[]>(`/admin/tickets/${id}/technicians`); }
+  async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
   async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
   async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
