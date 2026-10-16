@@ -50,6 +50,21 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
     }
   }, [initialTab]);
 
+  useEffect(() => {
+    const syncFromUrl = () => {
+      try {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        if (tab) {
+          setActiveTab(tab);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, []);
+
   // State demo cho Feature Flags
   const [featureFlags, setFeatureFlags] = useState([
     {
