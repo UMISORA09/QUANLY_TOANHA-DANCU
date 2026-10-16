@@ -318,7 +318,7 @@ class ResidentAmenityBookingService
             ->where('b.amenity_id', $amenityId)->whereNull('b.deleted_at')->whereIn('b.status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
             ->whereRaw('CONCAT(b.booking_date, " ", b.end_time) > ?', [now()]);
         if (! empty($period['blackout_date'])) {
-            $query->whereDate('b.booking_date', $period['blackout_date']);
+            $query->where('b.booking_date', $period['blackout_date']);
             if (! empty($period['start_time'])) {
                 $query->where('b.start_time', '<', $period['end_time'])->where('b.end_time', '>', $period['start_time']);
             }

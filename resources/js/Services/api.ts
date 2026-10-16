@@ -439,56 +439,41 @@ export interface SwrOptions<T> {
 
 class ApiService {
   private getToken(): string | null {
-    let token = localStorage.getItem('smart_cassavas_token');
-    if (!token) {
-      const sessionStr = localStorage.getItem('smartcassavas_session');
-      if (sessionStr) {
-        try {
-          const session = JSON.parse(sessionStr);
-          if (session.token || session.access_token) {
-            token = session.token || session.access_token;
-          } else if (session.role === 'admin' || session.isDev) {
-            token = 'smart_token_admin_demo';
-          } else if (session.role === 'receptionist' || session.role === 'security') {
-            token = 'smart_token_reception_demo';
-          } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
-            token = 'smart_token_resident_demo';
-          } else {
-            token = 'smart_token_manager_demo';
-          }
-        } catch {
-          // ignore
-        }
+    let token = typeof window !== 'undefined' ? localStorage.getItem('smart_cassavas_token') : null;
+    const sessionStr = typeof window !== 'undefined' ? localStorage.getItem('smartcassavas_session') : null;
+
+    // Dọn dẹp token demo sót lại nếu người dùng không hề có phiên đăng nhập active
+    if (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr) {
+      try {
+        localStorage.removeItem('smart_cassavas_token');
+        localStorage.removeItem('smart_cassavas_user');
+      } catch {
+        // ignore
       }
+      token = null;
     }
 
-    if (!token) {
-      const path = typeof window !== 'undefined' ? window.location.pathname : '';
-      const isReceptionPath =
-        path.startsWith('/le-tan') ||
-        path.startsWith('/an-ninh') ||
-        path.startsWith('/bao-ve') ||
-        path.startsWith('/reception') ||
-        path.includes('/visitors') ||
-        path.includes('/parcels') ||
-        path.includes('/vehicles');
-      const isResidentPath =
-        path.startsWith('/cu-dan') ||
-        path.startsWith('/resident') ||
-        path.startsWith('/cudan');
-      token = isReceptionPath
-        ? 'smart_token_reception_demo'
-        : isResidentPath
-        ? 'smart_token_resident_demo'
-        : 'smart_token_manager_demo';
+    if (!token && sessionStr) {
       try {
-        localStorage.setItem('smart_cassavas_token', token);
+        const session = JSON.parse(sessionStr);
+        if (session.token || session.access_token) {
+          token = session.token || session.access_token;
+        } else if (session.role === 'admin' || session.isDev) {
+          token = 'smart_token_admin_demo';
+        } else if (session.role === 'receptionist' || session.role === 'security') {
+          token = 'smart_token_reception_demo';
+        } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
+          token = 'smart_token_resident_demo';
+        } else if (session.role === 'manager' || session.role?.toLowerCase?.().includes('manager')) {
+          token = 'smart_token_manager_demo';
+        }
       } catch {
         // ignore
       }
     }
 
-    return token;
+    // Nếu không có token và không có phiên đăng nhập, tuyệt đối không tự động sinh token demo giả lập
+    return token || null;
   }
 
   public getAuthToken(): string | null {
@@ -510,6 +495,10 @@ class ApiService {
       return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
     }
     try {
+      const token = this.getToken();
+      if (!token) {
+        return null;
+      }
       const u = localStorage.getItem('smart_cassavas_user');
       return u ? JSON.parse(u) : null;
     } catch {
@@ -527,7 +516,16 @@ class ApiService {
 
   public logout() {
     this.removeToken();
-    localStorage.removeItem('smart_cassavas_user');
+    try {
+      localStorage.removeItem('smart_cassavas_user');
+      localStorage.removeItem('smartcassavas_session');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     amenityCache.clearAll();
   }
 
@@ -2288,6 +2286,7 @@ export interface TicketAttachmentItem {
   file_url: string;
   storage_path?: string;
   file_type: string;
+  is_resolution_proof?: boolean;
   mime_type?: string;
   file_size_bytes?: number;
   created_at: string;
