@@ -34,6 +34,7 @@ import {
   ShieldCheck,
   Maximize2,
   Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import api, { ParcelItem } from '../Services/api';
 import { useRealtimeSync } from '../Hooks/useRealtimeSync';
@@ -484,6 +485,12 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   });
   const [loading, setLoading] = useState<boolean>(() => !initialCache);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [lastReceivedParcel, setLastReceivedParcel] = useState<{
+    id: string;
+    tracking_number: string;
+    pickup_pin_code?: string;
+    apartment_number?: string;
+  } | null>(null);
 
   // 2. Filter & Search States
   const [searchTerm, setSearchTerm] = useState('');
@@ -494,6 +501,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [fromDateFilter, setFromDateFilter] = useState<string>('');
   const [toDateFilter, setToDateFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState<number>(4);
 
   // Custom Dropdown Open States (Chuẩn Ảnh 2)
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState<boolean>(false);
@@ -637,7 +645,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
       try {
         const res = await api.getReceptionParcels({
           page,
-          limit: 15,
+          limit: perPage,
           search: debouncedSearch,
           status: statusFilter,
           courier_company: courierFilter !== 'ALL' ? courierFilter : undefined,
@@ -672,7 +680,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
         if (showSpinner) setLoading(false);
       }
     },
-    [debouncedSearch, statusFilter, courierFilter, apartmentFilter, fromDateFilter, toDateFilter, showToast]
+    [debouncedSearch, statusFilter, courierFilter, apartmentFilter, fromDateFilter, toDateFilter, showToast, perPage]
   );
 
   useEffect(() => {
@@ -817,7 +825,23 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
       const res = await api.receiveParcel(formPayload);
       if (res.success) {
+        setLastReceivedParcel({
+          id: res.data.id,
+          tracking_number: res.data.tracking_number,
+          pickup_pin_code: res.data.pickup_pin_code,
+          apartment_number: res.data.apartment?.apartment_number,
+        });
         showToast(`✅ Đã tiếp nhận thành công kiện hàng [${res.data.tracking_number}]!`);
+        try {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('smartcassavas:parcel_received', { detail: res.data }));
+          }
+          if (typeof BroadcastChannel !== 'undefined') {
+            const bc = new BroadcastChannel('smartcassavas_parcels');
+            bc.postMessage({ type: 'PARCEL_RECEIVED', parcel: res.data });
+            bc.close();
+          }
+        } catch {}
         setIsCreateModalOpen(false);
         // Reset form
         setFormData({
@@ -1007,15 +1031,41 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     <div className={`space-y-6 ${embedded ? '' : 'p-6 max-w-7xl mx-auto'}`}>
       {/* Toast Notification (Chuẩn phong cách RFID Management) */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-[9999] flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium border bg-emerald-50 text-emerald-900 border-emerald-300">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-          <span>{toastMessage}</span>
+        <div className="fixed top-5 right-5 z-[9999] flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-medium border bg-emerald-50 text-emerald-950 border-emerald-300">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{toastMessage}</span>
+          </div>
+
+          {lastReceivedParcel && (
+            <div className="flex items-center gap-2 pl-7 sm:pl-0">
+              {lastReceivedParcel.pickup_pin_code && (
+                <span className="text-xs bg-emerald-200/80 text-emerald-900 px-2.5 py-1 rounded-lg font-mono font-bold tracking-wider">
+                  PIN: {lastReceivedParcel.pickup_pin_code}
+                </span>
+              )}
+              <a
+                href={`/cu-dan?tab=overview&view_parcel=${lastReceivedParcel.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 cursor-pointer text-decoration-none"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Xem bưu phẩm qua Cư dân</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={() => setToastMessage(null)}
-            className="ml-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+            onClick={() => {
+              setToastMessage(null);
+              setLastReceivedParcel(null);
+            }}
+            className="ml-auto text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-emerald-100/50 transition cursor-pointer"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -1576,21 +1626,41 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
         {/* Pagination Bar */}
         {pagination.total_pages > 1 && (
-          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between text-xs text-slate-500">
-            <span>
-              Hiển thị{' '}
-              <strong className="text-slate-800">
-                {(pagination.current_page - 1) * pagination.per_page + 1}
-              </strong>{' '}
-              đến{' '}
-              <strong className="text-slate-800">
-                {Math.min(
-                  pagination.current_page * pagination.per_page,
-                  pagination.total_items
-                )}
-              </strong>{' '}
-              trên tổng <strong className="text-slate-800">{pagination.total_items}</strong> kiện
-            </span>
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+            <div className="flex items-center gap-3">
+              <span>
+                Hiển thị{' '}
+                <strong className="text-slate-800">
+                  {(pagination.current_page - 1) * pagination.per_page + 1}
+                </strong>{' '}
+                đến{' '}
+                <strong className="text-slate-800">
+                  {Math.min(
+                    pagination.current_page * pagination.per_page,
+                    pagination.total_items
+                  )}
+                </strong>{' '}
+                trên tổng <strong className="text-slate-800">{pagination.total_items}</strong> kiện
+              </span>
+
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="hidden sm:inline">Hiển thị:</span>
+                <select
+                  value={perPage}
+                  onChange={(e) => {
+                    const nextLimit = Number(e.target.value);
+                    setPerPage(nextLimit);
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
+                >
+                  <option value={4}>4 kiện / trang</option>
+                  <option value={10}>10 kiện / trang</option>
+                  <option value={15}>15 kiện / trang</option>
+                  <option value={20}>20 kiện / trang</option>
+                </select>
+              </div>
+            </div>
 
             <div className="flex items-center gap-1.5">
               <button

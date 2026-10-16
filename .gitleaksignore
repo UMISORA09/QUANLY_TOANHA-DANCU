@@ -1,0 +1,5 @@
+# Gitleaks ignore list for false positives and historical commits
+d5a3362f375cf296d5d3e47d948f2ddd85efcac7:app/Services/WebPushService.php:private-key:264
+d5a3362f375cf296d5d3e47d948f2ddd85efcac7:app/Services/WebPushService.php:private-key:272
+64f9b070966f11a11764c4eb71c2bc5bf77e941c:tests/Feature/Payments/PaymentCollectionTest.php:generic-api-key:137
+852a8436502296048082674ba573c444a98d0ebc:.env.example:github-pat:70
