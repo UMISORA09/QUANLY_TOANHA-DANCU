@@ -701,7 +701,7 @@ class AmenityController extends Controller
     {
         $bookings = DB::table('amenity_bookings')->where('amenity_id', $amenityId)
             ->whereNull('deleted_at')->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)->tap([AmenityBookingPaymentService::class, 'holdingQuery'])
-            ->whereDate('booking_date', '>=', today())
+            ->where('booking_date', '>=', today()->toDateString())
             ->where('start_time', '<', $data['slot_end_time'])->where('end_time', '>', $data['slot_start_time'])
             ->lockForUpdate()->get()->filter(fn (object $booking): bool => Carbon::parse($booking->booking_date)->dayOfWeek === (int) $data['day_of_week']);
         foreach ($bookings->groupBy('booking_date') as $dayBookings) {
@@ -906,7 +906,7 @@ class AmenityController extends Controller
                 abort_if(! $amenity->is_active, 409, 'Tiện ích hiện đang tạm ngưng hoạt động, không thể duyệt đăng ký.');
                 abort_if(Carbon::parse($booking->booking_date.' '.$booking->start_time, config('app.timezone'))->lte(now()), 409, 'Đã qua giờ sử dụng, không thể duyệt đăng ký.');
 
-                $blackouts = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->whereDate('blackout_date', $booking->booking_date)->lockForUpdate()->get();
+                $blackouts = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->where('blackout_date', $booking->booking_date)->lockForUpdate()->get();
                 $isBlackout = $blackouts->contains(fn ($b) => ! $b->start_time || (substr($b->start_time, 0, 5) < substr($booking->end_time, 0, 5) && substr($b->end_time, 0, 5) > substr($booking->start_time, 0, 5)));
                 abort_if($isBlackout, 409, 'Khung giờ đặt chỗ rơi vào lịch bảo trì của tiện ích.');
             }
