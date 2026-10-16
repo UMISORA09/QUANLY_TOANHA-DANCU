@@ -4,7 +4,7 @@ import { CustomSelect } from './Common/CustomSelect';
 import { TicketDialog } from './TicketDialog';
 import { TicketImage } from './TicketImage';
 
-export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy' };
+export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã hoàn tất', CANCELLED: 'Đã hủy' };
 export const ticketPriorities = { LOW: 'Thấp', MEDIUM: 'Bình thường', HIGH: 'Cao', URGENT: 'Khẩn cấp' };
 const button = 'rounded-xl border px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed';
 const input = 'w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm';
@@ -53,8 +53,8 @@ export function TicketManagementPanel() {
     try {
       if (mode === 'archive' && selected) { await api.archiveTicket(selected.id, selected.version, reason); setSelected(null); }
       else if (mode === 'create') {
-        const { block_id, version, ...payload } = form;
-        setSelected(await api.createManagedTicket(payload));
+        const { block_id, version, preferred_service_time, ...payload } = form;
+        setSelected(await api.createManagedTicket(preferred_service_time ? { ...payload, preferred_service_time } : payload));
       } else if (selected) {
         const payload: Record<string, unknown> = { version: form.version, category_id: form.category_id, priority: form.priority };
         if (selected.status === 'NEW') Object.assign(payload, { title: form.title, description: form.description, location: form.location, preferred_service_time: form.preferred_service_time || null });
