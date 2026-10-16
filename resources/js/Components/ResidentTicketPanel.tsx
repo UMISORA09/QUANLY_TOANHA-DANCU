@@ -236,15 +236,14 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const modalBusy = useRef(false);
   modalBusy.current = isSubmitting || isCancelling || isConfirming || isReopening || isUpdating || imageBusy;
   useEffect(() => {
-    if (!isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen) return;
+    if (!isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen) return;
     const previous = document.activeElement as HTMLElement | null;
     const bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const dialog = document.querySelector<HTMLElement>('[data-ticket-modal]');
-    const controls = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]') || []).filter((node) => node.offsetParent !== null);
+    const activeDialog = () => document.querySelector<HTMLElement>('dialog[open]') || document.querySelector<HTMLElement>('[data-ticket-modal]');
+    const controls = () => Array.from(activeDialog()?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]') || []).filter((node) => node.offsetParent !== null);
     const frame = requestAnimationFrame(() => controls()[0]?.focus());
     const keyboard = (event: KeyboardEvent) => {
-      if (document.querySelector('dialog[open]')) return;
       if (event.key === 'Escape' && !modalBusy.current) { setIsCreateModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setIsEditModalOpen(false); setRemoveImageId(null); }
       if (event.key === 'Tab') { const nodes = controls(); const first = nodes[0], last = nodes[nodes.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
     };
@@ -364,6 +363,15 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     }
   };
   useEffect(() => { const id = new URLSearchParams(location.search).get('ticket_id'); if (id) void fetchTicketDetail(id); }, []);
+  useEffect(() => {
+    const openLinked = () => {
+      const id = new URLSearchParams(location.search).get('ticket_id');
+      if (id) void fetchTicketDetail(id);
+    };
+    window.addEventListener('popstate', openLinked);
+    window.addEventListener('TICKET_NOTIFICATION_RECEIVED', openLinked);
+    return () => { window.removeEventListener('popstate', openLinked); window.removeEventListener('TICKET_NOTIFICATION_RECEIVED', openLinked); };
+  }, []);
 
   // Xử lý upload ảnh minh chứng
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -717,7 +725,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         <TicketDialog open={isCreateModalOpen} title="Gửi yêu cầu báo cáo sự cố" busy={isSubmitting} onClose={() => setIsCreateModalOpen(false)} footer={
 <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-5 pb-4 pt-3">
                 <button
-                  id="ticket-back-to-list-btn"
+                  id="ticket-close-create-btn"
                   type="button"
                   disabled={isSubmitting} onClick={() => setIsCreateModalOpen(false)}
                   className="order-1 min-h-11 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-100 cursor-pointer"

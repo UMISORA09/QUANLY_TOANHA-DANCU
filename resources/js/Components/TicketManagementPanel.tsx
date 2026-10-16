@@ -54,6 +54,12 @@ export function TicketManagementPanel() {
   }, [filters, keyword, page, revision]);
   const open = useCallback(async (id: string) => { setBusy(true); try { setSelected(await api.getManagedTicket(id)); } catch (err: any) { setError(err.message); } finally { setBusy(false); } }, []);
   useEffect(() => { const id = new URLSearchParams(location.search).get('ticket_id'); if (id) void open(id); }, [open]);
+  useEffect(() => {
+    const openLinked = () => { const id = new URLSearchParams(location.search).get('ticket_id'); if (id) void open(id); };
+    window.addEventListener('popstate', openLinked);
+    window.addEventListener('TICKET_NOTIFICATION_RECEIVED', openLinked);
+    return () => { window.removeEventListener('popstate', openLinked); window.removeEventListener('TICKET_NOTIFICATION_RECEIVED', openLinked); };
+  }, [open]);
   const fail = async (err: any) => {
     setError(err.message); setFields(err.errors || {});
     if (err.status === 409 && selected) {
