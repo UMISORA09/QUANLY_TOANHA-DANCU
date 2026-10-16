@@ -19,6 +19,7 @@ use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PushNotificationController;
 use App\Http\Controllers\RealtimeStreamController;
 use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
 use App\Http\Controllers\TemporaryRegistrationController;
+use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -203,6 +205,25 @@ Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 
 Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
 Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
 
+Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('/', [TicketManagementController::class, 'index']);
+    Route::get('options', [TicketManagementController::class, 'options']);
+    Route::post('/', [TicketManagementController::class, 'store']);
+    Route::get('{id}', [TicketManagementController::class, 'show']);
+    Route::patch('{id}', [TicketManagementController::class, 'update']);
+    Route::delete('{id}', [TicketManagementController::class, 'destroy']);
+    Route::get('{id}/technicians', [TicketManagementController::class, 'technicians']);
+    Route::post('{id}/workflow', [TicketManagementController::class, 'workflow']);
+});
+Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/ticket-notifications/{id}/read', [TicketManagementController::class, 'readNotification'])->middleware('auth.bearer:strict');
+
+// API Web Push Notifications (Module #10: Tự động thông báo bưu phẩm)
+Route::post('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'subscribe']);
+Route::delete('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'unsubscribe']);
+Route::get('/api/v1/notifications/push-status', [PushNotificationController::class, 'status']);
+Route::get('/api/v1/notifications/vapid-public-key', [PushNotificationController::class, 'vapidPublicKey']);
+
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
 
@@ -218,6 +239,8 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
     Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
     Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
 
     // Tiện ích
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
@@ -246,6 +269,8 @@ Route::prefix('api/resident')->middleware('auth.bearer:strict')->group(function 
     Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
     Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
     Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
 });
 
 // API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)

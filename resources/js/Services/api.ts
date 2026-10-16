@@ -439,56 +439,41 @@ export interface SwrOptions<T> {
 
 class ApiService {
   private getToken(): string | null {
-    let token = localStorage.getItem('smart_cassavas_token');
-    if (!token) {
-      const sessionStr = localStorage.getItem('smartcassavas_session');
-      if (sessionStr) {
-        try {
-          const session = JSON.parse(sessionStr);
-          if (session.token || session.access_token) {
-            token = session.token || session.access_token;
-          } else if (session.role === 'admin' || session.isDev) {
-            token = 'smart_token_admin_demo';
-          } else if (session.role === 'receptionist' || session.role === 'security') {
-            token = 'smart_token_reception_demo';
-          } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
-            token = 'smart_token_resident_demo';
-          } else {
-            token = 'smart_token_manager_demo';
-          }
-        } catch {
-          // ignore
-        }
+    let token = typeof window !== 'undefined' ? localStorage.getItem('smart_cassavas_token') : null;
+    const sessionStr = typeof window !== 'undefined' ? localStorage.getItem('smartcassavas_session') : null;
+
+    // Dọn dẹp token demo sót lại nếu người dùng không hề có phiên đăng nhập active
+    if (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr) {
+      try {
+        localStorage.removeItem('smart_cassavas_token');
+        localStorage.removeItem('smart_cassavas_user');
+      } catch {
+        // ignore
       }
+      token = null;
     }
 
-    if (!token) {
-      const path = typeof window !== 'undefined' ? window.location.pathname : '';
-      const isReceptionPath =
-        path.startsWith('/le-tan') ||
-        path.startsWith('/an-ninh') ||
-        path.startsWith('/bao-ve') ||
-        path.startsWith('/reception') ||
-        path.includes('/visitors') ||
-        path.includes('/parcels') ||
-        path.includes('/vehicles');
-      const isResidentPath =
-        path.startsWith('/cu-dan') ||
-        path.startsWith('/resident') ||
-        path.startsWith('/cudan');
-      token = isReceptionPath
-        ? 'smart_token_reception_demo'
-        : isResidentPath
-        ? 'smart_token_resident_demo'
-        : 'smart_token_manager_demo';
+    if (!token && sessionStr) {
       try {
-        localStorage.setItem('smart_cassavas_token', token);
+        const session = JSON.parse(sessionStr);
+        if (session.token || session.access_token) {
+          token = session.token || session.access_token;
+        } else if (session.role === 'admin' || session.isDev) {
+          token = 'smart_token_admin_demo';
+        } else if (session.role === 'receptionist' || session.role === 'security') {
+          token = 'smart_token_reception_demo';
+        } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
+          token = 'smart_token_resident_demo';
+        } else if (session.role === 'manager' || session.role?.toLowerCase?.().includes('manager')) {
+          token = 'smart_token_manager_demo';
+        }
       } catch {
         // ignore
       }
     }
 
-    return token;
+    // Nếu không có token và không có phiên đăng nhập, tuyệt đối không tự động sinh token demo giả lập
+    return token || null;
   }
 
   public getAuthToken(): string | null {
@@ -510,6 +495,10 @@ class ApiService {
       return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
     }
     try {
+      const token = this.getToken();
+      if (!token) {
+        return null;
+      }
       const u = localStorage.getItem('smart_cassavas_user');
       return u ? JSON.parse(u) : null;
     } catch {
@@ -527,7 +516,16 @@ class ApiService {
 
   public logout() {
     this.removeToken();
-    localStorage.removeItem('smart_cassavas_user');
+    try {
+      localStorage.removeItem('smart_cassavas_user');
+      localStorage.removeItem('smartcassavas_session');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     amenityCache.clearAll();
   }
 
@@ -1668,6 +1666,33 @@ class ApiService {
     return this.request<{ success: boolean; data: any[] }>(`/reception/parcels/apartments/search?${q.toString()}`);
   }
 
+  // ================= WEB PUSH NOTIFICATIONS =================
+  async registerPushSubscription(subscriptionData: {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+    content_encoding?: string;
+  }): Promise<{ success: boolean; message: string; subscription_id?: string }> {
+    return this.request<{ success: boolean; message: string; subscription_id?: string }>('/notifications/push-subscription', {
+      method: 'POST',
+      body: JSON.stringify(subscriptionData),
+    });
+  }
+
+  async unregisterPushSubscription(endpoint: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/notifications/push-subscription', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
+  async getPushNotificationStatus(): Promise<{ success: boolean; is_subscribed: boolean; active_devices: number }> {
+    return this.request<{ success: boolean; is_subscribed: boolean; active_devices: number }>('/notifications/push-status');
+  }
+
+  async getVapidPublicKey(): Promise<{ success: boolean; public_key: string | null; is_configured: boolean }> {
+    return this.request<{ success: boolean; public_key: string | null; is_configured: boolean }>('/notifications/vapid-public-key');
+  }
+
   // ================= RBAC MANAGEMENT =================
   async getUsers(params: { search?: string; role?: string; status?: string; page?: number; limit?: number } = {}) {
     const q = new URLSearchParams();
@@ -2106,6 +2131,38 @@ class ApiService {
     return this.request<{ success: boolean; data: TicketCategoryItem[] }>('/resident/tickets/categories');
   }
 
+  async getManagedTickets(params: URLSearchParams, signal?: AbortSignal) {
+    return this.request<{ data: ManagedTicket[]; current_page: number; last_page: number; total: number }>(`/admin/tickets?${params}`, { signal });
+  }
+  async getTicketOptions() { return this.request<TicketOptions>('/admin/tickets/options'); }
+  async getManagedTicket(id: string) { return this.request<ManagedTicket>(`/admin/tickets/${id}`); }
+  async createManagedTicket(payload: Record<string, unknown>) { return this.request<ManagedTicket>('/admin/tickets', { method: 'POST', body: JSON.stringify(payload) }); }
+  async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
+  async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
+  async getTicketTechnicians(id: string) { return this.request<{ id: string; full_name: string }[]>(`/admin/tickets/${id}/technicians`); }
+  async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
+  async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
+  async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
+
+  async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
+    if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
+    const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
+    const response = await fetch(url, { signal, headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    if (!response.ok) throw new Error('Không tải được ảnh sự cố.');
+    return response.blob();
+  }
+
+  async addTicketImages(id: string, files: File[], version: number) {
+    const body = new FormData();
+    files.forEach((file) => body.append('attachments[]', file));
+    body.append('version', String(version));
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments`, { method: 'POST', body });
+  }
+
+  async removeTicketImage(id: string, attachmentId: string, version: number) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) });
+  }
+
   async getResidentTickets(filters?: {
     status?: string;
     category_id?: string;
@@ -2158,30 +2215,42 @@ class ApiService {
     });
   }
 
-  async cancelResidentTicket(id: string, reason?: string) {
+  async cancelResidentTicket(id: string, version: number, reason: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/cancel`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, version }),
     });
   }
 
-  async confirmResidentTicket(id: string, note?: string) {
+  async confirmResidentTicket(id: string, version: number, note?: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
       method: 'POST',
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note, version }),
     });
   }
 
-  async reopenResidentTicket(id: string, reason: string) {
+  async reopenResidentTicket(id: string, version: number, reason: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/reopen`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, version }),
     });
   }
 
   async getResidentTicketHistory(id: string) {
     return this.request<{ success: boolean; data: TicketHistoryItem[] }>(`/resident/tickets/${id}/history`);
   }
+}
+
+export interface ManagedTicket extends TicketItem {
+  actions: Record<string, boolean>;
+}
+export interface TicketNotification { id: string; title: string; body_message: string; deep_link_url: string; is_read: boolean | number; created_at: string; }
+export interface TicketOptions {
+  categories: TicketCategoryItem[];
+  blocks: { id: string; block_name: string }[];
+  apartments: { id: string; block_id: string; apartment_number: string }[];
+  residents: { id: string; apartment_id: string; full_name: string }[];
+  can_create: boolean;
 }
 
 export interface TicketCategoryItem {
@@ -2200,6 +2269,7 @@ export interface TicketAttachmentItem {
   file_url: string;
   storage_path?: string;
   file_type: string;
+  is_resolution_proof?: boolean;
   mime_type?: string;
   file_size_bytes?: number;
   created_at: string;

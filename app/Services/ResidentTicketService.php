@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Ticket;
-use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\TicketHistory;
 use App\Models\User;
@@ -14,7 +13,6 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -115,8 +113,8 @@ class ResidentTicketService
             });
         }
 
-        $perPage = min(max((int) ($filters['per_page'] ?? 10), 5), 50);
-        $paginated = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $perPage = min(max((int) ($filters['per_page'] ?? 15), 5), 50);
+        $paginated = $query->orderBy('created_at', 'desc')->orderBy('id')->paginate($perPage);
 
         return [
             'tickets' => $paginated,
@@ -231,32 +229,8 @@ class ResidentTicketService
                     'updated_at' => $now,
                 ]);
 
-                // Xử lý tệp đính kèm an toàn
                 if (! empty($files)) {
-                    foreach ($files as $file) {
-                        if ($file instanceof UploadedFile) {
-                            $this->validateImageFile($file);
-
-                            $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
-                            $safeFilename = 'tck_'.date('Ymd_His').'_'.Str::random(12).'.'.$ext;
-                            $storedPath = $file->storeAs("tickets/{$ticket->id}", $safeFilename, 'public');
-                            $createdFiles[] = $storedPath;
-                            $fileUrl = Storage::disk('public')->url($storedPath);
-
-                            TicketAttachment::create([
-                                'ticket_id' => $ticket->id,
-                                'file_name' => $file->getClientOriginalName() ?: $safeFilename,
-                                'file_url' => $fileUrl,
-                                'storage_path' => $storedPath,
-                                'file_type' => 'IMAGE',
-                                'mime_type' => $file->getMimeType() ?: 'image/jpeg',
-                                'file_size_bytes' => $file->getSize(),
-                                'is_resolution_proof' => false,
-                                'uploaded_by_user_id' => $user->id,
-                                'created_at' => $now,
-                            ]);
-                        }
-                    }
+                    app(TicketAttachmentService::class)->store($ticket, $user->id, $files, $createdFiles);
                 }
 
                 // Ghi nhận lịch sử trạng thái ban đầu
@@ -270,17 +244,17 @@ class ResidentTicketService
                     'created_at' => $now,
                 ]);
 
+                app(TicketNotificationService::class)->changed($ticket, 'created');
+
                 return $ticket;
             });
 
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
         } catch (\Throwable $e) {
-            // Dọn dẹp file đã lưu nếu transaction thất bại
-            foreach ($createdFiles as $path) {
-                Storage::disk('public')->delete($path);
-            }
+            app(TicketAttachmentService::class)->cleanup($createdFiles);
             throw $e;
         }
+
+        return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
     }
 
     /**
@@ -296,7 +270,7 @@ class ResidentTicketService
                 abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
             }
 
-            $this->assertOwnership($user, $ticket);
+            app(TicketAccessService::class)->resident($user, $ticket);
 
             if ($ticket->status !== 'NEW') {
                 throw new TicketConflictException('Không thể chỉnh sửa yêu cầu khi đã được ban quản lý tiếp nhận hoặc xử lý.', 409);
@@ -356,123 +330,6 @@ class ResidentTicketService
     }
 
     /**
-     * Cư dân hủy Ticket (Chỉ cho phép khi ở trạng thái NEW hoặc RECEIVED).
-     */
-    public function cancel(User $user, string $ticketId, ?string $reason = null): Ticket
-    {
-        return DB::transaction(function () use ($user, $ticketId, $reason) {
-            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
-            if (! $ticket) {
-                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-            }
-
-            $this->assertOwnership($user, $ticket);
-
-            if (! in_array($ticket->status, ['NEW', 'RECEIVED'], true)) {
-                throw new TicketConflictException('Không thể hủy yêu cầu khi nhân viên kỹ thuật đang trong quá trình sửa chữa hoặc sự cố đã kết thúc.', 409);
-            }
-
-            $now = Carbon::now();
-            $oldStatus = $ticket->status;
-
-            $ticket->status = 'CANCELLED';
-            $ticket->version = ((int) $ticket->version) + 1;
-            $ticket->updated_at = $now;
-            $ticket->save();
-
-            TicketHistory::create([
-                'ticket_id' => $ticket->id,
-                'action_type' => 'STATUS_CHANGED',
-                'old_status' => $oldStatus,
-                'new_status' => 'CANCELLED',
-                'performed_by_user_id' => $user->id,
-                'notes' => 'Cư dân hủy yêu cầu: '.($reason ?: 'Không nêu lý do'),
-                'created_at' => $now,
-            ]);
-
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
-        });
-    }
-
-    /**
-     * Cư dân xác nhận đã khắc phục xong (Chuyển RESOLVED sang CLOSED).
-     */
-    public function confirm(User $user, string $ticketId, ?string $note = null): Ticket
-    {
-        return DB::transaction(function () use ($user, $ticketId, $note) {
-            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
-            if (! $ticket) {
-                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-            }
-
-            $this->assertOwnership($user, $ticket);
-
-            if ($ticket->status !== 'RESOLVED') {
-                throw new TicketConflictException('Chỉ có thể xác nhận hoàn thành khi bộ phận kỹ thuật đã báo khắc phục (RESOLVED).', 409);
-            }
-
-            $now = Carbon::now();
-
-            $ticket->status = 'CLOSED';
-            $ticket->closed_at = $now;
-            $ticket->version = ((int) $ticket->version) + 1;
-            $ticket->updated_at = $now;
-            $ticket->save();
-
-            TicketHistory::create([
-                'ticket_id' => $ticket->id,
-                'action_type' => 'STATUS_CHANGED',
-                'old_status' => 'RESOLVED',
-                'new_status' => 'CLOSED',
-                'performed_by_user_id' => $user->id,
-                'notes' => 'Cư dân đã nghiệm thu và xác nhận xử lý đạt yêu cầu.'.($note ? ' Ghi chú: '.$note : ''),
-                'created_at' => $now,
-            ]);
-
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
-        });
-    }
-
-    /**
-     * Cư dân báo chưa khắc phục xong (Reopen từ RESOLVED về IN_PROGRESS).
-     */
-    public function reopen(User $user, string $ticketId, string $reason): Ticket
-    {
-        return DB::transaction(function () use ($user, $ticketId, $reason) {
-            $ticket = Ticket::whereKey($ticketId)->lockForUpdate()->first();
-            if (! $ticket) {
-                abort(404, 'Không tìm thấy yêu cầu báo cáo sự cố kỹ thuật này.');
-            }
-
-            $this->assertOwnership($user, $ticket);
-
-            if ($ticket->status !== 'RESOLVED') {
-                throw new TicketConflictException('Chỉ có thể phản hồi chưa hoàn tất khi yêu cầu đang ở trạng thái Chờ xác nhận (RESOLVED).', 409);
-            }
-
-            $now = Carbon::now();
-
-            $ticket->status = 'IN_PROGRESS';
-            $ticket->resolved_at = null;
-            $ticket->version = ((int) $ticket->version) + 1;
-            $ticket->updated_at = $now;
-            $ticket->save();
-
-            TicketHistory::create([
-                'ticket_id' => $ticket->id,
-                'action_type' => 'STATUS_CHANGED',
-                'old_status' => 'RESOLVED',
-                'new_status' => 'IN_PROGRESS',
-                'performed_by_user_id' => $user->id,
-                'notes' => 'Cư dân phản hồi sự cố chưa được xử lý dứt điểm: '.trim($reason),
-                'created_at' => $now,
-            ]);
-
-            return $ticket->load(['category', 'apartment.block', 'attachments', 'history']);
-        });
-    }
-
-    /**
      * Xem lịch sử trạng thái của Ticket.
      */
     public function history(User $user, string $ticketId): Collection
@@ -495,23 +352,7 @@ class ResidentTicketService
      */
     private function assertOwnership(User $user, Ticket $ticket): void
     {
-        // Nếu người tạo là chính user này
-        if ($ticket->creator_user_id === $user->id) {
-            return;
-        }
-
-        // Hoặc user có vai trò quản lý / kỹ thuật / admin
-        if ($user->roles()->whereIn('role_code', ['SUPER_ADMIN', 'BUILDING_MANAGER', 'TECHNICAL_STAFF'])->exists()) {
-            return;
-        }
-
-        // Hoặc user đang cư trú cùng căn hộ xảy ra sự cố
-        $apartments = $this->residentApartments($user);
-        if ($apartments->contains('id', $ticket->apartment_id)) {
-            return;
-        }
-
-        abort(403, 'Bạn không có quyền truy cập hoặc thao tác trên yêu cầu báo cáo sự cố này.');
+        app(TicketAccessService::class)->view($user, $ticket);
     }
 
     /**
@@ -528,39 +369,5 @@ class ResidentTicketService
         }
 
         return $prefix.sprintf('%05d', mt_rand(10000, 99999));
-    }
-
-    /**
-     * Validate an toàn tệp ảnh tải lên.
-     */
-    private function validateImageFile(UploadedFile $file): void
-    {
-        if (! $file->isValid()) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Quá trình tải tệp ảnh lên gặp sự cố. Vui lòng thử lại.',
-            ]);
-        }
-
-        // Dung lượng tối đa 5MB
-        if ($file->getSize() > 5 * 1024 * 1024) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Dung lượng ảnh đính kèm không được vượt quá 5MB/ảnh.',
-            ]);
-        }
-
-        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (! in_array($file->getMimeType(), $allowedMimes, true)) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Định dạng tệp không được hỗ trợ. Chỉ chấp nhận JPG, JPEG, PNG, WEBP.',
-            ]);
-        }
-
-        $allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
-        $ext = strtolower($file->getClientOriginalExtension());
-        if (! in_array($ext, $allowedExts, true)) {
-            throw ValidationException::withMessages([
-                'attachments' => 'Phần mở rộng tệp không hợp lệ.',
-            ]);
-        }
     }
 }

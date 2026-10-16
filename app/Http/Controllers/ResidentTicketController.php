@@ -4,10 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ResidentCreateTicketRequest;
 use App\Http\Requests\ResidentUpdateTicketRequest;
+use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Services\ResidentTicketService;
+use App\Services\TicketAccessService;
+use App\Services\TicketAttachmentService;
+use App\Services\TicketConflictException;
+use App\Services\TicketManagementService;
+use App\Services\TicketWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class ResidentTicketController extends Controller
@@ -122,14 +129,11 @@ class ResidentTicketController extends Controller
     public function cancel(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([
-            'reason' => 'nullable|string|max:500',
+            'reason' => 'required|string|min:5|max:500',
+            'version' => 'required|integer|min:1',
         ]);
 
-        $ticket = $this->ticketService->cancel(
-            user: $request->user(),
-            ticketId: $id,
-            reason: $validated['reason'] ?? null
-        );
+        $ticket = app(TicketWorkflowService::class)->perform($request->user(), $id, 'cancel', (int) $validated['version'], $validated, resident: true);
 
         return response()->json([
             'success' => true,
@@ -145,13 +149,10 @@ class ResidentTicketController extends Controller
     {
         $validated = $request->validate([
             'note' => 'nullable|string|max:500',
+            'version' => 'required|integer|min:1',
         ]);
 
-        $ticket = $this->ticketService->confirm(
-            user: $request->user(),
-            ticketId: $id,
-            note: $validated['note'] ?? null
-        );
+        $ticket = app(TicketWorkflowService::class)->perform($request->user(), $id, 'confirm', (int) $validated['version'], $validated, resident: true);
 
         return response()->json([
             'success' => true,
@@ -167,16 +168,13 @@ class ResidentTicketController extends Controller
     {
         $validated = $request->validate([
             'reason' => 'required|string|min:5|max:500',
+            'version' => 'required|integer|min:1',
         ], [
             'reason.required' => 'Vui lòng cung cấp lý do sự cố chưa được xử lý triệt để.',
             'reason.min' => 'Lý do phản hồi phải có ít nhất 5 ký tự.',
         ]);
 
-        $ticket = $this->ticketService->reopen(
-            user: $request->user(),
-            ticketId: $id,
-            reason: $validated['reason']
-        );
+        $ticket = app(TicketWorkflowService::class)->perform($request->user(), $id, 'reopen', (int) $validated['version'], $validated, resident: true);
 
         return response()->json([
             'success' => true,
@@ -211,10 +209,62 @@ class ResidentTicketController extends Controller
             abort(404, 'Không tìm thấy tệp đính kèm.');
         }
 
-        if ($attachment->storage_path && Storage::disk('public')->exists($attachment->storage_path)) {
-            return Storage::disk('public')->response($attachment->storage_path, $attachment->file_name);
+        $disk = $attachment->storage_disk ?: 'public';
+        if ($attachment->storage_path && Storage::disk($disk)->exists($attachment->storage_path)) {
+            return Storage::disk($disk)->response($attachment->storage_path, $attachment->file_name, ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
         }
 
         abort(404, 'Tệp tin không tồn tại trên hệ thống lưu trữ.');
+    }
+
+    public function addAttachments(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate(['version' => 'required|integer|min:1', 'attachments' => 'required|array|max:5', 'attachments.*' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120']);
+        $created = [];
+        try {
+            DB::transaction(function () use ($request, $id, $data, &$created): void {
+                $ticket = Ticket::whereKey($id)->lockForUpdate()->firstOrFail();
+                $this->ticketService->detail($request->user(), $id);
+                $proof = app(TicketAccessService::class)->technician($request->user()) && $ticket->current_technician_user_id === $request->user()->id && $ticket->status === 'IN_PROGRESS' && $request->user()->hasPermission('TICKET:RESOLVE');
+                if (! $proof) {
+                    app(TicketAccessService::class)->resident($request->user(), $ticket);
+                }
+                if ((! $proof && $ticket->status !== 'NEW') || $ticket->version !== (int) $data['version']) {
+                    throw new TicketConflictException('Yêu cầu đã thay đổi hoặc không còn được sửa ảnh.');
+                }
+                app(TicketAttachmentService::class)->store($ticket, $request->user()->id, $request->file('attachments'), $created, $proof);
+                $ticket->increment('version');
+                app(TicketManagementService::class)->record($request->user(), $ticket, 'UPDATED', 'Bổ sung ảnh sự cố.');
+            });
+        } catch (\Throwable $exception) {
+            app(TicketAttachmentService::class)->cleanup($created);
+            throw $exception;
+        }
+
+        return response()->json(['success' => true, 'data' => $this->ticketService->detail($request->user(), $id)]);
+    }
+
+    public function removeAttachment(Request $request, string $id, string $attachmentId): JsonResponse
+    {
+        $data = $request->validate(['version' => 'required|integer|min:1']);
+        DB::transaction(function () use ($request, $id, $attachmentId, $data): void {
+            $ticket = Ticket::whereKey($id)->lockForUpdate()->firstOrFail();
+            $this->ticketService->detail($request->user(), $id);
+            $proof = app(TicketAccessService::class)->technician($request->user()) && $ticket->current_technician_user_id === $request->user()->id && $ticket->status === 'IN_PROGRESS' && $request->user()->hasPermission('TICKET:RESOLVE');
+            if (! $proof) {
+                app(TicketAccessService::class)->resident($request->user(), $ticket);
+            }
+            if ((! $proof && $ticket->status !== 'NEW') || $ticket->version !== (int) $data['version']) {
+                throw new TicketConflictException('Yêu cầu đã thay đổi hoặc không còn được sửa ảnh.');
+            }
+            $attachment = TicketAttachment::where('ticket_id', $id)->whereKey($attachmentId)->firstOrFail();
+            abort_if($proof && (! $attachment->is_resolution_proof || $attachment->uploaded_by_user_id !== $request->user()->id), 403);
+            $attachment->delete();
+            $ticket->increment('version');
+            app(TicketManagementService::class)->record($request->user(), $ticket, 'UPDATED', 'Bỏ ảnh sự cố.');
+            DB::afterCommit(fn () => Storage::disk($attachment->storage_disk ?: 'public')->delete($attachment->storage_path));
+        });
+
+        return response()->json(['success' => true, 'data' => $this->ticketService->detail($request->user(), $id)]);
     }
 }
