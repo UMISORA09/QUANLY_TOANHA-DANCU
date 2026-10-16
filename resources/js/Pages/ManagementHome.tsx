@@ -928,7 +928,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
               <InvoiceNavTabs activeTab="financial_reports" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <FinancialReportManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
             </div>
-          ) : activeMenuId === 'rfid_cards' ? (
+          ) : activeMenuId === 'rfid_cards' || activeMenuId === 'rfid' || activeMenuId === 'the_rfid' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <RfidManagement embedded={true} />
             </div>
