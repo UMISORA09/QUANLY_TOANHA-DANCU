@@ -69,6 +69,7 @@ class ResidentTicketService
         $counters = [
             'all' => (clone $baseQuery)->count(),
             'new' => (clone $baseQuery)->where('status', 'NEW')->count(),
+            'received' => (clone $baseQuery)->where('status', 'RECEIVED')->count(),
             'in_progress' => (clone $baseQuery)->whereIn('status', ['RECEIVED', 'IN_PROGRESS'])->count(),
             'resolved' => (clone $baseQuery)->where('status', 'RESOLVED')->count(),
             'closed' => (clone $baseQuery)->where('status', 'CLOSED')->count(),

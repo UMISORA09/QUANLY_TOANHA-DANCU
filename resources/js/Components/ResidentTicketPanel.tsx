@@ -145,6 +145,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [counters, setCounters] = useState({
     all: 0,
     new: 0,
+    received: 0,
     in_progress: 0,
     resolved: 0,
     closed: 0,
@@ -297,7 +298,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       if (res && res.success) {
         setTickets(res.data || []);
         if (res.counters) {
-          setCounters(res.counters);
+          setCounters((prev) => ({ ...prev, ...res.counters, received: res.counters.received ?? prev.received ?? 0 }));
         }
         if (res.pagination) {
           setCurrentPage(res.pagination.current_page);
@@ -720,8 +721,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               ? 'bg-amber-600 text-white border-amber-600 shadow-md'
               : 'bg-white/80 backdrop-blur-md border-neutral-200/80 hover:border-amber-300 shadow-2xs'
           }`}
+          title={(counters.received ?? 0) > 0 ? `Gồm ${counters.received} yêu cầu Đã ghi nhận` : undefined}
         >
-          <div className="text-[11px] font-semibold opacity-75">Đang xử lý</div>
+          <div className="text-[11px] font-semibold opacity-75">Đang xử lý{(counters.received ?? 0) > 0 ? ` (${counters.received} đã ghi nhận)` : ''}</div>
           <div className="text-xl font-extrabold font-mono mt-1 text-amber-600 data-selected:text-white">
             {counters.in_progress}
           </div>
@@ -1108,7 +1110,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               {/* Action Buttons */}
               <div className="pt-5 border-t border-neutral-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
                 <button
-                  id="ticket-back-to-list-btn"
+                  id="ticket-close-create-btn"
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
                   className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-200 text-neutral-700 hover:bg-neutral-100 text-xs font-semibold transition-all cursor-pointer"
@@ -1179,7 +1181,8 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 >
                   <option value="ALL">-- Tất cả trạng thái --</option>
                   <option value="NEW">Mới gửi</option>
-                  <option value="IN_PROGRESS">Đang xử lý</option>
+                  <option value="RECEIVED">Đã ghi nhận</option>
+                  <option value="IN_PROGRESS">Đang xử lý (gồm Đã ghi nhận)</option>
                   <option value="RESOLVED">Chờ nghiệm thu</option>
                   <option value="CLOSED">Đã hoàn tất</option>
                   <option value="CANCELLED">Đã hủy</option>
@@ -1810,6 +1813,17 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   value={editFormData.description}
                   onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-neutral-800 mb-1">Ngày thuận tiện kỹ thuật đến kiểm tra</label>
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={editFormData.preferred_service_time ? editFormData.preferred_service_time.substring(0, 10) : ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, preferred_service_time: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                 />
               </div>
 

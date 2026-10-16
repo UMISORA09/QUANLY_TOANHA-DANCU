@@ -2277,6 +2277,7 @@ export interface TicketListResponse {
   counters: {
     all: number;
     new: number;
+    received?: number;
     in_progress: number;
     resolved: number;
     closed: number;
