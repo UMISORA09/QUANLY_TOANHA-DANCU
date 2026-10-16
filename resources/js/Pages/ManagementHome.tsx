@@ -70,6 +70,7 @@ import { AppLayout } from '../Components/Layout/AppLayout';
 import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
 import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
+import { TicketNotificationList, useTicketNotifications } from '../Components/TicketNotifications';
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -477,6 +478,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   });
 
   // Notifications state
+  const ticketNotices = useTicketNotifications();
   const notices = useAmenityNotifications('admin');
   const { items: amenityNotifications, unreadCount: amenityUnreadCount, alert: bookingAlert, setAlert: setBookingAlert } = notices;
   const [notifications, setNotifications] = useState<Array<{
@@ -487,15 +489,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     timeAgo?: string;
     isRead?: boolean;
   }>>([
-    { id: '1', title: 'Sự cố nước ban công', message: 'Căn hộ A012 yêu cầu kỹ thuật kiểm tra van tổng.', timeAgo: '10 phút trước', isRead: false },
     { id: '2', title: 'Hóa đơn quá hạn', message: '8 hóa đơn dịch vụ tháng 8 chưa hoàn tất thanh toán.', timeAgo: '45 phút trước', isRead: false },
     { id: '3', title: 'Đồng bộ chỉ số', message: 'Đã đồng bộ 270 chỉ số công tơ điện nước thông minh.', timeAgo: '2 giờ trước', isRead: false },
     { id: '4', title: 'Lịch bảo trì thang máy', message: 'Đội kỹ thuật Otis tiến hành kiểm định thang T2 Tháp A.', timeAgo: '3 giờ trước', isRead: false },
     { id: '5', title: 'Cư dân đăng ký mới', message: 'Hộ gia đình căn B1405 hoàn tất xác thực eKYC.', timeAgo: '5 giờ trước', isRead: false },
   ]);
 
-  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || ''))];
-  const unreadNotificationCount = amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || '')).length;
+  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING', 'TICKET'].includes(item.category || ''))];
+  const unreadNotificationCount = ticketNotices.unread + amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING', 'TICKET'].includes(item.category || '')).length;
 
   const openBookingNotification = async (notification: AmenityBookingNotification) => {
     const target = new URL(notification.deepLink, window.location.origin);
@@ -786,7 +787,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       userEmail={userEmail}
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
-      onNotificationClick={() => setIsNotificationOpen(!isNotificationOpen)}
+      onNotificationClick={() => { setIsNotificationOpen(!isNotificationOpen); ticketNotices.retry(); }}
       onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
       unreadNotificationCount={unreadNotificationCount}
       extraTopbarActions={
@@ -849,7 +850,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       {/* Notifications Dropdown Panel */}
       {bookingAlert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{bookingAlert.title}</p><p className="mt-1 text-xs text-neutral-600">{bookingAlert.message}</p></div><button type="button" aria-label="Đóng cảnh báo đăng ký mới" onClick={() => setBookingAlert(null)} className="rounded-lg p-1 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openBookingNotification(bookingAlert)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
       {isNotificationOpen && (
-        <div className="fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div role="region" aria-label="Thông báo vận hành" className="max-h-[calc(100dvh-6rem)] overflow-y-auto fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
@@ -902,6 +903,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
             <div className="mt-2 flex items-center justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div>
           </div>
+          <TicketNotificationList feed={ticketNotices} />
         </div>
       )}
           {activeMenuId === 'tickets' ? <TicketManagementPanel /> : activeMenuId === 'cicd' ? (
