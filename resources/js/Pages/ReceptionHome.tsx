@@ -136,8 +136,6 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
   // Navigation & Interactive states
   const [activeMenuId, setActiveMenuId] = useState<string>(resolveInitialTab);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
-  const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
-  const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -398,13 +396,6 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
     [kpis]
   );
 
-  const buildingOptions = [
-    'Khu A - Tất cả tòa nhà',
-    'Tòa S1 - Sky Tower',
-    'Tòa S2 - Aqua Tower',
-    'Tòa S3 - Garden Tower',
-    'Toàn bộ khu đô thị',
-  ];
 
   const handleMenuClick = (id: string) => {
     setActiveMenuId(id);
