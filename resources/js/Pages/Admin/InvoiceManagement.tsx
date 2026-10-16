@@ -291,7 +291,8 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
             if (res.success) {
                 showToast('success', res.message);
                 setPayModalInvoice(null);
-                loadData();
+                fetchInvoices();
+                fetchSummary();
                 if (res.data?.receipt) {
                     setReceiptModalData({
                         receipt: res.data.receipt,
