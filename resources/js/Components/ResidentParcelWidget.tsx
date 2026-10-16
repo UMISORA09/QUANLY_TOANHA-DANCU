@@ -12,6 +12,8 @@ import {
   X,
   ExternalLink,
   Sparkles,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import api, { ParcelItem } from '../Services/api';
 
@@ -49,6 +51,10 @@ export const ResidentParcelWidget: React.FC = () => {
       return null;
     }
   });
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const perPage = 4;
+  const totalPages = Math.max(1, Math.ceil(parcels.length / perPage));
+  const displayedParcels = parcels.slice((currentPage - 1) * perPage, currentPage * perPage);
 
   const fetchResidentParcels = useCallback(async () => {
     setLoading(true);
@@ -130,6 +136,17 @@ export const ResidentParcelWidget: React.FC = () => {
     };
   }, [fetchResidentParcels]);
 
+  // Tự động chuyển tới trang chứa bưu phẩm được highlight
+  useEffect(() => {
+    if (highlightedParcelId && parcels.length > 0) {
+      const idx = parcels.findIndex((p) => p.id === highlightedParcelId);
+      if (idx >= 0) {
+        const targetPage = Math.floor(idx / perPage) + 1;
+        setCurrentPage(targetPage);
+      }
+    }
+  }, [highlightedParcelId, parcels]);
+
   // Cuộn tới bưu phẩm được highlight từ URL query view_parcel
   useEffect(() => {
     if (highlightedParcelId && parcels.length > 0) {
@@ -141,7 +158,7 @@ export const ResidentParcelWidget: React.FC = () => {
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [highlightedParcelId, parcels]);
+  }, [highlightedParcelId, parcels, currentPage]);
 
   const handleCopyPin = (pin: string) => {
     try {
@@ -218,10 +235,11 @@ export const ResidentParcelWidget: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {parcels.map((parcel) => {
-            const isTarget = highlightedParcelId === parcel.id;
-            const photoUrl = getParcelImageUrl(parcel.parcel_photo_url);
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {displayedParcels.map((parcel) => {
+              const isTarget = highlightedParcelId === parcel.id;
+              const photoUrl = getParcelImageUrl(parcel.parcel_photo_url);
 
             return (
               <div
@@ -348,7 +366,49 @@ export const ResidentParcelWidget: React.FC = () => {
             );
           })}
         </div>
-      )}
+
+        {/* Thanh phân trang hiển thị 4 kiện hàng / trang */}
+        {parcels.length > perPage && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-slate-500">
+            <span>
+              Hiển thị{' '}
+              <strong className="text-slate-800">
+                {(currentPage - 1) * perPage + 1}
+              </strong>{' '}
+              đến{' '}
+              <strong className="text-slate-800">
+                {Math.min(currentPage * perPage, parcels.length)}
+              </strong>{' '}
+              trên tổng <strong className="text-slate-800">{parcels.length}</strong> kiện
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 cursor-pointer"
+                title="Trang trước"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-2.5 py-1 font-semibold text-slate-800">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 cursor-pointer"
+                title="Trang sau"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    )}
 
       {/* Modal xem ảnh bưu phẩm phóng to */}
       {selectedPhoto && (

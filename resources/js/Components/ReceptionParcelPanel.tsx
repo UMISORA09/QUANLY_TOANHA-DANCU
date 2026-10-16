@@ -501,6 +501,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [fromDateFilter, setFromDateFilter] = useState<string>('');
   const [toDateFilter, setToDateFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState<number>(4);
 
   // Custom Dropdown Open States (Chuẩn Ảnh 2)
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState<boolean>(false);
@@ -644,7 +645,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
       try {
         const res = await api.getReceptionParcels({
           page,
-          limit: 15,
+          limit: perPage,
           search: debouncedSearch,
           status: statusFilter,
           courier_company: courierFilter !== 'ALL' ? courierFilter : undefined,
@@ -679,7 +680,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
         if (showSpinner) setLoading(false);
       }
     },
-    [debouncedSearch, statusFilter, courierFilter, apartmentFilter, fromDateFilter, toDateFilter, showToast]
+    [debouncedSearch, statusFilter, courierFilter, apartmentFilter, fromDateFilter, toDateFilter, showToast, perPage]
   );
 
   useEffect(() => {
@@ -1625,21 +1626,41 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
         {/* Pagination Bar */}
         {pagination.total_pages > 1 && (
-          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between text-xs text-slate-500">
-            <span>
-              Hiển thị{' '}
-              <strong className="text-slate-800">
-                {(pagination.current_page - 1) * pagination.per_page + 1}
-              </strong>{' '}
-              đến{' '}
-              <strong className="text-slate-800">
-                {Math.min(
-                  pagination.current_page * pagination.per_page,
-                  pagination.total_items
-                )}
-              </strong>{' '}
-              trên tổng <strong className="text-slate-800">{pagination.total_items}</strong> kiện
-            </span>
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+            <div className="flex items-center gap-3">
+              <span>
+                Hiển thị{' '}
+                <strong className="text-slate-800">
+                  {(pagination.current_page - 1) * pagination.per_page + 1}
+                </strong>{' '}
+                đến{' '}
+                <strong className="text-slate-800">
+                  {Math.min(
+                    pagination.current_page * pagination.per_page,
+                    pagination.total_items
+                  )}
+                </strong>{' '}
+                trên tổng <strong className="text-slate-800">{pagination.total_items}</strong> kiện
+              </span>
+
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="hidden sm:inline">Hiển thị:</span>
+                <select
+                  value={perPage}
+                  onChange={(e) => {
+                    const nextLimit = Number(e.target.value);
+                    setPerPage(nextLimit);
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
+                >
+                  <option value={4}>4 kiện / trang</option>
+                  <option value={10}>10 kiện / trang</option>
+                  <option value={15}>15 kiện / trang</option>
+                  <option value={20}>20 kiện / trang</option>
+                </select>
+              </div>
+            </div>
 
             <div className="flex items-center gap-1.5">
               <button
