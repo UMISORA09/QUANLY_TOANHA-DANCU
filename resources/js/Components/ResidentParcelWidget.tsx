@@ -44,6 +44,7 @@ export const ResidentParcelWidget: React.FC = () => {
   const [copiedPin, setCopiedPin] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedQrCode, setSelectedQrCode] = useState<{ pin: string; qr: string; tracking: string } | null>(null);
+  const [qrFailed, setQrFailed] = useState<boolean>(false);
   const [highlightedParcelId, setHighlightedParcelId] = useState<string | null>(() => {
     try {
       return new URLSearchParams(window.location.search).get('view_parcel');
@@ -341,13 +342,14 @@ export const ResidentParcelWidget: React.FC = () => {
                         {parcel.pickup_qr_code && (
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
+                              setQrFailed(false);
                               setSelectedQrCode({
                                 pin: parcel.pickup_pin_code || '',
                                 qr: parcel.pickup_qr_code || '',
                                 tracking: parcel.tracking_number,
-                              })
-                            }
+                              });
+                            }}
                             className="p-1 text-emerald-700 bg-white border border-emerald-300 rounded hover:bg-emerald-100/50 transition cursor-pointer"
                             title="Xem mã QR lấy hàng"
                           >
@@ -444,41 +446,52 @@ export const ResidentParcelWidget: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative max-w-sm w-full bg-white rounded-2xl overflow-hidden shadow-2xl p-6 text-center space-y-4"
+            className="relative max-w-sm w-full bg-white rounded-3xl overflow-hidden shadow-2xl p-6 text-center space-y-4"
           >
             <button
               type="button"
               onClick={() => setSelectedQrCode(null)}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-600 transition cursor-pointer"
+              className="absolute top-4 right-4 p-1.5 rounded-full text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-              <KeyRound className="w-6 h-6" />
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+              <QrCode className="w-6 h-6" />
             </div>
 
             <div>
-              <h4 className="text-base font-bold text-neutral-900">Mã PIN nhận bưu phẩm</h4>
+              <h4 className="text-base font-bold text-neutral-900">Mã QR & PIN nhận bưu phẩm</h4>
               <p className="text-xs text-neutral-500 font-mono mt-0.5">Vận đơn: {selectedQrCode.tracking}</p>
             </div>
 
-            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-              <span className="text-xs text-emerald-700 font-medium block mb-1">MÃ PIN 6 SỐ:</span>
+            {/* 1. Hình ảnh Mã QR quét nhanh (ở TRÊN "MÃ PIN 6 SỐ") */}
+            <div className="p-3.5 bg-neutral-50/80 rounded-2xl border border-neutral-200 inline-block mx-auto shadow-2xs">
+              <img
+                src={
+                  qrFailed
+                    ? `https://quickchart.io/qr?text=${encodeURIComponent(selectedQrCode.qr || selectedQrCode.pin)}&size=340&margin=2`
+                    : `https://api.qrserver.com/v1/create-qr-code/?size=340x340&margin=8&data=${encodeURIComponent(selectedQrCode.qr || selectedQrCode.pin)}`
+                }
+                alt={`Mã QR ${selectedQrCode.qr}`}
+                onError={() => setQrFailed(true)}
+                className="w-44 h-44 sm:w-48 sm:h-48 mx-auto object-contain bg-white p-2 rounded-xl border border-neutral-200 shadow-2xs"
+              />
+              <div className="mt-2 flex items-center justify-center gap-1.5 text-2xs text-neutral-500 font-mono">
+                <span className="font-semibold">{selectedQrCode.qr}</span>
+              </div>
+            </div>
+
+            {/* 2. MÃ PIN 6 SỐ (ở DƯỚI Mã QR) */}
+            <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200">
+              <span className="text-xs text-emerald-700 font-semibold block mb-0.5">MÃ PIN 6 SỐ:</span>
               <span className="text-3xl font-black text-emerald-900 font-mono tracking-widest">
                 {selectedQrCode.pin}
               </span>
             </div>
 
-            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
-              <span className="text-2xs text-neutral-500 font-medium block mb-1">MÃ QR CHECK-OUT:</span>
-              <span className="text-xs font-mono font-bold text-neutral-800">
-                {selectedQrCode.qr}
-              </span>
-            </div>
-
             <p className="text-xs text-neutral-500">
-              Đọc mã PIN hoặc quét mã QR này tại quầy Lễ tân để hoàn tất nhận kiện hàng.
+              Xuất trình mã QR này cho camera tại quầy Lễ tân hoặc đọc mã PIN 6 số để nhận kiện hàng.
             </p>
           </div>
         </div>
