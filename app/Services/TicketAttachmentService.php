@@ -14,9 +14,14 @@ class TicketAttachmentService
     public function disk(): string
     {
         $disk = config('tickets.attachment_disk');
-        abort_unless(in_array($disk, ['local', 's3'], true), 503, 'Chưa cấu hình kho ảnh riêng tư.');
-        abort_if(app()->environment('production') && $disk !== 's3', 503, 'Production cần kho ảnh riêng tư S3.');
+        abort_unless(in_array($disk, ['local', 's3', 'supabase'], true), 503, 'Chưa cấu hình kho ảnh riêng tư.');
+        abort_if(app()->environment('production') && $disk === 'local', 503, 'Production cần kho ảnh riêng tư S3.');
         abort_if($disk === 's3' && ! config('filesystems.disks.s3.bucket'), 503, 'Chưa cấu hình bucket ảnh sự cố.');
+        if ($disk === 'supabase') {
+            foreach (['key', 'secret', 'region', 'bucket', 'endpoint'] as $field) {
+                abort_unless(filled(config('filesystems.disks.supabase.'.$field)), 503, 'Chưa cấu hình đầy đủ kho ảnh Supabase.');
+            }
+        }
 
         return $disk;
     }
