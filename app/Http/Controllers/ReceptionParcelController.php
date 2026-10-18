@@ -8,6 +8,7 @@ use App\Services\ReceptionParcelService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class ReceptionParcelController extends Controller
@@ -228,6 +229,92 @@ class ReceptionParcelController extends Controller
         return response()->json([
             'success' => true,
             'data' => $apartments,
+        ], 200);
+    }
+
+    /**
+     * Bàn giao và Check-out bưu phẩm cho cư dân
+     */
+    public function checkOut(Request $request, ?string $id = null): JsonResponse
+    {
+        $targetId = trim((string) ($id ?? $request->input('parcel_id') ?? $request->input('id') ?? ''));
+
+        if ($targetId === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui lòng cung cấp ID bưu phẩm cần bàn giao.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'parcel_id' => 'nullable|string',
+            'id' => 'nullable|string',
+            'collected_by_name' => 'nullable|string|max:150',
+            'pin_code' => 'nullable|string|max:20',
+            'qr_code' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:1000',
+            'collected_signature_url' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $parcel = $this->service->handoverParcel(
+                id: $targetId,
+                data: $validated,
+                staffUser: $staffUser
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Bàn giao kiện hàng [{$parcel->tracking_number}] cho cư dân thành công.",
+                'data' => $parcel,
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Dữ liệu xác thực không hợp lệ.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Lỗi khi thực hiện bàn giao kiện hàng.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Tra cứu bưu phẩm nhanh bằng mã PIN, mã QR hoặc mã vận đơn
+     */
+    public function lookup(Request $request): JsonResponse
+    {
+        $code = trim((string) ($request->query('code', $request->query('q', ''))));
+
+        if ($code === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui lòng cung cấp mã PIN, mã QR hoặc mã vận đơn cần tra cứu.',
+            ], 422);
+        }
+
+        $result = $this->service->lookupParcel($code);
+
+        if (! $result) {
+            return response()->json([
+                'success' => false,
+                'message' => "Không tìm thấy kiện hàng nào khớp với mã [{$code}].",
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $result['parcel'],
+            'can_checkout' => $result['can_checkout'],
         ], 200);
     }
 }

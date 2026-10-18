@@ -196,13 +196,17 @@ Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::cla
 Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
 Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
 
-// API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Upload ảnh)
+// API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Module #11: Bàn giao & Check-out)
 Route::get('/api/v1/reception/parcels', [ReceptionParcelController::class, 'index']);
+Route::get('/api/v1/reception/parcels/lookup', [ReceptionParcelController::class, 'lookup']);
+Route::post('/api/v1/reception/parcels/check-out', [ReceptionParcelController::class, 'checkOut']);
 Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'store']);
 Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
 Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
 Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
 Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+Route::post('/api/v1/reception/parcels/{id}/check-out', [ReceptionParcelController::class, 'checkOut']);
+Route::post('/api/v1/reception/parcels/{id}/handover', [ReceptionParcelController::class, 'checkOut']);
 Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
 
 Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {

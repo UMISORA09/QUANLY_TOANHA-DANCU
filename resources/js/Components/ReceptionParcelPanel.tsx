@@ -570,6 +570,21 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
   const [deletingParcel, setDeletingParcel] = useState<ParcelItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // 7. Handover / Check-out Modal States (Module #11: Bàn giao bưu phẩm cho cư dân)
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
+  const [handoverParcel, setHandoverParcel] = useState<ParcelItem | null>(null);
+  const [handoverFormData, setHandoverFormData] = useState({
+    collected_by_name: '',
+    pin_code: '',
+    notes: '',
+  });
+  const [isSubmittingHandover, setIsSubmittingHandover] = useState(false);
+  const [handoverError, setHandoverError] = useState<string | null>(null);
+
+  // 8. Quick Verification & Lookup States (Tra cứu siêu tốc bằng PIN / QR / Mã vận đơn)
+  const [quickLookupCode, setQuickLookupCode] = useState<string>('');
+  const [isLookingUp, setIsLookingUp] = useState<boolean>(false);
+
   // Autocomplete / Options States
   const [apartmentOptions, setApartmentOptions] = useState<any[]>([]);
   const [recipientSuggestions, setRecipientSuggestions] = useState<any[]>([]);
@@ -609,7 +624,13 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
   // Khóa cuộn trang khi modal đang mở để modal luôn cố định chính giữa khung nhìn màn hình
   useEffect(() => {
-    const isAnyModalOpen = isCreateModalOpen || isDetailModalOpen || isEditModalOpen || isDeleteModalOpen || isLightboxOpen;
+    const isAnyModalOpen =
+      isCreateModalOpen ||
+      isDetailModalOpen ||
+      isEditModalOpen ||
+      isDeleteModalOpen ||
+      isLightboxOpen ||
+      isHandoverModalOpen;
     if (isAnyModalOpen) {
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
@@ -617,7 +638,14 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
         document.body.style.overflow = originalOverflow;
       };
     }
-  }, [isCreateModalOpen, isDetailModalOpen, isEditModalOpen, isDeleteModalOpen, isLightboxOpen]);
+  }, [
+    isCreateModalOpen,
+    isDetailModalOpen,
+    isEditModalOpen,
+    isDeleteModalOpen,
+    isLightboxOpen,
+    isHandoverModalOpen,
+  ]);
 
   // Load Apartments for selection
   const loadApartments = useCallback(async (query: string = '') => {
@@ -698,6 +726,12 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
             `⚡ Realtime: Kiện hàng [${event.tracking_number || 'mới'}] cho căn hộ ${
               event.apartment_number || ''
             } vừa được tiếp nhận tại quầy!`
+          );
+        } else if (event.action === 'CHECKED_OUT' || event.action === 'DELIVERED') {
+          showToast(
+            `⚡ Realtime: Kiện hàng [${event.tracking_number || ''}] vừa được bàn giao thành công cho ${
+              event.collected_by_name || event.recipient_name || 'cư dân'
+            }!`
           );
         } else if (event.action === 'UPDATED') {
           showToast(`⚡ Realtime: Kiện hàng [${event.tracking_number || ''}] vừa được cập nhật.`);
@@ -1010,6 +1044,85 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
     }
   };
 
+  // ================= THAO TÁC BÀN GIAO & CHECK-OUT CHO CƯ DÂN =================
+  const handleOpenHandoverModal = (parcel: ParcelItem) => {
+    setHandoverParcel(parcel);
+    setHandoverFormData({
+      collected_by_name: parcel.recipient_name || '',
+      pin_code: '',
+      notes: '',
+    });
+    setHandoverError(null);
+    setIsHandoverModalOpen(true);
+  };
+
+  const handleConfirmHandover = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!handoverParcel) return;
+
+    setIsSubmittingHandover(true);
+    setHandoverError(null);
+
+    try {
+      const res = await api.checkoutReceptionParcel(handoverParcel.id, {
+        collected_by_name: handoverFormData.collected_by_name.trim() || undefined,
+        pin_code: handoverFormData.pin_code.trim() || undefined,
+        notes: handoverFormData.notes.trim() || undefined,
+      });
+
+      if (res.success) {
+        showToast(`🎉 Bàn giao thành công kiện hàng [${handoverParcel.tracking_number}] cho cư dân!`);
+        setIsHandoverModalOpen(false);
+        setHandoverParcel(null);
+        if (isDetailModalOpen) setIsDetailModalOpen(false);
+        fetchParcels(currentPage, false);
+      }
+    } catch (err: any) {
+      if (err.status === 409) {
+        setHandoverError(`⚠️ Xung đột: ${err.message || 'Kiện hàng này đã được nhân viên khác bàn giao trước đó.'}`);
+        fetchParcels(currentPage, false);
+      } else if (err.status === 422) {
+        setHandoverError(err.message || 'Mã PIN nhận hàng hoặc thông tin không chính xác.');
+      } else {
+        setHandoverError(err.message || 'Lỗi trong quá trình bàn giao kiện hàng. Vui lòng thử lại.');
+      }
+    } finally {
+      setIsSubmittingHandover(false);
+    }
+  };
+
+  // Tra cứu siêu tốc bằng mã PIN / QR / Mã vận đơn
+  const handleQuickLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = quickLookupCode.trim();
+    if (!code) {
+      showToast('Vui lòng nhập mã PIN 6 số, mã QR hoặc mã vận đơn.');
+      return;
+    }
+
+    setIsLookingUp(true);
+    try {
+      const res = await api.lookupReceptionParcel(code);
+      if (res.success && res.data) {
+        const found = res.data;
+        if (res.can_checkout) {
+          handleOpenHandoverModal(found);
+          setQuickLookupCode('');
+        } else {
+          setActiveParcel(found);
+          setIsDetailModalOpen(true);
+          showToast(`Kiện hàng [${found.tracking_number}] hiện ở trạng thái: ${found.status === 'DELIVERED' ? 'Đã bàn giao' : found.status}.`);
+        }
+      } else {
+        showToast(res.message || `Không tìm thấy kiện hàng nào khớp với mã [${code}].`);
+      }
+    } catch (err: any) {
+      showToast(err.message || `Không tìm thấy kiện hàng nào khớp với mã [${code}].`);
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
   // Helper date format
   const formatDateTime = (dateStr?: string | null) => {
     if (!dateStr) return '—';
@@ -1196,6 +1309,51 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
             <div className="text-[11px] text-purple-600 font-semibold mt-0.5">Toàn bộ lịch sử hệ thống</div>
           </div>
         </div>
+      </div>
+
+      {/* 2.5 Quick Verification & Handover Bar (Tra cứu nhanh PIN 6 số / Quét mã QR) */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-sky-500/10 to-indigo-500/10 p-4 sm:p-5 rounded-2xl border border-emerald-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <KeyRound className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+              <span>Tra Cứu & Bàn Giao Siêu Tốc</span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                MÃ PIN / QR / VẬN ĐƠN
+              </span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Cư dân đọc mã PIN 6 số hoặc xuất trình mã QR để xác minh và nhận bưu phẩm ngay lập tức.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleQuickLookup} className="flex items-center gap-2 w-full md:w-auto">
+          <div className="relative flex-1 md:w-80">
+            <QrCode className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={quickLookupCode}
+              onChange={(e) => setQuickLookupCode(e.target.value)}
+              placeholder="Nhập mã PIN 6 số / quét QR / mã vận đơn..."
+              className="w-full pl-9 pr-3 py-2 text-xs font-mono font-semibold rounded-xl border border-emerald-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isLookingUp || !quickLookupCode.trim()}
+            className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 disabled:pointer-events-none rounded-xl transition shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            {isLookingUp ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            )}
+            <span>Xác minh & Bàn giao</span>
+          </button>
+        </form>
       </div>
 
       {/* 3. Filter & Search Bar (Đồng bộ chuẩn RFID Management) */}
@@ -1582,7 +1740,29 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
                       {/* Thao tác */}
                       <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {!isDelivered ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenHandoverModal(parcel)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                              title="Bàn giao bưu phẩm cho cư dân"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Bàn giao</span>
+                            </button>
+                          ) : (
+                            <span
+                              className="text-[11px] text-emerald-700 font-semibold px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 inline-flex items-center gap-1"
+                              title={`Bàn giao lúc: ${formatDateTime(parcel.collected_at)}`}
+                            >
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span className="truncate max-w-[90px]">
+                                {parcel.collected_by_name || 'Cư dân'}
+                              </span>
+                            </span>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => {
@@ -2108,16 +2288,59 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     <span className="text-neutral-800">{activeParcel.notes}</span>
                   </div>
                 )}
+
+                {activeParcel.status === 'DELIVERED' && (
+                  <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 col-span-2">
+                    <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs mb-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Thông tin bàn giao & nhận hàng:</span>
+                    </div>
+                    <div className="text-xs text-neutral-800 space-y-1">
+                      <div>
+                        <span className="text-slate-500">Thời gian bàn giao:</span>{' '}
+                        <strong>{formatDateTime(activeParcel.collected_at)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Người nhận thực tế:</span>{' '}
+                        <strong>{activeParcel.collected_by_name || activeParcel.recipient_name}</strong>
+                      </div>
+                      {activeParcel.checkout_staff && (
+                        <div>
+                          <span className="text-slate-500">Nhân viên bàn giao:</span>{' '}
+                          <span>{activeParcel.checkout_staff.full_name}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Footer cố định */}
-            <div className="p-4 sm:p-5 border-t border-slate-100 flex items-center justify-end shrink-0 bg-white">
+            <div className="p-4 sm:p-5 border-t border-slate-100 flex items-center justify-between shrink-0 bg-white">
               <button
                 type="button"
                 onClick={() => setIsDetailModalOpen(false)}
                 className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
               >
+                Đóng
+              </button>
+
+              {activeParcel.status !== 'DELIVERED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = activeParcel;
+                    setIsDetailModalOpen(false);
+                    handleOpenHandoverModal(target);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Bàn giao bưu phẩm</span>
+                </button>
+              )}
+            </div>
                 Đóng
               </button>
             </div>
@@ -2427,6 +2650,224 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                     <>
                       <CheckCircle2 className="w-4 h-4" />
                       <span>Lưu thay đổi</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: BÀN GIAO BƯU PHẨM CHO CƯ DÂN ================= */}
+      {isHandoverModalOpen && handoverParcel && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-neutral-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Header cố định */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider font-mono">
+                    BÀN GIAO &amp; CHECK-OUT BƯU PHẨM
+                  </span>
+                  <h3 className="text-lg font-black text-neutral-900 mt-0.5">
+                    Mã vận đơn: {handoverParcel.tracking_number}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isSubmittingHandover) {
+                    setIsHandoverModalOpen(false);
+                    setHandoverParcel(null);
+                  }
+                }}
+                className="p-2 rounded-xl text-slate-400 hover:text-neutral-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleConfirmHandover} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar">
+                {/* Thông báo lỗi nếu có */}
+                {handoverError && (
+                  <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                    <span>{handoverError}</span>
+                  </div>
+                )}
+
+                {/* Thông tin đối chiếu kiện hàng */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">
+                      Thông Tin Đối Chiếu
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <Truck className="w-3 h-3 text-emerald-600" />
+                      <span>{handoverParcel.courier_company}</span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Căn hộ nhận:</span>
+                      <strong className="text-sky-700 text-sm flex items-center gap-1">
+                        <Building className="w-3.5 h-3.5" />
+                        <span>{handoverParcel.apartment?.apartment_number || '—'}</span>
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Người đăng ký nhận:</span>
+                      <strong className="text-neutral-900 text-sm flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{handoverParcel.recipient_name}</span>
+                      </strong>
+                      <span className="text-slate-500 block text-[11px] mt-0.5">
+                        {handoverParcel.recipient_phone}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Vị trí lưu giữ:</span>
+                      <span className="text-slate-700 font-semibold flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        <span>
+                          {handoverParcel.stored_location_type === 'RECEPTION_DESK'
+                            ? 'Quầy lễ tân'
+                            : handoverParcel.stored_location_type === 'SMART_LOCKER'
+                            ? 'Tủ thông minh'
+                            : 'Bốt bảo vệ'}
+                        </span>
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">Mã PIN lấy hàng:</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 font-mono font-black text-amber-900 text-xs">
+                        <KeyRound className="w-3 h-3 text-amber-600" />
+                        <span>{handoverParcel.pickup_pin_code}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form bàn giao */}
+                <div className="space-y-3 pt-1">
+                  {/* Người nhận thực tế */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold text-slate-700">
+                        Người nhận thực tế <span className="text-rose-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setHandoverFormData((prev) => ({
+                            ...prev,
+                            collected_by_name: handoverParcel.recipient_name,
+                          }))
+                        }
+                        className="text-[11px] font-semibold text-sky-600 hover:text-sky-700 flex items-center gap-1 cursor-pointer"
+                      >
+                        <User className="w-3 h-3" />
+                        <span>Điền tên cư dân ({handoverParcel.recipient_name})</span>
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={handoverFormData.collected_by_name}
+                      onChange={(e) =>
+                        setHandoverFormData((prev) => ({
+                          ...prev,
+                          collected_by_name: e.target.value,
+                        }))
+                      }
+                      placeholder="VD: Nguyễn Văn A (hoặc người nhà nhận thay)"
+                      required
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs"
+                    />
+                  </div>
+
+                  {/* Mã PIN đối chiếu (Tùy chọn) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Mã PIN xác thực cư dân cung cấp{' '}
+                      <span className="text-slate-400 font-normal">(Tùy chọn đối chiếu)</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={10}
+                      value={handoverFormData.pin_code}
+                      onChange={(e) =>
+                        setHandoverFormData((prev) => ({
+                          ...prev,
+                          pin_code: e.target.value.replace(/\s+/g, ''),
+                        }))
+                      }
+                      placeholder={`VD: ${handoverParcel.pickup_pin_code}`}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Mã PIN giúp đối chiếu tính xác thực của cư dân khi lấy hàng tại quầy.
+                    </p>
+                  </div>
+
+                  {/* Ghi chú bàn giao */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Ghi chú bàn giao{' '}
+                      <span className="text-slate-400 font-normal">(Tùy chọn)</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={handoverFormData.notes}
+                      onChange={(e) =>
+                        setHandoverFormData((prev) => ({ ...prev, notes: e.target.value }))
+                      }
+                      placeholder="VD: Cư dân nhận trực tiếp, bao bì kiện hàng nguyên vẹn..."
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-neutral-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer cố định */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 flex items-center justify-between shrink-0 bg-white">
+                <button
+                  type="button"
+                  disabled={isSubmittingHandover}
+                  onClick={() => {
+                    setIsHandoverModalOpen(false);
+                    setHandoverParcel(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingHandover}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+                >
+                  {isSubmittingHandover ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang xử lý bàn giao...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Xác nhận bàn giao bưu phẩm</span>
                     </>
                   )}
                 </button>

@@ -122,14 +122,16 @@ class ReceptionParcelService
                 COUNT(*) as total_parcels,
                 SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') THEN 1 ELSE 0 END) as pending_parcels,
                 SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') AND received_at < ? THEN 1 ELSE 0 END) as overdue_parcels,
-                SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) as received_today
-            ", [$fiveDaysAgo, $todayStart])
+                SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) as received_today,
+                SUM(CASE WHEN status = 'DELIVERED' AND collected_at >= ? THEN 1 ELSE 0 END) as delivered_today
+            ", [$fiveDaysAgo, $todayStart, $todayStart])
             ->first();
 
         return [
             'pending_parcels' => (int) ($counts?->pending_parcels ?? 0),
             'overdue_parcels' => (int) ($counts?->overdue_parcels ?? 0),
             'received_today' => (int) ($counts?->received_today ?? 0),
+            'delivered_today' => (int) ($counts?->delivered_today ?? 0),
             'total_parcels' => (int) ($counts?->total_parcels ?? 0),
         ];
     }
@@ -639,6 +641,220 @@ class ReceptionParcelService
         }
 
         return $photoFile->storeAs('parcels', $safeFileName, 'public');
+    }
+
+    /**
+     * Danh sách role được phép thao tác nghiệp vụ bưu phẩm
+     */
+    protected const ALLOWED_STAFF_ROLES = [
+        'RECEPTIONIST',
+        'SECURITY_GUARD',
+        'BUILDING_MANAGER',
+        'MANAGER',
+        'ADMIN',
+        'SUPER_ADMIN',
+    ];
+
+    /**
+     * Kiểm tra quyền nhân viên lễ tân / bảo vệ / quản lý thực hiện nghiệp vụ bưu phẩm
+     */
+    public function assertStaffAuthorized(?object $user, string $action = 'checkout'): void
+    {
+        if (! $user) {
+            abort(401, 'Yêu cầu đăng nhập tài khoản nhân viên để thực hiện thao tác.');
+        }
+
+        // 1. Kiểm tra qua method hasRole nếu có trên User model
+        if (method_exists($user, 'hasRole')) {
+            foreach (self::ALLOWED_STAFF_ROLES as $role) {
+                if ($user->hasRole($role)) {
+                    return;
+                }
+            }
+        }
+
+        // 2. Kiểm tra trực tiếp bảng user_roles join roles
+        $userRoles = DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->where('user_roles.user_id', $user->id)
+            ->pluck('roles.role_code')
+            ->toArray();
+
+        foreach (self::ALLOWED_STAFF_ROLES as $role) {
+            if (in_array($role, $userRoles, true)) {
+                return;
+            }
+        }
+
+        // 3. Kiểm tra permission cụ thể qua RbacService
+        $permCode = match ($action) {
+            'checkout', 'handover' => 'PARCEL:CHECKOUT',
+            'receive', 'create' => 'PARCEL:RECEIVE',
+            'update' => 'PARCEL:UPDATE',
+            'delete' => 'PARCEL:DELETE',
+            default => 'PARCEL:VIEW',
+        };
+
+        if (RbacService::hasPermission($user, $permCode) || RbacService::hasPermission($user, 'RECEPTION:OPERATE')) {
+            return;
+        }
+
+        abort(403, 'Bạn không có quyền thực hiện nghiệp vụ bàn giao / check-out bưu phẩm.');
+    }
+
+    /**
+     * Bàn giao và Check-out bưu phẩm cho cư dân với Concurrency Protection (Row-Level Locking)
+     *
+     * @param  string  $id  ID bưu phẩm
+     * @param  array<string, mixed>  $data  Dữ liệu bàn giao (collected_by_name, pin_code, qr_code, notes, collected_signature_url)
+     * @param  User|object|null  $staffUser  Nhân viên thực hiện bàn giao
+     *
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException|ValidationException|Throwable
+     */
+    public function handoverParcel(string $id, array $data = [], ?object $staffUser = null): Parcel
+    {
+        if ($staffUser) {
+            $this->assertStaffAuthorized($staffUser, 'checkout');
+        }
+
+        $now = Carbon::now();
+        $updatedParcel = null;
+
+        // Bọc trong DB Transaction với Row-Level Locking (Pessimistic Lock) chống Race Condition
+        DB::transaction(function () use ($id, $data, $staffUser, $now, &$updatedParcel) {
+            /** @var Parcel|null $parcel */
+            $parcel = Parcel::where('id', $id)->lockForUpdate()->first();
+
+            if (! $parcel) {
+                abort(404, 'Không tìm thấy kiện hàng bưu phẩm trong hệ thống.');
+            }
+
+            // 1. Kiểm tra nếu bưu phẩm đã được bàn giao trước đó -> 409 Conflict
+            if ($parcel->status === 'DELIVERED') {
+                $collectedTime = $parcel->collected_at ? Carbon::parse($parcel->collected_at)->format('H:i d/m/Y') : 'trước đó';
+                $collector = $parcel->collected_by_name ? " cho {$parcel->collected_by_name}" : '';
+                abort(409, "Bưu phẩm [{$parcel->tracking_number}] đã được bàn giao{$collector} vào lúc {$collectedTime}.");
+            }
+
+            // 2. Kiểm tra trạng thái hiện tại có cho phép bàn giao hay không
+            if (! in_array($parcel->status, ['RECEIVED_AT_RECEPTION', 'RECEIVED'], true)) {
+                abort(409, "Kiện hàng đang ở trạng thái [{$parcel->status}], không đủ điều kiện bàn giao.");
+            }
+
+            // 3. Xác minh mã PIN nếu frontend có gửi mã đối chiếu
+            if (! empty($data['pin_code']) && trim($data['pin_code']) !== trim($parcel->pickup_pin_code)) {
+                throw ValidationException::withMessages([
+                    'pin_code' => ['Mã PIN nhận hàng không chính xác.'],
+                ]);
+            }
+
+            // 4. Xác minh mã QR nếu frontend có gửi mã đối chiếu
+            if (! empty($data['qr_code']) && trim($data['qr_code']) !== trim($parcel->pickup_qr_code)) {
+                throw ValidationException::withMessages([
+                    'qr_code' => ['Mã QR nhận hàng không chính xác.'],
+                ]);
+            }
+
+            // 5. Chuẩn bị dữ liệu cập nhật bàn giao
+            $collectedByName = trim((string) ($data['collected_by_name'] ?? ''));
+            if ($collectedByName === '') {
+                $collectedByName = $parcel->recipient_name;
+            }
+
+            $notes = trim((string) ($data['notes'] ?? ''));
+            $newNotes = $parcel->notes;
+            if ($notes !== '') {
+                $newNotes = trim($parcel->notes ? "{$parcel->notes} | Bàn giao: {$notes}" : "Bàn giao: {$notes}");
+            }
+
+            // 6. Ghi nhận thời gian Server và cập nhật trạng thái DELIVERED
+            $parcel->update([
+                'status' => 'DELIVERED',
+                'collected_at' => $now,
+                'collected_by_name' => $collectedByName,
+                'collected_signature_url' => $data['collected_signature_url'] ?? $parcel->collected_signature_url,
+                'checkout_staff_id' => $staffUser?->id,
+                'notes' => $newNotes,
+            ]);
+
+            $updatedParcel = $parcel;
+        });
+
+        // Eager-load quan hệ cần thiết
+        $updatedParcel->load([
+            'apartment:id,apartment_number,block_id',
+            'apartment.block:id,block_name,block_code',
+            'recipientUser:id,full_name,phone_number',
+            'receivedByStaff:id,full_name',
+            'checkoutStaff:id,full_name',
+        ]);
+
+        // Phát Realtime Event CHECKED_OUT tới kênh quoc-tin.parcels SAU COMMIT THÀNH CÔNG
+        try {
+            QuocTinRealtimeService::emit(
+                module: 'parcels',
+                entity: 'parcel',
+                action: 'CHECKED_OUT',
+                entityId: $updatedParcel->id,
+                extra: [
+                    'id' => $updatedParcel->id,
+                    'tracking_number' => $updatedParcel->tracking_number,
+                    'recipient_name' => $updatedParcel->recipient_name,
+                    'collected_by_name' => $updatedParcel->collected_by_name,
+                    'apartment_number' => $updatedParcel->apartment?->apartment_number,
+                    'courier_company' => $updatedParcel->courier_company,
+                    'status' => 'DELIVERED',
+                    'collected_at' => $now->toIso8601String(),
+                    'checkout_staff_id' => $staffUser?->id,
+                    'checkout_staff_name' => $staffUser?->full_name ?? $staffUser?->name ?? null,
+                ],
+                actorId: $staffUser?->id,
+                triggerCooldown: false // Bàn giao liên tục, KHÔNG kích hoạt cooldown 120s
+            );
+        } catch (Throwable $e) {
+            Log::warning('Lỗi broadcast realtime checkout parcel: '.$e->getMessage());
+        }
+
+        return $updatedParcel;
+    }
+
+    /**
+     * Tra cứu bưu phẩm nhanh bằng mã PIN, mã QR hoặc mã vận đơn để đối chiếu trước khi bàn giao
+     *
+     * @return array{parcel: Parcel, can_checkout: bool}|null
+     */
+    public function lookupParcel(string $code): ?array
+    {
+        $clean = trim($code);
+        if ($clean === '') {
+            return null;
+        }
+
+        $parcel = Parcel::query()
+            ->with([
+                'apartment:id,apartment_number,block_id',
+                'apartment.block:id,block_name,block_code',
+                'recipientUser:id,full_name,phone_number',
+                'receivedByStaff:id,full_name',
+                'checkoutStaff:id,full_name',
+            ])
+            ->where(function ($q) use ($clean) {
+                $q->where('pickup_pin_code', $clean)
+                    ->orWhere('pickup_qr_code', $clean)
+                    ->orWhere('tracking_number', $clean);
+            })
+            ->first();
+
+        if (! $parcel) {
+            return null;
+        }
+
+        $canCheckout = in_array($parcel->status, ['RECEIVED_AT_RECEPTION', 'RECEIVED'], true);
+
+        return [
+            'parcel' => $parcel,
+            'can_checkout' => $canCheckout,
+        ];
     }
 
     /**

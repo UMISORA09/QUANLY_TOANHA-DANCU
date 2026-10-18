@@ -1683,6 +1683,31 @@ class ApiService {
     return this.request<{ success: boolean; data: any[] }>(`/reception/parcels/apartments/search?${q.toString()}`);
   }
 
+  async checkoutReceptionParcel(
+    id: string,
+    data: {
+      collected_by_name?: string;
+      pin_code?: string;
+      qr_code?: string;
+      notes?: string;
+      collected_signature_url?: string;
+    } = {}
+  ): Promise<{ success: boolean; message: string; data: ParcelItem }> {
+    return this.request<{ success: boolean; message: string; data: ParcelItem }>(`/reception/parcels/${id}/check-out`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async lookupReceptionParcel(
+    code: string
+  ): Promise<{ success: boolean; data: ParcelItem | null; can_checkout?: boolean; message?: string }> {
+    const q = new URLSearchParams({ code });
+    return this.request<{ success: boolean; data: ParcelItem | null; can_checkout?: boolean; message?: string }>(
+      `/reception/parcels/lookup?${q.toString()}`
+    );
+  }
+
   // ================= WEB PUSH NOTIFICATIONS =================
   async registerPushSubscription(subscriptionData: {
     endpoint: string;
