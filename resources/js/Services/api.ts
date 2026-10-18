@@ -373,6 +373,10 @@ export interface ParcelItem {
     id: string;
     full_name: string;
   } | null;
+  checkout_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
 }
 
 export interface ParcelListResponse {
