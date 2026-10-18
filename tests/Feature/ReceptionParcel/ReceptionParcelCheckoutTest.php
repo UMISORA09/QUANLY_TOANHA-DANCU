@@ -92,11 +92,9 @@ class ReceptionParcelCheckoutTest extends TestCase
         }
 
         DB::table('user_roles')->insert([
-            'id' => (string) Str::uuid(),
             'user_id' => $user->id,
             'role_id' => $roleId,
-            'created_at' => now(),
-            'updated_at' => now(),
+            'assigned_at' => now(),
         ]);
 
         return $user;
