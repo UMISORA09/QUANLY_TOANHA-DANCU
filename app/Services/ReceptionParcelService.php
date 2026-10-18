@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class ReceptionParcelService
@@ -709,7 +710,7 @@ class ReceptionParcelService
      * @param  array<string, mixed>  $data  Dữ liệu bàn giao (collected_by_name, pin_code, qr_code, notes, collected_signature_url)
      * @param  User|object|null  $staffUser  Nhân viên thực hiện bàn giao
      *
-     * @throws \Symfony\Component\HttpKernel\Exception\HttpException|ValidationException|Throwable
+     * @throws HttpException|ValidationException|Throwable
      */
     public function handoverParcel(string $id, array $data = [], ?object $staffUser = null): Parcel
     {
@@ -718,10 +719,10 @@ class ReceptionParcelService
         }
 
         $now = Carbon::now();
-        $updatedParcel = null;
 
         // Bọc trong DB Transaction với Row-Level Locking (Pessimistic Lock) chống Race Condition
-        DB::transaction(function () use ($id, $data, $staffUser, $now, &$updatedParcel) {
+        /** @var Parcel $updatedParcel */
+        $updatedParcel = DB::transaction(function () use ($id, $data, $staffUser, $now): Parcel {
             /** @var Parcel|null $parcel */
             $parcel = Parcel::where('id', $id)->lockForUpdate()->first();
 
@@ -777,7 +778,7 @@ class ReceptionParcelService
                 'notes' => $newNotes,
             ]);
 
-            $updatedParcel = $parcel;
+            return $parcel;
         });
 
         // Eager-load quan hệ cần thiết

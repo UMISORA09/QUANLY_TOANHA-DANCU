@@ -2341,9 +2341,6 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
                 </button>
               )}
             </div>
-                Đóng
-              </button>
-            </div>
           </div>
         </div>,
         document.body
