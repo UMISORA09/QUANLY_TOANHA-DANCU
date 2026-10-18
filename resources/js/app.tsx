@@ -516,6 +516,8 @@ const App: React.FC = () => {
   const isReceptionistPath =
     currentPath === '/le-tan' ||
     currentPath.startsWith('/le-tan') ||
+    currentPath === '/reception' ||
+    currentPath.startsWith('/reception') ||
     currentPath === '/receptionist' ||
     currentPath.startsWith('/receptionist') ||
     isSecurityPath ||

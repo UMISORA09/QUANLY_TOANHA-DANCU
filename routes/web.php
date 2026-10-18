@@ -157,6 +157,14 @@ Route::get('/receptionist/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
+Route::get('/reception', function () {
+    return view('welcome');
+});
+
+Route::get('/reception/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/an-ninh', function () {
     return view('welcome');
 });
