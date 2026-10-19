@@ -34,6 +34,7 @@ import {
     Mail,
     BellRing,
     BarChart3,
+    Banknote,
     Cpu
 } from 'lucide-react';
 import {
@@ -45,6 +46,7 @@ import { InvoiceBatchGeneration } from './InvoiceBatchGeneration';
 import { PaymentHistoryManagement } from './PaymentHistoryManagement';
 import { RevenueAnalyticsDashboard } from './RevenueAnalyticsDashboard';
 import { FinancialReportExportModal } from './FinancialReportExportModal';
+import { PaymentCollectionPage } from './PaymentCollectionPage';
 
 interface BlockOption {
     id: string;
@@ -57,8 +59,9 @@ export interface InvoiceManagementProps {
 }
 
 export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigateTab }) => {
-    // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch, Dashboard Doanh thu và Sinh hóa đơn hàng loạt
-    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history' | 'analytics'>('list');
+    // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch, Thu tiền gạch nợ (CN8) và Sinh hóa đơn hàng loạt
+    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history' | 'analytics' | 'collect_payment'>('list');
+    const [selectedInvoiceForPaymentId, setSelectedInvoiceForPaymentId] = useState<string | undefined>(undefined);
 
     // Dữ liệu danh sách & KPI
     const [invoices, setInvoices] = useState<InvoiceModel[]>([]);
@@ -528,10 +531,13 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
         );
     }
 
-    if (viewMode === 'analytics') {
+    if (viewMode === 'analytics' || viewMode === 'collect_payment') {
         return (
             <div className="space-y-4">
-                <RevenueAnalyticsDashboard onBackToList={() => setViewMode('list')} />
+                <PaymentCollectionPage
+                    onBackToList={() => setViewMode('list')}
+                    initialInvoiceId={selectedInvoiceForPaymentId}
+                />
             </div>
         );
     }
@@ -604,12 +610,12 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
 
                     <button
                         type="button"
-                        onClick={() => onNavigateTab ? onNavigateTab('revenue_analytics') : setViewMode('analytics')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
-                        title="Xem biểu đồ phân tích doanh thu và thu hồi công nợ (Chức năng 12)"
+                        onClick={() => onNavigateTab ? onNavigateTab('thu_tien_gach_no') : setViewMode('collect_payment')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                        title="Quầy thu ngân BQL: Thu tiền mặt / POS / Chuyển khoản VietQR và gạch nợ tức thời (Chức năng 8)"
                     >
-                        <BarChart3 className="w-3.5 h-3.5 text-sky-600" />
-                        <span>Dashboard Doanh Thu</span>
+                        <Banknote className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Thu Tiền & Gạch Nợ (CN8)</span>
                     </button>
 
                     <button

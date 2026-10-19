@@ -46,7 +46,8 @@ import {
   UserPlus,
   Car,
   History,
-  CreditCard
+  CreditCard,
+  Banknote
 } from 'lucide-react';
 import { PageLoadingFallback } from '../Components/Common/PageLoadingFallback';
 import { ticketStatuses } from '../Components/TicketManagementPanel';
@@ -64,6 +65,7 @@ const ServicePricingManagement = lazy(() => import('./Admin/ServicePricingManage
 const MeterReadingManagement = lazy(() => import('./Admin/MeterReadingManagement').then(m => ({ default: m.MeterReadingManagement })));
 const InvoiceBatchGeneration = lazy(() => import('./Admin/InvoiceBatchGeneration').then(m => ({ default: m.InvoiceBatchGeneration })));
 const InvoiceManagement = lazy(() => import('./Admin/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
+const PaymentCollectionPage = lazy(() => import('./Admin/PaymentCollectionPage').then(m => ({ default: m.PaymentCollectionPage })));
 const PaymentHistoryManagement = lazy(() => import('./Admin/PaymentHistoryManagement').then(m => ({ default: m.PaymentHistoryManagement })));
 const RevenueAnalyticsDashboard = lazy(() => import('./Admin/RevenueAnalyticsDashboard').then(m => ({ default: m.RevenueAnalyticsDashboard })));
 const FinancialReportManagement = lazy(() => import('./Admin/FinancialReportManagement').then(m => ({ default: m.FinancialReportManagement })));
@@ -247,13 +249,18 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       return 'payment_history';
     }
     if (
+      path === '/quan-ly/thu-tien-gach-no' ||
+      path === '/admin/thu-tien-gach-no' ||
+      path === '/quan-ly/thu-tien' ||
+      path === '/admin/thu-tien' ||
       path === '/quan-ly/thong-ke-doanh-thu' ||
       path === '/admin/thong-ke-doanh-thu' ||
       path === '/quan-ly/revenue-analytics' ||
       path === '/admin/revenue-analytics' ||
+      path.startsWith('/quan-ly/thu-tien-gach-no') ||
       path.startsWith('/quan-ly/thong-ke-doanh-thu')
     ) {
-      return 'revenue_analytics';
+      return 'thu_tien_gach_no';
     }
     if (
       path === '/quan-ly/bao-cao-tai-chinh' ||
@@ -528,7 +535,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'invoices', label: 'Quản lý Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
         { id: 'invoice_generation', label: 'Sinh Hóa đơn Tự động', icon: Layers, badge: 'Auto' },
         { id: 'payment_history', label: 'Lịch sử Giao dịch', icon: History, badge: null },
-        { id: 'revenue_analytics', label: 'Dashboard Doanh thu', icon: TrendingUp, badge: 'Chart' },
+        { id: 'thu_tien_gach_no', label: 'Thu Tiền & Gạch Nợ (CN8)', icon: Banknote, badge: 'Gạch Nợ' },
         { id: 'financial_reports', label: 'Báo cáo Tài chính', icon: FileSpreadsheet, badge: 'Excel/PDF' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
         { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${unreadNotificationCount} mới` },
@@ -754,8 +761,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: 'invoice_generation' }, '', `${basePath}/sinh-hoa-don`);
     } else if (normalizedId === 'payment_history' || normalizedId === 'lich_su_giao_dich') {
       window.history.pushState({ tab: 'payment_history' }, '', `${basePath}/lich-su-giao-dich`);
-    } else if (normalizedId === 'revenue_analytics' || normalizedId === 'thong_ke_doanh_thu') {
-      window.history.pushState({ tab: 'revenue_analytics' }, '', `${basePath}/thong-ke-doanh-thu`);
+    } else if (normalizedId === 'thu_tien_gach_no' || normalizedId === 'payment_collection' || normalizedId === 'thu_tien' || normalizedId === 'revenue_analytics' || normalizedId === 'thong_ke_doanh_thu') {
+      window.history.pushState({ tab: 'thu_tien_gach_no' }, '', `${basePath}/thu-tien-gach-no`);
     } else if (normalizedId === 'financial_reports' || normalizedId === 'bao_cao_tai_chinh') {
       window.history.pushState({ tab: 'financial_reports' }, '', `${basePath}/bao-cao-tai-chinh`);
     } else if (normalizedId === 'overview') {
@@ -914,9 +921,9 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <PaymentHistoryManagement />
             </div>
-          ) : activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
+          ) : activeMenuId === 'thu_tien_gach_no' || activeMenuId === 'payment_collection' || activeMenuId === 'thu_tien' || activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <RevenueAnalyticsDashboard onBackToList={() => handleMenuClick('invoices')} />
+              <PaymentCollectionPage onBackToList={() => handleMenuClick('invoices')} />
             </div>
           ) : activeMenuId === 'financial_reports' || activeMenuId === 'bao_cao_tai_chinh' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
