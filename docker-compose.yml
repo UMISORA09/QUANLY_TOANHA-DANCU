@@ -13,6 +13,7 @@ services:
     volumes:
       - ./:/var/www/html
       - /var/www/html/node_modules
+      - /var/www/html/vendor
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
@@ -60,6 +61,7 @@ services:
     volumes:
       - ./:/var/www/html
       - /var/www/html/node_modules
+      - /var/www/html/vendor
     environment:
       - APP_ENV=local
       - APP_DEBUG=true

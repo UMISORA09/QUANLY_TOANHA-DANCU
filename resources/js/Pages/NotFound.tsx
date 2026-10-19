@@ -71,9 +71,6 @@ export const NotFound: React.FC<NotFoundProps> = ({ onBackHome }) => {
                 SMART CASSAVAS
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </span>
-              <span className="text-[10px] tracking-wider text-neutral-600 font-medium -mt-1 uppercase">
-                Building OS
-              </span>
             </div>
           </a>
         </div>
@@ -145,7 +142,7 @@ export const NotFound: React.FC<NotFoundProps> = ({ onBackHome }) => {
           <span>SMART CASSAVAS • Hệ sinh thái số tòa nhà thông minh</span>
         </div>
         <div>
-          <span>© {new Date().getFullYear()} Cassavas Building OS. Bảo lưu mọi quyền.</span>
+          <span>© {new Date().getFullYear()} Cassavas. Bảo lưu mọi quyền.</span>
         </div>
       </footer>
     </div>

@@ -2,6 +2,7 @@
 
 namespace App\Repositories\Eloquent;
 
+use App\Services\AmenityBookingPaymentService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +21,8 @@ class DatabaseResidentAmenityBookingRepository
             ->whereNull('residents.deleted_at')
             ->whereNull('apartments.deleted_at')
             ->whereNull('blocks.deleted_at')
-            ->whereDate('residents.stay_start_date', '<=', today())
-            ->where(fn (Builder $query) => $query->whereNull('residents.stay_end_date')->orWhereDate('residents.stay_end_date', '>=', today()))
+            ->where('residents.stay_start_date', '<=', today()->toDateString())
+            ->where(fn (Builder $query) => $query->whereNull('residents.stay_end_date')->orWhere('residents.stay_end_date', '>=', today()->toDateString()))
             ->select('apartments.id', 'apartments.apartment_number', 'apartments.block_id', 'blocks.block_name')
             ->orderBy('apartments.apartment_number')->get();
     }
@@ -55,7 +56,7 @@ class DatabaseResidentAmenityBookingRepository
 
     public function blackouts(string $amenityId, string $date, bool $lock = false): Collection
     {
-        $query = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->whereDate('blackout_date', $date);
+        $query = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->where('blackout_date', $date);
 
         return ($lock ? $query->lockForUpdate() : $query)->get();
     }
@@ -63,7 +64,9 @@ class DatabaseResidentAmenityBookingRepository
     public function holdingBookings(string $amenityId, string $date, bool $lock = false): Collection
     {
         $query = DB::table('amenity_bookings')->where('amenity_id', $amenityId)
-            ->whereDate('booking_date', $date)->whereNull('deleted_at')->whereIn('status', self::HOLDING_STATUSES);
+            ->where('booking_date', $date)->whereNull('deleted_at')->whereIn('status', self::HOLDING_STATUSES);
+
+        $query = AmenityBookingPaymentService::holdingQuery($query);
 
         return ($lock ? $query->lockForUpdate() : $query)->get();
     }

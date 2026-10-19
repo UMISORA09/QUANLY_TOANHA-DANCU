@@ -225,6 +225,7 @@ class ManagementDashboardController extends Controller
 
             // 5. THÔNG BÁO VẬN HÀNH (NOTIFICATIONS) TỪ DATABASE
             $notificationsRaw = DB::table('user_in_app_notifications')
+                ->whereNotIn('category', ['AMENITY', 'AMENITY_BOOKING'])
                 ->orderByDesc('created_at')
                 ->limit(5)
                 ->get();
@@ -259,6 +260,9 @@ class ManagementDashboardController extends Controller
                 'notifications' => $notifications,
             ];
         });
+
+        // Ticket details are served exclusively by the authenticated, building-scoped API.
+        unset($data['tickets']);
 
         return response()->json($data);
     }

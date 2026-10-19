@@ -48,27 +48,40 @@ class AuthController extends Controller
             'dev@smartcassavas.vn' => 'admin',
             'admin@cassavas.vn' => 'admin',
             'admin@smartcassavas.vn' => 'admin',
-            'quanly' => 'manager',
-            'quanly@cassavas.vn' => 'manager',
-            'quanly@smartcassavas.vn' => 'manager',
-            'letan' => 'receptionist',
-            'letan@cassavas.vn' => 'receptionist',
-            'letan@smartcassavas.vn' => 'receptionist',
+            'admin@demo.local' => 'admin',
+            'manager' => 'quanly',
+            'manager@demo.local' => 'quanly',
+            'quanly@cassavas.vn' => 'quanly',
+            'quanly@smartcassavas.vn' => 'quanly',
+            'receptionist' => 'letan',
+            'receptionist@demo.local' => 'letan',
+            'letan@cassavas.vn' => 'letan',
+            'letan@smartcassavas.vn' => 'letan',
             'baove' => 'security',
+            'baove@cassavas.vn' => 'security',
+            'baove@smartcassavas.vn' => 'security',
             'security@cassavas.vn' => 'security',
+            'ketoan' => 'accountant',
+            'ketoan@cassavas.vn' => 'accountant',
+            'ketoan@smartcassavas.vn' => 'accountant',
+            'accountant@cassavas.vn' => 'accountant',
             'cudan' => 'nguyenvanan',
             'cudan@smartcassavas.vn' => 'nguyenvanan',
             'cudan@cassavas.vn' => 'nguyenvanan',
-            'resident' => 'resident.owner',
-            'cudan@demo.local' => 'resident.owner',
+            'resident' => 'nguyenvanan',
+            'resident.owner' => 'nguyenvanan',
+            'cudan@demo.local' => 'nguyenvanan',
         ];
 
         $searchIdentifier = $aliasMap[$identifier] ?? $identifier;
 
         // Tìm user trong database theo username, email hoặc số điện thoại
         $user = User::with('roles:id,role_code')
-            ->where(function ($q) use ($searchIdentifier) {
-                $q->where('username', $searchIdentifier)
+            ->where(function ($q) use ($identifier, $searchIdentifier) {
+                $q->where('username', $identifier)
+                    ->orWhere('email', $identifier)
+                    ->orWhere('phone_number', $identifier)
+                    ->orWhere('username', $searchIdentifier)
                     ->orWhere('email', $searchIdentifier)
                     ->orWhere('phone_number', $searchIdentifier);
             })

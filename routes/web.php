@@ -1,11 +1,15 @@
 <?php
 
+use App\Http\Controllers\AccessCardController;
 use App\Http\Controllers\AccountProvisioningController;
+use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
+use App\Http\Controllers\DebtReminderController;
 use App\Http\Controllers\DevOpsApiController;
+use App\Http\Controllers\FinancialReportController;
 use App\Http\Controllers\FreshnessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InvoiceGenerationController;
@@ -15,14 +19,22 @@ use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PushNotificationController;
+use App\Http\Controllers\RealtimeStreamController;
+use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
+use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\ResidentTicketController;
+use App\Http\Controllers\ResidentVisitorController;
+use App\Http\Controllers\RevenueAnalyticsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
 use App\Http\Controllers\TemporaryRegistrationController;
+use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -170,23 +182,107 @@ Route::get('/security/{any}', function () {
 })->where('any', '.*');
 
 // API Management Dashboard
+Route::post('/api/v1/amenity-payments/sepay/webhook', [AmenityBookingPaymentController::class, 'webhook'])->middleware('throttle:120,1');
+Route::post('/api/v1/amenity-payments/sepay/ipn', [AmenityBookingPaymentController::class, 'ipn'])->middleware('throttle:120,1');
+
 Route::get('/api/management/overview', [ManagementDashboardController::class, 'overview']);
 
 // API Reception Portal
 Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
 
+// API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
+Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
+Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
+Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
+Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
+
+// API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Upload ảnh)
+Route::get('/api/v1/reception/parcels', [ReceptionParcelController::class, 'index']);
+Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'store']);
+Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
+Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
+Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
+Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
+
+Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('/', [TicketManagementController::class, 'index']);
+    Route::get('options', [TicketManagementController::class, 'options']);
+    Route::post('/', [TicketManagementController::class, 'store']);
+    Route::get('{id}', [TicketManagementController::class, 'show']);
+    Route::patch('{id}', [TicketManagementController::class, 'update']);
+    Route::delete('{id}', [TicketManagementController::class, 'destroy']);
+    Route::get('{id}/technicians', [TicketManagementController::class, 'technicians']);
+    Route::delete('{id}/attachments/{attachmentId}', [TicketManagementController::class, 'removeAttachment']);
+    Route::post('{id}/workflow', [TicketManagementController::class, 'workflow']);
+});
+Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/ticket-notifications/{id}/read', [TicketManagementController::class, 'readNotification'])->middleware('auth.bearer:strict');
+
+// API Web Push Notifications (Module #10: Tự động thông báo bưu phẩm)
+Route::post('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'subscribe']);
+Route::delete('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'unsubscribe']);
+Route::get('/api/v1/notifications/push-status', [PushNotificationController::class, 'status']);
+Route::get('/api/v1/notifications/vapid-public-key', [PushNotificationController::class, 'vapidPublicKey']);
+
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
-Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket'])->middleware('auth.bearer:strict');
+
 Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {
+    // Ticket & Incident Management (Báo cáo sự cố kỹ thuật - Cư dân)
+    Route::get('tickets', [ResidentTicketController::class, 'index']);
+    Route::get('tickets/categories', [ResidentTicketController::class, 'categories']);
+    Route::post('tickets', [ResidentTicketController::class, 'store'])->middleware('throttle:30,1');
+    Route::get('tickets/{id}', [ResidentTicketController::class, 'show']);
+    Route::patch('tickets/{id}', [ResidentTicketController::class, 'update']);
+    Route::post('tickets/{id}/cancel', [ResidentTicketController::class, 'cancel']);
+    Route::post('tickets/{id}/confirm', [ResidentTicketController::class, 'confirm']);
+    Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
+    Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
+    Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
+
+    // Tiện ích
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
     Route::get('amenities/{id}/availability', [ResidentAmenityBookingController::class, 'availability']);
     Route::post('amenity-bookings', [ResidentAmenityBookingController::class, 'store']);
+    Route::get('amenity-notifications', [ResidentAmenityBookingController::class, 'notifications']);
+    Route::post('amenity-notifications/{id}/read', [ResidentAmenityBookingController::class, 'readNotification']);
     Route::get('amenity-bookings', [ResidentAmenityBookingController::class, 'bookings']);
     Route::get('amenity-bookings/{id}', [ResidentAmenityBookingController::class, 'show']);
     Route::post('amenity-bookings/{id}/cancel', [ResidentAmenityBookingController::class, 'cancel']);
+    Route::get('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
+    Route::post('amenity-bookings/{id}/payment/checkout', [AmenityBookingPaymentController::class, 'checkout'])->middleware('throttle:10,1');
+    Route::post('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
+    Route::post('amenity-bookings/{id}/payment/report', [AmenityBookingPaymentController::class, 'report'])->middleware('throttle:10,1');
 });
-Route::post('/api/v1/resident/visitors', [ResidentPortalController::class, 'createVisitor']);
+
+// Alias routes cho /api/resident/tickets (theo chuẩn RESTful của đặc tả)
+Route::prefix('api/resident')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('tickets', [ResidentTicketController::class, 'index']);
+    Route::get('tickets/categories', [ResidentTicketController::class, 'categories']);
+    Route::post('tickets', [ResidentTicketController::class, 'store'])->middleware('throttle:30,1');
+    Route::get('tickets/{id}', [ResidentTicketController::class, 'show']);
+    Route::patch('tickets/{id}', [ResidentTicketController::class, 'update']);
+    Route::post('tickets/{id}/cancel', [ResidentTicketController::class, 'cancel']);
+    Route::post('tickets/{id}/confirm', [ResidentTicketController::class, 'confirm']);
+    Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
+    Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
+    Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
+});
+
+// API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)
+Route::get('/api/v1/resident/visitors', [ResidentVisitorController::class, 'index']);
+Route::post('/api/v1/resident/visitors', [ResidentVisitorController::class, 'store']);
+Route::get('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'show']);
+Route::put('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+Route::patch('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController::class, 'cancel']);
+Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
+
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
 
 // API Auth (Có Throttle Rate Limiting chống Brute-Force)
@@ -216,7 +312,7 @@ Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
 // ==========================================
 // HỆ THỐNG PHÂN QUYỀN VAI TRÒ RBAC (RESTful APIs)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:rbac'])->group(function () {
     // 1. Quản lý Người dùng (Users)
     Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
     Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
@@ -249,7 +345,7 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
 });
 
 // Aliases under api/v1/admin for RBAC
-Route::prefix('api/v1/admin')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1/admin')->middleware(['auth.bearer', 'cooldown:rbac'])->group(function () {
     Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
     Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
     Route::get('users/{id}', [UserController::class, 'show'])->middleware('permission:USER:VIEW');
@@ -274,7 +370,7 @@ Route::prefix('api/v1/admin')->middleware(['auth.bearer'])->group(function () {
 });
 
 // Explicit RBAC endpoints under api/v1/rbac
-Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1/rbac')->middleware(['auth.bearer', 'cooldown:rbac'])->group(function () {
     // 1. Quản lý Người dùng (Users)
     Route::get('users', [UserController::class, 'index'])->middleware('permission:USER:VIEW');
     Route::post('users', [UserController::class, 'store'])->middleware('permission:USER:CREATE');
@@ -309,7 +405,7 @@ Route::prefix('api/v1/rbac')->middleware(['auth.bearer'])->group(function () {
 // ==========================================
 // ĐĂNG KÝ VÀ DUYỆT TẠM TRÚ / TẠM VẮNG (ADMIN)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:temporary_registrations'])->group(function () {
     Route::get('residents/temporary-registrations', [TemporaryRegistrationController::class, 'index']);
     Route::post('residents/temporary-registrations', [TemporaryRegistrationController::class, 'store']);
     Route::get('residents/temporary-registrations/{id}', [TemporaryRegistrationController::class, 'show']);
@@ -341,17 +437,6 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
 // ==========================================
 // CẤP PHÁT TÀI KHOẢN TỰ ĐỘNG (ACCOUNT PROVISIONING)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
-    Route::get('account-provisioning', [AccountProvisioningController::class, 'index']);
-    Route::post('account-provisioning', [AccountProvisioningController::class, 'store']);
-    Route::post('account-provisioning/import', [AccountProvisioningController::class, 'import']);
-    Route::post('account-provisioning/batch-resend', [AccountProvisioningController::class, 'batchResend']);
-    Route::get('account-provisioning/{id}', [AccountProvisioningController::class, 'show']);
-    Route::put('account-provisioning/{id}', [AccountProvisioningController::class, 'update']);
-    Route::delete('account-provisioning/{id}', [AccountProvisioningController::class, 'destroy']);
-    Route::post('account-provisioning/{id}/resend-activation', [AccountProvisioningController::class, 'resendActivation']);
-    Route::post('account-provisioning/{id}/toggle-lock', [AccountProvisioningController::class, 'toggleLock']);
-});
 Route::get('/api/v1/account-provisioning/status', [AccountProvisioningController::class, 'checkStatus']);
 Route::post('/api/v1/account-provisioning/activate', [AccountProvisioningController::class, 'activate']);
 Route::get('/kich-hoat-tai-khoan', function () {
@@ -361,10 +446,22 @@ Route::get('/activate-account', function () {
     return view('welcome');
 });
 
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('account-provisioning', [AccountProvisioningController::class, 'index']);
+    Route::post('account-provisioning', [AccountProvisioningController::class, 'store']);
+    Route::post('account-provisioning/import', [AccountProvisioningController::class, 'import']);
+    Route::post('account-provisioning/batch-resend', [AccountProvisioningController::class, 'batchResend']);
+    Route::get('account-provisioning/{id}', [AccountProvisioningController::class, 'show'])->whereUuid('id');
+    Route::put('account-provisioning/{id}', [AccountProvisioningController::class, 'update'])->whereUuid('id');
+    Route::delete('account-provisioning/{id}', [AccountProvisioningController::class, 'destroy'])->whereUuid('id');
+    Route::post('account-provisioning/{id}/resend-activation', [AccountProvisioningController::class, 'resendActivation'])->whereUuid('id');
+    Route::post('account-provisioning/{id}/toggle-lock', [AccountProvisioningController::class, 'toggleLock'])->whereUuid('id');
+});
+
 // ==========================================
 // QUẢN LÝ CHỦ HỘ VÀ NHÂN KHẨU CĂN HỘ (ADMIN)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:residents'])->group(function () {
     Route::get('residents', [ResidentController::class, 'index']);
     Route::post('residents', [ResidentController::class, 'store']);
     Route::get('residents/{id}', [ResidentController::class, 'show']);
@@ -377,7 +474,7 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
 // ==========================================
 // ĐĂNG KÝ PHƯƠNG TIỆN & TỰ ĐỘNG ĐẨY PHÍ HÓA ĐƠN (VEHICLES)
 // ==========================================
-Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:vehicles'])->group(function () {
     Route::get('vehicles', [VehicleController::class, 'index']);
     Route::post('vehicles', [VehicleController::class, 'store']);
     Route::get('vehicles/pricing-config', [VehicleController::class, 'pricingConfig']);
@@ -461,6 +558,12 @@ Route::get('/quan-ly/chot-chi-so', function () {
 Route::get('/admin/meter-readings', function () {
     return view('welcome');
 });
+Route::get('/admin/chot-chi-so', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/meter-readings', function () {
+    return view('welcome');
+});
 
 // ==========================================
 // SINH HÓA ĐƠN TỰ ĐỘNG HÀNG LOẠT THEO THÁNG (CHỨC NĂNG 6 - XUANHOA)
@@ -476,6 +579,21 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     // ==========================================
     Route::get('invoices', [InvoiceManagementController::class, 'index']);
     Route::get('invoices/summary', [InvoiceManagementController::class, 'summary']);
+
+    // ==========================================
+    // XEM CHI TIẾT HÓA ĐƠN THÁNG HIỆN TẠI & SAO KÊ (CHỨC NĂNG 9 - XUANHOA)
+    // ==========================================
+    Route::get('invoices/current-month', [InvoiceManagementController::class, 'currentMonth']);
+    Route::get('invoices/{id}/statement', [InvoiceManagementController::class, 'statement']);
+
+    // ==========================================
+    // DASHBOARD THỐNG KÊ DOANH THU & CHART (CHỨC NĂNG 12 - XUANHOA)
+    // ==========================================
+    Route::get('invoices/analytics/dashboard', [RevenueAnalyticsController::class, 'dashboard']);
+    Route::get('invoices/analytics/monthly-trend', [RevenueAnalyticsController::class, 'monthlyTrend']);
+    Route::get('invoices/analytics/category-breakdown', [RevenueAnalyticsController::class, 'categoryBreakdown']);
+    Route::get('invoices/analytics/top-debtors', [RevenueAnalyticsController::class, 'topDebtors']);
+
     Route::get('invoices/{id}', [InvoiceManagementController::class, 'show']);
     Route::post('invoices/{id}/cancel', [InvoiceManagementController::class, 'cancel']);
     Route::post('invoices/bulk-cancel', [InvoiceManagementController::class, 'bulkCancel']);
@@ -486,6 +604,27 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::post('payments/collect', [PaymentController::class, 'collectPayment']);
     Route::get('payments', [PaymentController::class, 'listPayments']);
     Route::get('invoices/{id}/vietqr-payload', [PaymentController::class, 'getVietQrPayload']);
+
+    // ==========================================
+    // LỊCH SỬ GIAO DỊCH CÁC KỲ TRƯỚC (CHỨC NĂNG 10 - XUANHOA)
+    // ==========================================
+    Route::get('payments/summary', [PaymentController::class, 'summary']);
+    Route::get('payments/history', [PaymentController::class, 'listPayments']);
+    Route::get('payments/{id}/receipt', [PaymentController::class, 'receipt']);
+
+    // ==========================================
+    // LARAVEL QUEUE GỬI EMAIL NHẮC NỢ TỰ ĐỘNG (CHỨC NĂNG 11 - XUANHOA)
+    // ==========================================
+    Route::post('invoices/{id}/send-reminder', [DebtReminderController::class, 'sendSingle']);
+    Route::post('invoices/bulk-send-reminders', [DebtReminderController::class, 'sendBulk']);
+    Route::get('invoices/reminders/history', [DebtReminderController::class, 'logs']);
+
+    // ==========================================
+    // XUẤT BÁO CÁO TÀI CHÍNH VÀ CÔNG NỢ (CHỨC NĂNG 13 - XUANHOA)
+    // ==========================================
+    Route::get('reports/financial/preview', [FinancialReportController::class, 'preview']);
+    Route::get('reports/financial/export-excel', [FinancialReportController::class, 'exportExcel']);
+    Route::get('reports/financial/export-pdf', [FinancialReportController::class, 'exportPdf']);
 });
 
 Route::get('/quan-ly/sinh-hoa-don', function () {
@@ -537,6 +676,33 @@ Route::get('/admin/apartments', function () {
     return view('welcome');
 });
 
+// ==========================================
+// RFID ACCESS CARDS MODULE (Quản Lý Mã Thẻ RFID)
+// ==========================================
+Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:rfid_cards'])->group(function () {
+    Route::get('rfid-cards', [AccessCardController::class, 'index']);
+    Route::post('rfid-cards', [AccessCardController::class, 'store']);
+    Route::get('rfid-cards/meta/apartments', [AccessCardController::class, 'apartments']);
+    Route::get('rfid-cards/meta/residents', [AccessCardController::class, 'residents']);
+    Route::get('rfid-cards/{id}', [AccessCardController::class, 'show']);
+    Route::put('rfid-cards/{id}', [AccessCardController::class, 'update']);
+    Route::patch('rfid-cards/{id}', [AccessCardController::class, 'update']);
+    Route::delete('rfid-cards/{id}', [AccessCardController::class, 'destroy']);
+    Route::patch('rfid-cards/{id}/toggle-status', [AccessCardController::class, 'toggleStatus']);
+});
+Route::get('/quan-ly/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/admin/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/le-tan/rfid-cards', function () {
+    return view('welcome');
+});
+Route::get('/an-ninh/rfid-cards', function () {
+    return view('welcome');
+});
+
 // Meta endpoints
 Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);
 Route::get('/meta/blocks', [AmenityController::class, 'getBlocks']);
@@ -559,6 +725,10 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::delete('amenity-categories/{id}', [AmenityController::class, 'deleteCategory'])->middleware(['auth.bearer:strict', 'permission:AMENITY:DELETE']);
 
     // Tiện ích
+    Route::get('amenity-booking-notifications', [AmenityController::class, 'bookingNotifications'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::get('amenity-booking-worklist', [AmenityController::class, 'bookingWorklist'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::get('amenities/{id}/closure-impact', [AmenityController::class, 'closureImpact'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE|AMENITY:CONFIG_SLOT']);
+    Route::post('amenity-booking-notifications/{id}/read', [AmenityController::class, 'readBookingNotification'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::get('amenities', [AmenityController::class, 'getAmenities']);
     Route::post('amenities', [AmenityController::class, 'createAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CREATE']);
     Route::get('amenities/{id}', [AmenityController::class, 'getAmenity']);
@@ -568,6 +738,8 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::get('amenities/{id}/bookings', [AmenityController::class, 'getAmenityBookings'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::patch('amenities/{amenityId}/bookings/{bookingId}/status', [AmenityController::class, 'updateBookingStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::post('amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::post('amenities/{amenityId}/bookings/{bookingId}/payment/confirm', [AmenityBookingPaymentController::class, 'confirm'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::post('amenities/{amenityId}/bookings/{bookingId}/payment/reject', [AmenityBookingPaymentController::class, 'reject'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
 
     // Khung giờ hoạt động (Time Slots)
     Route::get('amenities/{amenityId}/time-slots', [AmenityController::class, 'getTimeSlots']);
@@ -588,7 +760,8 @@ Route::post('/api/v1/amenities/{id}/bookings', [ResidentAmenityBookingController
 Route::post('/api/v1/amenities/{amenityId}/bookings/{bookingId}/cancel', [ResidentAmenityBookingController::class, 'cancelAlias'])->middleware('auth.bearer:strict');
 
 // Phân hệ Quản trị CI/CD & DevOps Dashboard APIs
-Route::prefix('api/admin/cicd')->group(function () {
+Route::prefix('api/admin/cicd')->middleware(['auth.bearer:strict', 'permission:CICD:VIEW'])->group(function () {
+    Route::get('history', [CicdDashboardController::class, 'history']);
     Route::get('bundle', [CicdDashboardController::class, 'bundle']);
     Route::get('overview', [CicdDashboardController::class, 'overview']);
     Route::get('pipelines', [CicdDashboardController::class, 'pipelines']);
@@ -602,11 +775,11 @@ Route::prefix('api/admin/cicd')->group(function () {
     Route::get('security', [CicdDashboardController::class, 'security']);
     Route::get('activities', [CicdDashboardController::class, 'activities']);
     Route::get('freshness', [FreshnessController::class, 'index']);
-    Route::post('pipelines/run', [CicdDashboardController::class, 'runPipeline']);
-    Route::post('pipelines/{id}/retry', [CicdDashboardController::class, 'retryPipeline']);
-    Route::post('pipelines/{id}/cancel', [CicdDashboardController::class, 'cancelPipeline']);
-    Route::post('deploy', [CicdDashboardController::class, 'deploy']);
-    Route::post('rollback', [CicdDashboardController::class, 'rollback']);
+    Route::post('pipelines/run', [CicdDashboardController::class, 'runPipeline'])->middleware('permission:CICD:RUN');
+    Route::post('pipelines/{id}/retry', [CicdDashboardController::class, 'retryPipeline'])->middleware('permission:CICD:RUN');
+    Route::post('pipelines/{id}/cancel', [CicdDashboardController::class, 'cancelPipeline'])->middleware('permission:CICD:RUN');
+    Route::post('deploy', [CicdDashboardController::class, 'deploy'])->middleware('permission:CICD:DEPLOY');
+    Route::post('rollback', [CicdDashboardController::class, 'rollback'])->middleware('permission:CICD:ROLLBACK');
 });
 
 // DevOps & Public Status SPA Pages
@@ -655,6 +828,16 @@ Route::prefix('api/public')->group(function () {
     Route::get('status', [DevOpsApiController::class, 'publicStatus']);
     Route::get('incidents', [DevOpsApiController::class, 'publicIncidents']);
 });
+
+// ==========================================
+// REAL-TIME AUTO-SYNC APIS (QUỐC TÍN MODULES)
+// ==========================================
+Route::get('/api/realtime/stream', [RealtimeStreamController::class, 'stream']);
+Route::get('/api/v1/realtime/stream', [RealtimeStreamController::class, 'stream']);
+Route::get('/api/realtime/events', [RealtimeStreamController::class, 'events']);
+Route::get('/api/v1/realtime/events', [RealtimeStreamController::class, 'events']);
+Route::get('/api/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
+Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
 
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);
