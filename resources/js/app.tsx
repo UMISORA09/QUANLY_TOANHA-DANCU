@@ -370,7 +370,16 @@ const App: React.FC = () => {
     currentPath.startsWith('/quan-ly/lich-su-giao-dich') ||
     currentPath.startsWith('/quan-ly/payment-history');
 
+  const isPaymentCollectionPath =
+    currentPath === '/quan-ly/thu-tien-gach-no' ||
+    currentPath === '/quan-ly/payment-collection' ||
+    currentPath === '/admin/thu-tien-gach-no' ||
+    currentPath === '/admin/payment-collection' ||
+    currentPath.startsWith('/quan-ly/thu-tien-gach-no') ||
+    currentPath.startsWith('/quan-ly/payment-collection');
+
   const isRevenueAnalyticsPath =
+    isPaymentCollectionPath ||
     currentPath === '/quan-ly/thong-ke-doanh-thu' ||
     currentPath === '/quan-ly/revenue-analytics' ||
     currentPath === '/admin/thong-ke-doanh-thu' ||
@@ -448,7 +457,7 @@ const App: React.FC = () => {
       : isPaymentHistoryPath
       ? 'payment_history'
       : isRevenueAnalyticsPath
-      ? 'revenue_analytics'
+      ? 'thu_tien_gach_no'
       : isFinancialReportPath
       ? 'financial_reports'
       : isInvoicePath

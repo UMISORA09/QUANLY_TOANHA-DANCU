@@ -279,7 +279,7 @@ test('Ticket: chặn phân công thiếu người, giữ ghi chú khi lỗi và 
   await expect(page.getByRole('dialog', { name: 'TCK-QA-001', exact: true })).toContainText('Nội dung từ người phụ trách');
 });
 
-test('Ticket: tải lại ảnh lỗi và đóng ảnh phóng to bằng bàn phím', async ({ page }) => {
+test('Ticket: tải lại ảnh lỗi HTTP, ảnh hỏng và đóng ảnh phóng to bằng bàn phím', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'Admin QA', email: 'qa@example.test' }));
     localStorage.setItem('smart_cassavas_token', 'qa-mocked-token');
@@ -290,6 +290,7 @@ test('Ticket: tải lại ảnh lỗi và đóng ảnh phóng to bằng bàn ph�
     if (path.endsWith('/attachments/photo/content')) {
       attempts++;
       if (attempts === 1) return route.fulfill({ status: 503 });
+      if (attempts === 2) return route.fulfill({ contentType: 'image/png', body: 'QA corrupted image' });
       return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNy0AAAAASUVORK5CYII=', 'base64') });
     }
     const ticket = { id: 'qa-ticket', ticket_number: 'TCK-QA-001', title: 'Kiểm tra ảnh hiện trường', description: 'Ảnh sự cố QA.', status: 'NEW', priority: 'HIGH', created_at: '2026-10-16T08:00:00Z', actions: {}, attachments: [{ id: 'photo', file_name: 'anh-qa.png', file_url: '/api/v1/resident/tickets/qa-ticket/attachments/photo/content', file_type: 'IMAGE', is_resolution_proof: true }] };
@@ -301,13 +302,47 @@ test('Ticket: tải lại ảnh lỗi và đóng ảnh phóng to bằng bàn ph�
   await page.goto('/admin?tab=tickets');
   await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
   await page.getByRole('button', { name: 'Thử tải lại ảnh anh-qa.png', exact: true }).click();
+  await page.getByRole('button', { name: 'Thử tải lại ảnh anh-qa.png', exact: true }).click();
   await page.getByRole('button', { name: 'Xem ảnh anh-qa.png', exact: true }).click();
   const preview = page.getByRole('dialog', { name: 'Ảnh sự cố', exact: true });
   await expect(preview.getByRole('img')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'TCK-QA-001', exact: true })).toContainText('Kết quả xử lý');
-  expect(attempts).toBe(2);
+  expect(attempts).toBe(3);
+});
+
+test('MOCKED E2E: quản lý phải xác nhận trước khi bỏ ảnh đã lưu', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'Ticket QA' }));
+    localStorage.setItem('smart_cassavas_token', 'qa-mocked-token');
+  });
+  let deletes = 0;
+  const ticket = { id: 'qa-ticket', ticket_number: 'TCK-QA-PHOTO', title: 'Ảnh cần xác nhận', status: 'NEW', priority: 'HIGH', version: 4, created_at: '2026-10-19T08:00:00Z', actions: { edit: true }, attachments: [{ id: 'photo', file_name: 'anh-qa.png', file_url: '/api/v1/resident/tickets/qa-ticket/attachments/photo/content', file_type: 'IMAGE', is_resolution_proof: false }] };
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (route.request().method() === 'DELETE') {
+      deletes++;
+      expect(route.request().postDataJSON()).toEqual({ version: 4 });
+      return route.fulfill({ json: { ...ticket, attachments: [], version: 5 } });
+    }
+    if (path.endsWith('/content')) return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNy0AAAAASUVORK5CYII=', 'base64') });
+    if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
+    if (path.endsWith('/tickets/qa-ticket')) return route.fulfill({ json: ticket });
+    if (path.endsWith('/tickets')) return route.fulfill({ json: { data: [ticket], current_page: 1, last_page: 1, total: 1 } });
+    return route.fulfill({ json: { items: [], unread_count: 0, page: 1, total_pages: 1 } });
+  });
+  await page.goto('/admin?tab=tickets');
+  await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
+  await page.getByRole('button', { name: 'Bỏ ảnh anh-qa.png', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: 'Bỏ ảnh sự cố', exact: true });
+  await expect(confirm).toBeVisible(); expect(deletes).toBe(0);
+  await confirm.getByRole('button', { name: 'Đóng', exact: true }).click();
+  expect(deletes).toBe(0);
+  await page.getByRole('button', { name: 'Bỏ ảnh anh-qa.png', exact: true }).click();
+  await confirm.getByRole('button', { name: 'Xác nhận bỏ ảnh', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'TCK-QA-PHOTO', exact: true })).toContainText('Chưa có ảnh đính kèm.');
+  expect(deletes).toBe(1);
 });
 
 test('Thông báo đầu tiên tự làm mới danh sách sau khi trước đó chưa có thông báo', async ({ page }) => {
