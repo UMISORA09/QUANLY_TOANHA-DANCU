@@ -46,7 +46,12 @@ class ReceptionParcelService
         // 1. Lọc theo trạng thái (status)
         if (! empty($filters['status']) && $filters['status'] !== 'ALL') {
             if ($filters['status'] === 'PENDING') {
-                $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED']);
+                $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+                    ->where('received_at', '>', Carbon::now()->subDays(3));
+            } elseif ($filters['status'] === 'EXPIRING_SOON') {
+                $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+                    ->where('received_at', '<=', Carbon::now()->subDays(3))
+                    ->where('received_at', '>=', Carbon::now()->subDays(5));
             } elseif ($filters['status'] === 'OVERDUE') {
                 $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
                     ->where('received_at', '<', Carbon::now()->subDays(5));
@@ -60,9 +65,37 @@ class ReceptionParcelService
             $query->where('apartment_id', $filters['apartment_id']);
         }
 
-        // 3. Lọc theo đơn vị vận chuyển (courier_company)
+        // 3. Lọc theo đơn vị vận chuyển (courier_company - Hỗ trợ alias linh hoạt giữa nhãn hiển thị và mã DB)
         if (! empty($filters['courier_company']) && $filters['courier_company'] !== 'ALL') {
-            $query->where('courier_company', $filters['courier_company']);
+            $courierCompany = trim($filters['courier_company']);
+            $normalizedCourier = mb_strtoupper($courierCompany, 'UTF-8');
+
+            if (str_contains($normalizedCourier, 'KHÁC') || $normalizedCourier === 'OTHER') {
+                $standardKeywords = [
+                    'GHN', 'GIAO HÀNG NHANH',
+                    'GHTK', 'TIẾT KIỆM',
+                    'SHOPEE', 'SPX',
+                    'VIETTEL',
+                    'J&T', 'JT', 'JNT',
+                    'VNPOST', 'BƯU ĐIỆN', 'VNP',
+                    'GRAB',
+                    'NINJA',
+                    'BE',
+                ];
+                $query->where(function ($q) use ($standardKeywords) {
+                    foreach ($standardKeywords as $kw) {
+                        $q->where('courier_company', 'not like', "%{$kw}%");
+                    }
+                });
+            } else {
+                $aliases = $this->resolveCourierAliases($courierCompany);
+                $query->where(function ($q) use ($aliases) {
+                    $q->whereIn('courier_company', $aliases);
+                    foreach ($aliases as $alias) {
+                        $q->orWhere('courier_company', 'like', "%{$alias}%");
+                    }
+                });
+            }
         }
 
         // 4. Lọc theo khoảng ngày tiếp nhận (Sargable datetime range)
@@ -109,27 +142,78 @@ class ReceptionParcelService
     }
 
     /**
+     * Chuẩn hóa từ khóa đơn vị vận chuyển thành danh sách các alias thực tế trong DB
+     *
+     * @return string[]
+     */
+    public function resolveCourierAliases(string $courier): array
+    {
+        $normalized = mb_strtoupper(trim($courier), 'UTF-8');
+
+        if (str_contains($normalized, 'GHN') || str_contains($normalized, 'GIAO HÀNG NHANH')) {
+            return ['GHN', 'Giao Hàng Nhanh', 'Giao Hàng Nhanh (GHN)'];
+        }
+
+        if (str_contains($normalized, 'GHTK') || str_contains($normalized, 'TIẾT KIỆM')) {
+            return ['GHTK', 'Giao Hàng Tiết Kiệm', 'Giao Hàng Tiết Kiệm (GHTK)'];
+        }
+
+        if (str_contains($normalized, 'SHOPEE') || str_contains($normalized, 'SPX')) {
+            return ['Shopee Express', 'SPX', 'SPX Express', 'Shopee'];
+        }
+
+        if (str_contains($normalized, 'VIETTEL')) {
+            return ['ViettelPost', 'Viettel Post', 'Viettel Post (VTP)', 'Viettel', 'VTP'];
+        }
+
+        if (str_contains($normalized, 'J&T') || str_contains($normalized, 'JNT') || str_contains($normalized, 'JT')) {
+            return ['J&T', 'J&T Express', 'J&TExpress', 'JNT', 'JT'];
+        }
+
+        if (str_contains($normalized, 'VNPOST') || str_contains($normalized, 'BƯU ĐIỆN') || str_contains($normalized, 'VNP')) {
+            return ['VNPost', 'Bưu điện VNPost', 'VNP', 'VN Post'];
+        }
+
+        if (str_contains($normalized, 'GRAB')) {
+            return ['GrabExpress', 'Grab Express', 'Grab'];
+        }
+
+        if (str_contains($normalized, 'NINJA')) {
+            return ['Ninja Van', 'NinjaVan', 'Ninja'];
+        }
+
+        if (str_contains($normalized, 'BE')) {
+            return ['BeDelivery', 'Be Delivery', 'Be'];
+        }
+
+        return [$courier];
+    }
+
+    /**
      * Tính toán các chỉ số KPI bưu phẩm tại quầy Lễ tân
      *
-     * @return array{pending_parcels: int, overdue_parcels: int, received_today: int, total_parcels: int}
+     * @return array{pending_parcels: int, expiring_parcels: int, overdue_parcels: int, received_today: int, delivered_today: int, total_parcels: int}
      */
     public function calculateKpis(): array
     {
+        $threeDaysAgo = Carbon::now()->subDays(3);
         $fiveDaysAgo = Carbon::now()->subDays(5);
         $todayStart = Carbon::today();
 
         $counts = DB::table('parcels')
             ->selectRaw("
                 COUNT(*) as total_parcels,
-                SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') THEN 1 ELSE 0 END) as pending_parcels,
+                SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') AND received_at > ? THEN 1 ELSE 0 END) as pending_parcels,
+                SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') AND received_at <= ? AND received_at >= ? THEN 1 ELSE 0 END) as expiring_parcels,
                 SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') AND received_at < ? THEN 1 ELSE 0 END) as overdue_parcels,
                 SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) as received_today,
                 SUM(CASE WHEN status = 'DELIVERED' AND collected_at >= ? THEN 1 ELSE 0 END) as delivered_today
-            ", [$fiveDaysAgo, $todayStart, $todayStart])
+            ", [$threeDaysAgo, $threeDaysAgo, $fiveDaysAgo, $fiveDaysAgo, $todayStart, $todayStart])
             ->first();
 
         return [
             'pending_parcels' => (int) ($counts?->pending_parcels ?? 0),
+            'expiring_parcels' => (int) ($counts?->expiring_parcels ?? 0),
             'overdue_parcels' => (int) ($counts?->overdue_parcels ?? 0),
             'received_today' => (int) ($counts?->received_today ?? 0),
             'delivered_today' => (int) ($counts?->delivered_today ?? 0),
@@ -877,5 +961,119 @@ class ReceptionParcelService
             ])
             ->where('pickup_pin_code', $cleanPin)
             ->first();
+    }
+
+    /**
+     * Gửi thông báo nhắc nhở cư dân nhận kiện hàng gần hết hạn / quá hạn
+     *
+     * @return array{success: bool, message: string, parcel: Parcel, recipient_user_id: ?string}
+     */
+    public function remindResident(string $id, ?User $staffUser = null): array
+    {
+        $parcel = Parcel::with(['apartment', 'recipientUser'])->findOrFail($id);
+
+        // Xác định cư dân nhận (ưu tiên recipient_user_id, sau đó tìm theo recipient_phone)
+        $residentUser = $parcel->recipientUser;
+        if (! $residentUser && ! empty($parcel->recipient_phone)) {
+            $residentUser = User::where('phone_number', $parcel->recipient_phone)->first();
+        }
+
+        $diffDays = $parcel->received_at ? (int) $parcel->received_at->diffInDays(now()) : 0;
+        $diffDaysText = $diffDays > 0 ? "{$diffDays} ngày" : 'hôm nay';
+
+        // 1. Tạo In-App Notification cho Cư dân nếu tìm thấy User
+        $notifId = null;
+        if ($residentUser) {
+            $notifId = (string) Str::uuid();
+            $title = $diffDays > 5
+                ? "🚨 Quá hạn nhận: Kiện hàng [{$parcel->tracking_number}]"
+                : "⚠️ Gần hết hạn nhận: Kiện hàng [{$parcel->tracking_number}]";
+
+            $body = "Kiện hàng từ {$parcel->courier_company} đã lưu giữ {$diffDaysText} tại Quầy Lễ Tân (Mã PIN: {$parcel->pickup_pin_code}). Quý cư dân vui lòng đến quầy nhận sớm.";
+
+            DB::table('user_in_app_notifications')->insert([
+                'id' => $notifId,
+                'recipient_user_id' => $residentUser->id,
+                'title' => $title,
+                'body_message' => $body,
+                'deep_link_url' => "app://parcels/{$parcel->id}",
+                'category' => 'PARCEL',
+                'is_read' => 0,
+                'created_at' => Carbon::now(),
+            ]);
+        }
+
+        // 2. Tạo In-App Notification cho Lễ Tân (hoặc staff thực hiện) để lưu vết lịch sử nhắc nhở
+        if ($staffUser) {
+            DB::table('user_in_app_notifications')->insert([
+                'id' => (string) Str::uuid(),
+                'recipient_user_id' => $staffUser->id,
+                'title' => "Đã gửi nhắc nhở kiện hàng [{$parcel->tracking_number}]",
+                'body_message' => "Đã gửi thông báo nhắc nhận bưu phẩm tới cư dân {$parcel->recipient_name} ({$parcel->apartment?->apartment_number}).",
+                'deep_link_url' => "app://parcels/{$parcel->id}",
+                'category' => 'PARCEL',
+                'is_read' => 0,
+                'created_at' => Carbon::now(),
+            ]);
+        }
+
+        // 3. Bắn Realtime SSE Event qua QuocTinRealtimeService
+        try {
+            QuocTinRealtimeService::emit(
+                module: 'parcels',
+                entity: 'parcel',
+                action: 'REMINDED',
+                entityId: $parcel->id,
+                extra: [
+                    'tracking_number' => $parcel->tracking_number,
+                    'pickup_pin_code' => $parcel->pickup_pin_code,
+                    'recipient_name' => $parcel->recipient_name,
+                    'recipient_phone' => $parcel->recipient_phone,
+                    'apartment_number' => $parcel->apartment?->apartment_number,
+                    'diff_days' => $diffDays,
+                    'reminded_at' => Carbon::now()->toIso8601String(),
+                    'reminded_by' => $staffUser?->full_name ?? 'Hệ thống Lễ tân',
+                ],
+                actorId: $staffUser?->id,
+                triggerCooldown: false
+            );
+        } catch (Throwable $e) {
+            Log::warning("Không thể phát sự kiện Realtime nhắc nhở kiện hàng {$parcel->id}: {$e->getMessage()}");
+        }
+
+        return [
+            'success' => true,
+            'message' => "Đã gửi thông báo nhắc nhở đến cư dân {$parcel->recipient_name} (".($parcel->apartment?->apartment_number ?? 'Căn hộ').') thành công.',
+            'parcel' => $parcel,
+            'recipient_user_id' => $residentUser?->id,
+        ];
+    }
+
+    /**
+     * Gửi thông báo nhắc nhở đồng loạt tất cả các kiện hàng gần hết hạn (3-5 ngày)
+     *
+     * @return array{success: bool, count: int, message: string}
+     */
+    public function remindAllExpiring(?User $staffUser = null): array
+    {
+        $threeDaysAgo = Carbon::now()->subDays(3);
+        $fiveDaysAgo = Carbon::now()->subDays(5);
+
+        $expiringParcels = Parcel::whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+            ->where('received_at', '<=', $threeDaysAgo)
+            ->where('received_at', '>=', $fiveDaysAgo)
+            ->get();
+
+        $count = 0;
+        foreach ($expiringParcels as $parcel) {
+            $this->remindResident($parcel->id, $staffUser);
+            $count++;
+        }
+
+        return [
+            'success' => true,
+            'count' => $count,
+            'message' => "Đã gửi thông báo nhắc nhở cho {$count} kiện hàng gần hết hạn lưu trữ.",
+        ];
     }
 }

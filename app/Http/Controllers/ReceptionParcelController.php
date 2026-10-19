@@ -317,4 +317,40 @@ class ReceptionParcelController extends Controller
             'can_checkout' => $result['can_checkout'],
         ], 200);
     }
+
+    /**
+     * Gửi thông báo nhắc nhở cư dân nhận kiện hàng gần hết hạn / quá hạn
+     */
+    public function remind(Request $request, string $id): JsonResponse
+    {
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $result = $this->service->remindResident($id, $staffUser);
+
+            return response()->json($result, 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Không thể gửi thông báo nhắc nhở.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Gửi thông báo nhắc nhở đồng loạt tất cả kiện hàng gần hết hạn
+     */
+    public function remindExpiring(Request $request): JsonResponse
+    {
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $result = $this->service->remindAllExpiring($staffUser);
+
+            return response()->json($result, 200);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Không thể gửi thông báo nhắc nhở đồng loạt.',
+            ], 500);
+        }
+    }
 }

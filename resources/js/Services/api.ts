@@ -384,6 +384,7 @@ export interface ParcelListResponse {
   data: ParcelItem[];
   kpis: {
     pending_parcels: number;
+    expiring_parcels?: number;
     overdue_parcels: number;
     received_today: number;
     total_parcels: number;
@@ -1709,6 +1710,22 @@ class ApiService {
     const q = new URLSearchParams({ code });
     return this.request<{ success: boolean; data: ParcelItem | null; can_checkout?: boolean; message?: string }>(
       `/reception/parcels/lookup?${q.toString()}`
+    );
+  }
+
+  async remindReceptionParcel(
+    id: string
+  ): Promise<{ success: boolean; message: string; parcel?: ParcelItem; recipient_user_id?: string }> {
+    return this.request<{ success: boolean; message: string; parcel?: ParcelItem; recipient_user_id?: string }>(
+      `/reception/parcels/${id}/remind`,
+      { method: 'POST' }
+    );
+  }
+
+  async remindExpiringParcels(): Promise<{ success: boolean; count?: number; message: string }> {
+    return this.request<{ success: boolean; count?: number; message: string }>(
+      '/reception/parcels/remind-expiring',
+      { method: 'POST' }
     );
   }
 

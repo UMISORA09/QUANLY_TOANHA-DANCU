@@ -211,10 +211,12 @@ Route::post('/api/v1/reception/parcels/check-out', [ReceptionParcelController::c
 Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'store']);
 Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
 Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
+Route::post('/api/v1/reception/parcels/remind-expiring', [ReceptionParcelController::class, 'remindExpiring']);
 Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
 Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
 Route::post('/api/v1/reception/parcels/{id}/check-out', [ReceptionParcelController::class, 'checkOut']);
 Route::post('/api/v1/reception/parcels/{id}/handover', [ReceptionParcelController::class, 'checkOut']);
+Route::post('/api/v1/reception/parcels/{id}/remind', [ReceptionParcelController::class, 'remind']);
 Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
 
 Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
