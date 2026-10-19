@@ -1,0 +1,119 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Http\Middleware\AuthenticateBearer;
+use App\Models\User;
+use App\Services\Cicd\GitHubActionsService;
+use App\Services\Freshness\FreshnessService;
+use Closure;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Mockery;
+use Mockery\MockInterface;
+use Tests\TestCase;
+
+class CicdAuthorizationTest extends TestCase
+{
+    public function test_cicd_endpoints_require_authentication(): void
+    {
+        Http::fake();
+        $this->getJson('/api/admin/cicd/overview')->assertUnauthorized();
+        $this->getJson('/api/admin/cicd/history?page=1')->assertUnauthorized();
+        foreach (['pipelines/run', 'pipelines/123/retry', 'pipelines/123/cancel', 'deploy', 'rollback'] as $path) {
+            $this->postJson('/api/admin/cicd/'.$path)->assertUnauthorized();
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_forged_admin_header_does_not_grant_access(): void
+    {
+        Http::fake();
+        $this->authenticateWithPermissions([]);
+        $this->withHeader('X-User-Role', 'admin')->getJson('/api/admin/cicd/overview')->assertForbidden();
+        $this->getJson('/api/admin/cicd/history?page=1')->assertForbidden();
+        foreach (['pipelines/run', 'pipelines/123/retry', 'pipelines/123/cancel', 'deploy', 'rollback'] as $path) {
+            $this->postJson('/api/admin/cicd/'.$path)->assertForbidden();
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_view_permission_does_not_allow_pipeline_mutations(): void
+    {
+        Http::fake();
+        $this->authenticateWithPermissions(['CICD:VIEW']);
+        foreach (['pipelines/run', 'pipelines/123/retry', 'pipelines/123/cancel', 'deploy', 'rollback'] as $path) {
+            $this->postJson('/api/admin/cicd/'.$path)->assertForbidden();
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_authorized_admin_can_read_dashboard(): void
+    {
+        $this->authenticateWithPermissions([], true);
+        $this->mock(GitHubActionsService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getOverview')->once()->andReturn(['total_pipelines' => 5]);
+        });
+        $this->getJson('/api/admin/cicd/overview')->assertOk()->assertJsonPath('data.total_pipelines', 5);
+    }
+
+    public function test_jobs_failures_are_visible_and_step_logs_validate_input(): void
+    {
+        $this->authenticateWithPermissions(['CICD:VIEW']);
+        $this->mock(GitHubActionsService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getPipelineJobs')->once()->with('123')->andThrow(new ConnectionException('sensitive-url-test'));
+            $mock->shouldReceive('getLogs')->once()->with('123', '456', 0)->andReturn('Checkout log');
+        });
+        $this->getJson('/api/admin/cicd/pipelines/123/jobs')->assertStatus(502)->assertDontSee('sensitive-url-test');
+        $this->getJson('/api/admin/cicd/pipelines/123/logs?step_number=0')->assertUnprocessable();
+        $this->getJson('/api/admin/cicd/pipelines/123/logs?job_id=456&step_number=-1')->assertUnprocessable();
+        $this->getJson('/api/admin/cicd/pipelines/123/logs?job_id=456&step_number=0')->assertOk()->assertJsonPath('data.logs', 'Checkout log');
+    }
+
+    public function test_history_validates_pages_and_allows_viewers(): void
+    {
+        $this->authenticateWithPermissions(['CICD:VIEW']);
+        $this->mock(GitHubActionsService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getHistoryPage')->once()->with(2, false)->andReturn(['pipelines' => [], 'activities' => [], 'has_more' => false, 'total_pipelines' => 0]);
+        });
+        $this->getJson('/api/admin/cicd/history?page=0')->assertUnprocessable();
+        $this->getJson('/api/admin/cicd/history?page=2')->assertOk()->assertJsonPath('data.has_more', false);
+    }
+
+    public function test_history_reports_github_failures_without_exposing_credentials(): void
+    {
+        $this->authenticateWithPermissions(['CICD:VIEW']);
+        config(['services.github.token' => 'test-history-token']);
+        Http::fake(['*' => Http::response(['message' => 'Rate limited'], 403)]);
+        $this->getJson('/api/admin/cicd/history?page=1&force=1')
+            ->assertStatus(502)->assertSee('HTTP 403')->assertDontSee('test-history-token');
+        Http::fake(fn () => throw new ConnectionException('Timed out'));
+        $this->getJson('/api/admin/cicd/history?page=2&force=1')->assertStatus(504);
+    }
+
+    public function test_authorized_admin_can_read_freshness_alias(): void
+    {
+        $this->authenticateWithPermissions([], true);
+        $this->mock(FreshnessService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getOverview')->once()->with(false)->andReturn(['overall_state' => 'FRESH']);
+        });
+        $this->getJson('/api/admin/cicd/freshness')->assertOk()->assertJsonPath('overall_state', 'FRESH');
+    }
+
+    /** @param list<string> $permissions */
+    private function authenticateWithPermissions(array $permissions, bool $isAdmin = false): void
+    {
+        $user = Mockery::mock(User::class)->makePartial();
+        $user->shouldReceive('isSuperAdmin')->andReturn($isAdmin);
+        $user->shouldReceive('hasPermission')->andReturnUsing(fn (string $permission): bool => in_array($permission, $permissions, true));
+        $this->mock(AuthenticateBearer::class, function (MockInterface $mock) use ($user): void {
+            $mock->shouldReceive('handle')->andReturnUsing(function (Request $request, Closure $next, string $mode) use ($user) {
+                $this->assertSame('strict', $mode);
+                $request->setUserResolver(fn () => $user);
+
+                return $next($request);
+            });
+        });
+    }
+}

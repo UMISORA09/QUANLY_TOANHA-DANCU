@@ -76,6 +76,16 @@ return new class extends Migration
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 0;');
+            try {
+                $collation = config('database.connections.mysql.collation', 'utf8mb4_unicode_ci');
+                $charset = config('database.connections.mysql.charset', 'utf8mb4');
+                $dbName = DB::getDatabaseName();
+                if ($dbName) {
+                    DB::statement("ALTER DATABASE `{$dbName}` CHARACTER SET {$charset} COLLATE {$collation};");
+                }
+            } catch (Throwable) {
+                // Tiếp tục nếu không thể thay đổi collation của CSDL
+            }
         }
 
         foreach ($statements as $stmt) {

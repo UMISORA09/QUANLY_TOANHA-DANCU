@@ -1,11 +1,15 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../css/scss/custom.scss';
+import { TicketManagementPanel } from './Components/TicketManagementPanel';
+import { AppLayout } from './Components/Layout/AppLayout';
+import { Wrench } from 'lucide-react';
+import { api } from './Services/api';
 import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
 import PageLoadingFallback from './Components/Common/PageLoadingFallback';
+import Home from './Pages/Home';
 
-// Tách nhỏ bundle (Code Splitting) với React.lazy để tải trang ban đầu tức thì
-const Home = lazy(() => import('./Pages/Home'));
+// Tách nhỏ bundle (Code Splitting) với React.lazy cho các trang nội bộ
 const ManagementHome = lazy(() => import('./Pages/ManagementHome'));
 const ResidentHome = lazy(() => import('./Pages/ResidentHome'));
 const ReceptionHome = lazy(() => import('./Pages/ReceptionHome'));
@@ -66,6 +70,7 @@ const App: React.FC = () => {
       role === 'admin' ||
       role.toLowerCase() === 'admin' ||
       role.toLowerCase() === 'super_admin';
+    const isTechnician = ['technician', 'technical_staff'].includes(role.toLowerCase());
     const isManager =
       role === 'manager' ||
       role.toLowerCase() === 'manager' ||
@@ -81,6 +86,8 @@ const App: React.FC = () => {
 
     const normalizedRole = isAdmin || isDev
       ? 'admin'
+      : isTechnician
+      ? 'technician'
       : isManager
       ? 'manager'
       : isReceptionist
@@ -102,7 +109,7 @@ const App: React.FC = () => {
           : isReceptionist
           ? 'letan@cassavas.vn'
           : 'nguyenvanan@cassavas.vn'),
-      name:
+      name: api.getUser()?.full_name || (isTechnician ? 'Nhân viên kỹ thuật' :
         isDev
           ? 'Dev Team'
           : isAdmin
@@ -111,7 +118,7 @@ const App: React.FC = () => {
           ? 'Ban Quản Lý'
           : isReceptionist
           ? 'Lễ Tân Sảnh Chính'
-          : (residentType === 'TENANT' ? 'Khách Thuê Căn Hộ' : 'Nguyễn Văn An'),
+          : (residentType === 'TENANT' ? 'Khách Thuê Căn Hộ' : 'Nguyễn Văn An')),
     };
     try {
       localStorage.setItem('smartcassavas_session', JSON.stringify(session));
@@ -128,6 +135,8 @@ const App: React.FC = () => {
       setTimeout(() => {
         navigateTo('/admin');
       }, 350);
+    } else if (isTechnician) {
+      navigateTo('/quan-ly?tab=tickets');
     } else if (isManager) {
       setTimeout(() => {
         navigateTo('/quan-ly');
@@ -149,9 +158,13 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     try {
+      api.logout();
       localStorage.removeItem('smartcassavas_session');
       sessionStorage.removeItem('smartcassavas_active_admin_tab');
       localStorage.removeItem('smartcassavas_active_admin_tab');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      sessionStorage.clear();
     } catch {
       // ignore
     }
@@ -251,9 +264,16 @@ const App: React.FC = () => {
       isResidentAdminPath ||
       isTemporaryRegistrationAdminPath);
 
+  if (currentUser?.role === 'technician' && currentPath !== '/login' && !currentPath.startsWith('/home')) {
+    return <AppLayout role="manager" userRole="manager" userName={currentUser.name} userEmail={currentUser.email} activeItemId="tickets" customItems={[{ id: 'tickets', label: 'Công việc được giao', icon: Wrench }]} onItemClick={() => navigateTo('/quan-ly?tab=tickets')} onLogout={handleLogout} onNavigateHome={() => navigateTo('/home?landing=true')}><TicketManagementPanel /></AppLayout>;
+  }
   if (isUnifiedAdminDevPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     // Bảo vệ quyền: Nếu người dùng đã đăng nhập vai trò khác không phải Admin/Dev, chuyển về đúng cổng của họ
-    if (currentUser && currentUser.role !== 'admin' && !currentUser.isDev) {
+    if (currentUser.role !== 'admin' && !currentUser.isDev) {
       if (currentUser.role === 'manager') {
         navigateTo('/quan-ly');
         return null;
@@ -326,6 +346,63 @@ const App: React.FC = () => {
     currentPath.startsWith('/quan-ly/chot-chi-so') ||
     currentPath.startsWith('/admin/meter-readings');
 
+  const isInvoicePath =
+    currentPath === '/quan-ly/hoa-don' ||
+    currentPath === '/quan-ly/invoices' ||
+    currentPath === '/admin/hoa-don' ||
+    currentPath === '/admin/invoices' ||
+    currentPath.startsWith('/quan-ly/hoa-don') ||
+    currentPath.startsWith('/quan-ly/invoices');
+
+  const isInvoiceGenerationPath =
+    currentPath === '/quan-ly/sinh-hoa-don' ||
+    currentPath === '/quan-ly/invoice-generation' ||
+    currentPath === '/admin/sinh-hoa-don' ||
+    currentPath === '/admin/invoice-generation' ||
+    currentPath.startsWith('/quan-ly/sinh-hoa-don') ||
+    currentPath.startsWith('/quan-ly/invoice-generation');
+
+  const isPaymentHistoryPath =
+    currentPath === '/quan-ly/lich-su-giao-dich' ||
+    currentPath === '/quan-ly/payment-history' ||
+    currentPath === '/admin/lich-su-giao-dich' ||
+    currentPath === '/admin/payment-history' ||
+    currentPath.startsWith('/quan-ly/lich-su-giao-dich') ||
+    currentPath.startsWith('/quan-ly/payment-history');
+
+  const isPaymentCollectionPath =
+    currentPath === '/quan-ly/thu-tien-gach-no' ||
+    currentPath === '/quan-ly/payment-collection' ||
+    currentPath === '/admin/thu-tien-gach-no' ||
+    currentPath === '/admin/payment-collection' ||
+    currentPath.startsWith('/quan-ly/thu-tien-gach-no') ||
+    currentPath.startsWith('/quan-ly/payment-collection');
+
+  const isRevenueAnalyticsPath =
+    isPaymentCollectionPath ||
+    currentPath === '/quan-ly/thong-ke-doanh-thu' ||
+    currentPath === '/quan-ly/revenue-analytics' ||
+    currentPath === '/admin/thong-ke-doanh-thu' ||
+    currentPath === '/admin/revenue-analytics' ||
+    currentPath.startsWith('/quan-ly/thong-ke-doanh-thu') ||
+    currentPath.startsWith('/quan-ly/revenue-analytics');
+
+  const isFinancialReportPath =
+    currentPath === '/quan-ly/bao-cao-tai-chinh' ||
+    currentPath === '/quan-ly/financial-reports' ||
+    currentPath === '/admin/bao-cao-tai-chinh' ||
+    currentPath === '/admin/financial-reports' ||
+    currentPath.startsWith('/quan-ly/bao-cao-tai-chinh') ||
+    currentPath.startsWith('/quan-ly/financial-reports');
+
+  const isRfidPath =
+    currentPath === '/quan-ly/rfid-cards' ||
+    currentPath === '/quan-ly/rfid' ||
+    currentPath.startsWith('/quan-ly/rfid') ||
+    currentPath === '/admin/rfid-cards' ||
+    currentPath === '/admin/rfid' ||
+    currentPath.startsWith('/admin/rfid');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
@@ -336,11 +413,21 @@ const App: React.FC = () => {
     isAccountProvisioningPath ||
     isVehiclePath ||
     isPricingPath ||
-    isMeterReadingPath;
+    isMeterReadingPath ||
+    isInvoicePath ||
+    isInvoiceGenerationPath ||
+    isPaymentHistoryPath ||
+    isRevenueAnalyticsPath ||
+    isFinancialReportPath ||
+    isRfidPath;
 
   if (isManagerPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
-    if (currentUser && currentUser.role !== 'manager' && currentUser.role !== 'admin') {
+    if (currentUser.role !== 'manager' && currentUser.role !== 'admin') {
       if (currentUser.role === 'receptionist') {
         navigateTo('/le-tan');
         return null;
@@ -361,8 +448,20 @@ const App: React.FC = () => {
       ? 'pricing_configs'
       : isMeterReadingPath
       ? 'meter_readings'
+      : isRfidPath
+      ? 'rfid_cards'
       : isAccountProvisioningPath
       ? 'account_provisioning'
+      : isInvoiceGenerationPath
+      ? 'invoice_generation'
+      : isPaymentHistoryPath
+      ? 'payment_history'
+      : isRevenueAnalyticsPath
+      ? 'thu_tien_gach_no'
+      : isFinancialReportPath
+      ? 'financial_reports'
+      : isInvoicePath
+      ? 'invoices'
       : (managerUrlTab || undefined);
 
     return (
@@ -378,25 +477,24 @@ const App: React.FC = () => {
   }
 
   // 3. Phân hệ Cổng Cư Dân (Resident Portal)
-  const isExplicitLanding = window.location.search.includes('landing=true');
-  const isResidentSession =
-    currentUser?.role === 'resident' || currentUser?.role?.toLowerCase().includes('resident');
-
   const isResidentPath =
     currentPath === '/cu-dan' ||
     currentPath.startsWith('/cu-dan') ||
     currentPath === '/resident' ||
     currentPath.startsWith('/resident') ||
-    currentPath === '/resident-portal' ||
-    (isResidentSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
+    currentPath === '/resident-portal';
 
   if (isResidentPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     const isUserAdmin = currentUser?.role === 'admin';
     const effectiveRole = isUserAdmin ? 'admin' : 'resident';
     return (
       <ResidentHome
         onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home?landing=true')}
+        onNavigateHome={() => navigateTo('/home')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
         residentType={currentUser?.resident_type}
@@ -407,11 +505,6 @@ const App: React.FC = () => {
   }
 
   // 4. Phân hệ Cổng Lễ Tân & Bảo Vệ (Reception Portal)
-  const isReceptionistSession =
-    currentUser?.role === 'receptionist' ||
-    currentUser?.role?.toLowerCase().includes('receptionist') ||
-    currentUser?.role?.toLowerCase().includes('letan');
-
   const isSecurityPath =
     currentPath === '/an-ninh' ||
     currentPath.startsWith('/an-ninh') ||
@@ -435,10 +528,13 @@ const App: React.FC = () => {
     currentPath === '/receptionist' ||
     currentPath.startsWith('/receptionist') ||
     isSecurityPath ||
-    isReceptionistVehiclePath ||
-    (isReceptionistSession && (currentPath === '/' || currentPath === '' || currentPath === '/home') && !isExplicitLanding);
+    isReceptionistVehiclePath;
 
   if (isReceptionistPath) {
+    if (!currentUser) {
+      navigateTo('/login');
+      return null;
+    }
     const isUserAdmin = currentUser?.role === 'admin';
     const effectiveRole = isUserAdmin ? 'admin' : (isSecurityPath ? 'security' : 'receptionist');
     const receptionUrlTab = new URLSearchParams(window.location.search).get('tab');
@@ -448,7 +544,7 @@ const App: React.FC = () => {
     return (
       <ReceptionHome
         onLogout={handleLogout}
-        onNavigateHome={() => navigateTo('/home?landing=true')}
+        onNavigateHome={() => navigateTo('/home')}
         onNavigateAdmin={() => navigateTo('/admin')}
         userRole={effectiveRole}
         userName={currentUser?.name || (isUserAdmin ? 'Admin Cassavas' : (isSecurityPath ? 'Đội Trực An Ninh' : 'Lễ Tân Sảnh Chính'))}
