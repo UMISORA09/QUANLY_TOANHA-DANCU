@@ -58,14 +58,24 @@ export function CustomSelect<T extends string | number | null = string>({
         const menu = menuRef.current;
         if (!isOpen || !overlay || !menu) return;
         // The top layer escapes scroll clipping, including inside a modal dialog.
-        menu.showPopover();
+        if (typeof menu.showPopover === 'function') {
+            try {
+                menu.showPopover();
+            } catch {
+                // Keep the regular absolute menu as a fallback when Popover API is unavailable.
+                menu.style.position = 'absolute';
+            }
+        }
         const position = () => {
             const trigger = containerRef.current?.querySelector('button')?.getBoundingClientRect();
             if (!trigger) return;
             const below = Math.max(0, window.innerHeight - trigger.bottom - 14);
             const above = Math.max(0, trigger.top - 14);
-            const upwards = below < Math.min(menu.scrollHeight, 384) && above > below;
-            const height = Math.min(384, upwards ? above : below);
+            const maxVisibleOptions = 6;
+            const optionHeight = 40;
+            const maxMenuHeight = maxVisibleOptions * optionHeight;
+            const upwards = below < Math.min(menu.scrollHeight, maxMenuHeight) && above > below;
+            const height = Math.min(maxMenuHeight, upwards ? above : below);
             const width = Math.min(Math.max(trigger.width, 200), window.innerWidth - 16);
             Object.assign(menu.style, {
                 width: `${width}px`, maxHeight: `${height}px`,
@@ -85,7 +95,8 @@ export function CustomSelect<T extends string | number | null = string>({
     // Đóng dropdown khi click ra ngoài
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (!containerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
                 setIsOpen(false);
             }
         };
@@ -120,11 +131,14 @@ export function CustomSelect<T extends string | number | null = string>({
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
             if (!isOpen) { setIsOpen(true); requestAnimationFrame(() => containerRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)')?.focus()); return; }
-            const buttons = Array.from(containerRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') || []);
+            const buttons = Array.from((menuRef.current || containerRef.current)?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') || []);
             const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
             const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length;
             buttons[next]?.focus();
-        }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false); }}>
+        }} onBlur={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget) || menuRef.current?.contains(event.relatedTarget as Node)) return;
+            setIsOpen(false);
+        }}>
             {label && (
                 <label htmlFor={selectId} className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                     {label} {required && <span aria-hidden="true" className="text-rose-500">*</span>}
@@ -181,11 +195,11 @@ export function CustomSelect<T extends string | number | null = string>({
                     popover={overlay ? 'manual' : undefined}
                     style={overlay ? { position: 'fixed', inset: 'auto', margin: 0 } : undefined}
                     role="listbox"
-                    className={`absolute top-full z-50 mt-1.5 w-full min-w-[200px] bg-white border border-slate-200/90 rounded-xl shadow-xl py-1 max-h-96 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150 ${
+                    className={`absolute top-full z-50 mt-1.5 w-full min-w-[200px] bg-white border border-slate-200/90 rounded-xl shadow-xl py-1 max-h-96 overflow-y-auto ${
                         align === 'right' ? 'right-0' : 'left-0'
                     } ${menuClassName}`}
                 >
-                    {options.map((option, idx) => {
+                    {options.length ? options.map((option, idx) => {
                         const isSelected = option.value === value;
                         return (
                             <button
@@ -231,7 +245,11 @@ export function CustomSelect<T extends string | number | null = string>({
                                 )}
                             </button>
                         );
-                    })}
+                    }) : (
+                        <div role="status" className="px-3 py-2 text-xs text-slate-500">
+                            Chưa có dữ liệu
+                        </div>
+                    )}
                 </div>
             )}
         </div>
