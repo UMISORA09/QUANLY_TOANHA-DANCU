@@ -1628,6 +1628,23 @@ class ApiService {
     return this.request<ParcelListResponse>(`/reception/parcels?${q.toString()}`, options);
   }
 
+  async getParcels(
+    params: {
+      search?: string;
+      status?: string;
+      apartment_id?: string;
+      courier_company?: string;
+      from_date?: string;
+      to_date?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ParcelListResponse> {
+    return this.getReceptionParcels(params, options);
+  }
+
   async receiveParcel(formData: FormData): Promise<{ success: boolean; message: string; data: ParcelItem }> {
     return this.request<{ success: boolean; message: string; data: ParcelItem }>('/reception/parcels', {
       method: 'POST',
@@ -2140,6 +2157,7 @@ class ApiService {
   async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
   async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
   async getTicketTechnicians(id: string) { return this.request<{ id: string; full_name: string }[]>(`/admin/tickets/${id}/technicians`); }
+  async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
   async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
   async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }

@@ -7,11 +7,17 @@ let supabaseInstance: SupabaseClient | null = null;
 
 /**
  * Returns the singleton Supabase client instance.
+ *
+ * Lazy-init để tránh crash toàn bộ bundle khi chưa cấu hình
+ * VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. Backend ticket hiện tại
+ * vẫn là nguồn duy nhất cho ảnh sự cố (local|s3 qua API riêng tư),
+ * Supabase chỉ là scaffolding cho giai đoạn sau.
  */
-export function getSupabase(): SupabaseClient {
+export function getSupabase(): SupabaseClient | null {
   if (!supabaseInstance) {
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.warn('Supabase credentials (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) are not configured.');
+      console.warn('Supabase credentials (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) are not configured. Supabase storage is disabled.');
+      return null;
     }
     supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -23,7 +29,11 @@ export function getSupabase(): SupabaseClient {
   return supabaseInstance;
 }
 
-export const supabase = getSupabase();
+export function isSupabaseConfigured(): boolean {
+  return Boolean(supabaseUrl && supabaseAnonKey);
+}
+
+export const supabase: SupabaseClient | null = supabaseUrl && supabaseAnonKey ? getSupabase() : null;
 
 /**
  * Uploads a file to a designated Supabase Storage bucket.
@@ -39,6 +49,9 @@ export async function uploadToStorage(
   options?: { contentType?: string; upsert?: boolean }
 ): Promise<{ path: string; publicUrl: string }> {
   const client = getSupabase();
+  if (!client) {
+    throw new Error('Supabase storage is not configured (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).');
+  }
   const { data, error } = await client.storage.from(bucket).upload(path, file, {
     contentType: options?.contentType || (file instanceof File ? file.type : undefined),
     upsert: options?.upsert ?? false,
@@ -63,5 +76,8 @@ export function getStoragePublicUrl(
   path: string
 ): string {
   const client = getSupabase();
+  if (!client) {
+    throw new Error('Supabase storage is not configured (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).');
+  }
   return client.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }

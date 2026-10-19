@@ -213,6 +213,7 @@ Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(f
     Route::patch('{id}', [TicketManagementController::class, 'update']);
     Route::delete('{id}', [TicketManagementController::class, 'destroy']);
     Route::get('{id}/technicians', [TicketManagementController::class, 'technicians']);
+    Route::delete('{id}/attachments/{attachmentId}', [TicketManagementController::class, 'removeAttachment']);
     Route::post('{id}/workflow', [TicketManagementController::class, 'workflow']);
 });
 Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
