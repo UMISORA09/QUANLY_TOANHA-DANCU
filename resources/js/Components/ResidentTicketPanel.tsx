@@ -973,7 +973,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => setPreviewImage(url)}
-                            className="p-1.5 rounded-lg bg-white/90 text-neutral-800 hover:bg-white text-xs"
+                            className="min-h-11 min-w-11 p-1.5 rounded-lg bg-white/90 text-neutral-800 hover:bg-white text-xs"
                             aria-label={`Xem ảnh đã chọn ${idx + 1}`} title="Xem ảnh lớn"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -981,7 +981,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => removeFile(idx)}
-                            className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-xs"
+                            className="min-h-11 min-w-11 p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-xs"
                             aria-label={`Bỏ ảnh đã chọn ${idx + 1}`} title="Xóa ảnh này"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
