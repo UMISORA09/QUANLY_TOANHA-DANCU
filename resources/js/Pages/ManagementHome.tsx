@@ -919,7 +919,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'payment_history' || activeMenuId === 'lich_su_giao_dich' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <PaymentHistoryManagement />
+              <PaymentHistoryManagement
+                onNavigateTab={(tab) => handleMenuClick(tab)}
+                onBackToList={() => handleMenuClick('invoices')}
+              />
             </div>
           ) : activeMenuId === 'thu_tien_gach_no' || activeMenuId === 'payment_collection' || activeMenuId === 'thu_tien' || activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">

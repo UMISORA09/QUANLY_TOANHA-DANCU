@@ -514,24 +514,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
 
     if (viewMode === 'history') {
         return (
-            <div className="space-y-4">
-                <div className="p-4 bg-white border border-slate-200/80 rounded-2xl flex items-center justify-between shadow-xs">
-                    <button
-                        type="button"
-                        onClick={() => setViewMode('list')}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                    >
-                        <ChevronLeft className="w-4 h-4 text-emerald-600" />
-                        <span>Quay Lại Danh Sách Hóa Đơn</span>
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-emerald-700 font-bold font-mono">
-                            CHỨC NĂNG: LỊCH SỬ GIAO DỊCH CÁC KỲ TRƯỚC (CHỨC NĂNG 10)
-                        </span>
-                    </div>
-                </div>
-                <PaymentHistoryManagement />
-            </div>
+            <PaymentHistoryManagement
+                onBackToList={() => setViewMode('list')}
+                onNavigateTab={onNavigateTab}
+            />
         );
     }
 
