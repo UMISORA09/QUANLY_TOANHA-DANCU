@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Resident Incident Ticket Feature E2E Tests', () => {
   for (const width of [375, 768, 1440]) {
-    test(`Danh mục dài không bị che trong form cư dân ${width}px`, async ({ page }, testInfo) => {
+    test(`Danh mục dài không bị che trong form cư dân ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
       await page.route('**/api/v1/resident/tickets/categories', (route) => route.fulfill({ json: {
         success: true,
@@ -17,7 +17,6 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
       await page.goto('/cu-dan?tab=tickets');
       await expect(page.locator('#ticket-open-create-btn')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Xem chi tiết', exact: true }).first()).toBeVisible();
-      await page.screenshot({ path: testInfo.outputPath('ticket-list.png'), fullPage: true });
       await page.locator('#ticket-open-create-btn').click();
       const category = page.locator('#ticket-category-select');
       await category.click();
@@ -39,7 +38,6 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
         const footer = element.closest('dialog')?.querySelector('#ticket-submit-btn')?.parentElement?.getBoundingClientRect();
         return Boolean(footer && element.getBoundingClientRect().bottom <= footer.top);
       })).toBe(true);
-      await page.screenshot({ path: testInfo.outputPath('ticket-create.png') });
     });
   }
 
@@ -213,11 +211,21 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   });
 
-  test('Ảnh đã chọn có thao tác rõ trên điện thoại và đóng phóng to bằng Escape', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 800 });
+  for (const width of [375, 1440]) {
+  test(`Ảnh đã chọn có thao tác rõ và đóng phóng to bằng Escape ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
     await page.goto('/cu-dan?tab=tickets');
     await page.locator('#ticket-open-create-btn').click();
-    await page.getByLabel('Chọn ảnh hiện trường', { exact: true }).setInputFiles({ name: 'anh-qa.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNy0AAAAASUVORK5CYII=', 'base64') });
+    const photo = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 360;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#e0f2fe'; context.fillRect(0, 0, 640, 360);
+      context.fillStyle = '#0c4a6e'; context.font = '32px sans-serif'; context.fillText('Ảnh hiện trường QA', 40, 100);
+      context.fillStyle = '#0284c7'; context.fillRect(40, 150, 260, 140);
+      context.fillStyle = '#fbbf24'; context.fillRect(330, 150, 260, 140);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.getByLabel('Chọn ảnh hiện trường', { exact: true }).setInputFiles({ name: 'anh-qa.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64') });
     await page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true }).click();
     const preview = page.getByRole('dialog', { name: 'Xem ảnh sự cố', exact: true });
     await expect(preview.getByRole('img')).toBeVisible();
@@ -227,6 +235,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await page.getByRole('button', { name: 'Bỏ ảnh đã chọn 1', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true })).toHaveCount(0);
   });
+  }
 
   test('Danh sách cư dân trên điện thoại hiển thị đúng trạng thái gửi, tiếp nhận và nghiệm thu', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });

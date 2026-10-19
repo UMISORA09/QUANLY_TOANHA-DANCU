@@ -39,6 +39,7 @@ export function TicketManagementPanel() {
   const [form, setForm] = useState(blank);
   const [reason, setReason] = useState('');
   const [preview, setPreview] = useState('');
+  const [removeImageId, setRemoveImageId] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const reload = () => setRevision((value) => value + 1);
   useEffect(() => { const timer = setTimeout(() => { setKeyword(query); setPage(1); }, 350); return () => clearTimeout(timer); }, [query]);
@@ -110,14 +111,14 @@ export function TicketManagementPanel() {
       </>}
     </div>
     <nav aria-label="Phân trang yêu cầu" className="flex flex-wrap items-center justify-between gap-3 text-sm"><span className="text-neutral-500">{total} yêu cầu · 15 dòng/trang</span><div className="flex items-center gap-3"><button className={button} disabled={loading || page <= 1} onClick={() => setPage(page - 1)}>Trước</button><span aria-live="polite">Trang {page}/{pages}</span><button className={button} disabled={loading || page >= pages} onClick={() => setPage(page + 1)}>Sau</button></div></nav>
-    <TicketDialog open={!!selected && !mode} title={selected?.ticket_number || 'Chi tiết yêu cầu'} busy={busy} onClose={() => setSelected(null)}>{selected && <div className="space-y-4">
+    <TicketDialog open={!!selected && !mode && !removeImageId} title={selected?.ticket_number || 'Chi tiết yêu cầu'} busy={busy} onClose={() => setSelected(null)}>{selected && <div className="space-y-4">
       {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
       <div className="space-y-2">{statusBadge(selected)}<h3 className="break-words text-lg font-semibold">{selected.title}</h3></div>
       <dl className="grid grid-cols-1 gap-4 rounded-xl bg-neutral-50 p-4 text-sm sm:grid-cols-2">
         {Object.entries({ 'Người báo': selected.creator?.full_name || '—', 'Căn hộ': `${selected.apartment?.apartment_number || '—'}${selected.apartment?.block?.block_name ? ` · ${selected.apartment.block.block_name}` : ''}`, 'Danh mục': selected.category?.category_name || options?.categories.find((item) => item.id === selected.category_id)?.category_name || '—', 'Mức độ ưu tiên': ticketPriorities[selected.priority], 'Vị trí': selected.location || '—', 'Kỹ thuật viên': selected.technician?.full_name || 'Chưa phân công' }).map(([label, value]) => <div key={label}><dt className="text-xs text-neutral-500">{label}</dt><dd className="mt-1 break-words font-medium">{value}</dd></div>)}
       </dl>
       <section className="space-y-2"><h4 className="text-sm font-semibold">Mô tả sự cố</h4><p className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-700">{selected.description}</p></section>
-      <section className="space-y-2"><h4 className="text-sm font-semibold">Ảnh đính kèm ({selected.attachments?.length || 0}/5)</h4>{selected.attachments?.length ? <div className="grid grid-cols-2 gap-3">{selected.attachments.map((att) => <div key={att.id} className="grid gap-1"><TicketImage name={att.file_name} url={att.file_url} onPreview={setPreview} /><p className="text-xs text-neutral-500">{att.is_resolution_proof ? 'Kết quả xử lý' : 'Hiện trường'}</p>{selected.actions.edit && !busy && <button type="button" className="text-left text-xs text-rose-700 underline cursor-pointer" onClick={async () => { setBusy(true); try { setSelected(await api.removeManagedTicketImage(selected.id, att.id, selected.version)); setMessage('Đã bỏ ảnh sự cố.'); } catch (err) { await fail(err); } finally { setBusy(false); } }}>Bỏ ảnh {att.file_name}</button>}</div>)}</div> : <p className="text-sm text-neutral-500">Chưa có ảnh đính kèm.</p>}</section>
+      <section className="space-y-2"><h4 className="text-sm font-semibold">Ảnh đính kèm ({selected.attachments?.length || 0}/5)</h4>{selected.attachments?.length ? <div className="grid grid-cols-2 gap-3">{selected.attachments.map((att) => <div key={att.id} className="grid gap-1"><TicketImage name={att.file_name} url={att.file_url} onPreview={setPreview} /><p className="text-xs text-neutral-500">{att.is_resolution_proof ? 'Kết quả xử lý' : 'Hiện trường'}</p>{selected.actions.edit && !busy && <button type="button" className="text-left text-xs text-rose-700 underline cursor-pointer" onClick={() => { setError(''); setRemoveImageId(att.id); }}>Bỏ ảnh {att.file_name}</button>}</div>)}</div> : <p className="text-sm text-neutral-500">Chưa có ảnh đính kèm.</p>}</section>
       {selected.actions.resolve && <label className="block space-y-2 text-sm">Ảnh kết quả xử lý<span className="block text-xs text-neutral-500">Tối đa 5 ảnh cho cả yêu cầu, JPG/PNG/WebP, mỗi ảnh tối đa 5 MB.</span><input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy || (selected.attachments?.length || 0) >= 5} className="mt-2 block" onChange={async (event) => {
         const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return;
         if (files.length + (selected.attachments?.length || 0) > 5 || files.some((file) => file.size > 5 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type))) { setError('Chỉ nhận tối đa 5 ảnh JPG, PNG, WebP cho mỗi yêu cầu, tối đa 5 MB/ảnh.'); return; }
@@ -142,6 +143,17 @@ export function TicketManagementPanel() {
       </>}
       <footer className="sticky -bottom-5 flex flex-wrap justify-end gap-2 border-t border-neutral-200 bg-white pb-2 pt-3"><button type="button" className={button} disabled={busy} onClick={() => setMode(null)}>Đóng</button><button className={`${button} ${mode === 'archive' || (mode === 'workflow' && action === 'cancel') ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-700' : 'bg-neutral-900 text-white hover:bg-neutral-800'}`} disabled={cannotSubmit}>{busy ? 'Đang lưu…' : mode === 'archive' ? 'Xác nhận lưu trữ' : mode === 'workflow' ? workflowLabels[action] : 'Lưu yêu cầu'}</button></footer>
     </form></TicketDialog>
+    <TicketDialog open={!!removeImageId} title="Bỏ ảnh sự cố" busy={busy} onClose={() => setRemoveImageId(null)}>
+      {error && <p role="alert" className="mb-3 text-sm text-rose-700">{error}</p>}
+      <p className="text-sm">Bạn muốn bỏ ảnh này khỏi yêu cầu? Ảnh đã bỏ không thể khôi phục từ màn hình này.</p>
+      <div className="mt-4 flex justify-end gap-2"><button type="button" disabled={busy} className={button} onClick={() => setRemoveImageId(null)}>Đóng</button><button type="button" disabled={busy} className={`${button} bg-rose-600 text-white hover:bg-rose-700`} onClick={async () => {
+        if (!selected || !removeImageId || busy) return;
+        setBusy(true); setError('');
+        try { setSelected(await api.removeManagedTicketImage(selected.id, removeImageId, selected.version)); setRemoveImageId(null); setMessage('Đã bỏ ảnh sự cố.'); reload(); }
+        catch (err) { await fail(err); }
+        finally { setBusy(false); }
+      }}>{busy ? 'Đang bỏ ảnh…' : 'Xác nhận bỏ ảnh'}</button></div>
+    </TicketDialog>
     <TicketDialog open={!!preview} title="Ảnh sự cố" onClose={() => setPreview('')}><img src={preview} alt="Ảnh sự cố phóng to" className="max-h-[70vh] w-full object-contain" /></TicketDialog>
   </section>;
 }
