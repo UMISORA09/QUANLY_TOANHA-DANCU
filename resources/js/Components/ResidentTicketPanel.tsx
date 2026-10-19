@@ -254,12 +254,13 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
   // Debounce search input
   useEffect(() => {
+    if (searchQuery === debouncedSearch) return;
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
       setCurrentPage(1);
     }, 350);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, debouncedSearch]);
 
   // Load Categories & Resident Profile/Apartment bootstrap
   useEffect(() => {
@@ -324,6 +325,10 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }, controller.signal);
 
       if (!controller.signal.aborted && res && res.success) {
+        if (res.pagination && currentPage > Math.max(1, res.pagination.last_page)) {
+          setCurrentPage(Math.max(1, res.pagination.last_page));
+          return;
+        }
         setTickets(res.data || []);
         if (res.counters) {
           setCounters((prev) => ({ ...prev, ...res.counters, received: res.counters.received ?? prev.received ?? 0 }));
@@ -761,6 +766,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 </button>
               </div>
         }>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
           <p className="mb-5 text-sm leading-6 text-neutral-500">Mô tả sự cố và vị trí để ban quản lý sắp xếp hỗ trợ. Các trường có dấu * là bắt buộc.</p>
             <form id="ticket-create-modal" onSubmit={handleSubmitTicket} className="space-y-6">
               {/* SECTION 1: THÔNG TIN CƯ DÂN & CĂN HỘ */}
@@ -1013,7 +1019,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               </button>)}
             </div>
 
-            <div className="grid grid-cols-1 gap-3 border-t border-neutral-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 border-t border-neutral-100 pt-4 sm:grid-cols-2 xl:grid-cols-5">
               {/* Search Box */}
               <div className="relative sm:col-span-2">
                 <label htmlFor="ticket-search-input" className="mb-1.5 block text-xs font-bold uppercase text-slate-700">Tìm yêu cầu</label>
@@ -1024,8 +1030,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   placeholder="Tìm theo mã ticket, tiêu đề, vị trí sự cố..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="min-h-11 w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
+                  className="min-h-11 w-full pl-10 pr-12 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
                 />
+                {searchQuery && <button type="button" aria-label="Xóa từ khóa tìm yêu cầu" className="absolute bottom-0 right-0 min-h-11 min-w-11 cursor-pointer rounded-xl text-neutral-500 hover:bg-neutral-100" onClick={() => setSearchQuery('')}><X aria-hidden="true" className="mx-auto h-4 w-4" /></button>}
               </div>
 
               {/* Status Filter */}
@@ -1037,21 +1044,26 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               <div className="relative">
                 <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
               </div>
+              <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-priority-filter" label="Mức độ ưu tiên" value={priorityFilter} onChange={(value) => { setPriorityFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả mức độ' }, ...Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
             </div>
 
             {/* Reset / Reload helper */}
-            <div className="flex items-center justify-between text-xs text-neutral-500 pt-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500 pt-1">
               <span>
                 Tìm thấy <strong className="text-neutral-900 font-mono">{totalTickets}</strong> yêu cầu
               </span>
+              <div className="flex flex-wrap items-center gap-2">
+              {(searchQuery || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL') && <button type="button" className="min-h-11 cursor-pointer rounded-xl px-3 font-medium text-sky-700 underline" onClick={() => { setSearchQuery(''); setDebouncedSearch(''); setStatusFilter('ALL'); setCategoryFilter('ALL'); setPriorityFilter('ALL'); setCurrentPage(1); }}>Xóa bộ lọc</button>}
               <button
                 type="button"
+                disabled={isLoading}
                 onClick={() => fetchTickets()}
-                className="inline-flex items-center gap-1.5 text-neutral-600 hover:text-neutral-900 font-semibold cursor-pointer"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-neutral-600 hover:text-neutral-900 font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                 <span>Làm mới</span>
               </button>
+              </div>
             </div>
           </div>
 
@@ -1080,9 +1092,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                   <Wrench className="w-6 h-6" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-neutral-900">Chưa có yêu cầu báo cáo sự cố nào</h3>
+                  <h3 className="text-sm font-bold text-neutral-900">{debouncedSearch || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL' ? 'Không có yêu cầu phù hợp' : 'Chưa có yêu cầu báo cáo sự cố nào'}</h3>
                   <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-                    Khi xảy ra sự cố kỹ thuật về điện, nước hoặc hạ tầng căn hộ, bạn có thể gửi yêu cầu để kỹ thuật viên đến hỗ trợ.
+                    {debouncedSearch || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL' ? 'Thử đổi từ khóa hoặc xóa bộ lọc để xem các yêu cầu khác.' : 'Khi xảy ra sự cố kỹ thuật về điện, nước hoặc hạ tầng căn hộ, bạn có thể gửi yêu cầu để kỹ thuật viên đến hỗ trợ.'}
                   </p>
                 </div>
                 <button
@@ -1195,7 +1207,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     type="button"
                     aria-label="Trang yêu cầu trước" disabled={isLoading || currentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className="p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="min-h-11 min-w-11 cursor-pointer p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
@@ -1203,7 +1215,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     type="button"
                     aria-label="Trang yêu cầu tiếp theo" disabled={isLoading || currentPage >= lastPage}
                     onClick={() => setCurrentPage((p) => Math.min(lastPage, p + 1))}
-                    className="p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="min-h-11 min-w-11 cursor-pointer p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
