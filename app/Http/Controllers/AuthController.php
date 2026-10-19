@@ -50,16 +50,16 @@ class AuthController extends Controller
             'admin@smartcassavas.vn' => 'admin',
             'admin@demo.local' => 'admin',
             'admin' => 'admin',
-            'quanly' => 'manager',
-            'quanly@cassavas.vn' => 'manager',
-            'quanly@smartcassavas.vn' => 'manager',
-            'manager@demo.local' => 'manager',
-            'manager' => 'manager',
-            'letan' => 'receptionist',
-            'letan@cassavas.vn' => 'receptionist',
-            'letan@smartcassavas.vn' => 'receptionist',
-            'receptionist@demo.local' => 'receptionist',
-            'receptionist' => 'receptionist',
+            'manager' => 'quanly',
+            'manager@demo.local' => 'quanly',
+            'quanly' => 'quanly',
+            'quanly@cassavas.vn' => 'quanly',
+            'quanly@smartcassavas.vn' => 'quanly',
+            'receptionist' => 'letan',
+            'receptionist@demo.local' => 'letan',
+            'letan' => 'letan',
+            'letan@cassavas.vn' => 'letan',
+            'letan@smartcassavas.vn' => 'letan',
             'baove' => 'security',
             'baove@cassavas.vn' => 'security',
             'baove@smartcassavas.vn' => 'security',
@@ -75,8 +75,8 @@ class AuthController extends Controller
             'cudan' => 'nguyenvanan',
             'cudan@smartcassavas.vn' => 'nguyenvanan',
             'cudan@cassavas.vn' => 'nguyenvanan',
-            'cudan@demo.local' => 'resident.owner',
-            'resident' => 'resident.owner',
+            'cudan@demo.local' => 'nguyenvanan',
+            'resident' => 'nguyenvanan',
             'resident.owner' => 'resident.owner',
             'resident.owner@demo.local' => 'resident.owner',
             'nguyenvanan' => 'nguyenvanan',
@@ -85,8 +85,8 @@ class AuthController extends Controller
             '0901234567' => 'nguyenvanan',
             '0900000010' => 'resident.owner',
             '0900000001' => 'admin',
-            '0900000002' => 'manager',
-            '0900000004' => 'receptionist',
+            '0900000002' => 'quanly',
+            '0900000004' => 'letan',
             '0900000005' => 'security',
             '0900000003' => 'accountant',
         ];
@@ -95,24 +95,32 @@ class AuthController extends Controller
 
         // Tìm user trong database theo username, email hoặc số điện thoại
         $user = User::with('roles:id,role_code')
-            ->where(function ($q) use ($searchIdentifier, $identifier) {
-                $q->where('username', $searchIdentifier)
-                    ->orWhere('email', $searchIdentifier)
-                    ->orWhere('phone_number', $searchIdentifier)
-                    ->orWhere('username', $identifier)
+            ->where(function ($q) use ($identifier, $searchIdentifier) {
+                $q->where('username', $identifier)
                     ->orWhere('email', $identifier)
-                    ->orWhere('phone_number', $identifier);
+                    ->orWhere('phone_number', $identifier)
+                    ->orWhere('username', $searchIdentifier)
+                    ->orWhere('email', $searchIdentifier)
+                    ->orWhere('phone_number', $searchIdentifier);
             })
             ->first();
 
-        // Fallback linh hoạt cho tài khoản cư dân mẫu nếu DB chỉ có một trong hai (nguyenvanan hoặc resident.owner)
+        // Fallback linh hoạt cho các tài khoản demo giữa các tên người dùng tương đương
         if (! $user && in_array($searchIdentifier, ['nguyenvanan', 'resident.owner'], true)) {
-            $fallbackResident = $searchIdentifier === 'nguyenvanan' ? 'resident.owner' : 'nguyenvanan';
             $user = User::with('roles:id,role_code')
-                ->where(function ($q) use ($fallbackResident) {
-                    $q->where('username', $fallbackResident)
-                        ->orWhere('email', $fallbackResident);
-                })
+                ->whereIn('username', ['nguyenvanan', 'resident.owner'])
+                ->first();
+        }
+
+        if (! $user && in_array($searchIdentifier, ['manager', 'quanly'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['manager', 'quanly'])
+                ->first();
+        }
+
+        if (! $user && in_array($searchIdentifier, ['receptionist', 'letan'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['receptionist', 'letan'])
                 ->first();
         }
 

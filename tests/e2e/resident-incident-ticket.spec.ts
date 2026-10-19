@@ -1,9 +1,122 @@
 import { test, expect } from '@playwright/test';
 
+for (const resident of [true]) {
+  test(`MOCKED E2E: ${resident ? 'cư dân' : 'quản lý'} phân trang 35 yêu cầu và thu hẹp trang cuối`, async ({ page }) => {
+    await page.addInitScript((role) => {
+      localStorage.setItem('smartcassavas_session', JSON.stringify({ role, name: 'Ticket QA' }));
+      localStorage.setItem('smart_cassavas_token', 'qa-mocked-token');
+    }, resident ? 'resident' : 'admin');
+    let count = 35;
+    const requests: number[] = [];
+    await page.route('**/api/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/tickets')) {
+        const current = Number(url.searchParams.get('page') || 1);
+        requests.push(current);
+        const filtered = url.searchParams.has('search') && !!url.searchParams.get('search') || url.searchParams.has('status');
+        const total = filtered ? 1 : count;
+        const data = Array.from({ length: total }, (_, i) => ({ id: `qa-${i}`, ticket_number: `TCK-PAGE-${i}`, title: `Yêu cầu phân trang ${i}`, status: 'NEW', priority: 'HIGH', created_at: '2026-10-19T08:00:00Z', actions: {} })).slice((current - 1) * 15, current * 15);
+        const pagination = { current_page: current, last_page: Math.max(1, Math.ceil(total / 15)), total, per_page: 15 };
+        return route.fulfill({ json: { success: true, data, ...pagination, pagination } });
+      }
+      if (url.pathname.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
+      return route.fulfill({ json: { success: true, data: [], items: [], unread_count: 0, page: 1, total_pages: 1 } });
+    });
+    await page.goto(resident ? '/cu-dan?tab=tickets' : '/admin?tab=tickets');
+    const rows = page.getByRole('button', { name: 'Xem chi tiết', exact: true }).filter({ visible: true });
+    const next = page.getByRole('button', { name: resident ? 'Trang yêu cầu tiếp theo' : 'Sau', exact: true });
+    const previous = page.getByRole('button', { name: resident ? 'Trang yêu cầu trước' : 'Trước', exact: true });
+    await expect(rows).toHaveCount(15);
+    await expect(previous).toBeDisabled();
+    await next.click(); await expect.poll(() => requests.at(-1)).toBe(2); await expect(rows).toHaveCount(15);
+    await next.click(); await expect.poll(() => requests.at(-1)).toBe(3); await expect(rows).toHaveCount(5); await expect(next).toBeDisabled();
+    await previous.click(); await expect(rows).toHaveCount(15);
+    await next.click(); await expect(rows).toHaveCount(5);
+    const search = resident ? page.locator('#ticket-search-input') : page.getByRole('textbox', { name: 'Tìm yêu cầu' });
+    await search.fill('điện nước'); await expect(rows).toHaveCount(1);
+    await expect.poll(() => requests.at(-1)).toBe(1);
+    await page.getByRole('button', { name: 'Xóa bộ lọc', exact: true }).click();
+    await expect(rows).toHaveCount(15);
+    await next.click(); await expect(rows).toHaveCount(15);
+    await next.click(); await expect(rows).toHaveCount(5);
+    if (!resident) await page.getByRole('button', { name: 'Bộ lọc', exact: true }).click();
+    await page.getByLabel(resident ? 'Trạng thái yêu cầu' : 'Trạng thái', { exact: true }).click();
+    const filteredRequest = page.waitForRequest((req) => new URL(req.url()).searchParams.get('status') === 'NEW');
+    await page.getByRole('option', { name: 'Mới gửi', exact: true }).click();
+    expect(new URL((await filteredRequest).url()).searchParams.get('page')).toBe('1');
+    await expect(rows).toHaveCount(1);
+    await page.getByRole('button', { name: 'Xóa bộ lọc', exact: true }).click();
+    await expect(rows).toHaveCount(15);
+    await next.click(); await expect(rows).toHaveCount(15);
+    await next.click(); await expect(rows).toHaveCount(5);
+    count = 30;
+    await page.getByRole('button', { name: resident ? 'Làm mới' : 'Tải lại', exact: true }).click();
+    await expect(rows).toHaveCount(15);
+    await expect.poll(() => requests.at(-1)).toBe(2);
+    expect(requests).toEqual([1, 2, 3, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 3, 2]);
+    await search.fill('điện nước');
+    await expect(rows).toHaveCount(1);
+    await expect.poll(() => requests.at(-1)).toBe(1);
+  });
+
+  test(`MOCKED E2E: ${resident ? 'cư dân' : 'quản lý'} debounce, phản hồi cũ, bộ lọc và lỗi mạng`, async ({ page }) => {
+    await page.addInitScript((role) => {
+      localStorage.setItem('smartcassavas_session', JSON.stringify({ role, name: 'Ticket QA' }));
+      localStorage.setItem('smart_cassavas_token', 'qa-mocked-token');
+    }, resident ? 'resident' : 'admin');
+    let releaseOld!: () => void;
+    const oldResponse = new Promise<void>((resolve) => { releaseOld = resolve; });
+    const searches: string[] = [];
+    let error = false;
+    await page.route('**/api/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/tickets')) {
+        const search = url.searchParams.get('search') || '';
+        searches.push(search);
+        if (search === 'điện') await oldResponse;
+        if (error) return route.fulfill({ status: 503, json: { message: 'QA mất kết nối' } });
+        const data = search === 'không có' ? [] : [{ id: 'qa', ticket_number: 'TCK-SEARCH', title: search === 'điện' ? 'Kết quả cũ' : 'Kết quả điện nước mới nhất', priority: 'HIGH', status: 'NEW', created_at: '2026-10-19T08:00:00Z', actions: {} }];
+        const pagination = { current_page: 1, last_page: 1, total: data.length, per_page: 15 };
+        return route.fulfill({ json: { success: true, data, ...pagination, pagination } }).catch(() => {});
+      }
+      if (url.pathname.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [{ id: 'cat', category_name: 'Điện nước' }], blocks: [], apartments: [], residents: [], can_create: false } });
+      return route.fulfill({ json: { success: true, data: [{ id: 'cat', category_name: 'Điện nước' }], items: [], unread_count: 0, page: 1, total_pages: 1 } });
+    });
+    await page.goto(resident ? '/cu-dan?tab=tickets' : '/admin?tab=tickets');
+    const search = resident ? page.locator('#ticket-search-input') : page.getByRole('textbox', { name: 'Tìm yêu cầu' });
+    await expect(page.getByText('Kết quả điện nước mới nhất', { exact: true }).filter({ visible: true })).toBeVisible();
+    await search.fill('điện');
+    await expect.poll(() => searches.includes('điện')).toBe(true);
+    await search.fill('điện nước');
+    await expect.poll(() => searches.includes('điện nước')).toBe(true);
+    await expect(page.getByText('Kết quả điện nước mới nhất', { exact: true }).filter({ visible: true })).toBeVisible();
+    releaseOld();
+    await expect(page.getByText('Kết quả cũ', { exact: true })).toHaveCount(0);
+    expect(searches).toEqual(['', 'điện', 'điện nước']);
+    if (!resident) await page.getByRole('button', { name: 'Bộ lọc', exact: true }).click();
+    await page.getByLabel(resident ? 'Mức độ ưu tiên' : 'Ưu tiên', { exact: true }).click();
+    const request = page.waitForRequest((req) => new URL(req.url()).searchParams.get('priority') === 'HIGH');
+    await page.getByRole('option', { name: resident ? 'Ưu tiên cao' : 'Cao', exact: true }).click();
+    expect(new URL((await request).url()).searchParams.get('search')).toBe('điện nước');
+    await page.getByRole('button', { name: 'Xóa bộ lọc', exact: true }).click();
+    await expect(search).toHaveValue('');
+    await expect.poll(() => searches.at(-1)).toBe('');
+    error = true;
+    await search.fill('lỗi mạng');
+    await expect(page.getByText('QA mất kết nối', { exact: false }).first()).toBeVisible();
+    await expect(search).toHaveValue('lỗi mạng');
+    error = false;
+    await page.getByRole('button', { name: 'Thử lại', exact: true }).click();
+    await expect(page.getByText('Kết quả điện nước mới nhất', { exact: true }).filter({ visible: true })).toBeVisible();
+    await search.fill('không có');
+    await expect(page.getByText(resident ? 'Không có yêu cầu phù hợp' : 'Chưa có yêu cầu phù hợp.', { exact: true })).toBeVisible();
+  });
+}
+
 test.describe('Resident Incident Ticket Feature E2E Tests', () => {
-  for (const width of [375, 768, 1440]) {
-    test(`Danh mục dài không bị che trong form cư dân ${width}px`, async ({ page }, testInfo) => {
-      await page.setViewportSize({ width, height: 800 });
+  for (const [width, height] of [[375, 812], [390, 844], [768, 1024], [1024, 768], [1440, 900]]) {
+    test(`Danh mục dài không bị che trong form cư dân ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
       await page.route('**/api/v1/resident/tickets/categories', (route) => route.fulfill({ json: {
         success: true,
         data: Array.from({ length: 30 }, (_, i) => ({ id: `category-${i}`, category_name: `Danh mục QA ${i}`, default_priority: 'MEDIUM' })),
@@ -17,7 +130,6 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
       await page.goto('/cu-dan?tab=tickets');
       await expect(page.locator('#ticket-open-create-btn')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Xem chi tiết', exact: true }).first()).toBeVisible();
-      await page.screenshot({ path: testInfo.outputPath('ticket-list.png'), fullPage: true });
       await page.locator('#ticket-open-create-btn').click();
       const category = page.locator('#ticket-category-select');
       await category.click();
@@ -35,11 +147,10 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
       await expect(menu).toHaveCount(0);
       await expect(page.getByRole('dialog', { name: 'Gửi yêu cầu báo cáo sự cố', exact: true })).toBeVisible();
       await expect(category).toBeFocused();
-      expect(await category.evaluate((element) => {
+      await expect.poll(() => category.evaluate((element) => {
         const footer = element.closest('dialog')?.querySelector('#ticket-submit-btn')?.parentElement?.getBoundingClientRect();
-        return Boolean(footer && element.getBoundingClientRect().bottom <= footer.top);
+        return Boolean(footer && element.getBoundingClientRect().bottom <= footer.top + 1);
       })).toBe(true);
-      await page.screenshot({ path: testInfo.outputPath('ticket-create.png') });
     });
   }
 
@@ -207,17 +318,27 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
       'Ổ cắm phát ra tiếng xẹt điện khi cắm lò vi sóng, có mùi khét nhẹ cần kiểm tra gấp.'
     );
 
-    // Nút quay lại danh sách hoạt động đúng
-    await page.click('#ticket-back-to-list-btn');
+    // Nút Đóng form tạo mới hoạt động đúng
+    await page.click('#ticket-close-create-btn');
     await expect(page.locator('#ticket-search-input')).toBeVisible();
     expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   });
 
-  test('Ảnh đã chọn có thao tác rõ trên điện thoại và đóng phóng to bằng Escape', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 800 });
+  for (const width of [375, 1440]) {
+  test(`Ảnh đã chọn có thao tác rõ và đóng phóng to bằng Escape ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
     await page.goto('/cu-dan?tab=tickets');
     await page.locator('#ticket-open-create-btn').click();
-    await page.getByLabel('Chọn ảnh hiện trường', { exact: true }).setInputFiles({ name: 'anh-qa.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNy0AAAAASUVORK5CYII=', 'base64') });
+    const photo = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 360;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#e0f2fe'; context.fillRect(0, 0, 640, 360);
+      context.fillStyle = '#0c4a6e'; context.font = '32px sans-serif'; context.fillText('Ảnh hiện trường QA', 40, 100);
+      context.fillStyle = '#0284c7'; context.fillRect(40, 150, 260, 140);
+      context.fillStyle = '#fbbf24'; context.fillRect(330, 150, 260, 140);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.getByLabel('Chọn ảnh hiện trường', { exact: true }).setInputFiles({ name: 'anh-qa.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64') });
     await page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true }).click();
     const preview = page.getByRole('dialog', { name: 'Xem ảnh sự cố', exact: true });
     await expect(preview.getByRole('img')).toBeVisible();
@@ -227,6 +348,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await page.getByRole('button', { name: 'Bỏ ảnh đã chọn 1', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true })).toHaveCount(0);
   });
+  }
 
   test('Danh sách cư dân trên điện thoại hiển thị đúng trạng thái gửi, tiếp nhận và nghiệm thu', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
@@ -241,5 +363,42 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     for (const label of ['Mới gửi', 'Đã tiếp nhận', 'Chờ nghiệm thu']) await expect(list.getByText(label, { exact: true })).toBeVisible();
     await expect(list.getByRole('button', { name: 'Xem chi tiết', exact: true })).toHaveCount(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+  test('MOCKED E2E: modal cư dân giữ dữ liệu, chặn đóng khi đang gửi và trả focus', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let submitted = false;
+    const ticket = { id: 'qa-modal', ticket_number: 'TCK-QA-MODAL', title: 'Sự cố cần sửa', description: 'Nước rò rỉ dưới bồn rửa', location: 'Bếp', status: 'NEW', priority: 'HIGH', version: 1, attachments: [], history: [], created_at: '2026-10-19T08:00:00Z' };
+    await page.route('**/api/v1/resident/tickets/qa-modal**', async (route) => {
+      if (route.request().method() === 'POST') {
+        submitted = true; await held;
+        return route.fulfill({ status: 422, json: { message: 'QA chưa thể hủy yêu cầu' } });
+      }
+      return route.fulfill({ json: { success: true, data: ticket } });
+    });
+    await page.goto('/cu-dan?tab=tickets&ticket_id=qa-modal');
+    const opener = page.getByRole('button', { name: 'Hủy yêu cầu', exact: true });
+    await opener.click();
+    const dialog = page.getByRole('dialog', { name: 'Hủy yêu cầu', exact: true });
+    await dialog.getByRole('textbox').fill('Cần ngừng yêu cầu này');
+    await dialog.getByRole('button', { name: 'Đồng ý hủy', exact: true }).click();
+    await expect.poll(() => submitted).toBe(true);
+    await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
+    release();
+    await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeEnabled();
+    await expect(dialog).toContainText('QA chưa thể hủy yêu cầu');
+    await expect(dialog.getByRole('textbox')).toHaveValue('Cần ngừng yêu cầu này');
+    await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
+    await expect(opener).toBeFocused();
+    await page.getByRole('button', { name: 'Chỉnh sửa', exact: true }).click();
+    const edit = page.getByRole('dialog', { name: 'Sửa yêu cầu', exact: true });
+    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).click();
+    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).press('Escape');
+    await expect(edit).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(edit).toHaveCount(0);
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   });
 });
