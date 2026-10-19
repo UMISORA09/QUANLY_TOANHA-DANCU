@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Apartment;
 use App\Models\Block;
+use App\Models\DebtReminderLog;
 use App\Models\Floor;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
@@ -461,6 +462,86 @@ class InvoiceSampleSeeder extends Seeder
                         'amount_in_words' => $amountInWords,
                         'received_from_name' => $user->full_name,
                         'digital_signature_hash' => $signatureHash,
+                    ]
+                );
+            }
+        }
+
+        // 5. SEED MẪU NHẬT KÝ HÀNG ĐỢI EMAIL NHẮC NỢ (CHỨC NĂNG 11 - XUANHOA)
+        $reminderDefs = [
+            [
+                'inv_num' => 'INV-202610-003',
+                'status' => 'SENT',
+                'days_overdue' => 18,
+                'sent_at' => Carbon::now()->subHours(5),
+                'error' => null,
+            ],
+            [
+                'inv_num' => 'INV-202610-002',
+                'status' => 'SENT',
+                'days_overdue' => 0,
+                'sent_at' => Carbon::now()->subHours(12),
+                'error' => null,
+            ],
+            [
+                'inv_num' => 'INV-202610-001',
+                'status' => 'QUEUED',
+                'days_overdue' => 0,
+                'sent_at' => null,
+                'error' => null,
+            ],
+            [
+                'inv_num' => 'INV-202610-004',
+                'status' => 'QUEUED',
+                'days_overdue' => 0,
+                'sent_at' => null,
+                'error' => null,
+            ],
+            [
+                'inv_num' => 'INV-202610-005',
+                'status' => 'FAILED',
+                'days_overdue' => 2,
+                'sent_at' => null,
+                'error' => 'Connection timeout: 421 4.7.0 Try again later, closing connection to smtp.gmail.com:587',
+            ],
+            [
+                'inv_num' => 'INV-202609-003',
+                'status' => 'SENT',
+                'days_overdue' => 32,
+                'sent_at' => Carbon::now()->subDays(3),
+                'error' => null,
+            ],
+            [
+                'inv_num' => 'INV-202609-001',
+                'status' => 'CANCELLED',
+                'days_overdue' => 0,
+                'sent_at' => null,
+                'error' => 'Hóa đơn đã được thanh toán xong trước khi hàng đợi xử lý.',
+            ],
+        ];
+
+        foreach ($reminderDefs as $rDef) {
+            $targetInv = Invoice::with(['apartment.block', 'residentUser'])->where('invoice_number', $rDef['inv_num'])->first();
+            if ($targetInv) {
+                $recipientEmail = $targetInv->residentUser?->email ?: 'cudan.'.strtolower(str_replace(['-', '/', ' '], '', $targetInv->apartment?->apartment_number ?? 'apt')).'@cassavas.com';
+                $recipientName = $targetInv->residentUser?->full_name ?: "Cư dân Căn hộ {$targetInv->apartment?->apartment_number}";
+
+                DebtReminderLog::updateOrCreate(
+                    [
+                        'invoice_id' => $targetInv->id,
+                        'recipient_email' => $recipientEmail,
+                    ],
+                    [
+                        'apartment_id' => $targetInv->apartment_id,
+                        'recipient_name' => $recipientName,
+                        'reminder_type' => 'EMAIL',
+                        'debt_amount' => $targetInv->remaining_balance > 0 ? $targetInv->remaining_balance : $targetInv->total_amount,
+                        'due_date' => $targetInv->due_date,
+                        'days_overdue' => $rDef['days_overdue'],
+                        'channel_status' => $rDef['status'],
+                        'error_message' => $rDef['error'],
+                        'sent_at' => $rDef['sent_at'],
+                        'sent_by_user_id' => $staffId,
                     ]
                 );
             }
