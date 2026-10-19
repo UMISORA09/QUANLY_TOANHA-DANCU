@@ -20,6 +20,8 @@ export interface AppLayoutProps {
   onNotificationClick?: () => void;
   unreadNotificationCount?: number;
   onHelpClick?: () => void;
+  hideTopbar?: boolean;
+  hideBrandHeader?: boolean;
   children: React.ReactNode;
 }
 
@@ -39,6 +41,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onNotificationClick,
   unreadNotificationCount = 3,
   onHelpClick,
+  hideTopbar = false,
+  hideBrandHeader = false,
   children,
 }) => {
   // Lấy thông tin phiên đăng nhập từ localStorage
@@ -179,6 +183,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         onLogout={onLogout}
         onNavigateHome={onNavigateHome}
         onSetHoveredTooltip={setHoveredTooltip}
+        hideBrandHeader={hideBrandHeader}
       />
 
       {/* ================= FLOATING TOOLTIP ================= */}
@@ -193,25 +198,27 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       {/* ================= RIGHT MAIN CONTAINER ================= */}
       <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden transition-all duration-300 ease-in-out relative">
         {/* Topbar Header */}
-        <AppTopbar
-          isSidebarCollapsed={isSidebarCollapsed}
-          onToggleSidebar={() => {
-            if (window.innerWidth < 1024) {
-              setMobileSidebarOpen((prev) => !prev);
-            } else {
-              toggleSidebarCollapse();
-            }
-          }}
-          userName={isAdmin ? (sessionUser?.name || userName) : userName}
-          userRole={effectiveUserRole}
-          portalRole={role}
-          statusText={statusText}
-          extraActions={extraTopbarActions}
-          onNotificationClick={onNotificationClick}
-          unreadNotificationCount={unreadNotificationCount}
-          onHelpClick={onHelpClick}
-          showPortalSwitcher={isAdmin}
-        />
+        {!hideTopbar && (
+          <AppTopbar
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={() => {
+              if (window.innerWidth < 1024) {
+                setMobileSidebarOpen((prev) => !prev);
+              } else {
+                toggleSidebarCollapse();
+              }
+            }}
+            userName={isAdmin ? (sessionUser?.name || userName) : userName}
+            userRole={effectiveUserRole}
+            portalRole={role}
+            statusText={statusText}
+            extraActions={extraTopbarActions}
+            onNotificationClick={onNotificationClick}
+            unreadNotificationCount={unreadNotificationCount}
+            onHelpClick={onHelpClick}
+            showPortalSwitcher={isAdmin}
+          />
+        )}
 
         {/* Scrollable Page Content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative">

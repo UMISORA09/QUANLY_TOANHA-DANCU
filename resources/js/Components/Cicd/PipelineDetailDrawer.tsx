@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   RotateCw,
@@ -22,6 +22,8 @@ import { LogViewer } from './LogViewer';
 import { ConfirmDialog } from '../Admin/ConfirmDialog';
 
 interface PipelineDetailDrawerProps {
+  initialJobId?: string;
+  initialStepNumber?: number;
   pipeline: PipelineItem | null;
   isOpen: boolean;
   onClose: () => void;
@@ -35,9 +37,13 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
   onClose,
   onPipelineUpdated,
   canManage = true,
+  initialJobId,
+  initialStepNumber,
 }) => {
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedStepNumber, setSelectedStepNumber] = useState<number | undefined>();
+  const [jobsError, setJobsError] = useState('');
   const [logs, setLogs] = useState<string>('');
   const [isLoadingJobs, setIsLoadingJobs] = useState<boolean>(false);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(false);
@@ -46,46 +52,77 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
   const [isRetryDialogOpen, setIsRetryDialogOpen] = useState<boolean>(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen && pipeline) {
-      loadJobs(pipeline.id);
-      loadLogs(pipeline.id);
-    }
-  }, [isOpen, pipeline]);
-
-  const loadJobs = async (pipelineId: string) => {
-    setIsLoadingJobs(true);
-    try {
-      const data = await cicdApi.getPipelineJobs(pipelineId);
-      setJobs(data);
-      if (data.length > 0) {
-        setSelectedJobId(data[0].id);
+    if (!isOpen || isRetryDialogOpen || isCancelDialogOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    drawerRef.current?.querySelector<HTMLButtonElement>('[aria-label="Đóng chi tiết pipeline"]')?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoadingJobs(false);
-    }
-  };
+      if (event.key === 'Tab') {
+        const controls = drawerRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]');
+        if (!controls?.length) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen, isRetryDialogOpen, isCancelDialogOpen, onClose]);
 
-  const loadLogs = async (pipelineId: string, jobId?: string) => {
+  useEffect(() => {
+    setJobs([]);
+    setJobsError('');
+    setSelectedJobId(null);
+    setSelectedStepNumber(initialStepNumber);
+    if (!isOpen || !pipeline) return;
+    const controller = new AbortController();
+    setIsLoadingJobs(true);
+    cicdApi.getPipelineJobs(pipeline.id, controller.signal).then(data => {
+      if (controller.signal.aborted) return;
+      setJobs(data);
+      setSelectedJobId(data.find(job => job.id === initialJobId)?.id ?? data[0]?.id ?? null);
+    }).catch(err => {
+      if (!controller.signal.aborted) setJobsError((err as Error).message);
+    }).finally(() => {
+      if (!controller.signal.aborted) setIsLoadingJobs(false);
+    });
+    return () => controller.abort();
+  }, [isOpen, pipeline?.id, initialJobId, initialStepNumber]);
+
+  useEffect(() => {
+    setLogs('');
+    setIsLoadingLogs(false);
+    if (!isOpen || !pipeline || !selectedJobId) return;
+    const controller = new AbortController();
     setIsLoadingLogs(true);
-    try {
-      const logText = await cicdApi.getPipelineLogs(pipelineId, jobId);
-      setLogs(logText);
-    } catch (err) {
-      setLogs('Không thể tải dữ liệu log từ máy chủ.');
-    } finally {
-      setIsLoadingLogs(false);
-    }
-  };
+    cicdApi.getPipelineLogs(pipeline.id, selectedJobId, selectedStepNumber, controller.signal).then(logText => {
+      if (!controller.signal.aborted) setLogs(logText);
+    }).catch(() => {
+      if (!controller.signal.aborted) setLogs('Không thể tải dữ liệu log từ máy chủ.');
+    }).finally(() => {
+      if (!controller.signal.aborted) setIsLoadingLogs(false);
+    });
+    return () => controller.abort();
+  }, [isOpen, pipeline?.id, selectedJobId, selectedStepNumber]);
 
   const handleJobClick = (jobId: string) => {
     setSelectedJobId(jobId);
-    if (pipeline) {
-      loadLogs(pipeline.id, jobId);
-    }
+    setSelectedStepNumber(undefined);
   };
 
   const handleConfirmRetry = async () => {
@@ -131,16 +168,16 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
         />
 
         {/* Drawer Panel */}
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-          <div className="w-screen max-w-3xl bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
+        <div className="fixed inset-y-0 right-0 flex w-full max-w-3xl">
+          <div ref={drawerRef} role="dialog" aria-modal="true" aria-labelledby="pipeline-detail-title" className="w-full min-w-0 bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
             {/* Drawer Header */}
-            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-start justify-between gap-4 bg-slate-50/70">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+            <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3 bg-slate-50/70">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs font-black text-neutral-800 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">
                     #{pipeline.run_number}
                   </span>
-                  <h2 className="text-base sm:text-lg font-black text-neutral-900">
+                  <h2 id="pipeline-detail-title" className="break-words text-base sm:text-lg font-black text-neutral-900">
                     {pipeline.name}
                   </h2>
                   <span
@@ -160,7 +197,7 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 {/* Action Buttons */}
                 {canManage && (
                   <>
@@ -191,6 +228,7 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
+                  aria-label="Đóng chi tiết pipeline"
                   className="p-1.5 text-slate-400 hover:text-neutral-700 rounded-xl hover:bg-slate-200/60 transition-colors"
                 >
                   <X className="w-5 h-5" />
@@ -258,13 +296,16 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
             )}
 
             {/* Main Content Area: Jobs Tabs & Log Viewer */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
               {/* Jobs List */}
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-mono">
                   Danh sách Jobs ({jobs.length})
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {isLoadingJobs && <p className="text-xs text-slate-500" role="status">Đang tải danh sách jobs...</p>}
+                  {jobsError && <p role="alert" className="text-xs text-rose-700">{jobsError}</p>}
+                  {!isLoadingJobs && !jobsError && !jobs.length && <p className="text-xs text-slate-500">Workflow chưa có jobs để tải log.</p>}
                   {jobs.map((job) => {
                     const isSelected = selectedJobId === job.id;
                     return (
@@ -283,8 +324,10 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
                             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                           ) : job.status === 'failed' ? (
                             <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                          ) : (
+                          ) : job.status === 'running' ? (
                             <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
+                          ) : (
+                            <Clock className="w-4 h-4 text-slate-400 shrink-0" />
                           )}
                           <div className="min-w-0">
                             <span className="text-xs font-bold truncate block">{job.name}</span>
@@ -312,7 +355,7 @@ export const PipelineDetailDrawer: React.FC<PipelineDetailDrawerProps> = ({
               {/* Terminal Logs */}
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-mono flex items-center justify-between">
-                  <span>Terminal Console Log</span>
+                  <span>Terminal Console Log{selectedStepNumber !== undefined ? ` · Bước: ${jobs.find(job => job.id === selectedJobId)?.steps[selectedStepNumber]?.name ?? selectedStepNumber + 1}` : ''}</span>
                   {pipeline.url && (
                     <a
                       href={pipeline.url}

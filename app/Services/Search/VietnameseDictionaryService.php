@@ -2,6 +2,7 @@
 
 namespace App\Services\Search;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -10,11 +11,13 @@ use Illuminate\Support\Facades\Log;
  * Nhiệm vụ:
  * 1. Đọc và tiền xử lý bộ từ điển duyet/vietnamese-wordlist (Viet74K.txt)
  * 2. Xây dựng chỉ mục tra cứu O(1) và chỉ mục phân vùng theo độ dài (Length-partitioned)
- * 3. Biên dịch thành mảng cache tối ưu với PHP OPcache để nạp trong < 2ms
+ * 3. Biên dịch thành mảng cache tối ưu với Cache::rememberForever & PHP OPcache để nạp trong < 2ms
  * 4. Cung cấp API tìm kiếm từ tương đồng chính xác dựa trên Levenshtein & Jaro-Winkler / similar_text
  */
 class VietnameseDictionaryService
 {
+    public const CACHE_KEY = 'vietnamese_dictionary_74k_index';
+
     /**
      * Tập từ vựng không dấu chuẩn -> Từ gốc có dấu
      *
@@ -51,7 +54,7 @@ class VietnameseDictionaryService
     }
 
     /**
-     * Tải và khởi tạo chỉ mục từ điển
+     * Tải và khởi tạo chỉ mục từ điển (Lazy Loading kết hợp Cache::rememberForever)
      */
     public static function load(): void
     {
@@ -59,52 +62,66 @@ class VietnameseDictionaryService
             return;
         }
 
-        $compiledPath = self::getCompiledCachePath();
+        // Ưu tiên lấy từ Laravel Cache (Redis/File/APCu) để tránh đọc disk I/O nhiều lần
+        $data = Cache::rememberForever(self::CACHE_KEY, function () {
+            $compiledPath = self::getCompiledCachePath();
 
-        if (file_exists($compiledPath)) {
-            $data = require $compiledPath;
-            if (is_array($data) && isset($data['map'], $data['by_length'])) {
-                self::$unaccentedWordMap = $data['map'];
-                self::$wordsByLength = $data['by_length'];
-                self::$isLoaded = true;
-
-                return;
+            if (file_exists($compiledPath)) {
+                $compiled = require $compiledPath;
+                if (is_array($compiled) && isset($compiled['map'], $compiled['by_length'])) {
+                    return $compiled;
+                }
             }
-        }
 
-        // Nếu chưa có file biên dịch, tiến hành phân tích từ Viet74K.txt
-        self::buildIndex();
-    }
+            return self::buildIndexData();
+        });
 
-    /**
-     * Xây dựng chỉ mục từ điển từ Viet74K.txt và lưu cache
-     */
-    public static function buildIndex(): void
-    {
-        $sourcePath = self::getSourcePath();
-
-        if (! file_exists($sourcePath)) {
-            // Dự phòng từ vựng tiện ích cốt lõi nếu file từ điển chưa xuất hiện
-            self::$unaccentedWordMap = [
-                'khu' => 'khu', 'nghi' => 'nghỉ', 'duong' => 'dưỡng',
-                'phong' => 'phòng', 'gym' => 'gym', 'ho' => 'hồ', 'boi' => 'bơi',
-                'san' => 'sân', 'tennis' => 'tennis', 'bbq' => 'bbq',
-                'toa' => 'tòa', 'nha' => 'nhà', 'can' => 'căn', 'ho' => 'hộ',
-            ];
+        if (is_array($data) && isset($data['map'], $data['by_length'])) {
+            self::$unaccentedWordMap = $data['map'];
+            self::$wordsByLength = $data['by_length'];
             self::$isLoaded = true;
 
             return;
         }
 
+        // Dự phòng nếu cache rỗng
+        self::$unaccentedWordMap = [
+            'khu' => 'khu', 'nghi' => 'nghỉ', 'duong' => 'dưỡng',
+            'phong' => 'phòng', 'gym' => 'gym', 'ho' => 'hồ', 'boi' => 'bơi',
+            'san' => 'sân', 'tennis' => 'tennis', 'bbq' => 'bbq',
+            'toa' => 'tòa', 'nha' => 'nhà', 'can' => 'căn', 'ho' => 'hộ',
+        ];
+        self::$isLoaded = true;
+    }
+
+    /**
+     * Xây dựng dữ liệu chỉ mục từ Viet74K.txt
+     *
+     * @return array{map: array<string, string>, by_length: array<int, array<int, string>>}
+     */
+    public static function buildIndexData(): array
+    {
+        $sourcePath = self::getSourcePath();
+
+        if (! file_exists($sourcePath)) {
+            $defaultMap = [
+                'khu' => 'khu', 'nghi' => 'nghỉ', 'duong' => 'dưỡng',
+                'phong' => 'phòng', 'gym' => 'gym', 'ho' => 'hồ', 'boi' => 'bơi',
+                'san' => 'sân', 'tennis' => 'tennis', 'bbq' => 'bbq',
+                'toa' => 'tòa', 'nha' => 'nhà', 'can' => 'căn', 'ho' => 'hộ',
+            ];
+
+            return ['map' => $defaultMap, 'by_length' => []];
+        }
+
         $lines = file($sourcePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         if ($lines === false) {
-            return;
+            return ['map' => [], 'by_length' => []];
         }
 
         $map = [];
         $byLength = [];
 
-        // Bổ sung các từ mượn / từ vựng chung cư phổ biến không có trong từ điển cổ điển
         $domainWords = ['gym', 'tennis', 'bbq', 'barbecue', 'block', 'ruby', 'sapphire', 'diamond'];
         foreach ($domainWords as $dw) {
             $map[$dw] = $dw;
@@ -118,9 +135,7 @@ class VietnameseDictionaryService
                 continue;
             }
 
-            // Chuẩn hóa dòng từ vựng
             $lowered = mb_strtolower($trimmed, 'UTF-8');
-            // Tách các từ đơn lẻ nếu là cụm từ (ví dụ "khu nghỉ dưỡng" -> tách thành "khu", "nghỉ", "dưỡng")
             $wordsInLine = preg_split('/[\s\-_]+/', $lowered);
             if ($wordsInLine === false) {
                 continue;
@@ -141,27 +156,38 @@ class VietnameseDictionaryService
             }
         }
 
-        // Tối ưu hóa mảng byLength để loại bỏ trùng lặp
         foreach ($byLength as $len => $items) {
             $byLength[$len] = array_values(array_unique($items));
         }
 
-        self::$unaccentedWordMap = $map;
-        self::$wordsByLength = $byLength;
-        self::$isLoaded = true;
+        $result = [
+            'map' => $map,
+            'by_length' => $byLength,
+        ];
 
-        // Lưu cache biên dịch dạng PHP array
+        // Ghi ra file compiled PHP để tăng tốc thêm qua OPcache
         try {
             $compiledPath = self::getCompiledCachePath();
-            $export = "<?php\n\nreturn ".var_export([
-                'map' => $map,
-                'by_length' => $byLength,
-            ], true).";\n";
-
+            $export = "<?php\n\nreturn ".var_export($result, true).";\n";
             file_put_contents($compiledPath, $export, LOCK_EX);
         } catch (\Throwable $e) {
             Log::warning('Could not write compiled dictionary cache: '.$e->getMessage());
         }
+
+        return $result;
+    }
+
+    /**
+     * Xây dựng chỉ mục từ điển từ Viet74K.txt và lưu cache (tương thích ngược)
+     */
+    public static function buildIndex(): void
+    {
+        Cache::forget(self::CACHE_KEY);
+        $data = self::buildIndexData();
+        self::$unaccentedWordMap = $data['map'];
+        self::$wordsByLength = $data['by_length'];
+        self::$isLoaded = true;
+        Cache::forever(self::CACHE_KEY, $data);
     }
 
     /**

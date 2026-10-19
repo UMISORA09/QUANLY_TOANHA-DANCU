@@ -3,6 +3,7 @@
 namespace Tests\Feature\ServicePricing;
 
 use App\Models\PricingTier;
+use App\Models\Role;
 use App\Models\ServicePricingConfig;
 use App\Models\User;
 use Database\Seeders\ServicePricingSeeder;
@@ -18,20 +19,25 @@ class ServicePricingManagementTest extends TestCase
     {
         parent::setUp();
 
-        $sqlitePath = database_path('database.sqlite');
-        if (file_exists($sqlitePath)) {
-            config([
-                'database.default' => 'sqlite',
-                'database.connections.sqlite.database' => $sqlitePath,
-            ]);
-            DB::purge();
-            DB::reconnect();
-        }
-
-        $adminUser = User::where('username', 'admin')->first();
-        if ($adminUser) {
-            $this->adminToken = 'smart_token_'.$adminUser->id.'_pricing';
-        }
+        $adminUser = User::firstOrCreate(
+            ['username' => 'admin'],
+            [
+                'phone_number' => '0900000001',
+                'email' => 'admin@cassavas.vn',
+                'password_hash' => bcrypt('password123'),
+                'full_name' => 'System Administrator',
+                'status' => 'ACTIVE',
+            ]
+        );
+        $role = Role::firstOrCreate(
+            ['role_code' => 'SUPER_ADMIN'],
+            ['role_name' => 'Quản trị viên cấp cao', 'status' => 'ACTIVE']
+        );
+        DB::table('user_roles')->updateOrInsert(
+            ['user_id' => $adminUser->id, 'role_id' => $role->id],
+            ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
+        );
+        $this->adminToken = 'smart_token_'.$adminUser->id.'_pricing';
 
         // Chạy seeder nạp dữ liệu mẫu biểu giá nếu chưa có
         if (ServicePricingConfig::count() === 0) {
