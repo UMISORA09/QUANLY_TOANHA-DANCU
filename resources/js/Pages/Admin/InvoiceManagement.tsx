@@ -590,12 +590,12 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
 
                     <button
                         type="button"
-                        onClick={handleOpenReminderLogs}
+                        onClick={() => onNavigateTab ? onNavigateTab('email_nhac_no') : (window.location.href = '/quan-ly/email-nhac-no')}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
-                        title="Xem nhật ký hàng đợi gửi email nhắc nợ tự động"
+                        title="Xem trang hàng đợi và email nhắc nợ tự động (Chức năng 11)"
                     >
                         <Mail className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Nhật Ký Nhắc Nợ</span>
+                        <span>Hàng Đợi Nhắc Nợ</span>
                     </button>
 
                     <button

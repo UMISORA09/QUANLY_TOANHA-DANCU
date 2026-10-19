@@ -608,7 +608,18 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('invoices/analytics/category-breakdown', [RevenueAnalyticsController::class, 'categoryBreakdown']);
     Route::get('invoices/analytics/top-debtors', [RevenueAnalyticsController::class, 'topDebtors']);
 
+    // ==========================================
+    // LARAVEL QUEUE GỬI EMAIL NHẮC NỢ TỰ ĐỘNG (CHỨC NĂNG 11 - XUANHOA)
+    // ==========================================
+    Route::get('invoices/reminders/summary', [DebtReminderController::class, 'summary']);
+    Route::get('invoices/reminders/history', [DebtReminderController::class, 'logs']);
+    Route::post('invoices/reminders/auto-dispatch', [DebtReminderController::class, 'autoDispatch']);
+    Route::get('invoices/reminders/{id}/preview', [DebtReminderController::class, 'preview']);
+    Route::post('invoices/reminders/{id}/retry', [DebtReminderController::class, 'retry']);
+    Route::post('invoices/bulk-send-reminders', [DebtReminderController::class, 'sendBulk']);
+
     Route::get('invoices/{id}', [InvoiceManagementController::class, 'show']);
+    Route::post('invoices/{id}/send-reminder', [DebtReminderController::class, 'sendSingle']);
     Route::post('invoices/{id}/cancel', [InvoiceManagementController::class, 'cancel']);
     Route::post('invoices/bulk-cancel', [InvoiceManagementController::class, 'bulkCancel']);
 
@@ -627,13 +638,6 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('payments/{id}/receipt', [PaymentController::class, 'receipt']);
 
     // ==========================================
-    // LARAVEL QUEUE GỬI EMAIL NHẮC NỢ TỰ ĐỘNG (CHỨC NĂNG 11 - XUANHOA)
-    // ==========================================
-    Route::post('invoices/{id}/send-reminder', [DebtReminderController::class, 'sendSingle']);
-    Route::post('invoices/bulk-send-reminders', [DebtReminderController::class, 'sendBulk']);
-    Route::get('invoices/reminders/history', [DebtReminderController::class, 'logs']);
-
-    // ==========================================
     // XUẤT BÁO CÁO TÀI CHÍNH VÀ CÔNG NỢ (CHỨC NĂNG 13 - XUANHOA)
     // ==========================================
     Route::get('reports/financial/preview', [FinancialReportController::class, 'preview']);
@@ -645,6 +649,18 @@ Route::get('/quan-ly/sinh-hoa-don', function () {
     return view('welcome');
 });
 Route::get('/admin/invoice-generation', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/email-nhac-no', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/debt-reminders', function () {
+    return view('welcome');
+});
+Route::get('/admin/email-nhac-no', function () {
+    return view('welcome');
+});
+Route::get('/admin/debt-reminders', function () {
     return view('welcome');
 });
 
