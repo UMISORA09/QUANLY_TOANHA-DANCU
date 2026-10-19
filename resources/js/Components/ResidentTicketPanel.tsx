@@ -234,24 +234,6 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     version: 1,
   });
   const [isUpdating, setIsUpdating] = useState(false);
-  const modalBusy = useRef(false);
-  modalBusy.current = isSubmitting || isCancelling || isConfirming || isReopening || isUpdating || imageBusy;
-  useEffect(() => {
-    if (!isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const bodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const dialog = document.querySelector<HTMLElement>('[data-ticket-modal]');
-    const controls = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]') || []).filter((node) => node.offsetParent !== null);
-    const frame = requestAnimationFrame(() => controls()[0]?.focus());
-    const keyboard = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !modalBusy.current) { setIsCreateModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setIsEditModalOpen(false); setRemoveImageId(null); }
-      if (event.key === 'Tab') { const nodes = controls(); const first = nodes[0], last = nodes[nodes.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
-    };
-    document.addEventListener('keydown', keyboard);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', keyboard); document.body.style.overflow = bodyOverflow; previous?.focus(); };
-  }, [isCreateModalOpen, isCancelModalOpen, isConfirmModalOpen, isReopenModalOpen, isEditModalOpen, removeImageId]);
-
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1425,41 +1407,12 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: HỦY TICKET ================= */}
       {isCancelModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Hủy yêu cầu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-rose-600">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <h3 className="font-bold text-base text-neutral-950">Xác nhận hủy yêu cầu</h3>
-              </div>
+        <TicketDialog open={isCancelModalOpen} title="Hủy yêu cầu" busy={isCancelling} onClose={() => setIsCancelModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
+                disabled={isCancelling}
                 onClick={() => setIsCancelModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-neutral-600">
-              Bạn có chắc chắn muốn hủy yêu cầu <strong>{detailTicket?.ticket_number}</strong>? Sau khi hủy, kỹ thuật viên sẽ không đến kiểm tra sự cố này.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Lý do hủy yêu cầu (Bắt buộc, ít nhất 5 ký tự)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Ví dụ: Đã tự khắc phục được, gửi nhầm căn hộ..."
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsCancelModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
               >
                 Đóng
               </button>
@@ -1467,52 +1420,41 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 type="button"
                 disabled={isCancelling}
                 onClick={handleConfirmCancel}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold disabled:opacity-50"
               >
                 {isCancelling ? 'Đang hủy...' : 'Đồng ý hủy'}
               </button>
+            </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-600">
+              Bạn có chắc chắn muốn hủy yêu cầu <strong>{detailTicket?.ticket_number}</strong>? Sau khi hủy, kỹ thuật viên sẽ không đến kiểm tra sự cố này.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Lý do hủy yêu cầu (Bắt buộc, ít nhất 5 ký tự)
+              </label>
+              <textarea aria-label="Lý do hủy yêu cầu"
+                rows={3}
+                placeholder="Ví dụ: Đã tự khắc phục được, gửi nhầm căn hộ..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
             </div>
+
           </div>
-        </div>
+        </TicketDialog>
       )}
 
       {/* ================= MODAL: XÁC NHẬN HOÀN TẤT ================= */}
       {isConfirmModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Xác nhận nghiệm thu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-emerald-600">
-                <CheckCircle2 className="w-5 h-5 shrink-0" />
-                <h3 className="font-bold text-base text-neutral-950">Xác nhận nghiệm thu & Hoàn tất</h3>
-              </div>
+        <TicketDialog open={isConfirmModalOpen} title="Xác nhận nghiệm thu" busy={isConfirming} onClose={() => setIsConfirmModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
+                disabled={isConfirming}
                 onClick={() => setIsConfirmModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-neutral-600">
-              Bạn xác nhận kỹ thuật viên đã sửa chữa sự cố đạt yêu cầu. Yêu cầu sẽ được chuyển sang trạng thái <strong>Đã hoàn tất (CLOSED)</strong>.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Ghi chú hoặc đánh giá chất lượng (Tùy chọn)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Ví dụ: Kỹ thuật viên nhiệt tình, sửa chữa nhanh và sạch sẽ..."
-                value={confirmNote}
-                onChange={(e) => setConfirmNote(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsConfirmModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
               >
                 Đóng
               </button>
@@ -1520,52 +1462,41 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 type="button"
                 disabled={isConfirming}
                 onClick={handleConfirmResolved}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50"
               >
                 {isConfirming ? 'Đang xác nhận...' : 'Xác nhận hoàn thành'}
               </button>
+            </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-600">
+              Bạn xác nhận kỹ thuật viên đã sửa chữa sự cố đạt yêu cầu. Yêu cầu sẽ được chuyển sang trạng thái <strong>Đã hoàn tất (CLOSED)</strong>.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Ghi chú hoặc đánh giá chất lượng (Tùy chọn)
+              </label>
+              <textarea aria-label="Ghi chú nghiệm thu"
+                rows={3}
+                placeholder="Ví dụ: Kỹ thuật viên nhiệt tình, sửa chữa nhanh và sạch sẽ..."
+                value={confirmNote}
+                onChange={(e) => setConfirmNote(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
             </div>
+
           </div>
-        </div>
+        </TicketDialog>
       )}
 
       {/* ================= MODAL: CHƯA KHẮC PHỤC XONG (REOPEN) ================= */}
       {isReopenModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Phản hồi chưa đạt" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-amber-600">
-                <AlertTriangle className="w-5 h-5 shrink-0" />
-                <h3 className="font-bold text-base text-neutral-950">Phản hồi sự cố chưa khắc phục</h3>
-              </div>
+        <TicketDialog open={isReopenModalOpen} title="Phản hồi chưa đạt" busy={isReopening} onClose={() => setIsReopenModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
+                disabled={isReopening}
                 onClick={() => setIsReopenModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-neutral-600">
-              Yêu cầu sẽ được mở lại sang trạng thái <strong>Đang xử lý (IN_PROGRESS)</strong> để kỹ thuật viên tiếp tục kiểm tra.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Lý do chưa khắc phục xong <span className="text-rose-500">*</span>
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Mô tả hiện tượng chưa xử lý dứt điểm (ví dụ: nước vẫn rò, bật công tắc đèn vẫn nháy...)"
-                value={reopenReason}
-                onChange={(e) => setReopenReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsReopenModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
               >
                 Đóng
               </button>
@@ -1573,13 +1504,31 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 type="button"
                 disabled={isReopening}
                 onClick={handleReopenTicket}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50"
               >
                 {isReopening ? 'Đang gửi...' : 'Gửi phản hồi xử lý lại'}
               </button>
+            </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-600">
+              Yêu cầu sẽ được mở lại sang trạng thái <strong>Đang xử lý (IN_PROGRESS)</strong> để kỹ thuật viên tiếp tục kiểm tra.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Lý do chưa khắc phục xong <span className="text-rose-500">*</span>
+              </label>
+              <textarea aria-label="Lý do chưa khắc phục xong"
+                rows={3}
+                placeholder="Mô tả hiện tượng chưa xử lý dứt điểm (ví dụ: nước vẫn rò, bật công tắc đèn vẫn nháy...)"
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
             </div>
+
           </div>
-        </div>
+        </TicketDialog>
       )}
 
       {/* ================= MODAL: CHỈNH SỬA TICKET ================= */}
@@ -1591,38 +1540,42 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         finally { setImageBusy(false); }
       }}>Bỏ ảnh</button></div></TicketDialog>
       {isEditModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Sửa yêu cầu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl border border-neutral-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-start justify-between border-b border-neutral-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Pencil className="w-5 h-5 text-neutral-700" />
-                <h3 className="font-bold text-base text-neutral-950">Chỉnh sửa nội dung sự cố</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700 p-1 rounded-lg hover:bg-neutral-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditTicket} className="space-y-4 text-xs">
+        <TicketDialog open={isEditModalOpen} title="Sửa yêu cầu" busy={isUpdating} onClose={() => setIsEditModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
+                <button
+                  type="button"
+                  disabled={isUpdating}
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit" form="ticket-resident-edit-form"
+                  disabled={isUpdating}
+                  className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold disabled:opacity-50"
+                >
+                  {isUpdating ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+            <form id="ticket-resident-edit-form" onSubmit={handleSaveEditTicket} className="space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">Tiêu đề sự cố *</label>
                 <input
                   type="text"
+                  aria-label="Tiêu đề sự cố"
                   value={editFormData.title}
                   onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-neutral-800 mb-1">Vị trí *</label>
                   <input
                     type="text"
+                    aria-label="Vị trí sự cố"
                     value={editFormData.location}
                     onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
@@ -1639,6 +1592,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">Mô tả chi tiết *</label>
                 <textarea
+                  aria-label="Mô tả chi tiết"
                   rows={4}
                   value={editFormData.description}
                   onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
@@ -1650,6 +1604,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 <label className="block font-bold text-neutral-800 mb-1">Ngày thuận tiện kỹ thuật đến kiểm tra</label>
                 <input
                   type="date"
+                  aria-label="Ngày thuận tiện kỹ thuật đến kiểm tra"
                   min={new Date().toISOString().split('T')[0]}
                   value={editFormData.preferred_service_time ? editFormData.preferred_service_time.substring(0, 10) : ''}
                   onChange={(e) => setEditFormData({ ...editFormData, preferred_service_time: e.target.value })}
@@ -1657,25 +1612,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
-                >
-                  Đóng
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUpdating}
-                  className="px-4 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold disabled:opacity-50"
-                >
-                  {isUpdating ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </button>
-              </div>
+
             </form>
-          </div>
-        </div>
+        </TicketDialog>
       )}
 
       <TicketDialog open={!!previewImage} title="Xem ảnh sự cố" onClose={() => setPreviewImage(null)}>

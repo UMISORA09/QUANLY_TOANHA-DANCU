@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Resident Incident Ticket Feature E2E Tests', () => {
   for (const width of [375, 768, 1440]) {
-    test(`Danh mục dài không bị che trong form cư dân ${width}px`, async ({ page }, testInfo) => {
+    test(`Danh mục dài không bị che trong form cư dân ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
       await page.route('**/api/v1/resident/tickets/categories', (route) => route.fulfill({ json: {
         success: true,
@@ -17,7 +17,6 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
       await page.goto('/cu-dan?tab=tickets');
       await expect(page.locator('#ticket-open-create-btn')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Xem chi tiết', exact: true }).first()).toBeVisible();
-      await page.screenshot({ path: testInfo.outputPath('ticket-list.png'), fullPage: true });
       await page.locator('#ticket-open-create-btn').click();
       const category = page.locator('#ticket-category-select');
       await category.click();
@@ -39,7 +38,6 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
         const footer = element.closest('dialog')?.querySelector('#ticket-submit-btn')?.parentElement?.getBoundingClientRect();
         return Boolean(footer && element.getBoundingClientRect().bottom <= footer.top);
       })).toBe(true);
-      await page.screenshot({ path: testInfo.outputPath('ticket-create.png') });
     });
   }
 
@@ -241,5 +239,42 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     for (const label of ['Mới gửi', 'Đã tiếp nhận', 'Chờ nghiệm thu']) await expect(list.getByText(label, { exact: true })).toBeVisible();
     await expect(list.getByRole('button', { name: 'Xem chi tiết', exact: true })).toHaveCount(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+  test('MOCKED E2E: modal cư dân giữ dữ liệu, chặn đóng khi đang gửi và trả focus', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let submitted = false;
+    const ticket = { id: 'qa-modal', ticket_number: 'TCK-QA-MODAL', title: 'Sự cố cần sửa', description: 'Nước rò rỉ dưới bồn rửa', location: 'Bếp', status: 'NEW', priority: 'HIGH', version: 1, attachments: [], history: [], created_at: '2026-10-19T08:00:00Z' };
+    await page.route('**/api/v1/resident/tickets/qa-modal**', async (route) => {
+      if (route.request().method() === 'POST') {
+        submitted = true; await held;
+        return route.fulfill({ status: 422, json: { message: 'QA chưa thể hủy yêu cầu' } });
+      }
+      return route.fulfill({ json: { success: true, data: ticket } });
+    });
+    await page.goto('/cu-dan?tab=tickets&ticket_id=qa-modal');
+    const opener = page.getByRole('button', { name: 'Hủy yêu cầu', exact: true });
+    await opener.click();
+    const dialog = page.getByRole('dialog', { name: 'Hủy yêu cầu', exact: true });
+    await dialog.getByRole('textbox').fill('Cần ngừng yêu cầu này');
+    await dialog.getByRole('button', { name: 'Đồng ý hủy', exact: true }).click();
+    await expect.poll(() => submitted).toBe(true);
+    await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
+    release();
+    await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeEnabled();
+    await expect(dialog).toContainText('QA chưa thể hủy yêu cầu');
+    await expect(dialog.getByRole('textbox')).toHaveValue('Cần ngừng yêu cầu này');
+    await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
+    await expect(opener).toBeFocused();
+    await page.getByRole('button', { name: 'Chỉnh sửa', exact: true }).click();
+    const edit = page.getByRole('dialog', { name: 'Sửa yêu cầu', exact: true });
+    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).click();
+    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).press('Escape');
+    await expect(edit).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(edit).toHaveCount(0);
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   });
 });
