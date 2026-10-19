@@ -507,18 +507,18 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
 
     if (viewMode === 'history') {
         return (
-            <div className="space-y-4 min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
-                <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between">
+            <div className="space-y-4">
+                <div className="p-4 bg-white border border-slate-200/80 rounded-2xl flex items-center justify-between shadow-xs">
                     <button
                         type="button"
                         onClick={() => setViewMode('list')}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                     >
-                        <ChevronLeft className="w-4 h-4" />
+                        <ChevronLeft className="w-4 h-4 text-emerald-600" />
                         <span>Quay Lại Danh Sách Hóa Đơn</span>
                     </button>
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-emerald-400 font-semibold font-mono">
+                        <span className="text-xs text-emerald-700 font-bold font-mono">
                             CHỨC NĂNG: LỊCH SỬ GIAO DỊCH CÁC KỲ TRƯỚC (CHỨC NĂNG 10)
                         </span>
                     </div>
@@ -530,7 +530,7 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
 
     if (viewMode === 'analytics') {
         return (
-            <div className="space-y-4 min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
+            <div className="space-y-4">
                 <RevenueAnalyticsDashboard onBackToList={() => setViewMode('list')} />
             </div>
         );
@@ -998,26 +998,27 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                                             type="button"
                                                             onClick={() => handleSendReminder(inv)}
                                                             disabled={sendingReminderId === inv.id}
-                                                            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-amber-300 border border-amber-500/20 transition-colors"
+                                                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-700 border border-amber-200 shadow-2xs transition-colors cursor-pointer"
                                                             title="Xếp hàng gửi email nhắc nợ tự động"
                                                         >
                                                             {sendingReminderId === inv.id ? (
-                                                                <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                                                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
                                                             ) : (
-                                                                <BellRing className="w-4 h-4" />
+                                                                <BellRing className="w-3.5 h-3.5" />
                                                             )}
                                                         </button>
                                                     )}
 
-                                                    {/* Nút Thu tiền & Gạch nợ */}
+                                                    {/* Nút Thu tiền & Gạch nợ (Chức năng 8) */}
                                                     {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && inv.remaining_balance > 0 && (
                                                         <button
                                                             type="button"
                                                             onClick={() => handleOpenPayModal(inv)}
-                                                            className="p-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-2xs transition-colors cursor-pointer"
-                                                            title="Thu tiền & Gạch nợ tức thời"
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                                                            title="Thu tiền & Gạch nợ tức thời (Chức năng 8)"
                                                         >
-                                                            <CreditCard className="w-3.5 h-3.5" />
+                                                            <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                                                            <span className="hidden xl:inline">Thu Tiền</span>
                                                         </button>
                                                     )}
 
@@ -1433,6 +1434,57 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     />
                                     <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">VND</span>
                                 </div>
+                                {/* Gợi ý số tiền nhanh */}
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayAmount(payModalInvoice.remaining_balance)}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                            payAmount === payModalInvoice.remaining_balance
+                                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                                : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                        }`}
+                                    >
+                                        Thu hết (100%)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayAmount(Math.round(payModalInvoice.remaining_balance / 2))}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                            payAmount === Math.round(payModalInvoice.remaining_balance / 2)
+                                                ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        50% dư nợ ({Math.round(payModalInvoice.remaining_balance / 2).toLocaleString('vi-VN')} đ)
+                                    </button>
+                                    {payModalInvoice.remaining_balance > 1000000 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPayAmount(1000000)}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                                payAmount === 1000000
+                                                    ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            1.000.000 đ
+                                        </button>
+                                    )}
+                                    {payModalInvoice.remaining_balance > 2000000 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPayAmount(2000000)}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                                payAmount === 2000000
+                                                    ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            2.000.000 đ
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Phương thức thanh toán */}
@@ -1728,17 +1780,17 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
 
             {/* MODAL 6: NHẬT KÝ HÀNG ĐỢI GỬI EMAIL NHẮC NỢ (CHỨC NĂNG 11) */}
             {reminderLogsModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
                         {/* Header */}
-                        <div className="p-5 bg-gradient-to-r from-amber-950/30 to-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+                        <div className="p-5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-2.5">
-                                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
                                     <Mail className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-bold text-white">Nhật Ký Hàng Đợi Gửi Email Nhắc Nợ</h3>
-                                    <p className="text-xs text-slate-400">
+                                    <h3 className="text-sm font-bold text-neutral-900">Nhật Ký Hàng Đợi Gửi Email Nhắc Nợ</h3>
+                                    <p className="text-xs text-slate-500">
                                         Theo dõi trạng thái tiến trình Laravel Queue xử lý gửi email nhắc nợ tự động kèm VietQR
                                     </p>
                                 </div>
@@ -1746,9 +1798,9 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                             <button
                                 type="button"
                                 onClick={() => setReminderLogsModalOpen(false)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                             >
-                                <X className="w-5 h-5" />
+                                <X className="w-4 h-4" />
                             </button>
                         </div>
 
@@ -1764,9 +1816,9 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     Chưa có nhật ký gửi email nhắc nợ nào được ghi nhận.
                                 </div>
                             ) : (
-                                <div className="overflow-x-auto border border-slate-800 rounded-xl">
-                                    <table className="w-full text-left text-xs text-slate-300">
-                                        <thead className="bg-slate-950/90 text-slate-400 font-semibold border-b border-slate-800 uppercase">
+                                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                                    <table className="w-full text-left text-xs text-slate-700">
+                                        <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase">
                                             <tr>
                                                 <th className="py-3 px-3">Thời Gian</th>
                                                 <th className="py-3 px-3">Mã Hóa Đơn</th>
@@ -1777,42 +1829,42 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                                 <th className="py-3 px-3">Ghi Chú / Lỗi</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                                        <tbody className="divide-y divide-slate-100 font-mono">
                                             {reminderLogs.map((log: any) => (
-                                                <tr key={log.id} className="hover:bg-slate-800/30">
-                                                    <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
+                                                <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
+                                                    <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
                                                         {new Date(log.created_at).toLocaleString('vi-VN')}
                                                     </td>
-                                                    <td className="py-2.5 px-3 font-bold text-indigo-300">
+                                                    <td className="py-2.5 px-3 font-bold text-sky-700">
                                                         {log.invoice?.invoice_number || log.invoice_id}
                                                     </td>
-                                                    <td className="py-2.5 px-3 font-sans text-slate-200">
+                                                    <td className="py-2.5 px-3 font-sans text-slate-800">
                                                         {log.recipient_email || 'N/A'}
                                                     </td>
-                                                    <td className="py-2.5 px-3 text-right font-bold text-amber-400">
+                                                    <td className="py-2.5 px-3 text-right font-bold text-amber-600">
                                                         {Number(log.debt_amount).toLocaleString('vi-VN')} đ
                                                     </td>
                                                     <td className="py-2.5 px-3 text-center">
-                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
                                                             {log.channel}
                                                         </span>
                                                     </td>
                                                     <td className="py-2.5 px-3 text-center">
                                                         {log.status === 'SENT' ? (
-                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                                                 ĐÃ GỬI
                                                             </span>
                                                         ) : log.status === 'FAILED' ? (
-                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                                                 THẤT BÀI
                                                             </span>
                                                         ) : (
-                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
                                                                 CHỜ XỬ LÝ
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td className="py-2.5 px-3 font-sans text-slate-400 text-[11px] truncate max-w-xs" title={log.error_message || log.notes || ''}>
+                                                    <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px] truncate max-w-xs" title={log.error_message || log.notes || ''}>
                                                         {log.error_message || log.notes || '-'}
                                                     </td>
                                                 </tr>
@@ -1824,11 +1876,11 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                         </div>
 
                         {/* Footer */}
-                        <div className="p-4 bg-slate-950/70 border-t border-slate-800 flex justify-end shrink-0">
+                        <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex justify-end shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setReminderLogsModalOpen(false)}
-                                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                                className="px-5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 bg-white border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                             >
                                 Đóng
                             </button>
