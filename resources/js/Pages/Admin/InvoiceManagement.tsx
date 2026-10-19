@@ -32,15 +32,25 @@ import {
     Check,
     History,
     Mail,
-    BellRing
+    BellRing,
+    BarChart3,
+    Banknote,
+    Cpu
 } from 'lucide-react';
 import {
     invoiceApi,
     InvoiceModel,
     InvoiceSummaryModel
 } from '../../Services/invoiceApi';
+import {
+    printInvoiceStatement,
+    printPaymentReceipt
+} from '../../Services/invoicePrintHelper';
 import { InvoiceBatchGeneration } from './InvoiceBatchGeneration';
 import { PaymentHistoryManagement } from './PaymentHistoryManagement';
+import { RevenueAnalyticsDashboard } from './RevenueAnalyticsDashboard';
+import { FinancialReportExportModal } from './FinancialReportExportModal';
+import { PaymentCollectionPage } from './PaymentCollectionPage';
 
 interface BlockOption {
     id: string;
@@ -48,9 +58,14 @@ interface BlockOption {
     block_name: string;
 }
 
-export const InvoiceManagement: React.FC = () => {
-    // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch và Sinh hóa đơn hàng loạt
-    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history'>('list');
+export interface InvoiceManagementProps {
+    onNavigateTab?: (tabKey: string) => void;
+}
+
+export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigateTab }) => {
+    // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch, Thu tiền gạch nợ (CN8) và Sinh hóa đơn hàng loạt
+    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history' | 'analytics' | 'collect_payment'>('list');
+    const [selectedInvoiceForPaymentId, setSelectedInvoiceForPaymentId] = useState<string | undefined>(undefined);
 
     // Dữ liệu danh sách & KPI
     const [invoices, setInvoices] = useState<InvoiceModel[]>([]);
@@ -108,8 +123,15 @@ export const InvoiceManagement: React.FC = () => {
     const [reminderLogs, setReminderLogs] = useState<any[]>([]);
     const [loadingReminderLogs, setLoadingReminderLogs] = useState<boolean>(false);
 
+    // Xuất báo cáo tài chính & công nợ (Chức năng 13)
+    const [reportModalOpen, setReportModalOpen] = useState<boolean>(false);
+
     // Toast message
     const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Web Worker background sync state
+    const [workerActive, setWorkerActive] = useState<boolean>(true);
+    const [lastSyncTime, setLastSyncTime] = useState<string>('Vừa xong');
 
     const showToast = (type: 'success' | 'error', text: string) => {
         setToast({ type, text });
@@ -138,9 +160,11 @@ export const InvoiceManagement: React.FC = () => {
         fetchBlocks();
     }, []);
 
-    // Tải danh sách hóa đơn từ API
-    const fetchInvoices = useCallback(async () => {
-        setLoading(true);
+    // Tải danh sách hóa đơn từ API (hỗ trợ chế độ chạy ngầm isSilent)
+    const fetchInvoices = useCallback(async (isSilent = false) => {
+        if (!isSilent) {
+            setLoading(true);
+        }
         try {
             const res = await invoiceApi.getInvoices({
                 status: statusFilter !== 'ALL' ? statusFilter : undefined,
@@ -160,10 +184,16 @@ export const InvoiceManagement: React.FC = () => {
                 total: res.data.total,
                 per_page: pagination.per_page,
             });
+            const now = new Date();
+            setLastSyncTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
         } catch (err: any) {
-            showToast('error', err.message || 'Lỗi khi tải danh sách hóa đơn');
+            if (!isSilent) {
+                showToast('error', err.message || 'Lỗi khi tải danh sách hóa đơn');
+            }
         } finally {
-            setLoading(false);
+            if (!isSilent) {
+                setLoading(false);
+            }
         }
     }, [statusFilter, billingPeriodFilter, blockFilter, searchQuery, sortBy, sortOrder, pagination.current_page, pagination.per_page]);
 
@@ -179,6 +209,47 @@ export const InvoiceManagement: React.FC = () => {
             console.error('Lỗi khi tải KPI summary:', err);
         }
     }, [billingPeriodFilter, blockFilter]);
+
+    // Khởi tạo Web Worker để tự động đồng bộ ngầm và xử lý dữ liệu không cần nút load
+    useEffect(() => {
+        let worker: Worker | null = null;
+        try {
+            worker = new Worker(
+                new URL('../../Workers/invoiceSyncWorker.ts', import.meta.url),
+                { type: 'module' }
+            );
+
+            worker.onmessage = (e: MessageEvent) => {
+                if (e.data?.type === 'SYNC_TICK') {
+                    // Tự động cập nhật ngầm không làm gián đoạn UI
+                    fetchInvoices(true);
+                    fetchSummary();
+                } else if (e.data?.type === 'SYNC_STATUS') {
+                    setWorkerActive(e.data.status === 'RUNNING');
+                }
+            };
+
+            worker.postMessage({
+                type: 'START_SYNC',
+                payload: { interval: 12000 },
+            });
+            setWorkerActive(true);
+        } catch (err) {
+            console.warn('Web Worker initialization fallback:', err);
+            const fallbackTimer = setInterval(() => {
+                fetchInvoices(true);
+                fetchSummary();
+            }, 12000);
+            return () => clearInterval(fallbackTimer);
+        }
+
+        return () => {
+            if (worker) {
+                worker.postMessage({ type: 'STOP_SYNC' });
+                worker.terminate();
+            }
+        };
+    }, [fetchInvoices, fetchSummary]);
 
     useEffect(() => {
         if (viewMode === 'list') {
@@ -443,23 +514,20 @@ export const InvoiceManagement: React.FC = () => {
 
     if (viewMode === 'history') {
         return (
+            <PaymentHistoryManagement
+                onBackToList={() => setViewMode('list')}
+                onNavigateTab={onNavigateTab}
+            />
+        );
+    }
+
+    if (viewMode === 'analytics' || viewMode === 'collect_payment') {
+        return (
             <div className="space-y-4">
-                <div className="p-4 bg-white border border-slate-200/80 rounded-2xl flex items-center justify-between shadow-xs">
-                    <button
-                        type="button"
-                        onClick={() => setViewMode('list')}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                    >
-                        <ChevronLeft className="w-4 h-4 text-sky-600" />
-                        <span>Quay Lại Danh Sách Hóa Đơn</span>
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-sky-700 font-bold font-mono">
-                            CHỨC NĂNG: LỊCH SỬ GIAO DỊCH CÁC KỲ TRƯỚC (CHỨC NĂNG 10)
-                        </span>
-                    </div>
-                </div>
-                <PaymentHistoryManagement />
+                <PaymentCollectionPage
+                    onBackToList={() => setViewMode('list')}
+                    initialInvoiceId={selectedInvoiceForPaymentId}
+                />
             </div>
         );
     }
@@ -484,7 +552,7 @@ export const InvoiceManagement: React.FC = () => {
                 </div>
             )}
 
-            {/* HEADER TIÊU ĐỀ & NÚT HÀNH ĐỘNG */}
+            {/* HEADER TIÊU ĐỀ */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
                 <div>
                     <div className="text-[11px] font-bold text-sky-600 font-mono tracking-wider uppercase flex items-center gap-1.5">
@@ -498,48 +566,69 @@ export const InvoiceManagement: React.FC = () => {
                         Theo dõi công nợ, phân loại trạng thái thanh toán, lọc theo kỳ và quản lý chi tiết hóa đơn dịch vụ cư dân.
                     </p>
                 </div>
+            </div>
 
+            {/* THANH ĐIỀU HƯỚNG TÁC VỤ & CHỨC NĂNG (TRÊN BẢNG THÔNG SỐ) */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-sky-600" />
+                        Tác Vụ & Chức Năng:
+                    </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => onNavigateTab ? onNavigateTab('financial_reports') : setReportModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                        title="Xem trang báo cáo tài chính và công nợ ra Excel và PDF (Chức năng 13)"
+                    >
+                        <Download className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Xuất Báo Cáo</span>
+                    </button>
+
                     <button
                         type="button"
                         onClick={handleOpenReminderLogs}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs text-xs font-bold transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
                         title="Xem nhật ký hàng đợi gửi email nhắc nợ tự động"
                     >
-                        <Mail className="w-4 h-4 text-amber-600" />
+                        <Mail className="w-3.5 h-3.5 text-amber-600" />
                         <span>Nhật Ký Nhắc Nợ</span>
                     </button>
 
                     <button
                         type="button"
-                        onClick={() => setViewMode('history')}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs text-xs font-bold transition-all cursor-pointer"
+                        onClick={() => onNavigateTab ? onNavigateTab('thu_tien_gach_no') : setViewMode('collect_payment')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                        title="Quầy thu ngân BQL: Thu tiền mặt / POS / Chuyển khoản VietQR và gạch nợ tức thời (Chức năng 8)"
                     >
-                        <History className="w-4 h-4 text-emerald-600" />
+                        <Banknote className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Thu Tiền & Gạch Nợ (CN8)</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => onNavigateTab ? onNavigateTab('payment_history') : setViewMode('history')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                    >
+                        <History className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Lịch Sử Giao Dịch</span>
                     </button>
 
                     <button
                         type="button"
-                        onClick={() => setViewMode('batch_generate')}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                        onClick={() => onNavigateTab ? onNavigateTab('invoice_generation') : setViewMode('batch_generate')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
                     >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-3.5 h-3.5" />
                         <span>Sinh Hóa Đơn Hàng Loạt</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => { fetchInvoices(); fetchSummary(); }}
-                        disabled={loading}
-                        title="Làm mới dữ liệu"
-                        className="p-2 rounded-xl text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-2xs transition-all active:scale-[0.98] cursor-pointer shrink-0"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-sky-600' : ''}`} />
                     </button>
                 </div>
             </div>
 
-            {/* KPI METRIC CARDS TỔNG HỢP */}
+            {/* KPI METRIC CARDS TỔNG HỢP (BẢNG THÔNG SỐ) */}
             {summary && (
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
                     {/* Thẻ 1: Tổng số hóa đơn */}
@@ -741,7 +830,7 @@ export const InvoiceManagement: React.FC = () => {
                             type="button"
                             onClick={handleBulkSendReminders}
                             disabled={bulkSendingReminders}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 text-white text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-amber-600/30 transition-all"
                             title="Xếp hàng gửi email nhắc nợ kèm mã QR cho các hóa đơn đã chọn"
                         >
                             {bulkSendingReminders ? (
@@ -905,7 +994,7 @@ export const InvoiceManagement: React.FC = () => {
                                                             type="button"
                                                             onClick={() => handleSendReminder(inv)}
                                                             disabled={sendingReminderId === inv.id}
-                                                            className="p-1.5 rounded-lg bg-white hover:bg-amber-50 disabled:opacity-50 text-amber-600 border border-amber-200 shadow-2xs transition-colors cursor-pointer"
+                                                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-700 border border-amber-200 shadow-2xs transition-colors cursor-pointer"
                                                             title="Xếp hàng gửi email nhắc nợ tự động"
                                                         >
                                                             {sendingReminderId === inv.id ? (
@@ -916,15 +1005,16 @@ export const InvoiceManagement: React.FC = () => {
                                                         </button>
                                                     )}
 
-                                                    {/* Nút Thu tiền & Gạch nợ */}
+                                                    {/* Nút Thu tiền & Gạch nợ (Chức năng 8) */}
                                                     {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && inv.remaining_balance > 0 && (
                                                         <button
                                                             type="button"
                                                             onClick={() => handleOpenPayModal(inv)}
-                                                            className="p-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-2xs transition-colors cursor-pointer"
-                                                            title="Thu tiền & Gạch nợ tức thời"
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                                                            title="Thu tiền & Gạch nợ tức thời (Chức năng 8)"
                                                         >
-                                                            <CreditCard className="w-3.5 h-3.5" />
+                                                            <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                                                            <span className="hidden xl:inline">Thu Tiền</span>
                                                         </button>
                                                     )}
 
@@ -1163,8 +1253,8 @@ export const InvoiceManagement: React.FC = () => {
                         <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between">
                             <button
                                 type="button"
-                                onClick={() => window.print()}
-                                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-neutral-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                                onClick={() => printInvoiceStatement(detailInvoice)}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                             >
                                 <Printer className="w-4 h-4 text-slate-500" />
                                 <span>In Bản Sao Kê</span>
@@ -1180,9 +1270,9 @@ export const InvoiceManagement: React.FC = () => {
                                                 setDetailInvoice(null);
                                                 handleOpenVietQr(inv);
                                             }}
-                                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 shadow-2xs transition-all cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-2xs transition-all cursor-pointer"
                                         >
-                                            <QrCode className="w-3.5 h-3.5" />
+                                            <QrCode className="w-3.5 h-3.5 text-indigo-600" />
                                             <span>Mã VietQR</span>
                                         </button>
                                         <button
@@ -1192,7 +1282,7 @@ export const InvoiceManagement: React.FC = () => {
                                                 setDetailInvoice(null);
                                                 handleOpenPayModal(inv);
                                             }}
-                                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-xs transition-all cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
                                         >
                                             <CreditCard className="w-3.5 h-3.5" />
                                             <span>Thu Tiền Ngay</span>
@@ -1335,27 +1425,146 @@ export const InvoiceManagement: React.FC = () => {
                                         max={payModalInvoice.remaining_balance}
                                         value={payAmount || ''}
                                         onChange={(e) => setPayAmount(Number(e.target.value))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 font-mono font-bold text-base text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                                        className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 pr-14 font-mono font-bold text-base text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 no-spinner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         placeholder="Nhập số tiền thu..."
                                     />
-                                    <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">VND</span>
+                                    <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs pointer-events-none select-none">VND</span>
+                                </div>
+                                {/* Gợi ý số tiền nhanh */}
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayAmount(payModalInvoice.remaining_balance)}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                            payAmount === payModalInvoice.remaining_balance
+                                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                                : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                        }`}
+                                    >
+                                        Thu hết (100%)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayAmount(Math.round(payModalInvoice.remaining_balance / 2))}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                            payAmount === Math.round(payModalInvoice.remaining_balance / 2)
+                                                ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        50% dư nợ ({Math.round(payModalInvoice.remaining_balance / 2).toLocaleString('vi-VN')} đ)
+                                    </button>
+                                    {payModalInvoice.remaining_balance > 1000000 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPayAmount(1000000)}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                                payAmount === 1000000
+                                                    ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            1.000.000 đ
+                                        </button>
+                                    )}
+                                    {payModalInvoice.remaining_balance > 2000000 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPayAmount(2000000)}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                                payAmount === 2000000
+                                                    ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            2.000.000 đ
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
                             {/* Phương thức thanh toán */}
-                            <div className="space-y-1.5">
-                                <label className="font-bold text-slate-700">Phương thức thanh toán:</label>
-                                <select
-                                    value={payMethod}
-                                    onChange={(e) => setPayMethod(e.target.value)}
-                                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer"
-                                >
-                                    <option value="CASH">Tiền mặt tại quầy lễ tân (CASH)</option>
-                                    <option value="BANK_TRANSFER">Chuyển khoản ngân hàng trực tiếp</option>
-                                    <option value="VIETQR">Quét mã VietQR chuyển khoản nhanh</option>
-                                    <option value="VNPAY">Cổng thanh toán điện tử VNPay</option>
-                                    <option value="MOMO">Ví điện tử MoMo</option>
-                                </select>
+                            <div className="space-y-2">
+                                <label className="font-bold text-slate-700 text-xs uppercase tracking-wider">Phương thức thanh toán:</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayMethod('CASH')}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
+                                            payMethod === 'CASH'
+                                                ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-700">
+                                            <Banknote className="w-4 h-4" />
+                                            <span>Tiền Mặt</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-500">Tại quầy lễ tân</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayMethod('BANK_TRANSFER')}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
+                                            payMethod === 'BANK_TRANSFER'
+                                                ? 'bg-sky-50 border-sky-500 text-sky-900 ring-2 ring-sky-500/20'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 font-bold text-xs text-sky-700">
+                                            <CreditCard className="w-4 h-4" />
+                                            <span>Chuyển Khoản</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-500">Ngân hàng trực tiếp</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayMethod('VIETQR')}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
+                                            payMethod === 'VIETQR'
+                                                ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-700">
+                                            <QrCode className="w-4 h-4" />
+                                            <span>VietQR</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-500">Chuyển khoản NAPAS</span>
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayMethod('VNPAY')}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
+                                            payMethod === 'VNPAY'
+                                                ? 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-500/20'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 font-bold text-xs text-violet-700">
+                                            <Cpu className="w-4 h-4" />
+                                            <span>VNPay</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-500">Cổng thanh toán điện tử</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayMethod('MOMO')}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
+                                            payMethod === 'MOMO'
+                                                ? 'bg-pink-50 border-pink-500 text-pink-900 ring-2 ring-pink-500/20'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 font-bold text-xs text-pink-700">
+                                            <Sparkles className="w-4 h-4" />
+                                            <span>Ví MoMo</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-500">Ví điện tử MoMo</span>
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Mã giao dịch ngân hàng / Ref */}
@@ -1615,7 +1824,7 @@ export const InvoiceManagement: React.FC = () => {
                         <div className="flex items-center justify-between p-4 bg-slate-50/70 border-t border-slate-100">
                             <button
                                 type="button"
-                                onClick={() => window.print()}
+                                onClick={() => printPaymentReceipt(receiptModalData)}
                                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 bg-white border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                             >
                                 <Printer className="w-3.5 h-3.5" />
@@ -1638,13 +1847,13 @@ export const InvoiceManagement: React.FC = () => {
                 <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
                     <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
                         {/* Header */}
-                        <div className="p-5 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between shrink-0">
+                        <div className="p-5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-2.5">
-                                <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
+                                <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
                                     <Mail className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-bold text-neutral-900">Nhật Ký Hàng Đợi Gửi Email Nhắc Nợ</h3>
+                                    <h3 className="text-sm font-bold text-neutral-900">Nhật Ký Hàng Đợi Gửi Email Nhắc Nợ</h3>
                                     <p className="text-xs text-slate-500">
                                         Theo dõi trạng thái tiến trình Laravel Queue xử lý gửi email nhắc nợ tự động kèm VietQR
                                     </p>
@@ -1663,17 +1872,17 @@ export const InvoiceManagement: React.FC = () => {
                         <div className="p-6 overflow-y-auto flex-1 text-xs">
                             {loadingReminderLogs ? (
                                 <div className="py-16 text-center text-slate-400">
-                                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-600 mb-2" />
+                                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
                                     <span>Đang tải nhật ký gửi nhắc nợ...</span>
                                 </div>
                             ) : reminderLogs.length === 0 ? (
-                                <div className="py-16 text-center text-slate-400">
+                                <div className="py-16 text-center text-slate-500">
                                     Chưa có nhật ký gửi email nhắc nợ nào được ghi nhận.
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto border border-slate-200 rounded-xl">
                                     <table className="w-full text-left text-xs text-slate-700">
-                                        <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200 uppercase text-[11px]">
+                                        <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase">
                                             <tr>
                                                 <th className="py-3 px-3">Thời Gian</th>
                                                 <th className="py-3 px-3">Mã Hóa Đơn</th>
@@ -1693,7 +1902,7 @@ export const InvoiceManagement: React.FC = () => {
                                                     <td className="py-2.5 px-3 font-bold text-sky-700">
                                                         {log.invoice?.invoice_number || log.invoice_id}
                                                     </td>
-                                                    <td className="py-2.5 px-3 font-sans text-neutral-900 font-medium">
+                                                    <td className="py-2.5 px-3 font-sans text-slate-800">
                                                         {log.recipient_email || 'N/A'}
                                                     </td>
                                                     <td className="py-2.5 px-3 text-right font-bold text-amber-600">
@@ -1735,7 +1944,7 @@ export const InvoiceManagement: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => setReminderLogsModalOpen(false)}
-                                className="px-5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                                className="px-5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 bg-white border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                             >
                                 Đóng
                             </button>
@@ -1743,6 +1952,13 @@ export const InvoiceManagement: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* MODAL 7: XUẤT BÁO CÁO TÀI CHÍNH & CÔNG NỢ (CHỨC NĂNG 13) */}
+            <FinancialReportExportModal
+                isOpen={reportModalOpen}
+                onClose={() => setReportModalOpen(false)}
+                blocks={blocks}
+            />
         </div>
     );
 };

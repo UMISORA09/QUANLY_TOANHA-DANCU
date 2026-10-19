@@ -41,3 +41,6 @@ backend/**/__pycache__/
 .env*
 playwright-report/
 test-results/
+~$*
+*.docx
+BAOCAO_NHOM_G.docx

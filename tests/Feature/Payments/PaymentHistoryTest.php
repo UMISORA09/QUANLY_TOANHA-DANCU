@@ -49,39 +49,47 @@ class PaymentHistoryTest extends TestCase
 
         $this->token = 'smart_token_'.$this->adminUser->id.'_invoice';
 
-        $this->block = Block::create([
-            'block_code' => 'T-A',
-            'block_name' => 'Tòa Tháp A Sapphire',
-            'total_floors' => 20,
-            'total_apartments' => 80,
-        ]);
+        $this->block = Block::firstOrCreate(
+            ['block_code' => 'T-A'],
+            [
+                'block_name' => 'Tòa Tháp A Sapphire',
+                'total_floors' => 20,
+                'total_apartments' => 80,
+            ]
+        );
 
-        $this->floor = Floor::create([
-            'block_id' => $this->block->id,
-            'floor_code' => 'FL-A03',
-            'floor_number' => 3,
-            'floor_name' => 'Tầng 3',
-        ]);
+        $this->floor = Floor::firstOrCreate(
+            ['floor_code' => 'FL-A03'],
+            [
+                'block_id' => $this->block->id,
+                'floor_number' => 3,
+                'floor_name' => 'Tầng 3',
+            ]
+        );
 
-        $this->apt1 = Apartment::create([
-            'block_id' => $this->block->id,
-            'floor_id' => $this->floor->id,
-            'apartment_number' => 'A-301',
-            'net_usable_area_sqm' => 70.0,
-            'gross_floor_area_sqm' => 75.0,
-            'current_resident_user_id' => $this->adminUser->id,
-            'status' => 'OCCUPIED',
-        ]);
+        $this->apt1 = Apartment::firstOrCreate(
+            ['apartment_number' => 'A-301'],
+            [
+                'block_id' => $this->block->id,
+                'floor_id' => $this->floor->id,
+                'net_usable_area_sqm' => 70.0,
+                'gross_floor_area_sqm' => 75.0,
+                'current_resident_user_id' => $this->adminUser->id,
+                'status' => 'OCCUPIED',
+            ]
+        );
 
-        $this->apt2 = Apartment::create([
-            'block_id' => $this->block->id,
-            'floor_id' => $this->floor->id,
-            'apartment_number' => 'A-302',
-            'net_usable_area_sqm' => 85.0,
-            'gross_floor_area_sqm' => 90.0,
-            'current_resident_user_id' => $this->adminUser->id,
-            'status' => 'OCCUPIED',
-        ]);
+        $this->apt2 = Apartment::firstOrCreate(
+            ['apartment_number' => 'A-302'],
+            [
+                'block_id' => $this->block->id,
+                'floor_id' => $this->floor->id,
+                'net_usable_area_sqm' => 85.0,
+                'gross_floor_area_sqm' => 90.0,
+                'current_resident_user_id' => $this->adminUser->id,
+                'status' => 'OCCUPIED',
+            ]
+        );
 
         // Hóa đơn kỳ 2026-08 (kỳ trước)
         $this->invPeriod1 = Invoice::create([

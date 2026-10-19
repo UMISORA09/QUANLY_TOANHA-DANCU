@@ -39,13 +39,15 @@ import vehicleApi, {
   VehiclePricingConfig,
   VehicleDetailResponse
 } from '../../Services/vehicleApi';
+import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
+import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
 
 interface ResidentComboboxProps {
   value: string;
-  onChange: (userId: string) => void;
+  onChange: (userId: string, resident?: (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })) => void;
   formApartmentId: string;
   formResidents: VehicleResidentOption[];
-  buildingResidents: (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[];
+  buildingResidents?: (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[];
   loading?: boolean;
 }
 
@@ -54,12 +56,17 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
   onChange,
   formApartmentId,
   formResidents,
-  buildingResidents,
+  buildingResidents = [],
   loading = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [remoteResidents, setRemoteResidents] = useState<(VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[]>([]);
+  const [searchingRemote, setSearchingRemote] = useState(false);
+  const [selectedResidentItem, setSelectedResidentItem] = useState<(VehicleResidentOption & { apartment_id?: string; apartment_number?: string }) | null>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const searchTimeoutRef = React.useRef<any>(null);
+  const searchAbortRef = React.useRef<AbortController | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -75,14 +82,61 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
     };
   }, [isOpen]);
 
+  // Tìm kiếm cư dân server-side với debounce 300ms (giới hạn tối đa 20 bản ghi)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+
+    const query = searchQuery.trim();
+    if (query.length > 0 || formResidents.length === 0) {
+      setSearchingRemote(true);
+      searchTimeoutRef.current = setTimeout(async () => {
+        const abortController = new AbortController();
+        searchAbortRef.current = abortController;
+        try {
+          const res = await vehicleApi.getAllResidents(
+            { search: query || undefined, apartment_id: formApartmentId || undefined, limit: 20 },
+            { signal: abortController.signal }
+          );
+          if (res.success) {
+            setRemoteResidents(res.data);
+          }
+        } catch (e: any) {
+          if (e.name !== 'AbortError') {
+            // ignore
+          }
+        } finally {
+          setSearchingRemote(false);
+        }
+      }, 300);
+    } else {
+      setRemoteResidents([]);
+      setSearchingRemote(false);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      if (searchAbortRef.current) searchAbortRef.current.abort();
+    };
+  }, [searchQuery, isOpen, formApartmentId, formResidents.length]);
+
   const selectedResident = useMemo(() => {
     if (!value) return null;
-    return (
-      formResidents.find((r) => r.user_id === value) ||
-      buildingResidents.find((b) => b.user_id === value) ||
-      null
-    );
-  }, [value, formResidents, buildingResidents]);
+    if (selectedResidentItem && selectedResidentItem.user_id === value) return selectedResidentItem;
+    const inForm = formResidents.find((r) => r.user_id === value);
+    if (inForm) return inForm;
+    const inRemote = remoteResidents.find((r) => r.user_id === value);
+    if (inRemote) return inRemote;
+    const inBuilding = buildingResidents.find((b) => b.user_id === value);
+    if (inBuilding) return inBuilding;
+    return null;
+  }, [value, selectedResidentItem, formResidents, remoteResidents, buildingResidents]);
 
   const filteredApartmentResidents = useMemo(() => {
     if (!searchQuery.trim()) return formResidents;
@@ -95,22 +149,15 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
     );
   }, [formResidents, searchQuery]);
 
-  const filteredBuildingResidents = useMemo(() => {
-    const list = buildingResidents.filter(
+  const filteredRemoteResidents = useMemo(() => {
+    return remoteResidents.filter(
       (br) => !formResidents.some((fr) => fr.user_id === br.user_id)
     );
-    if (!searchQuery.trim()) return list;
-    const q = searchQuery.toLowerCase().trim();
-    return list.filter(
-      (r) =>
-        r.full_name?.toLowerCase().includes(q) ||
-        r.phone_number?.includes(q) ||
-        r.apartment_number?.toLowerCase().includes(q)
-    );
-  }, [buildingResidents, formResidents, searchQuery]);
+  }, [remoteResidents, formResidents]);
 
-  const handleSelect = (userId: string) => {
-    onChange(userId);
+  const handleSelect = (item: VehicleResidentOption & { apartment_id?: string; apartment_number?: string }) => {
+    setSelectedResidentItem(item);
+    onChange(item.user_id, item);
     setIsOpen(false);
     setSearchQuery('');
   };
@@ -154,10 +201,10 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
         />
       </button>
 
-      {/* Dropdown Menu - Căn chỉnh bo tròn và vừa khít khung cột */}
+      {/* Dropdown Menu */}
       {isOpen && (
         <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
-          {/* Ô tìm kiếm nhanh */}
+          {/* Ô tìm kiếm nhanh với debounce và loading indicator */}
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -165,11 +212,14 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm tên, số căn, SĐT..."
-                className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                placeholder="Tìm tên, số căn, SĐT (tối đa 20 kết quả)..."
+                className="w-full pl-8 pr-8 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
               />
+              {searchingRemote && (
+                <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-600 animate-spin" />
+              )}
             </div>
           </div>
 
@@ -187,7 +237,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
                     <button
                       key={`apt-${r.user_id}`}
                       type="button"
-                      onClick={() => handleSelect(r.user_id)}
+                      onClick={() => handleSelect(r)}
                       className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
                         isSelected
                           ? 'bg-emerald-600 text-white font-bold'
@@ -212,19 +262,19 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
               </div>
             )}
 
-            {/* 2. Cư dân toàn tòa nhà */}
-            {filteredBuildingResidents.length > 0 && (
+            {/* 2. Cư dân tra cứu từ máy chủ */}
+            {filteredRemoteResidents.length > 0 && (
               <div className={filteredApartmentResidents.length > 0 ? 'pt-1 border-t border-slate-100' : ''}>
                 <div className="px-2 py-1 text-[10px] font-bold text-slate-500 bg-slate-50 rounded uppercase tracking-wider mb-0.5">
-                  {filteredApartmentResidents.length > 0 ? 'Cư dân khác trong tòa nhà' : 'Danh sách cư dân tòa nhà'}
+                  {filteredApartmentResidents.length > 0 ? 'Cư dân khác tìm thấy' : 'Kết quả tra cứu cư dân (20 gần nhất)'}
                 </div>
-                {filteredBuildingResidents.map((r) => {
+                {filteredRemoteResidents.map((r) => {
                   const isSelected = r.user_id === value;
                   return (
                     <button
                       key={`bld-${r.user_id}`}
                       type="button"
-                      onClick={() => handleSelect(r.user_id)}
+                      onClick={() => handleSelect(r)}
                       className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
                         isSelected
                           ? 'bg-emerald-600 text-white font-bold'
@@ -250,9 +300,9 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
             )}
 
             {/* Không tìm thấy */}
-            {filteredApartmentResidents.length === 0 && filteredBuildingResidents.length === 0 && (
+            {filteredApartmentResidents.length === 0 && filteredRemoteResidents.length === 0 && !searchingRemote && (
               <div className="p-3 text-center text-slate-400 text-xs">
-                Không tìm thấy cư dân phù hợp
+                {searchQuery.trim() ? 'Không tìm thấy cư dân phù hợp' : 'Nhập tên, số căn hoặc SĐT để tra cứu'}
               </div>
             )}
           </div>
@@ -551,22 +601,58 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   portalMode = 'manager',
   initialFilterApproval = '',
 }) => {
+  const { isCooldownActive, remainingSeconds, message: cooldownMessage, startCooldown } = useModuleCooldown('vehicles');
+
+  // Đọc snapshot lưu trong sessionStorage để hiển thị tức thì (0ms) cho lần tải thứ 2
+  const getCachedVehiclesData = () => {
+    try {
+      const raw = sessionStorage.getItem('smartcassavas_vehicles_list_cache');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const getCachedVehicleMetaData = () => {
+    try {
+      const raw = sessionStorage.getItem('smartcassavas_vehicles_meta_cache');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const cachedVehicles = getCachedVehiclesData();
+  const cachedMeta = getCachedVehicleMetaData();
+
   // State danh sách & phân trang
-  const [vehicles, setVehicles] = useState<VehicleItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [vehicles, setVehicles] = useState<VehicleItem[]>(() => (Array.isArray(cachedVehicles?.data) ? cachedVehicles.data : []));
+  const [loading, setLoading] = useState<boolean>(() => !cachedVehicles);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages, setTotalPages] = useState<number>(1);
-  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(() => cachedVehicles?.meta?.last_page || 1);
+  const [totalCount, setTotalCount] = useState<number>(() => cachedVehicles?.meta?.total || 0);
   const [perPage, setPerPage] = useState<number>(15);
 
   // State bộ lọc & tìm kiếm
-  const [search, setSearch] = useState<string>('');
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const searchAbortControllerRef = React.useRef<AbortController | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterApartmentId, setFilterApartmentId] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterApproval, setFilterApproval] = useState<string>(initialFilterApproval);
-  const [apartments, setApartments] = useState<VehicleApartmentOption[]>([]);
-  const [pricingConfigs, setPricingConfigs] = useState<Record<string, VehiclePricingConfig>>({});
+  const [apartments, setApartments] = useState<VehicleApartmentOption[]>(() => cachedMeta?.apartments || []);
+  const [pricingConfigs, setPricingConfigs] = useState<Record<string, VehiclePricingConfig>>(() => cachedMeta?.pricingConfigs || {});
+
+  // Debounce tìm kiếm danh sách 350ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput.trim());
+      setCurrentPage(1);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   // State thông báo & feedback
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -587,9 +673,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   const [formApartmentId, setFormApartmentId] = useState<string>('');
   const [formOwnerUserId, setFormOwnerUserId] = useState<string>('');
   const [formResidents, setFormResidents] = useState<VehicleResidentOption[]>([]);
-  const [buildingResidents, setBuildingResidents] = useState<
-    (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[]
-  >([]);
   const [loadingResidents, setLoadingResidents] = useState<boolean>(false);
   const [formCategory, setFormCategory] = useState<string>('MOTORBIKE');
   const [formLicensePlate, setFormLicensePlate] = useState<string>('');
@@ -601,44 +684,82 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   const [formEvCharging, setFormEvCharging] = useState<boolean>(false);
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
 
-  // 1. Load danh sách phương tiện
+  // 1. Load danh sách phương tiện với debounce và hủy request cũ nếu có
   const fetchVehicles = useCallback(async () => {
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    searchAbortControllerRef.current = abortController;
+
     setLoading(true);
     try {
-      const res = await vehicleApi.getVehicles({
-        page: currentPage,
-        per_page: perPage,
-        search: search.trim() || undefined,
-        vehicle_category: filterCategory || undefined,
-        apartment_id: filterApartmentId || undefined,
-        is_active: filterStatus !== '' ? filterStatus : undefined,
-        approval_status: filterApproval || undefined,
-      });
+      const res = await vehicleApi.getVehicles(
+        {
+          page: currentPage,
+          per_page: perPage,
+          search: debouncedSearch || undefined,
+          vehicle_category: filterCategory || undefined,
+          apartment_id: filterApartmentId || undefined,
+          is_active: filterStatus !== '' ? filterStatus : undefined,
+          approval_status: filterApproval || undefined,
+        },
+        { signal: abortController.signal }
+      );
 
       if (res.success) {
         setVehicles(res.data);
         setTotalPages(res.meta.last_page);
         setTotalCount(res.meta.total);
+
+        if (
+          currentPage === 1 &&
+          !debouncedSearch &&
+          !filterCategory &&
+          !filterApartmentId &&
+          filterStatus === '' &&
+          filterApproval === initialFilterApproval
+        ) {
+          try {
+            sessionStorage.setItem(
+              'smartcassavas_vehicles_list_cache',
+              JSON.stringify({ data: res.data, meta: res.meta })
+            );
+          } catch {
+            // ignore
+          }
+        }
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
       setAlert({ type: 'error', message: err.message || 'Lỗi khi tải danh sách phương tiện.' });
     } finally {
       setLoading(false);
     }
-  }, [currentPage, perPage, search, filterCategory, filterApartmentId, filterStatus, filterApproval]);
+  }, [currentPage, perPage, debouncedSearch, filterCategory, filterApartmentId, filterStatus, filterApproval, initialFilterApproval]);
 
-  // 2. Load metadata (Căn hộ, Biểu phí & Danh sách cư dân tòa nhà)
+  // 2. Load metadata (Căn hộ & Biểu phí) - Không tải toàn bộ cư dân để tối ưu hiệu năng
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [aptRes, pricingRes, residentsRes] = await Promise.all([
+        const [aptRes, pricingRes] = await Promise.all([
           vehicleApi.getApartments(),
           vehicleApi.getPricingConfigs(),
-          vehicleApi.getAllResidents(),
         ]);
-        if (aptRes.success) setApartments(aptRes.data);
-        if (pricingRes.success) setPricingConfigs(pricingRes.data as Record<string, VehiclePricingConfig>);
-        if (residentsRes.success) setBuildingResidents(residentsRes.data);
+        const newApts = aptRes.success ? aptRes.data : [];
+        const newPricing = pricingRes.success ? (pricingRes.data as Record<string, VehiclePricingConfig>) : {};
+        if (aptRes.success) setApartments(newApts);
+        if (pricingRes.success) setPricingConfigs(newPricing);
+        try {
+          sessionStorage.setItem(
+            'smartcassavas_vehicles_meta_cache',
+            JSON.stringify({ apartments: newApts, pricingConfigs: newPricing })
+          );
+        } catch {
+          // ignore
+        }
       } catch {
         // ignore fallback
       }
@@ -649,6 +770,46 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   useEffect(() => {
     fetchVehicles();
   }, [fetchVehicles]);
+
+  // Realtime Auto-Sync Listener (Quốc Tín - Vehicle Management)
+  useRealtimeSync({
+    channel: 'quoc-tin.vehicles',
+    onEvent: (event) => {
+      // 0. Cập nhật state in-memory ngay lập tức
+      if (event.action === 'DELETED' && event.entity_id) {
+        setVehicles((prev) => prev.filter((v) => v.id !== event.entity_id));
+        setTotalCount((prev) => Math.max(0, prev - 1));
+      } else if (event.action === 'APPROVED' && event.entity_id) {
+        setVehicles((prev) =>
+          prev.map((v) => (v.id === event.entity_id ? { ...v, status: 'APPROVED' } : v))
+        );
+      }
+
+      // 1. Invalidate cache để tránh stale data
+      try {
+        sessionStorage.removeItem('smartcassavas_vehicles_list_cache');
+      } catch {
+        // ignore
+      }
+
+      // 2. Refetch danh sách phương tiện (bảo toàn search, filter, page)
+      fetchVehicles();
+
+      // 3. Nếu đang mở modal chi tiết của xe bị thay đổi/duyệt -> cập nhật chi tiết ngay
+      if (isDetailModalOpen && selectedVehicle && selectedVehicle.id === event.entity_id) {
+        vehicleApi.getVehicleById(selectedVehicle.id)
+          .then((res: any) => {
+            if (res.success && res.data) {
+              setDetailData(res.data);
+            }
+          })
+          .catch(() => {});
+      }
+    },
+    onReconnect: () => {
+      fetchVehicles();
+    },
+  });
 
   // 3. Khi đổi căn hộ trong form -> tải danh sách cư dân thuộc căn hộ đó
   useEffect(() => {
@@ -720,14 +881,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   const handleOpenCreateModal = () => {
     resetForm();
     setIsCreateModalOpen(true);
-    if (buildingResidents.length === 0) {
-      vehicleApi
-        .getAllResidents()
-        .then((res) => {
-          if (res.success) setBuildingResidents(res.data);
-        })
-        .catch(() => {});
-    }
   };
 
   // Mở modal sửa
@@ -951,13 +1104,26 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
 
           <button
             onClick={handleOpenCreateModal}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition shadow-sm hover:shadow"
+            disabled={isCooldownActive}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold text-white rounded-lg transition shadow-sm ${
+              isCooldownActive
+                ? 'bg-emerald-400 opacity-60 cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-700 hover:shadow'
+            }`}
+            title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Đăng ký xe mới'}
           >
             <Plus className="w-4 h-4" />
             <span>Đăng ký xe mới</span>
           </button>
         </div>
       </div>
+
+      {/* Cooldown Banner */}
+      <CooldownBanner
+        isCooldownActive={isCooldownActive}
+        remainingSeconds={remainingSeconds}
+        customMessage={cooldownMessage}
+      />
 
       {/* 2. Alert Feedback */}
       {alert && (
@@ -1039,11 +1205,21 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Tìm theo biển số, hãng, cư dân, căn hộ..."
-              className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => setSearchInput('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                title="Xóa tìm kiếm"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Loại xe filter */}
@@ -1238,15 +1414,25 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                           </button>
                           <button
                             onClick={() => handleOpenEditModal(v)}
-                            className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                            title="Chỉnh sửa thông tin"
+                            disabled={isCooldownActive}
+                            className={`p-1.5 rounded-lg transition ${
+                              isCooldownActive
+                                ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                                : 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50'
+                            }`}
+                            title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Chỉnh sửa thông tin'}
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleOpenDeleteModal(v)}
-                            className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                            title="Xóa phương tiện (Soft delete)"
+                            disabled={isCooldownActive}
+                            className={`p-1.5 rounded-lg transition ${
+                              isCooldownActive
+                                ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                                : 'text-slate-600 hover:text-rose-600 hover:bg-rose-50'
+                            }`}
+                            title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Xóa phương tiện (Soft delete)'}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1334,17 +1520,15 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                     </div>
                     <ResidentCombobox
                       value={formOwnerUserId}
-                      onChange={(selectedUserId) => {
+                      onChange={(selectedUserId, resident) => {
                         setFormOwnerUserId(selectedUserId);
                         // Tự động liên kết căn hộ nếu người dùng chọn cư dân trước
-                        const matched = buildingResidents.find((b) => b.user_id === selectedUserId);
-                        if (matched?.apartment_id && (!formApartmentId || formResidents.length === 0)) {
-                          setFormApartmentId(matched.apartment_id);
+                        if (resident?.apartment_id && (!formApartmentId || formResidents.length === 0)) {
+                          setFormApartmentId(resident.apartment_id);
                         }
                       }}
                       formApartmentId={formApartmentId}
                       formResidents={formResidents}
-                      buildingResidents={buildingResidents}
                       loading={loadingResidents}
                     />
                   </div>
@@ -1728,7 +1912,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {detailData.invoice_history.map((item) => (
+                            {(detailData.invoice_history || []).map((item) => (
                               <tr key={item.item_id} className="hover:bg-slate-50/50">
                                 <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
                                   {item.invoice_number}
