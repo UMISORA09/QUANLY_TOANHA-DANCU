@@ -519,10 +519,10 @@ export const PaymentCollectionPage: React.FC<PaymentCollectionPageProps> = ({
                                         value={amount || ''}
                                         onChange={(e) => setAmount(Number(e.target.value))}
                                         placeholder="Nhập số tiền..."
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-base font-mono font-extrabold text-slate-900 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 shadow-2xs"
+                                        className="w-full bg-white border border-slate-300 rounded-xl pl-4 pr-14 py-3 text-base font-mono font-extrabold text-slate-900 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 shadow-2xs no-spinner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         required
                                     />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs text-slate-400">
+                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs text-slate-400 pointer-events-none select-none">
                                         VNĐ
                                     </span>
                                 </div>

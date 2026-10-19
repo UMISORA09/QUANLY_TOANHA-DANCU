@@ -22,6 +22,7 @@ import {
     Wallet
 } from 'lucide-react';
 import { invoiceApi, InvoiceModel } from '../../Services/invoiceApi';
+import { printPaymentReceipt } from '../../Services/invoicePrintHelper';
 
 interface BlockOption {
     id: string;
@@ -566,7 +567,7 @@ export const PaymentHistoryManagement: React.FC = () => {
                         <div className="flex items-center justify-between p-4 bg-slate-50/70 border-t border-slate-100">
                             <button
                                 type="button"
-                                onClick={() => window.print()}
+                                onClick={() => printPaymentReceipt(activeReceiptData)}
                                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 bg-white border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                             >
                                 <Printer className="w-3.5 h-3.5" />

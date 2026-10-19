@@ -108,36 +108,215 @@ class InvoiceSampleSeeder extends Seeder
                 ]
             );
 
-            // Add sample items
-            InvoiceItem::updateOrCreate(
-                ['invoice_id' => $invoice->id, 'service_code' => 'MANAGEMENT_FEE'],
-                [
-                    'item_description' => 'Phí quản lý vận hành tòa nhà T10/2026',
-                    'quantity' => 80,
-                    'unit_name' => 'm2',
-                    'unit_price' => 12000,
-                    'amount_before_tax' => 960000,
-                    'vat_percentage' => 10,
-                    'vat_amount' => 96000,
-                    'environmental_fee_amount' => 0,
-                    'total_line_amount' => 1056000,
-                ]
-            );
+            // Xóa các dòng khoản mục cũ để không bị trùng lặp
+            InvoiceItem::where('invoice_id', $invoice->id)->delete();
 
-            InvoiceItem::updateOrCreate(
-                ['invoice_id' => $invoice->id, 'service_code' => 'ELECTRICITY'],
-                [
-                    'item_description' => 'Điện sinh hoạt căn hộ',
-                    'quantity' => 150,
+            // Sinh các khoản mục chi phí thực tế và chính xác cho từng hóa đơn
+            if ($invNumber === 'INV-202610-001') {
+                // Khớp chính xác với Ảnh 2: Tổng trước thuế 2.227.273 đ, Thuế 222.727 đ, Tổng cộng 2.450.000 đ
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'MANAGEMENT_FEE',
+                    'item_description' => 'Phí quản lý vận hành tòa nhà T10/2026',
+                    'quantity' => 75,
+                    'unit_name' => 'm²',
+                    'unit_price' => 12000,
+                    'amount_before_tax' => 900000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 90000,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 990000,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'ELECTRICITY',
+                    'item_description' => 'Điện sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 180,
                     'unit_name' => 'kWh',
                     'unit_price' => 2500,
-                    'amount_before_tax' => 375000,
-                    'vat_percentage' => 8,
-                    'vat_amount' => 30000,
+                    'amount_before_tax' => 450000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 45000,
                     'environmental_fee_amount' => 0,
-                    'total_line_amount' => 405000,
-                ]
-            );
+                    'total_line_amount' => 495000,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'WATER',
+                    'item_description' => 'Nước sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 18,
+                    'unit_name' => 'm³',
+                    'unit_price' => 12500,
+                    'amount_before_tax' => 225000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 22500,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 247500,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'PARKING_FEE',
+                    'item_description' => 'Phí trông giữ phương tiện (01 Ô tô 30A-888.88 & 01 Xe máy 29-X1 123.45)',
+                    'quantity' => 1,
+                    'unit_name' => 'tháng',
+                    'unit_price' => 652273,
+                    'amount_before_tax' => 652273,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 65227,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 717500,
+                ]);
+            } elseif ($invNumber === 'INV-202610-002') {
+                // Hóa đơn 1.200.000 đ (Trước thuế: 1.090.909 đ, Thuế: 109.091 đ)
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'MANAGEMENT_FEE',
+                    'item_description' => 'Phí quản lý vận hành tòa nhà T10/2026',
+                    'quantity' => 75,
+                    'unit_name' => 'm²',
+                    'unit_price' => 10000,
+                    'amount_before_tax' => 750000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 75000,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 825000,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'WATER',
+                    'item_description' => 'Nước sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 12,
+                    'unit_name' => 'm³',
+                    'unit_price' => 12000,
+                    'amount_before_tax' => 144000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 14400,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 158400,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'ELECTRICITY',
+                    'item_description' => 'Điện sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 80,
+                    'unit_name' => 'kWh',
+                    'unit_price' => 2461.36,
+                    'amount_before_tax' => 196909,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 19691,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 216600,
+                ]);
+            } elseif ($invNumber === 'INV-202610-003') {
+                // Hóa đơn 3.850.000 đ (Trước thuế: 3.500.000 đ, Thuế: 350.000 đ)
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'MANAGEMENT_FEE',
+                    'item_description' => 'Phí quản lý vận hành tòa nhà T10/2026',
+                    'quantity' => 90,
+                    'unit_name' => 'm²',
+                    'unit_price' => 14000,
+                    'amount_before_tax' => 1260000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 126000,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 1386000,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'ELECTRICITY',
+                    'item_description' => 'Điện sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 280,
+                    'unit_name' => 'kWh',
+                    'unit_price' => 2800,
+                    'amount_before_tax' => 784000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 78400,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 862400,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'WATER',
+                    'item_description' => 'Nước sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 24,
+                    'unit_name' => 'm³',
+                    'unit_price' => 15000,
+                    'amount_before_tax' => 360000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 36000,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 396000,
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'PARKING_FEE',
+                    'item_description' => 'Phí trông giữ xe ô tô kỳ T10/2026 (Biển số: 30E-999.88)',
+                    'quantity' => 1,
+                    'unit_name' => 'tháng',
+                    'unit_price' => 1096000,
+                    'amount_before_tax' => 1096000,
+                    'vat_percentage' => 10,
+                    'vat_amount' => 109600,
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => 1205600,
+                ]);
+            } else {
+                // Các hóa đơn khác: sinh cân bằng theo đúng totalAmount
+                $mgmtPreTax = round($totalAmount * 0.45 / 1.1);
+                $elecPreTax = round($totalAmount * 0.35 / 1.1);
+                $waterPreTax = round($totalAmount / 1.1) - $mgmtPreTax - $elecPreTax;
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'MANAGEMENT_FEE',
+                    'item_description' => 'Phí quản lý vận hành tòa nhà T10/2026',
+                    'quantity' => 75,
+                    'unit_name' => 'm²',
+                    'unit_price' => round($mgmtPreTax / 75),
+                    'amount_before_tax' => $mgmtPreTax,
+                    'vat_percentage' => 10,
+                    'vat_amount' => round($mgmtPreTax * 0.1),
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => $mgmtPreTax + round($mgmtPreTax * 0.1),
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'ELECTRICITY',
+                    'item_description' => 'Điện sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 150,
+                    'unit_name' => 'kWh',
+                    'unit_price' => round($elecPreTax / 150),
+                    'amount_before_tax' => $elecPreTax,
+                    'vat_percentage' => 10,
+                    'vat_amount' => round($elecPreTax * 0.1),
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => $elecPreTax + round($elecPreTax * 0.1),
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'service_code' => 'WATER',
+                    'item_description' => 'Nước sinh hoạt căn hộ kỳ T10/2026',
+                    'quantity' => 15,
+                    'unit_name' => 'm³',
+                    'unit_price' => round($waterPreTax / 15),
+                    'amount_before_tax' => $waterPreTax,
+                    'vat_percentage' => 10,
+                    'vat_amount' => $invoice->tax_amount - round($mgmtPreTax * 0.1) - round($elecPreTax * 0.1),
+                    'environmental_fee_amount' => 0,
+                    'total_line_amount' => $waterPreTax + ($invoice->tax_amount - round($mgmtPreTax * 0.1) - round($elecPreTax * 0.1)),
+                ]);
+            }
         }
     }
 }
