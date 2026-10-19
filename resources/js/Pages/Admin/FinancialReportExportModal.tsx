@@ -109,19 +109,19 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
     const previewRows = previewData?.rows || [];
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200/90 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="p-5 bg-gradient-to-r from-emerald-950/40 via-indigo-950/30 to-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div className="p-5 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0 rounded-t-2xl">
                     <div className="flex items-center gap-2.5">
-                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
                             <FileSpreadsheet className="w-5 h-5" />
                         </div>
                         <div>
-                            <h3 className="text-base font-bold text-white">
+                            <h3 className="text-base font-bold text-slate-800">
                                 Xuất Báo Cáo Tài Chính & Công Nợ Dịch Vụ
                             </h3>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-slate-500">
                                 Định dạng Excel (.CSV UTF-8) và PDF In ấn mẫu chuẩn A4 Ban Quản Lý Tòa Nhà
                             </p>
                         </div>
@@ -129,7 +129,7 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
                     <button
                         type="button"
                         onClick={onClose}
-                        className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -138,20 +138,20 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
                 {/* Form lọc & xem trước */}
                 <div className="p-6 overflow-y-auto flex-1 space-y-6 text-xs">
                     {/* BỘ LỌC THÔNG SỐ XUẤT */}
-                    <div className="bg-slate-950/80 border border-slate-800/80 p-4 rounded-xl space-y-4">
-                        <div className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                            <Filter className="w-3.5 h-3.5 text-indigo-400" />
+                    <div className="bg-slate-50 border border-slate-200/90 p-4 rounded-xl space-y-4">
+                        <div className="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                            <Filter className="w-3.5 h-3.5 text-indigo-600" />
                             <span>Cấu Hình Tham Số Báo Cáo</span>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             {/* Loại báo cáo */}
                             <div>
-                                <label className="block text-slate-400 font-semibold mb-1">Loại Báo Cáo</label>
+                                <label className="block text-slate-600 font-semibold mb-1">Loại Báo Cáo</label>
                                 <select
                                     value={reportType}
                                     onChange={(e) => setReportType(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
+                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
                                 >
                                     <option value="debt_summary">Công Nợ Tồn Đọng (Còn nợ)</option>
                                     <option value="revenue_detail">Chi Tiết Doanh Thu Thu Tiền</option>
@@ -161,22 +161,22 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
 
                             {/* Kỳ thu */}
                             <div>
-                                <label className="block text-slate-400 font-semibold mb-1">Kỳ Đối Soát (Tháng)</label>
+                                <label className="block text-slate-600 font-semibold mb-1">Kỳ Đối Soát (Tháng)</label>
                                 <input
                                     type="month"
                                     value={period}
                                     onChange={(e) => setPeriod(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
+                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
                                 />
                             </div>
 
                             {/* Khối tòa */}
                             <div>
-                                <label className="block text-slate-400 font-semibold mb-1">Khối Tòa Nhà</label>
+                                <label className="block text-slate-600 font-semibold mb-1">Khối Tòa Nhà</label>
                                 <select
                                     value={blockId}
                                     onChange={(e) => setBlockId(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
+                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
                                 >
                                     <option value="">Toàn bộ các khối tòa</option>
                                     {blocks.map((b) => (
@@ -189,11 +189,11 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
 
                             {/* Trạng thái */}
                             <div>
-                                <label className="block text-slate-400 font-semibold mb-1">Trạng Thái HĐ</label>
+                                <label className="block text-slate-600 font-semibold mb-1">Trạng Thái HĐ</label>
                                 <select
                                     value={status}
                                     onChange={(e) => setStatus(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
+                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
                                 >
                                     <option value="ALL">Tất cả trạng thái</option>
                                     <option value="OVERDUE">Quá Hạn Nộp</option>
@@ -207,27 +207,27 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
 
                     {/* TÓM TẮT SỐ LIỆU PREVIEW */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                            <span className="text-[10px] text-slate-400 uppercase font-semibold">Số Lượng HĐ</span>
-                            <div className="text-lg font-mono font-bold text-white mt-1">
+                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Số Lượng HĐ</span>
+                            <div className="text-lg font-mono font-bold text-slate-800 mt-1">
                                 {summary.total_invoices} HĐ
                             </div>
                         </div>
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                            <span className="text-[10px] text-slate-400 uppercase font-semibold">Tổng Phát Hành</span>
-                            <div className="text-lg font-mono font-bold text-indigo-400 mt-1">
+                        <div className="bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100 shadow-2xs">
+                            <span className="text-[10px] text-indigo-600 uppercase font-semibold">Tổng Phát Hành</span>
+                            <div className="text-lg font-mono font-bold text-indigo-700 mt-1">
                                 {Number(summary.total_billed).toLocaleString('vi-VN')} đ
                             </div>
                         </div>
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                            <span className="text-[10px] text-slate-400 uppercase font-semibold">Đã Thu</span>
-                            <div className="text-lg font-mono font-bold text-emerald-400 mt-1">
+                        <div className="bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                            <span className="text-[10px] text-emerald-600 uppercase font-semibold">Đã Thu</span>
+                            <div className="text-lg font-mono font-bold text-emerald-700 mt-1">
                                 {Number(summary.total_collected).toLocaleString('vi-VN')} đ
                             </div>
                         </div>
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                            <span className="text-[10px] text-slate-400 uppercase font-semibold">Còn Nợ</span>
-                            <div className="text-lg font-mono font-bold text-amber-400 mt-1">
+                        <div className="bg-amber-50/50 p-3.5 rounded-xl border border-amber-100 shadow-2xs">
+                            <span className="text-[10px] text-amber-600 uppercase font-semibold">Còn Nợ</span>
+                            <div className="text-lg font-mono font-bold text-amber-700 mt-1">
                                 {Number(summary.total_debt).toLocaleString('vi-VN')} đ
                             </div>
                         </div>
@@ -235,21 +235,21 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
 
                     {/* BẢNG XEM TRƯỚC 5 DÒNG */}
                     <div className="space-y-2">
-                        <div className="flex items-center justify-between text-slate-400 text-xs">
-                            <span className="font-semibold text-slate-300">
+                        <div className="flex items-center justify-between text-slate-600 text-xs">
+                            <span className="font-semibold text-slate-700">
                                 Dữ Liệu Xem Trước (Hiển thị tối đa 5 hóa đơn đầu tiên):
                             </span>
                             {loading && (
-                                <span className="flex items-center gap-1 text-indigo-400">
+                                <span className="flex items-center gap-1 text-indigo-600">
                                     <RefreshCw className="w-3 h-3 animate-spin" />
                                     <span>Đang cập nhật...</span>
                                 </span>
                             )}
                         </div>
 
-                        <div className="overflow-x-auto border border-slate-800 rounded-xl">
-                            <table className="w-full text-left text-xs text-slate-300">
-                                <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] border-b border-slate-800">
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                            <table className="w-full text-left text-xs text-slate-700">
+                                <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] border-b border-slate-200 font-bold">
                                     <tr>
                                         <th className="py-2.5 px-3">Mã HĐ</th>
                                         <th className="py-2.5 px-3">Căn Hộ</th>
@@ -260,26 +260,26 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
                                         <th className="py-2.5 px-3 text-center">Trạng Thái</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                                <tbody className="divide-y divide-slate-100 font-mono text-[11px] bg-white">
                                     {previewRows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={7} className="py-6 text-center text-slate-500 font-sans">
+                                            <td colSpan={7} className="py-6 text-center text-slate-400 font-sans">
                                                 Không có dữ liệu hóa đơn nào phù hợp với điều kiện lọc.
                                             </td>
                                         </tr>
                                     ) : (
                                         previewRows.slice(0, 5).map((row: any) => (
-                                            <tr key={row.invoice_id} className="hover:bg-slate-800/30">
-                                                <td className="py-2 px-3 font-bold text-indigo-300">{row.invoice_number}</td>
-                                                <td className="py-2 px-3 font-bold text-white font-sans">{row.apartment_number}</td>
-                                                <td className="py-2 px-3 font-sans text-slate-300">{row.resident_name}</td>
-                                                <td className="py-2 px-3 text-right text-slate-200">
+                                            <tr key={row.invoice_id} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="py-2 px-3 font-bold text-indigo-600">{row.invoice_number}</td>
+                                                <td className="py-2 px-3 font-bold text-slate-800 font-sans">{row.apartment_number}</td>
+                                                <td className="py-2 px-3 font-sans text-slate-600">{row.resident_name}</td>
+                                                <td className="py-2 px-3 text-right text-slate-700">
                                                     {Number(row.total_amount).toLocaleString('vi-VN')} đ
                                                 </td>
-                                                <td className="py-2 px-3 text-right text-emerald-400">
+                                                <td className="py-2 px-3 text-right text-emerald-600 font-semibold">
                                                     {Number(row.paid_amount).toLocaleString('vi-VN')} đ
                                                 </td>
-                                                <td className="py-2 px-3 text-right text-amber-400 font-bold">
+                                                <td className="py-2 px-3 text-right text-amber-600 font-bold">
                                                     {Number(row.remaining_balance).toLocaleString('vi-VN')} đ
                                                 </td>
                                                 <td className="py-2 px-3 text-center font-sans text-[10px]">
@@ -295,11 +295,11 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-4 bg-slate-950/80 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0 rounded-b-2xl">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 transition-colors"
+                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                     >
                         Đóng
                     </button>
@@ -309,9 +309,9 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
                         <button
                             type="button"
                             onClick={() => handleOpenPdf(true)}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 text-xs font-bold transition-all"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-sky-700 border border-sky-300 text-xs font-bold shadow-2xs transition-all cursor-pointer"
                         >
-                            <Printer className="w-3.5 h-3.5" />
+                            <Printer className="w-3.5 h-3.5 text-sky-600" />
                             <span>In Ấn / Mở PDF</span>
                         </button>
 
@@ -319,7 +319,7 @@ export const FinancialReportExportModal: React.FC<FinancialReportExportModalProp
                         <button
                             type="button"
                             onClick={handleDownloadExcel}
-                            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all"
+                            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
                         >
                             <Download className="w-3.5 h-3.5" />
                             <span>Tải Xuống File Excel (.CSV)</span>
