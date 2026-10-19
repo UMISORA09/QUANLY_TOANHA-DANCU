@@ -2,6 +2,8 @@
  * API Service for Invoice Management (Quản lý và Lọc trạng thái Hóa đơn)
  */
 
+import { api } from './api';
+
 export interface InvoiceItemModel {
     id: string;
     invoice_id: string;
@@ -92,7 +94,12 @@ export interface InvoiceSummaryModel {
 }
 
 const getAuthHeaders = () => {
-    const token = localStorage.getItem('auth_token') || localStorage.getItem('token') || 'smart_token_admin_demo';
+    const token =
+        api.getAuthToken() ||
+        localStorage.getItem('smart_cassavas_token') ||
+        localStorage.getItem('auth_token') ||
+        localStorage.getItem('token') ||
+        'smart_token_admin_demo';
     return {
         'Content-Type': 'application/json',
         Accept: 'application/json',

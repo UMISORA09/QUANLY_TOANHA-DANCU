@@ -159,3 +159,17 @@ Theo yêu cầu tiếp theo, không sử dụng nhánh audit để chứa code c
 Các test cư dân/quản lý được tách tương ứng để từng nhánh chỉ nhận test mới thuộc phạm vi của nó. Những dòng chủ động chụp screenshot được loại khỏi các test đang sửa; ảnh audit đã xóa, không có file ảnh trong commit mới. `public/index.html` được build lại riêng trên mỗi nhánh, không sao chép hash bundle từ nhánh audit.
 
 Kết quả trên từng nhánh không có nghĩa chúng đã được merge chung hoặc đã chạy trên Vercel. Chưa push, merge hoặc deploy. Khi tích hợp các nhánh về sau cần kiểm tra lại xung đột ở các file dùng chung; không dùng `public/index.html` từ nhánh này thay cho build của nhánh khác.
+
+
+## Yêu cầu push/merge tiếp theo
+
+Sau thời điểm audit và tách nhánh, người dùng đã cho phép push và merge. Các ghi chú “chưa push/merge” ở trên mô tả thời điểm kiểm thử trước yêu cầu mới.
+
+Đã push cả bốn nhánh. Tích hợp qua các PR riêng theo thứ tự, giữ nguyên bảo vệ master và yêu cầu CI bắt buộc:
+
+- F5: https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/pull/115
+- F6: https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/pull/116
+- F7: https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/pull/117
+- F8: https://github.com/UMISORA09/QUANLY_TOANHA-DANCU/pull/118
+
+Trạng thái cập nhật xem trực tiếp trên các PR. Không tạo nhánh audit mới, không push ảnh chụp, không bỏ qua hook/CI hay thay đổi quy tắc bảo vệ repository. Xung đột hash public/index.html được xử lý bằng build lại; test dùng chung được ghép giữ cả kiểm thử của các chức năng đã merge trước.

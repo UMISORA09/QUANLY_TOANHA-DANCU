@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             ServicePricingSeeder::class,
             ResidentTicketSeeder::class,
             TicketPermissionsSeeder::class,
+            InvoiceSampleSeeder::class,
         ]);
 
         // Bộ dữ liệu mẫu dùng chung cho toàn bộ nhóm (Shared Demo Data)
