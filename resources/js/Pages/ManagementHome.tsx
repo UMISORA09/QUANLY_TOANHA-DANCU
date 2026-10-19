@@ -48,7 +48,6 @@ import {
   History,
   CreditCard
 } from 'lucide-react';
-import { InvoiceNavTabs } from '../Components/Admin/InvoiceNavTabs';
 import { PageLoadingFallback } from '../Components/Common/PageLoadingFallback';
 import { ticketStatuses } from '../Components/TicketManagementPanel';
 
@@ -905,27 +904,22 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="invoices" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <InvoiceManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
             </div>
           ) : activeMenuId === 'sinh_hoa_don' || activeMenuId === 'invoice_generation' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="invoice_generation" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <InvoiceBatchGeneration />
             </div>
           ) : activeMenuId === 'payment_history' || activeMenuId === 'lich_su_giao_dich' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="payment_history" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <PaymentHistoryManagement />
             </div>
           ) : activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="revenue_analytics" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <RevenueAnalyticsDashboard onBackToList={() => handleMenuClick('invoices')} />
             </div>
           ) : activeMenuId === 'financial_reports' || activeMenuId === 'bao_cao_tai_chinh' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="financial_reports" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <FinancialReportManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
             </div>
           ) : activeMenuId === 'rfid_cards' ? (

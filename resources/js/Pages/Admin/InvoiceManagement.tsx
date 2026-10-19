@@ -33,7 +33,8 @@ import {
     History,
     Mail,
     BellRing,
-    BarChart3
+    BarChart3,
+    Cpu
 } from 'lucide-react';
 import {
     invoiceApi,
@@ -121,6 +122,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
     // Toast message
     const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+    // Web Worker background sync state
+    const [workerActive, setWorkerActive] = useState<boolean>(true);
+    const [lastSyncTime, setLastSyncTime] = useState<string>('Vừa xong');
+
     const showToast = (type: 'success' | 'error', text: string) => {
         setToast({ type, text });
         setTimeout(() => setToast(null), 4000);
@@ -148,9 +153,11 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
         fetchBlocks();
     }, []);
 
-    // Tải danh sách hóa đơn từ API
-    const fetchInvoices = useCallback(async () => {
-        setLoading(true);
+    // Tải danh sách hóa đơn từ API (hỗ trợ chế độ chạy ngầm isSilent)
+    const fetchInvoices = useCallback(async (isSilent = false) => {
+        if (!isSilent) {
+            setLoading(true);
+        }
         try {
             const res = await invoiceApi.getInvoices({
                 status: statusFilter !== 'ALL' ? statusFilter : undefined,
@@ -170,10 +177,16 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                 total: res.data.total,
                 per_page: pagination.per_page,
             });
+            const now = new Date();
+            setLastSyncTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
         } catch (err: any) {
-            showToast('error', err.message || 'Lỗi khi tải danh sách hóa đơn');
+            if (!isSilent) {
+                showToast('error', err.message || 'Lỗi khi tải danh sách hóa đơn');
+            }
         } finally {
-            setLoading(false);
+            if (!isSilent) {
+                setLoading(false);
+            }
         }
     }, [statusFilter, billingPeriodFilter, blockFilter, searchQuery, sortBy, sortOrder, pagination.current_page, pagination.per_page]);
 
@@ -189,6 +202,47 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
             console.error('Lỗi khi tải KPI summary:', err);
         }
     }, [billingPeriodFilter, blockFilter]);
+
+    // Khởi tạo Web Worker để tự động đồng bộ ngầm và xử lý dữ liệu không cần nút load
+    useEffect(() => {
+        let worker: Worker | null = null;
+        try {
+            worker = new Worker(
+                new URL('../../Workers/invoiceSyncWorker.ts', import.meta.url),
+                { type: 'module' }
+            );
+
+            worker.onmessage = (e: MessageEvent) => {
+                if (e.data?.type === 'SYNC_TICK') {
+                    // Tự động cập nhật ngầm không làm gián đoạn UI
+                    fetchInvoices(true);
+                    fetchSummary();
+                } else if (e.data?.type === 'SYNC_STATUS') {
+                    setWorkerActive(e.data.status === 'RUNNING');
+                }
+            };
+
+            worker.postMessage({
+                type: 'START_SYNC',
+                payload: { interval: 12000 },
+            });
+            setWorkerActive(true);
+        } catch (err) {
+            console.warn('Web Worker initialization fallback:', err);
+            const fallbackTimer = setInterval(() => {
+                fetchInvoices(true);
+                fetchSummary();
+            }, 12000);
+            return () => clearInterval(fallbackTimer);
+        }
+
+        return () => {
+            if (worker) {
+                worker.postMessage({ type: 'STOP_SYNC' });
+                worker.terminate();
+            }
+        };
+    }, [fetchInvoices, fetchSummary]);
 
     useEffect(() => {
         if (viewMode === 'list') {
@@ -501,7 +555,7 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                 </div>
             )}
 
-            {/* HEADER TIÊU ĐỀ & NÚT HÀNH ĐỘNG */}
+            {/* HEADER TIÊU ĐỀ */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
                 <div>
                     <div className="text-[11px] font-bold text-sky-600 font-mono tracking-wider uppercase flex items-center gap-1.5">
@@ -515,12 +569,22 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                         Theo dõi công nợ, phân loại trạng thái thanh toán, lọc theo kỳ và quản lý chi tiết hóa đơn dịch vụ cư dân.
                     </p>
                 </div>
+            </div>
 
+            {/* THANH ĐIỀU HƯỚNG TÁC VỤ & CHỨC NĂNG (TRÊN BẢNG THÔNG SỐ) */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-sky-600" />
+                        Tác Vụ & Chức Năng:
+                    </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         type="button"
                         onClick={() => onNavigateTab ? onNavigateTab('financial_reports') : setReportModalOpen(true)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
                         title="Xem trang báo cáo tài chính và công nợ ra Excel và PDF (Chức năng 13)"
                     >
                         <Download className="w-3.5 h-3.5 text-teal-600" />
@@ -530,7 +594,7 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                     <button
                         type="button"
                         onClick={handleOpenReminderLogs}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
                         title="Xem nhật ký hàng đợi gửi email nhắc nợ tự động"
                     >
                         <Mail className="w-3.5 h-3.5 text-amber-600" />
@@ -540,7 +604,7 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                     <button
                         type="button"
                         onClick={() => onNavigateTab ? onNavigateTab('revenue_analytics') : setViewMode('analytics')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
                         title="Xem biểu đồ phân tích doanh thu và thu hồi công nợ (Chức năng 12)"
                     >
                         <BarChart3 className="w-3.5 h-3.5 text-sky-600" />
@@ -550,7 +614,7 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                     <button
                         type="button"
                         onClick={() => onNavigateTab ? onNavigateTab('payment_history') : setViewMode('history')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
                     >
                         <History className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Lịch Sử Giao Dịch</span>
@@ -559,24 +623,15 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                     <button
                         type="button"
                         onClick={() => onNavigateTab ? onNavigateTab('invoice_generation') : setViewMode('batch_generate')}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
                     >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Sinh Hóa Đơn Hàng Loạt</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => { fetchInvoices(); fetchSummary(); }}
-                        disabled={loading}
-                        title="Làm mới dữ liệu"
-                        className="p-2 rounded-xl text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-2xs transition-all active:scale-[0.98] cursor-pointer shrink-0"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-sky-600' : ''}`} />
-                    </button>
                 </div>
             </div>
 
-            {/* KPI METRIC CARDS TỔNG HỢP */}
+            {/* KPI METRIC CARDS TỔNG HỢP (BẢNG THÔNG SỐ) */}
             {summary && (
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
                     {/* Thẻ 1: Tổng số hóa đơn */}
