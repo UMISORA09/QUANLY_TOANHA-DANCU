@@ -1,5 +1,27 @@
 @import 'tailwindcss';
 
+/* Availability presentation follows the server's available flag and reason. */
+.availability-ui .availability-section {
+    padding: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 1rem;
+    background: #f8fafc;
+}
+.availability-ui .availability-section h3 { color: #1e40af; text-wrap: balance; }
+.availability-ui .availability-slot { min-height: 6rem; border-color: #99d5cb; background: #f0fdfa; color: #115e59; }
+.availability-ui .availability-slot:hover:not(:disabled) { border-color: #0f766e; box-shadow: 0 3px 10px rgb(15 23 42 / .06); }
+.availability-ui .availability-slot[data-state=selected] { border-color: #1e40af; background: #dbeafe; color: #1e3a8a; box-shadow: inset 0 0 0 1px #1e40af; }
+.availability-ui .availability-slot[data-state=unavailable] { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.availability-ui .availability-slot[data-state=maintenance] { border-color: #fecdd3; background: #fff1f2; color: #9f1239; }
+.availability-ui .availability-slot[data-state=blocked] { border-color: #cbd5e1; background: #f1f5f9; color: #475569; }
+.availability-ui .availability-slot:disabled { cursor: not-allowed; }
+.availability-ui .availability-slot:focus-visible { outline: 3px solid rgb(30 64 175 / .55); outline-offset: 3px; }
+.availability-ui [role=alert] { border-left-width: 4px; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+    .availability-ui * { animation: none !important; transition: none !important; }
+}
+
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../views/**/*.blade.php';
