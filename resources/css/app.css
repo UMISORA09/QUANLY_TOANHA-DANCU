@@ -1,5 +1,52 @@
 @import 'tailwindcss';
 
+/* Booking review surfaces only; no global admin or resident styles. */
+.booking-review-worklist { border-color: #bfdbfe; border-left: 4px solid #1e40af; box-shadow: 0 6px 20px rgb(15 23 42 / .05); }
+.booking-review-worklist h2 { color: #1e3a8a; font-size: 1.125rem; text-wrap: balance; }
+.booking-review-worklist > p { font-size: .875rem; color: #475569; }
+.booking-review-worklist .review-buckets button { min-height: 2.75rem; border-color: #cbd5e1; color: #475569; }
+.booking-review-worklist .review-buckets button[aria-pressed=true] { border-color: #1e40af; background: #1e40af; color: white; }
+.booking-review-worklist .review-work-item { gap: .75rem; font-size: .875rem; }
+.booking-review-worklist .review-work-item > div { min-width: 0; overflow-wrap: anywhere; }
+.booking-review-worklist .review-open { border-color: #bfdbfe; background: #eff6ff; color: #1e40af; }
+:is(.booking-review-worklist, .booking-review-dialog, .booking-review-payment) button { min-height: 2.75rem; }
+:is(.booking-review-worklist, .booking-review-dialog, .booking-review-payment) :is(button, input, select, textarea):focus-visible { outline: 3px solid rgb(30 64 175 / .55); outline-offset: 2px; }
+.booking-review-dialog { border: 1px solid #cbd5e1; }
+.booking-review-dialog .review-header { background: #eff6ff; padding: .75rem; border-radius: 1rem; border-color: #bfdbfe; }
+.booking-review-dialog :is(h2, h3) { text-wrap: balance; }
+.booking-review-dialog .text-neutral-400 { color: #64748b; }
+.booking-review-dialog .review-stats { font-variant-numeric: tabular-nums; }
+.booking-review-dialog .review-stats > div:last-child { background: #f0fdfa; border-color: #99d5cb; }
+.booking-review-dialog .review-stats > div:last-child span { color: #115e59; }
+.booking-review-dialog .review-pending { padding: .75rem; border: 1px solid #fde68a; border-radius: .75rem; background: #fffbeb; }
+.booking-review-dialog .review-pending button[aria-pressed=true] { background: #92400e; color: white; }
+.booking-review-dialog .review-filters { align-items: stretch; flex-wrap: wrap; padding: .75rem; margin-bottom: .75rem; border: 1px solid #cbd5e1; border-radius: 1rem; background: #f8fafc; }
+.booking-review-dialog .review-filters > div:first-child { flex: 1 1 16rem; width: auto; min-width: 0; align-self: flex-start; }
+.booking-review-dialog .review-filters > div:last-child { flex: 2 1 26rem; width: auto; min-width: 0; }
+.booking-review-dialog .review-filters select { flex: 1 1 9rem; min-width: 0; }
+.booking-review-dialog .review-filters > div:last-child > div { flex-wrap: wrap; flex-basis: 100%; }
+.booking-review-dialog .review-filters input[type=date] { flex: 1 1 7.5rem; min-width: 0; }
+:is(.booking-review-dialog, .booking-review-payment) :is(input:not([type=checkbox]), select, textarea) { min-height: 2.75rem; border-color: #cbd5e1; }
+.booking-review-dialog .amenity-booking-table { scrollbar-color: #94a3b8 #f1f5f9; scrollbar-width: auto; }
+.booking-review-dialog table { font-size: .875rem; font-variant-numeric: tabular-nums; }
+.booking-review-dialog thead { background: #eff6ff; color: #334155; }
+.booking-review-dialog .review-approve { background: #1e40af; color: white; }
+.booking-review-dialog .review-approve:hover:not(:disabled) { background: #1e3a8a; }
+.booking-review-dialog .review-reject { border: 1px solid #fecdd3; background: white; color: #be123c; }
+.booking-review-dialog .review-actions > div { min-width: 15rem; }
+.booking-review-dialog .review-payment-status { display: inline-block; padding: .25rem .5rem; border: 1px solid #fde68a; border-radius: 9999px; background: #fffbeb; color: #92400e; }
+.booking-review-dialog [data-payment-state=PAID] { border-color: #a7f3d0; background: #ecfdf5; color: #047857; }
+.booking-review-dialog :is([data-payment-state=REVIEW], [data-payment-state=CANCELLED], [data-payment-state=EXPIRED]) { border-color: #fecdd3; background: #fff1f2; color: #9f1239; }
+.booking-review-dialog dialog { max-height: 90dvh; overflow-y: auto; border-color: #cbd5e1; }
+:is(.booking-review-dialog, .booking-review-payment) [role=alert] { padding: .75rem; border: 1px solid #fecdd3; border-left-width: 4px; border-radius: .75rem; background: #fff1f2; color: #9f1239; overflow-wrap: anywhere; }
+:is(.booking-review-dialog, .booking-review-payment) [data-conflict=true] { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.booking-review-payment > .sticky { background: #eff6ff; border-color: #bfdbfe; }
+.booking-review-payment button[type=submit] { background: #1e40af; }
+@media (prefers-reduced-motion: reduce) {
+    :is(.booking-review-worklist, .booking-review-dialog, .booking-review-payment) * { animation: none !important; transition: none !important; }
+}
+
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../views/**/*.blade.php';

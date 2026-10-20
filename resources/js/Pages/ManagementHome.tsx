@@ -884,9 +884,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       }
     >
       {/* Notifications Dropdown Panel */}
-      {bookingAlert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{bookingAlert.title}</p><p className="mt-1 text-xs text-neutral-600">{bookingAlert.message}</p></div><button type="button" aria-label="Đóng cảnh báo đăng ký mới" onClick={() => setBookingAlert(null)} className="rounded-lg p-1 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openBookingNotification(bookingAlert)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
       {isNotificationOpen && (
-        <div className="fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div role="region" aria-label="Thông báo vận hành" className="fixed top-20 right-4 sm:right-10 w-[calc(100%-2rem)] max-w-sm max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
