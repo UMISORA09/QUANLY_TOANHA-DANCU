@@ -611,4 +611,110 @@ class ReceptionParcelTest extends TestCase
         $notFound = $this->service->findParcelByPin('000000');
         $this->assertNull($notFound);
     }
+
+    /**
+     * Test 17: Bộ lọc đơn vị vận chuyển hỗ trợ alias (Giao Hàng Nhanh -> GHN) và trạng thái (PENDING, EXPIRING_SOON, OVERDUE)
+     */
+    public function test_17_can_filter_by_courier_alias_and_status(): void
+    {
+        $uniqueSuffix = Str::random(6);
+
+        // Kiện GHN mới nhận hôm nay (< 3 ngày) -> PENDING
+        $pendingGhn = Parcel::create([
+            'tracking_number' => 'GHN_PENDING_'.$uniqueSuffix,
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận GHN 1',
+            'recipient_phone' => '0901111111',
+            'parcel_photo_url' => 'https://sample.com/ghn1.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-GHN-1-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // Kiện GHN lưu 4 ngày (3-5 ngày) -> EXPIRING_SOON
+        $expiringGhn = Parcel::create([
+            'tracking_number' => 'GHN_EXPIRING_'.$uniqueSuffix,
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận GHN 2',
+            'recipient_phone' => '0902222222',
+            'parcel_photo_url' => 'https://sample.com/ghn2.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-GHN-2-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now()->subDays(4),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // Kiện GHN lưu 7 ngày (> 5 ngày) -> OVERDUE
+        $overdueGhn = Parcel::create([
+            'tracking_number' => 'GHN_OVERDUE_'.$uniqueSuffix,
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận GHN 3',
+            'recipient_phone' => '0903333333',
+            'parcel_photo_url' => 'https://sample.com/ghn3.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-GHN-3-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now()->subDays(7),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // Kiện Shopee Express (khác ĐVVC)
+        $pendingShopee = Parcel::create([
+            'tracking_number' => 'SHOPEE_'.$uniqueSuffix,
+            'courier_company' => 'Shopee Express',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận Shopee',
+            'recipient_phone' => '0904444444',
+            'parcel_photo_url' => 'https://sample.com/shopee.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-SPX-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // 1. Lọc theo hiển thị "Giao Hàng Nhanh (GHN)" phải khớp mã "GHN" trong DB
+        $resGhn = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&search='.$uniqueSuffix);
+        $resGhn->assertStatus(200);
+        $ghnItems = collect($resGhn->json('data'))->pluck('id')->all();
+        $this->assertContains($pendingGhn->id, $ghnItems);
+        $this->assertContains($expiringGhn->id, $ghnItems);
+        $this->assertContains($overdueGhn->id, $ghnItems);
+        $this->assertNotContains($pendingShopee->id, $ghnItems);
+
+        // 2. Lọc kết hợp 2 tiêu chí: "Giao Hàng Nhanh (GHN)" VÀ status = "PENDING"
+        $resGhnPending = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&status=PENDING&search='.$uniqueSuffix);
+        $resGhnPending->assertStatus(200);
+        $pendingItems = collect($resGhnPending->json('data'))->pluck('id')->all();
+        $this->assertContains($pendingGhn->id, $pendingItems);
+        $this->assertNotContains($expiringGhn->id, $pendingItems);
+        $this->assertNotContains($overdueGhn->id, $pendingItems);
+        $this->assertNotContains($pendingShopee->id, $pendingItems);
+
+        // 3. Lọc kết hợp: "Giao Hàng Nhanh (GHN)" VÀ status = "EXPIRING_SOON"
+        $resGhnExpiring = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&status=EXPIRING_SOON&search='.$uniqueSuffix);
+        $resGhnExpiring->assertStatus(200);
+        $expiringItems = collect($resGhnExpiring->json('data'))->pluck('id')->all();
+        $this->assertContains($expiringGhn->id, $expiringItems);
+        $this->assertNotContains($pendingGhn->id, $expiringItems);
+        $this->assertNotContains($overdueGhn->id, $expiringItems);
+
+        // 4. Lọc kết hợp: "Giao Hàng Nhanh (GHN)" VÀ status = "OVERDUE"
+        $resGhnOverdue = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&status=OVERDUE&search='.$uniqueSuffix);
+        $resGhnOverdue->assertStatus(200);
+        $overdueItems = collect($resGhnOverdue->json('data'))->pluck('id')->all();
+        $this->assertContains($overdueGhn->id, $overdueItems);
+        $this->assertNotContains($pendingGhn->id, $overdueItems);
+        $this->assertNotContains($expiringGhn->id, $overdueItems);
+    }
 }

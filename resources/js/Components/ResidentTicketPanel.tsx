@@ -234,24 +234,6 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     version: 1,
   });
   const [isUpdating, setIsUpdating] = useState(false);
-  const modalBusy = useRef(false);
-  modalBusy.current = isSubmitting || isCancelling || isConfirming || isReopening || isUpdating || imageBusy;
-  useEffect(() => {
-    if (!isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const bodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const dialog = document.querySelector<HTMLElement>('[data-ticket-modal]');
-    const controls = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]') || []).filter((node) => node.offsetParent !== null);
-    const frame = requestAnimationFrame(() => controls()[0]?.focus());
-    const keyboard = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !modalBusy.current) { setIsCreateModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setIsEditModalOpen(false); setRemoveImageId(null); }
-      if (event.key === 'Tab') { const nodes = controls(); const first = nodes[0], last = nodes[nodes.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
-    };
-    document.addEventListener('keydown', keyboard);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', keyboard); document.body.style.overflow = bodyOverflow; previous?.focus(); };
-  }, [isCreateModalOpen, isCancelModalOpen, isConfirmModalOpen, isReopenModalOpen, isEditModalOpen, removeImageId]);
-
   // Debounce search input
   useEffect(() => {
     if (searchQuery === debouncedSearch) return;
@@ -677,52 +659,117 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         </div>
       )}
 
-      {/* Top Header & Breadcrumbs */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400 uppercase tracking-wider font-semibold mb-2">
-            <Wrench className="w-4 h-4 text-emerald-600" />
-            <span>HỖ TRỢ KỸ THUẬT & VẬN HÀNH</span>
+      {/* Top Header & Overview */}
+      <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/60 to-blue-50/40 p-6 sm:p-8 shadow-xs">
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-100/40 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50/90 border border-blue-200/70 shadow-2xs mb-1">
+              <Wrench className="w-3.5 h-3.5 text-blue-600" />
+              <span>HỖ TRỢ KỸ THUẬT & VẬN HÀNH</span>
+            </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+              Báo cáo Sự cố & Sửa chữa
+            </h1>
+            <p className="max-w-2xl text-sm leading-6 text-slate-500">
+              Gửi yêu cầu hỗ trợ, theo dõi kỹ thuật xử lý và xác nhận khi sự cố đã được khắc phục.
+            </p>
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-neutral-950 sm:text-3xl">
-            Báo cáo Sự cố & Sửa chữa
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
-            Gửi yêu cầu hỗ trợ, theo dõi kỹ thuật xử lý và xác nhận khi sự cố đã được khắc phục.
-          </p>
-        </div>
 
-        {/* Tab Switcher Action Buttons */}
-        <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
-          {viewMode !== 'list' && (
-            <button
-              id="ticket-back-to-list-btn"
-              type="button"
-              onClick={() => {
-                setViewMode('list');
-                setSelectedTicketId(null);
-                setDetailTicket(null);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-neutral-50 border border-neutral-200/80 rounded-xl text-xs font-semibold text-neutral-700 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Danh sách yêu cầu</span>
-            </button>
-          )}
+          {/* Tab Switcher Action Buttons */}
+          <div className="flex shrink-0 items-center gap-2.5 self-start sm:self-auto">
+            {viewMode !== 'list' && (
+              <button
+                id="ticket-back-to-list-btn"
+                type="button"
+                onClick={() => {
+                  setViewMode('list');
+                  setSelectedTicketId(null);
+                  setDetailTicket(null);
+                }}
+                className="inline-flex min-h-11 items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-500" />
+                <span>Danh sách yêu cầu</span>
+              </button>
+            )}
 
-          {viewMode === 'list' && (
-            <button
-              id="ticket-open-create-btn"
-              type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Gửi báo cáo sự cố mới</span>
-            </button>
-          )}
+            {viewMode === 'list' && (
+              <button
+                id="ticket-open-create-btn"
+                type="button"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 active:scale-[0.99] transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-blue-300" />
+                <span>Gửi báo cáo sự cố mới</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* KPI Stats Overview Cards (Hiển thị khi ở chế độ danh sách) */}
+      {viewMode === 'list' && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs transition-all hover:shadow-xs hover:border-blue-200">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span className="font-medium">Tổng yêu cầu</span>
+              <FileText className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900 tabular-nums">
+              {counters.all}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">Tất cả thời gian</div>
+          </div>
+
+          <div className="rounded-2xl border border-sky-200/80 bg-sky-50/40 p-4 shadow-2xs transition-all hover:shadow-xs hover:border-sky-300">
+            <div className="flex items-center justify-between text-xs text-sky-700">
+              <span className="font-semibold">Mới gửi</span>
+              <span className="flex h-2 w-2 rounded-full bg-sky-500" />
+            </div>
+            <div className="mt-2 text-2xl font-extrabold tracking-tight text-sky-950 tabular-nums">
+              {counters.new}
+            </div>
+            <div className="mt-1 text-[11px] text-sky-600/80">Chờ tiếp nhận</div>
+          </div>
+
+          <div className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 shadow-2xs transition-all hover:shadow-xs hover:border-amber-300">
+            <div className="flex items-center justify-between text-xs text-amber-700">
+              <span className="font-semibold">Đang xử lý</span>
+              <Wrench className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="mt-2 text-2xl font-extrabold tracking-tight text-amber-950 tabular-nums">
+              {counters.in_progress}
+            </div>
+            <div className="mt-1 text-[11px] text-amber-600/80">
+              {(counters.received ?? 0) > 0 ? `${counters.received} đã ghi nhận` : 'Kỹ thuật đang làm'}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-purple-200/80 bg-purple-50/40 p-4 shadow-2xs transition-all hover:shadow-xs hover:border-purple-300">
+            <div className="flex items-center justify-between text-xs text-purple-700">
+              <span className="font-semibold">Chờ nghiệm thu</span>
+              <Check className="w-4 h-4 text-purple-600" />
+            </div>
+            <div className="mt-2 text-2xl font-extrabold tracking-tight text-purple-950 tabular-nums">
+              {counters.resolved}
+            </div>
+            <div className="mt-1 text-[11px] text-purple-600/80">Cần bạn xác nhận</div>
+          </div>
+
+          <div className="col-span-2 sm:col-span-4 lg:col-span-1 rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-4 shadow-2xs transition-all hover:shadow-xs hover:border-emerald-300">
+            <div className="flex items-center justify-between text-xs text-emerald-700">
+              <span className="font-semibold">Đã hoàn tất</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="mt-2 text-2xl font-extrabold tracking-tight text-emerald-950 tabular-nums">
+              {counters.closed}
+            </div>
+            <div className="mt-1 text-[11px] text-emerald-600/80">Khắc phục xong</div>
+          </div>
+        </div>
+      )}
 
 
 
@@ -1002,10 +1049,17 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= VIEW 2: DANH SÁCH TICKET ================= */}
       {viewMode === 'list' && (
-        <div className="rounded-2xl border border-neutral-200 bg-white shadow-xs">
+        <div className="rounded-3xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
           {/* Filter Bar */}
-          <div className="space-y-4 p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-neutral-900">Yêu cầu của tôi</h2><p className="text-xs text-neutral-500">Theo dõi tiến độ và phản hồi sau xử lý</p></div>
+          <div className="space-y-4 p-5 sm:p-6 bg-gradient-to-b from-slate-50/40 to-white">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Yêu cầu của tôi</h2>
+                <p className="text-xs text-slate-500">Theo dõi tiến độ và phản hồi sau xử lý</p>
+              </div>
+            </div>
+
+            {/* Quick Status Filters */}
             <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Lọc nhanh yêu cầu">
               {[
                 { status: 'ALL', label: 'Tất cả yêu cầu', count: counters.all },
@@ -1014,210 +1068,296 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 { status: 'RESOLVED', label: 'Chờ nghiệm thu', count: counters.resolved },
                 { status: 'CLOSED', label: 'Đã hoàn tất', count: counters.closed },
                 { status: 'CANCELLED', label: 'Đã hủy', count: counters.cancelled },
-              ].map((item) => <button key={item.status} type="button" aria-pressed={statusFilter === item.status} title={item.title} onClick={() => { setStatusFilter(item.status); setCurrentPage(1); }} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-emerald-600 ${statusFilter === item.status ? 'bg-neutral-950 text-white' : 'text-neutral-600 hover:bg-neutral-100'}`}>
-                <span className={statusFilter === item.status ? 'text-white' : 'text-neutral-600'}>{item.label}</span><span className={`rounded-md px-1.5 py-0.5 text-xs tabular-nums ${statusFilter === item.status ? 'bg-white/15 text-white' : 'bg-neutral-100 text-neutral-600'}`}>{item.count}</span>
-              </button>)}
+              ].map((item) => (
+                <button
+                  key={item.status}
+                  type="button"
+                  aria-pressed={statusFilter === item.status}
+                  title={item.title}
+                  onClick={() => { setStatusFilter(item.status); setCurrentPage(1); }}
+                  className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-600 ${
+                    statusFilter === item.status
+                      ? 'bg-neutral-950 text-white'
+                      : 'text-neutral-600 hover:bg-neutral-100'
+                  }`}
+                >
+                  <span className={statusFilter === item.status ? 'text-white' : 'text-neutral-600'}>{item.label}</span>
+                  <span className={`rounded-md px-1.5 py-0.5 text-xs tabular-nums ${
+                    statusFilter === item.status ? 'bg-white/15 text-white' : 'bg-neutral-100 text-neutral-600'
+                  }`}>
+                    {item.count}
+                  </span>
+                </button>
+              ))}
             </div>
 
-            <div className="grid grid-cols-1 gap-3 border-t border-neutral-100 pt-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3.5 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-5">
               {/* Search Box */}
               <div className="relative sm:col-span-2">
-                <label htmlFor="ticket-search-input" className="mb-1.5 block text-xs font-bold uppercase text-slate-700">Tìm yêu cầu</label>
-                <Search aria-hidden="true" className="pointer-events-none absolute bottom-3.5 left-3.5 h-4 w-4 text-neutral-400" />
+                <label htmlFor="ticket-search-input" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">Tìm yêu cầu</label>
+                <Search aria-hidden="true" className="pointer-events-none absolute bottom-3.5 left-3.5 h-4 w-4 text-slate-400" />
                 <input
                   id="ticket-search-input"
                   type="text"
                   placeholder="Tìm theo mã ticket, tiêu đề, vị trí sự cố..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="min-h-11 w-full pl-10 pr-12 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 bg-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-all"
+                  className="min-h-11 w-full pl-10 pr-12 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-500 shadow-2xs transition-all"
                 />
-                {searchQuery && <button type="button" aria-label="Xóa từ khóa tìm yêu cầu" className="absolute bottom-0 right-0 min-h-11 min-w-11 cursor-pointer rounded-xl text-neutral-500 hover:bg-neutral-100" onClick={() => setSearchQuery('')}><X aria-hidden="true" className="mx-auto h-4 w-4" /></button>}
+                {searchQuery && (
+                  <button
+                    type="button"
+                    aria-label="Xóa từ khóa tìm yêu cầu"
+                    className="absolute bottom-0 right-0 min-h-11 min-w-11 cursor-pointer rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                    onClick={() => setSearchQuery('')}
+                  >
+                    <X aria-hidden="true" className="mx-auto h-4 w-4" />
+                  </button>
+                )}
               </div>
 
               {/* Status Filter */}
               <div className="relative">
-                <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-status-filter" label="Trạng thái yêu cầu" value={statusFilter} onChange={(value) => { setStatusFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả trạng thái' }, ...Object.entries(STATUS_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
+                <CustomSelect overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-status-filter" label="Trạng thái yêu cầu" value={statusFilter} onChange={(value) => { setStatusFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả trạng thái' }, ...Object.entries(STATUS_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
               </div>
 
               {/* Category Filter */}
               <div className="relative">
-                <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
+                <CustomSelect overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
               </div>
-              <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-priority-filter" label="Mức độ ưu tiên" value={priorityFilter} onChange={(value) => { setPriorityFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả mức độ' }, ...Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
+              <CustomSelect overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-priority-filter" label="Mức độ ưu tiên" value={priorityFilter} onChange={(value) => { setPriorityFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả mức độ' }, ...Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
             </div>
 
             {/* Reset / Reload helper */}
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500 pt-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 pt-1">
               <span>
-                Tìm thấy <strong className="text-neutral-900 font-mono">{totalTickets}</strong> yêu cầu
+                Tìm thấy <strong className="text-slate-900 font-mono font-bold">{totalTickets}</strong> yêu cầu
               </span>
               <div className="flex flex-wrap items-center gap-2">
-              {(searchQuery || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL') && <button type="button" className="min-h-11 cursor-pointer rounded-xl px-3 font-medium text-sky-700 underline" onClick={() => { setSearchQuery(''); setDebouncedSearch(''); setStatusFilter('ALL'); setCategoryFilter('ALL'); setPriorityFilter('ALL'); setCurrentPage(1); }}>Xóa bộ lọc</button>}
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={() => fetchTickets()}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-neutral-600 hover:text-neutral-900 font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>Làm mới</span>
-              </button>
+                {(searchQuery || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL') && (
+                  <button
+                    type="button"
+                    className="min-h-11 cursor-pointer rounded-xl px-3 font-semibold text-blue-700 hover:text-blue-800 underline transition-colors"
+                    onClick={() => { setSearchQuery(''); setDebouncedSearch(''); setStatusFilter('ALL'); setCategoryFilter('ALL'); setPriorityFilter('ALL'); setCurrentPage(1); }}
+                  >
+                    Xóa bộ lọc
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => fetchTickets()}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span>Làm mới</span>
+                </button>
               </div>
             </div>
           </div>
 
           {/* Table Container */}
-          <div className="overflow-hidden rounded-b-2xl border-t border-neutral-200 bg-white">
+          <div className="overflow-hidden border-t border-slate-200/80 bg-white">
             {isLoading ? (
-              <div className="p-12 text-center space-y-3">
-                <Loader2 className="w-8 h-8 animate-spin text-neutral-400 mx-auto" />
-                <p className="text-xs text-neutral-500 font-medium">Đang tải danh sách yêu cầu sự cố...</p>
+              <div className="p-16 text-center space-y-3">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+                <p className="text-xs text-slate-500 font-medium">Đang tải danh sách yêu cầu sự cố...</p>
               </div>
             ) : loadError ? (
-              <div className="p-12 text-center space-y-3">
+              <div className="p-16 text-center space-y-3">
                 <AlertCircle className="w-8 h-8 text-rose-500 mx-auto" />
-                <p className="text-xs text-neutral-700 font-medium">{loadError}</p>
+                <p className="text-xs text-slate-700 font-medium">{loadError}</p>
                 <button
                   type="button"
                   onClick={() => fetchTickets()}
-                  className="px-4 py-2 bg-neutral-900 text-white rounded-xl text-xs font-semibold hover:bg-neutral-800"
+                  className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition-all cursor-pointer"
                 >
                   Thử lại
                 </button>
               </div>
             ) : tickets.length === 0 ? (
               <div className="p-16 text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-100">
-                  <Wrench className="w-6 h-6" />
+                <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100 shadow-2xs">
+                  <Wrench className="w-7 h-7" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-neutral-900">{debouncedSearch || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL' ? 'Không có yêu cầu phù hợp' : 'Chưa có yêu cầu báo cáo sự cố nào'}</h3>
-                  <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-                    {debouncedSearch || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL' ? 'Thử đổi từ khóa hoặc xóa bộ lọc để xem các yêu cầu khác.' : 'Khi xảy ra sự cố kỹ thuật về điện, nước hoặc hạ tầng căn hộ, bạn có thể gửi yêu cầu để kỹ thuật viên đến hỗ trợ.'}
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {debouncedSearch || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL'
+                      ? 'Không có yêu cầu phù hợp'
+                      : 'Chưa có yêu cầu báo cáo sự cố nào'}
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    {debouncedSearch || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || priorityFilter !== 'ALL'
+                      ? 'Thử đổi từ khóa hoặc xóa bộ lọc để xem các yêu cầu khác.'
+                      : 'Khi xảy ra sự cố kỹ thuật về điện, nước hoặc hạ tầng căn hộ, bạn có thể gửi yêu cầu để kỹ thuật viên đến hỗ trợ.'}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-4 h-4 text-blue-300" />
                   <span>Tạo yêu cầu đầu tiên</span>
                 </button>
               </div>
             ) : (
-              <><ul aria-label="Danh sách yêu cầu của tôi" className="divide-y divide-neutral-100 lg:hidden">{tickets.map((ticket) => {
-                const status = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.NEW;
-                return <li key={ticket.id} className="space-y-3 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono text-xs text-neutral-500">{ticket.ticket_number}</span><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.bg} ${status.text}`}>{status.label}</span></div>
-                  <h3 className="break-words text-sm font-semibold text-neutral-900">{ticket.title}</h3>
-                  <p className="text-sm text-neutral-600">{ticket.location || 'Tại căn hộ'} · {ticket.category?.category_name || 'Kỹ thuật'}</p>
-                  <div className="flex flex-wrap items-center justify-between gap-2"><time dateTime={ticket.created_at} className="text-xs text-neutral-500">{formatDateTime(ticket.created_at)}</time><button type="button" className="min-h-11 cursor-pointer rounded-xl border border-neutral-200 px-4 text-sm font-medium hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-sky-600" onClick={() => fetchTicketDetail(ticket.id)}>Xem chi tiết</button></div>
-                </li>;
-              })}</ul><div className="hidden overflow-x-auto lg:block">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-neutral-200/70 bg-neutral-50/70 text-neutral-500 font-semibold uppercase text-[11px] tracking-wider">
-                      <th className="py-3 px-4">MÃ TICKET</th>
-                      <th className="py-3 px-4">TIÊU ĐỀ & VỊ TRÍ</th>
-                      <th className="py-3 px-4">LOẠI SỰ CỐ</th>
-                      <th className="py-3 px-4">MỨC ĐỘ</th>
-                      <th className="py-3 px-4">TRẠNG THÁI</th>
-                      <th className="py-3 px-4">NGÀY GỬI</th>
-                      <th className="py-3 px-4 text-right">THAO TÁC</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-200/60 text-neutral-800">
-                    {tickets.map((t) => {
-                      const st = STATUS_CONFIG[t.status] || STATUS_CONFIG.NEW;
-                      const pr = PRIORITY_CONFIG[t.priority] || PRIORITY_CONFIG.MEDIUM;
-                      return (
-                        <tr
-                          key={t.id}
-                          className="hover:bg-neutral-50/90 transition-colors group cursor-pointer"
-                          onClick={() => fetchTicketDetail(t.id)}
-                        >
-                          <td className="py-3.5 px-4 font-mono font-bold text-neutral-900">
-                            <span className="hover:underline">{t.ticket_number}</span>
-                            {t.attachments && t.attachments.length > 0 && (
-                              <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] bg-neutral-100 text-neutral-600 font-sans">
-                                📎 {t.attachments.length}
+              <>
+                {/* Mobile Cards View */}
+                <ul aria-label="Danh sách yêu cầu của tôi" className="divide-y divide-slate-100 p-3 space-y-3 lg:hidden">
+                  {tickets.map((ticket) => {
+                    const status = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.NEW;
+                    const priority = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.MEDIUM;
+                    return (
+                      <li key={ticket.id} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-3 hover:border-slate-300 transition-all">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-md">
+                            {ticket.ticket_number}
+                          </span>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border ${status.bg} ${status.text} ${status.border}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                            {status.label}
+                          </span>
+                        </div>
+                        <h3 className="break-words text-sm font-bold text-slate-900 leading-snug">
+                          {ticket.title}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            {ticket.location || 'Tại căn hộ'}
+                          </span>
+                          <span>·</span>
+                          <span className="text-slate-600">{ticket.category?.category_name || 'Kỹ thuật'}</span>
+                          <span>·</span>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${priority.bg} ${priority.text} ${priority.border}`}>
+                            {priority.label}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                          <time dateTime={ticket.created_at} className="text-xs text-slate-400 font-mono">
+                            {formatDateTime(ticket.created_at)}
+                          </time>
+                          <button
+                            type="button"
+                            className="min-h-11 cursor-pointer rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-2xs hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-blue-600 transition-all"
+                            onClick={() => fetchTicketDetail(ticket.id)}
+                          >
+                            Xem chi tiết
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {/* Desktop Table View */}
+                <div className="hidden overflow-x-auto lg:block">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 bg-slate-50/80 text-slate-600 font-bold uppercase text-[11px] tracking-wider">
+                        <th className="py-3.5 px-4">MÃ TICKET</th>
+                        <th className="py-3.5 px-4">TIÊU ĐỀ & VỊ TRÍ</th>
+                        <th className="py-3.5 px-4">LOẠI SỰ CỐ</th>
+                        <th className="py-3.5 px-4">MỨC ĐỘ</th>
+                        <th className="py-3.5 px-4">TRẠNG THÁI</th>
+                        <th className="py-3.5 px-4">NGÀY GỬI</th>
+                        <th className="py-3.5 px-4 text-right">THAO TÁC</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800">
+                      {tickets.map((t) => {
+                        const st = STATUS_CONFIG[t.status] || STATUS_CONFIG.NEW;
+                        const pr = PRIORITY_CONFIG[t.priority] || PRIORITY_CONFIG.MEDIUM;
+                        return (
+                          <tr
+                            key={t.id}
+                            className="hover:bg-blue-50/40 transition-colors group cursor-pointer"
+                            onClick={() => fetchTicketDetail(t.id)}
+                          >
+                            <td className="py-4 px-4 font-mono font-bold text-slate-900">
+                              <span className="group-hover:text-blue-700 transition-colors">{t.ticket_number}</span>
+                              {t.attachments && t.attachments.length > 0 && (
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 font-sans font-medium">
+                                  📎 {t.attachments.length}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
+                                {t.title}
+                              </div>
+                              <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>{t.location || 'Tại căn hộ'}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-slate-600 font-medium">
+                              {t.category?.category_name || 'Kỹ thuật'}
+                            </td>
+                            <td className="py-4 px-4">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${pr.bg} ${pr.text} ${pr.border}`}
+                              >
+                                {pr.label}
                               </span>
-                            )}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="font-semibold text-neutral-900 group-hover:text-amber-700 transition-colors">
-                              {t.title}
-                            </div>
-                            <div className="text-[11px] text-neutral-400 flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-3 h-3 text-neutral-400" />
-                              <span>{t.location || 'Tại căn hộ'}</span>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-neutral-600">
-                            {t.category?.category_name || 'Kỹ thuật'}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${pr.bg} ${pr.text} ${pr.border}`}
-                            >
-                              {pr.label}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${st.bg} ${st.text} ${st.border}`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-                              {st.label}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-neutral-500 font-mono text-[11px]">
-                            {formatDateTime(t.created_at)}
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                fetchTicketDetail(t.id);
-                              }}
-                              className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-900 hover:text-white text-neutral-700 font-semibold text-xs transition-all cursor-pointer"
-                            >
-                              Xem chi tiết
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div></>
+                            </td>
+                            <td className="py-4 px-4">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${st.bg} ${st.text} ${st.border}`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                                {st.label}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 text-slate-500 font-mono text-[11px]">
+                              {formatDateTime(t.created_at)}
+                            </td>
+                            <td className="py-4 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  fetchTicketDetail(t.id);
+                                }}
+                                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 font-semibold text-xs transition-all shadow-2xs cursor-pointer"
+                              >
+                                Xem chi tiết
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
 
             {/* Pagination Controls */}
             {lastPage > 1 && (
-              <div className="p-4 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
+              <div className="p-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                 <span>
-                  Trang <strong className="text-neutral-900">{currentPage}</strong> / {lastPage}
+                  Trang <strong className="text-slate-900 font-semibold">{currentPage}</strong> / {lastPage}
                 </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    aria-label="Trang yêu cầu trước" disabled={isLoading || currentPage <= 1}
+                    aria-label="Trang yêu cầu trước"
+                    disabled={isLoading || currentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className="min-h-11 min-w-11 cursor-pointer p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="min-h-11 min-w-11 cursor-pointer p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4 text-slate-600 mx-auto" />
                   </button>
                   <button
                     type="button"
-                    aria-label="Trang yêu cầu tiếp theo" disabled={isLoading || currentPage >= lastPage}
+                    aria-label="Trang yêu cầu tiếp theo"
+                    disabled={isLoading || currentPage >= lastPage}
                     onClick={() => setCurrentPage((p) => Math.min(lastPage, p + 1))}
-                    className="min-h-11 min-w-11 cursor-pointer p-1.5 rounded-lg border border-neutral-200 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="min-h-11 min-w-11 cursor-pointer p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4 text-slate-600 mx-auto" />
                   </button>
                 </div>
               </div>
@@ -1437,41 +1577,12 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: HỦY TICKET ================= */}
       {isCancelModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Hủy yêu cầu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-rose-600">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <h3 className="font-bold text-base text-neutral-950">Xác nhận hủy yêu cầu</h3>
-              </div>
+        <TicketDialog open={isCancelModalOpen} title="Hủy yêu cầu" busy={isCancelling} onClose={() => setIsCancelModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
+                disabled={isCancelling}
                 onClick={() => setIsCancelModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-neutral-600">
-              Bạn có chắc chắn muốn hủy yêu cầu <strong>{detailTicket?.ticket_number}</strong>? Sau khi hủy, kỹ thuật viên sẽ không đến kiểm tra sự cố này.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Lý do hủy yêu cầu (Bắt buộc, ít nhất 5 ký tự)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Ví dụ: Đã tự khắc phục được, gửi nhầm căn hộ..."
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsCancelModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
               >
                 Đóng
               </button>
@@ -1479,52 +1590,41 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 type="button"
                 disabled={isCancelling}
                 onClick={handleConfirmCancel}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold disabled:opacity-50"
               >
                 {isCancelling ? 'Đang hủy...' : 'Đồng ý hủy'}
               </button>
+            </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-600">
+              Bạn có chắc chắn muốn hủy yêu cầu <strong>{detailTicket?.ticket_number}</strong>? Sau khi hủy, kỹ thuật viên sẽ không đến kiểm tra sự cố này.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Lý do hủy yêu cầu (Bắt buộc, ít nhất 5 ký tự)
+              </label>
+              <textarea aria-label="Lý do hủy yêu cầu"
+                rows={3}
+                placeholder="Ví dụ: Đã tự khắc phục được, gửi nhầm căn hộ..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
             </div>
+
           </div>
-        </div>
+        </TicketDialog>
       )}
 
       {/* ================= MODAL: XÁC NHẬN HOÀN TẤT ================= */}
       {isConfirmModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Xác nhận nghiệm thu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-emerald-600">
-                <CheckCircle2 className="w-5 h-5 shrink-0" />
-                <h3 className="font-bold text-base text-neutral-950">Xác nhận nghiệm thu & Hoàn tất</h3>
-              </div>
+        <TicketDialog open={isConfirmModalOpen} title="Xác nhận nghiệm thu" busy={isConfirming} onClose={() => setIsConfirmModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
+                disabled={isConfirming}
                 onClick={() => setIsConfirmModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-neutral-600">
-              Bạn xác nhận kỹ thuật viên đã sửa chữa sự cố đạt yêu cầu. Yêu cầu sẽ được chuyển sang trạng thái <strong>Đã hoàn tất (CLOSED)</strong>.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Ghi chú hoặc đánh giá chất lượng (Tùy chọn)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Ví dụ: Kỹ thuật viên nhiệt tình, sửa chữa nhanh và sạch sẽ..."
-                value={confirmNote}
-                onChange={(e) => setConfirmNote(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsConfirmModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
               >
                 Đóng
               </button>
@@ -1532,52 +1632,41 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 type="button"
                 disabled={isConfirming}
                 onClick={handleConfirmResolved}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50"
               >
                 {isConfirming ? 'Đang xác nhận...' : 'Xác nhận hoàn thành'}
               </button>
+            </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-600">
+              Bạn xác nhận kỹ thuật viên đã sửa chữa sự cố đạt yêu cầu. Yêu cầu sẽ được chuyển sang trạng thái <strong>Đã hoàn tất (CLOSED)</strong>.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Ghi chú hoặc đánh giá chất lượng (Tùy chọn)
+              </label>
+              <textarea aria-label="Ghi chú nghiệm thu"
+                rows={3}
+                placeholder="Ví dụ: Kỹ thuật viên nhiệt tình, sửa chữa nhanh và sạch sẽ..."
+                value={confirmNote}
+                onChange={(e) => setConfirmNote(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
             </div>
+
           </div>
-        </div>
+        </TicketDialog>
       )}
 
       {/* ================= MODAL: CHƯA KHẮC PHỤC XONG (REOPEN) ================= */}
       {isReopenModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Phản hồi chưa đạt" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-amber-600">
-                <AlertTriangle className="w-5 h-5 shrink-0" />
-                <h3 className="font-bold text-base text-neutral-950">Phản hồi sự cố chưa khắc phục</h3>
-              </div>
+        <TicketDialog open={isReopenModalOpen} title="Phản hồi chưa đạt" busy={isReopening} onClose={() => setIsReopenModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
+                disabled={isReopening}
                 onClick={() => setIsReopenModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-neutral-600">
-              Yêu cầu sẽ được mở lại sang trạng thái <strong>Đang xử lý (IN_PROGRESS)</strong> để kỹ thuật viên tiếp tục kiểm tra.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Lý do chưa khắc phục xong <span className="text-rose-500">*</span>
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Mô tả hiện tượng chưa xử lý dứt điểm (ví dụ: nước vẫn rò, bật công tắc đèn vẫn nháy...)"
-                value={reopenReason}
-                onChange={(e) => setReopenReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsReopenModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
               >
                 Đóng
               </button>
@@ -1585,13 +1674,31 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 type="button"
                 disabled={isReopening}
                 onClick={handleReopenTicket}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50"
+                className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50"
               >
                 {isReopening ? 'Đang gửi...' : 'Gửi phản hồi xử lý lại'}
               </button>
+            </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-600">
+              Yêu cầu sẽ được mở lại sang trạng thái <strong>Đang xử lý (IN_PROGRESS)</strong> để kỹ thuật viên tiếp tục kiểm tra.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Lý do chưa khắc phục xong <span className="text-rose-500">*</span>
+              </label>
+              <textarea aria-label="Lý do chưa khắc phục xong"
+                rows={3}
+                placeholder="Mô tả hiện tượng chưa xử lý dứt điểm (ví dụ: nước vẫn rò, bật công tắc đèn vẫn nháy...)"
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
             </div>
+
           </div>
-        </div>
+        </TicketDialog>
       )}
 
       {/* ================= MODAL: CHỈNH SỬA TICKET ================= */}
@@ -1603,38 +1710,42 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         finally { setImageBusy(false); }
       }}>Bỏ ảnh</button></div></TicketDialog>
       {isEditModalOpen && (
-        <div data-ticket-modal role="dialog" aria-modal="true" aria-label="Sửa yêu cầu" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl border border-neutral-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-start justify-between border-b border-neutral-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Pencil className="w-5 h-5 text-neutral-700" />
-                <h3 className="font-bold text-base text-neutral-950">Chỉnh sửa nội dung sự cố</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700 p-1 rounded-lg hover:bg-neutral-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditTicket} className="space-y-4 text-xs">
+        <TicketDialog open={isEditModalOpen} title="Sửa yêu cầu" busy={isUpdating} onClose={() => setIsEditModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
+                <button
+                  type="button"
+                  disabled={isUpdating}
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="min-h-11 cursor-pointer px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit" form="ticket-resident-edit-form"
+                  disabled={isUpdating}
+                  className="min-h-11 cursor-pointer px-4 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold disabled:opacity-50"
+                >
+                  {isUpdating ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>}>
+          {toast?.type === 'error' && <p role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{toast.message}</p>}
+            <form id="ticket-resident-edit-form" onSubmit={handleSaveEditTicket} className="space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">Tiêu đề sự cố *</label>
                 <input
                   type="text"
+                  aria-label="Tiêu đề sự cố"
                   value={editFormData.title}
                   onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-neutral-800 mb-1">Vị trí *</label>
                   <input
                     type="text"
+                    aria-label="Vị trí sự cố"
                     value={editFormData.location}
                     onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
@@ -1651,6 +1762,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
               <div>
                 <label className="block font-bold text-neutral-800 mb-1">Mô tả chi tiết *</label>
                 <textarea
+                  aria-label="Mô tả chi tiết"
                   rows={4}
                   value={editFormData.description}
                   onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
@@ -1662,6 +1774,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 <label className="block font-bold text-neutral-800 mb-1">Ngày thuận tiện kỹ thuật đến kiểm tra</label>
                 <input
                   type="date"
+                  aria-label="Ngày thuận tiện kỹ thuật đến kiểm tra"
                   min={new Date().toISOString().split('T')[0]}
                   value={editFormData.preferred_service_time ? editFormData.preferred_service_time.substring(0, 10) : ''}
                   onChange={(e) => setEditFormData({ ...editFormData, preferred_service_time: e.target.value })}
@@ -1669,25 +1782,9 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
-                >
-                  Đóng
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUpdating}
-                  className="px-4 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-semibold disabled:opacity-50"
-                >
-                  {isUpdating ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </button>
-              </div>
+
             </form>
-          </div>
-        </div>
+        </TicketDialog>
       )}
 
       <TicketDialog open={!!previewImage} title="Xem ảnh sự cố" onClose={() => setPreviewImage(null)}>

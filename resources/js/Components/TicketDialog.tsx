@@ -6,12 +6,17 @@ export function TicketDialog({ open, title, busy = false, onClose, children, foo
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
     if (!open) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; };
+    return () => {
+      if (dialog.open) dialog.close();
+      document.body.style.overflow = previous;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
   }, [open]);
   return <dialog ref={ref} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }} onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} className="m-auto w-[calc(100%-2rem)] max-w-2xl max-h-[90dvh] overflow-visible rounded-2xl border border-neutral-200 bg-white p-0 text-neutral-900 shadow-2xl backdrop:bg-black/40">
     <div className="flex max-h-[90dvh] flex-col rounded-2xl bg-white">
