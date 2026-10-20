@@ -324,11 +324,21 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   });
 
-  test('Ảnh đã chọn có thao tác rõ trên điện thoại và đóng phóng to bằng Escape', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 800 });
+  for (const width of [375, 1440]) {
+  test(`Ảnh đã chọn có thao tác rõ và đóng phóng to bằng Escape ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
     await page.goto('/cu-dan?tab=tickets');
     await page.locator('#ticket-open-create-btn').click();
-    await page.getByLabel('Chọn ảnh hiện trường', { exact: true }).setInputFiles({ name: 'anh-qa.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNy0AAAAASUVORK5CYII=', 'base64') });
+    const photo = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 360;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#e0f2fe'; context.fillRect(0, 0, 640, 360);
+      context.fillStyle = '#0c4a6e'; context.font = '32px sans-serif'; context.fillText('Ảnh hiện trường QA', 40, 100);
+      context.fillStyle = '#0284c7'; context.fillRect(40, 150, 260, 140);
+      context.fillStyle = '#fbbf24'; context.fillRect(330, 150, 260, 140);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.getByLabel('Chọn ảnh hiện trường', { exact: true }).setInputFiles({ name: 'anh-qa.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64') });
     await page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true }).click();
     const preview = page.getByRole('dialog', { name: 'Xem ảnh sự cố', exact: true });
     await expect(preview.getByRole('img')).toBeVisible();
@@ -338,6 +348,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await page.getByRole('button', { name: 'Bỏ ảnh đã chọn 1', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Xem ảnh đã chọn 1', exact: true })).toHaveCount(0);
   });
+  }
 
   test('Danh sách cư dân trên điện thoại hiển thị đúng trạng thái gửi, tiếp nhận và nghiệm thu', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
@@ -353,6 +364,41 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(list.getByRole('button', { name: 'Xem chi tiết', exact: true })).toHaveCount(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
-
-
+  test('MOCKED E2E: modal cư dân giữ dữ liệu, chặn đóng khi đang gửi và trả focus', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let submitted = false;
+    const ticket = { id: 'qa-modal', ticket_number: 'TCK-QA-MODAL', title: 'Sự cố cần sửa', description: 'Nước rò rỉ dưới bồn rửa', location: 'Bếp', status: 'NEW', priority: 'HIGH', version: 1, attachments: [], history: [], created_at: '2026-10-19T08:00:00Z' };
+    await page.route('**/api/v1/resident/tickets/qa-modal**', async (route) => {
+      if (route.request().method() === 'POST') {
+        submitted = true; await held;
+        return route.fulfill({ status: 422, json: { message: 'QA chưa thể hủy yêu cầu' } });
+      }
+      return route.fulfill({ json: { success: true, data: ticket } });
+    });
+    await page.goto('/cu-dan?tab=tickets&ticket_id=qa-modal');
+    const opener = page.getByRole('button', { name: 'Hủy yêu cầu', exact: true });
+    await opener.click();
+    const dialog = page.getByRole('dialog', { name: 'Hủy yêu cầu', exact: true });
+    await dialog.getByRole('textbox').fill('Cần ngừng yêu cầu này');
+    await dialog.getByRole('button', { name: 'Đồng ý hủy', exact: true }).click();
+    await expect.poll(() => submitted).toBe(true);
+    await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
+    release();
+    await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeEnabled();
+    await expect(dialog).toContainText('QA chưa thể hủy yêu cầu');
+    await expect(dialog.getByRole('textbox')).toHaveValue('Cần ngừng yêu cầu này');
+    await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
+    await expect(opener).toBeFocused();
+    await page.getByRole('button', { name: 'Chỉnh sửa', exact: true }).click();
+    const edit = page.getByRole('dialog', { name: 'Sửa yêu cầu', exact: true });
+    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).click();
+    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).press('Escape');
+    await expect(edit).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(edit).toHaveCount(0);
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+  });
 });
