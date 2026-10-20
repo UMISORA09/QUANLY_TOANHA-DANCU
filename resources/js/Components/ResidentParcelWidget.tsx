@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Package,
   KeyRound,
@@ -14,8 +14,11 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
+  BellRing,
 } from 'lucide-react';
 import api, { ParcelItem } from '../Services/api';
+import { useRealtimeSync } from '../Hooks/useRealtimeSync';
 
 export const getParcelImageUrl = (url?: string | null): string => {
   if (!url) return '';
@@ -56,6 +59,15 @@ export const ResidentParcelWidget: React.FC = () => {
   const perPage = 4;
   const totalPages = Math.max(1, Math.ceil(parcels.length / perPage));
   const displayedParcels = parcels.slice((currentPage - 1) * perPage, currentPage * perPage);
+
+  // Đếm số kiện hàng gần hết hạn lưu trữ (3 - 5 ngày) để cảnh báo cư dân
+  const expiringParcelsCount = useMemo(() => {
+    return parcels.filter((p) => {
+      if (!p.received_at) return false;
+      const days = Math.floor((new Date().getTime() - new Date(p.received_at).getTime()) / (24 * 60 * 60 * 1000));
+      return days >= 3 && days <= 5;
+    }).length;
+  }, [parcels]);
 
   const fetchResidentParcels = useCallback(async () => {
     setLoading(true);
@@ -112,14 +124,31 @@ export const ResidentParcelWidget: React.FC = () => {
     return () => window.removeEventListener('popstate', handleUrlChange);
   }, []);
 
-  // Lắng nghe sự kiện tiếp nhận kiện hàng theo thời gian thực (Realtime & Broadcast across tabs)
+  // Lắng nghe Realtime Server-Sent Event / SSE trên channel quoc-tin.parcels
+  useRealtimeSync({
+    channel: 'quoc-tin.parcels',
+    onEvent: (event) => {
+      if (event.module === 'parcels' || event.entity === 'parcel') {
+        fetchResidentParcels();
+      }
+    },
+    onReconnect: () => {
+      fetchResidentParcels();
+    },
+  });
+
+  // Lắng nghe sự kiện tiếp nhận & bàn giao kiện hàng theo thời gian thực (Realtime & Broadcast across tabs)
   useEffect(() => {
     let bc: BroadcastChannel | null = null;
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         bc = new BroadcastChannel('smartcassavas_parcels');
         bc.onmessage = (event) => {
-          if (event.data?.type === 'PARCEL_RECEIVED') {
+          if (
+            event.data?.type === 'PARCEL_RECEIVED' ||
+            event.data?.type === 'PARCEL_CHECKED_OUT' ||
+            event.data?.type === 'CHECKED_OUT'
+          ) {
             fetchResidentParcels();
           }
         };
@@ -130,10 +159,12 @@ export const ResidentParcelWidget: React.FC = () => {
 
     const handleCustomEvent = () => fetchResidentParcels();
     window.addEventListener('smartcassavas:parcel_received', handleCustomEvent);
+    window.addEventListener('smartcassavas:parcel_checked_out', handleCustomEvent);
 
     return () => {
       if (bc) bc.close();
       window.removeEventListener('smartcassavas:parcel_received', handleCustomEvent);
+      window.removeEventListener('smartcassavas:parcel_checked_out', handleCustomEvent);
     };
   }, [fetchResidentParcels]);
 
@@ -237,10 +268,35 @@ export const ResidentParcelWidget: React.FC = () => {
         </div>
       ) : (
         <>
+          {/* Banner cảnh báo bưu phẩm gần hết hạn nhận cho Cư dân */}
+          {expiringParcelsCount > 0 && (
+            <div className="mb-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300 rounded-xl p-3 sm:p-3.5 flex items-start sm:items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-bounce">
+                <BellRing className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-amber-950 flex items-center gap-2">
+                  <span>Bạn có {expiringParcelsCount} kiện hàng gần hết hạn nhận (đã lưu 3 - 5 ngày)</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                    Cần nhận sớm
+                  </span>
+                </div>
+                <p className="text-2xs text-amber-900/80 mt-0.5">
+                  Vui lòng dùng mã PIN hoặc xuất trình mã QR bên dưới tại Quầy Lễ Tân sảnh chính để nhận bưu phẩm trước khi quá hạn lưu kho.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {displayedParcels.map((parcel) => {
               const isTarget = highlightedParcelId === parcel.id;
               const photoUrl = getParcelImageUrl(parcel.parcel_photo_url);
+              const diffDays = parcel.received_at
+                ? Math.floor((new Date().getTime() - new Date(parcel.received_at).getTime()) / (24 * 60 * 60 * 1000))
+                : 0;
+              const isExpiringSoon = diffDays >= 3 && diffDays <= 5;
+              const isOverdue = diffDays > 5;
 
             return (
               <div
@@ -290,9 +346,23 @@ export const ResidentParcelWidget: React.FC = () => {
                       <span className="text-xs font-bold text-neutral-900 truncate font-mono">
                         {parcel.tracking_number}
                       </span>
-                      <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 shrink-0">
-                        {parcel.courier_company}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isExpiringSoon && (
+                          <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                            <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" />
+                            <span>Gần hết hạn ({diffDays}d)</span>
+                          </span>
+                        )}
+                        {isOverdue && (
+                          <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                            <span>Quá hạn ({diffDays}d)</span>
+                          </span>
+                        )}
+                        <span className="text-3xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                          {parcel.courier_company}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="text-2xs text-neutral-500 flex items-center gap-1.5">
@@ -359,9 +429,27 @@ export const ResidentParcelWidget: React.FC = () => {
                       </div>
                     </div>
 
-                    <p className="text-3xs text-neutral-400 pt-0.5 italic">
-                      * Đọc mã PIN này cho Lễ tân tại sảnh để nhận kiện hàng.
-                    </p>
+                    {isExpiringSoon ? (
+                      <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-1.5 text-3xs">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold">Cảnh báo gần hết hạn: </span>
+                          <span>Kiện hàng đã lưu {diffDays} ngày. Quý cư dân vui lòng đến quầy Lễ tân nhận sớm!</span>
+                        </div>
+                      </div>
+                    ) : isOverdue ? (
+                      <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 flex items-start gap-1.5 text-3xs">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold">Quá hạn lưu kho: </span>
+                          <span>Kiện hàng đã lưu {diffDays} ngày (&gt;5 ngày). Vui lòng đến nhận ngay tại quầy Lễ tân.</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-3xs text-neutral-400 pt-0.5 italic">
+                        * Đọc mã PIN này cho Lễ tân tại sảnh để nhận kiện hàng.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
