@@ -124,12 +124,59 @@ export function TicketManagementPanel() {
         {Object.entries({ 'Người báo': selected.creator?.full_name || '—', 'Căn hộ': `${selected.apartment?.apartment_number || '—'}${selected.apartment?.block?.block_name ? ` · ${selected.apartment.block.block_name}` : ''}`, 'Danh mục': selected.category?.category_name || options?.categories.find((item) => item.id === selected.category_id)?.category_name || '—', 'Mức độ ưu tiên': ticketPriorities[selected.priority], 'Vị trí': selected.location || '—', 'Kỹ thuật viên': selected.technician?.full_name || 'Chưa phân công' }).map(([label, value]) => <div key={label}><dt className="text-xs text-neutral-500">{label}</dt><dd className="mt-1 break-words font-medium">{value}</dd></div>)}
       </dl>
       <section className="space-y-2"><h4 className="text-sm font-semibold">Mô tả sự cố</h4><p className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-700">{selected.description}</p></section>
-      <section className="space-y-2"><h4 className="text-sm font-semibold">Ảnh đính kèm ({selected.attachments?.length || 0}/5)</h4>{selected.attachments?.length ? <div className="grid grid-cols-2 gap-3">{selected.attachments.map((att) => <div key={att.id} className="grid gap-1"><TicketImage name={att.file_name} url={att.file_url} onPreview={setPreview} /><p className="text-xs text-neutral-500">{att.is_resolution_proof ? 'Kết quả xử lý' : 'Hiện trường'}</p>{selected.actions.edit && !busy && <button type="button" className="text-left text-xs text-rose-700 underline cursor-pointer" onClick={() => { setError(''); setRemoveImageId(att.id); }}>Bỏ ảnh {att.file_name}</button>}</div>)}</div> : <p className="text-sm text-neutral-500">Chưa có ảnh đính kèm.</p>}</section>
-      {selected.actions.resolve && <label className="block space-y-2 text-sm">Ảnh kết quả xử lý<span className="block text-xs text-neutral-500">Tối đa 5 ảnh cho cả yêu cầu, JPG/PNG/WebP, mỗi ảnh tối đa 5 MB.</span><input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy || (selected.attachments?.length || 0) >= 5} className="mt-2 block" onChange={async (event) => {
-        const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return;
-        if (files.length + (selected.attachments?.length || 0) > 5 || files.some((file) => file.size > 5 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type))) { setError('Chỉ nhận tối đa 5 ảnh JPG, PNG, WebP cho mỗi yêu cầu, tối đa 5 MB/ảnh.'); return; }
-        setBusy(true); try { await api.addTicketImages(selected.id, files, selected.version); setSelected(await api.getManagedTicket(selected.id)); } catch (err) { await fail(err); } finally { setBusy(false); }
-      }} /></label>}
+      <section className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-bold text-slate-900">Ảnh đính kèm ({selected.attachments?.length || 0}/5)</h4>
+          <span className="text-[11px] font-mono font-medium text-slate-500">Tối đa 5 ảnh / yêu cầu</span>
+        </div>
+        {selected.attachments?.length ? (
+          <div className="grid grid-cols-2 gap-3.5">
+            {selected.attachments.map((att) => (
+              <div key={att.id} className="space-y-1.5 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs">
+                <TicketImage name={att.file_name} url={att.file_url} onPreview={setPreview} />
+                <div className="flex items-center justify-between gap-1 pt-1">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    att.is_resolution_proof
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                      : 'bg-blue-50 text-blue-700 border-blue-200/80'
+                  }`}>
+                    {att.is_resolution_proof ? 'Kết quả xử lý' : 'Hiện trường'}
+                  </span>
+                  {selected.actions.edit && !busy && (
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-rose-600 hover:text-rose-800 underline cursor-pointer transition-colors"
+                      onClick={() => { setError(''); setRemoveImageId(att.id); }}
+                    >
+                      Bỏ ảnh {att.file_name}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-neutral-500">Chưa có ảnh đính kèm.</p>
+        )}
+      </section>
+      {selected.actions.resolve && (
+        <label className="block space-y-2 rounded-2xl border-2 border-dashed border-slate-200 hover:border-blue-400 bg-white p-4 transition-all cursor-pointer">
+          <span className="block text-sm font-bold text-slate-800">Ảnh kết quả xử lý</span>
+          <span className="block text-xs text-slate-500">Tối đa 5 ảnh cho cả yêu cầu, JPG/PNG/WebP, mỗi ảnh tối đa 5 MB.</span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            disabled={busy || (selected.attachments?.length || 0) >= 5}
+            className="mt-2 block text-xs text-slate-500"
+            onChange={async (event) => {
+              const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return;
+              if (files.length + (selected.attachments?.length || 0) > 5 || files.some((file) => file.size > 5 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type))) { setError('Chỉ nhận tối đa 5 ảnh JPG, PNG, WebP cho mỗi yêu cầu, tối đa 5 MB/ảnh.'); return; }
+              setBusy(true); try { await api.addTicketImages(selected.id, files, selected.version); setSelected(await api.getManagedTicket(selected.id)); } catch (err) { await fail(err); } finally { setBusy(false); }
+            }}
+          />
+        </label>
+      )}
       <div className="flex flex-wrap gap-2">{selected.actions.edit && <button className={button} disabled={busy} onClick={() => { setForm({ ...blank, title: selected.title, description: selected.description, location: selected.location || '', category_id: selected.category_id, priority: selected.priority, preferred_service_time: selected.preferred_service_time?.slice(0, 16) || '', version: selected.version }); setFields({}); setError(''); setConflict(false); setMode('edit'); }}>Sửa / Phân loại</button>}{selected.actions.archive && <button className={`${button} text-rose-700`} disabled={busy} onClick={() => { setReason(''); setForm({ ...blank, version: selected.version }); setError(''); setConflict(false); setMode('archive'); }}>Lưu trữ</button>}
       {Object.entries(workflowLabels).filter(([key]) => selected.actions[key]).map(([key, label]) => <button key={key} disabled={busy} className={button} onClick={async () => {
         setAction(key); setReason(''); setTechnician(''); setError(''); setForm({ ...blank, version: selected.version });

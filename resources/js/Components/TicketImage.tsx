@@ -17,8 +17,39 @@ export function TicketImage({ url, name, onPreview }: { url: string; name: strin
     }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [url, attempt]);
-  if (failed) return <div className="grid aspect-video place-content-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-center"><p role="status" className="text-xs text-neutral-600">Không tải được ảnh</p><button type="button" onClick={() => setAttempt((value) => value + 1)} aria-label={`Thử tải lại ảnh ${name}`} className="min-h-11 cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium hover:bg-neutral-100">Thử tải lại</button></div>;
-  return <button type="button" disabled={!src} onClick={() => onPreview(src)} className="rounded-xl overflow-hidden border border-neutral-200 aspect-video bg-neutral-100 cursor-pointer focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-default" aria-label={`Xem ảnh ${name}`}>
-    {src ? <img src={src} alt={name} onError={() => setFailed(true)} className="w-full h-full object-cover" /> : <span className="text-xs text-neutral-500">Đang tải ảnh…</span>}
-  </button>;
+  if (failed) {
+    return (
+      <div className="grid aspect-video place-content-center gap-2 rounded-2xl border border-rose-200/80 bg-rose-50/50 p-3 text-center shadow-2xs">
+        <p role="status" className="text-xs font-semibold text-rose-700">Không tải được ảnh</p>
+        <button
+          type="button"
+          onClick={() => setAttempt((value) => value + 1)}
+          aria-label={`Thử tải lại ảnh ${name}`}
+          className="min-h-11 cursor-pointer rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition-all"
+        >
+          Thử tải lại
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={!src}
+      onClick={() => onPreview(src)}
+      className="group relative rounded-2xl overflow-hidden border border-slate-200/90 aspect-video bg-slate-100 shadow-2xs hover:shadow-xs hover:border-blue-300 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-600 disabled:cursor-default"
+      aria-label={`Xem ảnh ${name}`}
+    >
+      {src ? (
+        <>
+          <img src={src} alt={name} onError={() => setFailed(true)} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-200" />
+          <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-medium text-xs">
+            <span className="bg-slate-900/70 backdrop-blur-xs px-2.5 py-1 rounded-full text-[11px] shadow">Phóng to</span>
+          </div>
+        </>
+      ) : (
+        <span className="text-xs font-medium text-slate-500">Đang tải ảnh…</span>
+      )}
+    </button>
+  );
 }
