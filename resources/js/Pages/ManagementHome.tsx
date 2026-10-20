@@ -67,6 +67,7 @@ const InvoiceBatchGeneration = lazy(() => import('./Admin/InvoiceBatchGeneration
 const InvoiceManagement = lazy(() => import('./Admin/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
 const PaymentCollectionPage = lazy(() => import('./Admin/PaymentCollectionPage').then(m => ({ default: m.PaymentCollectionPage })));
 const PaymentHistoryManagement = lazy(() => import('./Admin/PaymentHistoryManagement').then(m => ({ default: m.PaymentHistoryManagement })));
+const DebtReminderManagement = lazy(() => import('./Admin/DebtReminderManagement').then(m => ({ default: m.DebtReminderManagement })));
 const RevenueAnalyticsDashboard = lazy(() => import('./Admin/RevenueAnalyticsDashboard').then(m => ({ default: m.RevenueAnalyticsDashboard })));
 const FinancialReportManagement = lazy(() => import('./Admin/FinancialReportManagement').then(m => ({ default: m.FinancialReportManagement })));
 const RfidManagement = lazy(() => import('./Admin/RfidManagement').then(m => ({ default: m.RfidManagement })));
@@ -247,6 +248,16 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.startsWith('/quan-ly/lich-su-giao-dich')
     ) {
       return 'payment_history';
+    }
+    if (
+      path === '/quan-ly/email-nhac-no' ||
+      path === '/admin/email-nhac-no' ||
+      path === '/quan-ly/debt-reminders' ||
+      path === '/admin/debt-reminders' ||
+      path.startsWith('/quan-ly/email-nhac-no') ||
+      path.startsWith('/quan-ly/debt-reminders')
+    ) {
+      return 'email_nhac_no';
     }
     if (
       path === '/quan-ly/thu-tien-gach-no' ||
@@ -919,7 +930,17 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'payment_history' || activeMenuId === 'lich_su_giao_dich' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <PaymentHistoryManagement />
+              <PaymentHistoryManagement
+                onNavigateTab={(tab) => handleMenuClick(tab)}
+                onBackToList={() => handleMenuClick('invoices')}
+              />
+            </div>
+          ) : activeMenuId === 'email_nhac_no' || activeMenuId === 'debt_reminders' || activeMenuId === 'nhac_no' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <DebtReminderManagement
+                onNavigateTab={(tab) => handleMenuClick(tab)}
+                onBackToList={() => handleMenuClick('invoices')}
+              />
             </div>
           ) : activeMenuId === 'thu_tien_gach_no' || activeMenuId === 'payment_collection' || activeMenuId === 'thu_tien' || activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">

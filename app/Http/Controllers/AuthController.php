@@ -49,28 +49,46 @@ class AuthController extends Controller
             'admin@cassavas.vn' => 'admin',
             'admin@smartcassavas.vn' => 'admin',
             'admin@demo.local' => 'admin',
+            'admin' => 'admin',
             'manager' => 'quanly',
             'manager@demo.local' => 'quanly',
+            'quanly' => 'quanly',
             'quanly@cassavas.vn' => 'quanly',
             'quanly@smartcassavas.vn' => 'quanly',
             'receptionist' => 'letan',
             'receptionist@demo.local' => 'letan',
+            'letan' => 'letan',
             'letan@cassavas.vn' => 'letan',
             'letan@smartcassavas.vn' => 'letan',
             'baove' => 'security',
             'baove@cassavas.vn' => 'security',
             'baove@smartcassavas.vn' => 'security',
             'security@cassavas.vn' => 'security',
+            'security@demo.local' => 'security',
+            'security' => 'security',
             'ketoan' => 'accountant',
             'ketoan@cassavas.vn' => 'accountant',
             'ketoan@smartcassavas.vn' => 'accountant',
             'accountant@cassavas.vn' => 'accountant',
+            'accountant@demo.local' => 'accountant',
+            'accountant' => 'accountant',
             'cudan' => 'nguyenvanan',
             'cudan@smartcassavas.vn' => 'nguyenvanan',
             'cudan@cassavas.vn' => 'nguyenvanan',
-            'resident' => 'nguyenvanan',
-            'resident.owner' => 'nguyenvanan',
             'cudan@demo.local' => 'nguyenvanan',
+            'resident' => 'nguyenvanan',
+            'resident.owner' => 'resident.owner',
+            'resident.owner@demo.local' => 'resident.owner',
+            'nguyenvanan' => 'nguyenvanan',
+            'nguyenvanan@cassavas.vn' => 'nguyenvanan',
+            'nguyenvanan@smartcassavas.vn' => 'nguyenvanan',
+            '0901234567' => 'nguyenvanan',
+            '0900000010' => 'resident.owner',
+            '0900000001' => 'admin',
+            '0900000002' => 'quanly',
+            '0900000004' => 'letan',
+            '0900000005' => 'security',
+            '0900000003' => 'accountant',
         ];
 
         $searchIdentifier = $aliasMap[$identifier] ?? $identifier;
@@ -86,6 +104,25 @@ class AuthController extends Controller
                     ->orWhere('phone_number', $searchIdentifier);
             })
             ->first();
+
+        // Fallback linh hoạt cho các tài khoản demo giữa các tên người dùng tương đương
+        if (! $user && in_array($searchIdentifier, ['nguyenvanan', 'resident.owner'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['nguyenvanan', 'resident.owner'])
+                ->first();
+        }
+
+        if (! $user && in_array($searchIdentifier, ['manager', 'quanly'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['manager', 'quanly'])
+                ->first();
+        }
+
+        if (! $user && in_array($searchIdentifier, ['receptionist', 'letan'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['receptionist', 'letan'])
+                ->first();
+        }
 
         if (! $user) {
             // Chống Timing Attack: chạy dummy bcrypt hash có hằng số thời gian
@@ -664,6 +701,7 @@ class AuthController extends Controller
             'quanly@cassavas.vn' => 'manager@demo.local',
             'letan@cassavas.vn' => 'receptionist@demo.local',
             'cudan@cassavas.vn' => 'nguyenvanan@cassavas.vn',
+            'nguyenvanan@cassavas.vn' => 'nguyenvanan@cassavas.vn',
             'dev@smartcassavas.vn' => 'admin@demo.local',
             'admin@smartcassavas.vn' => 'admin@demo.local',
             'quanly@smartcassavas.vn' => 'manager@demo.local',
@@ -677,6 +715,12 @@ class AuthController extends Controller
             ->orWhere('email', $email)
             ->orWhere('username', $targetEmail)
             ->orWhere('username', $email)
+            ->orWhere(function ($q) use ($email, $targetEmail) {
+                if (in_array($email, ['cudan@cassavas.vn', 'nguyenvanan@cassavas.vn'], true) || in_array($targetEmail, ['nguyenvanan@cassavas.vn'], true)) {
+                    $q->where('email', 'resident.owner@demo.local')
+                        ->orWhere('username', 'resident.owner');
+                }
+            })
             ->first();
 
         if (! $user) {

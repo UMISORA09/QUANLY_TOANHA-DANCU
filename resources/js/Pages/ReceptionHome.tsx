@@ -809,8 +809,15 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
             </div>
           </div>
         )}
-        </div>
+      </div>
 
+      {/* ================= TOAST NOTIFICATION ================= */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-neutral-900/90 text-white text-xs font-medium shadow-2xl backdrop-blur-md border border-white/10 animate-in fade-in slide-in-from-top-3 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </AppLayout>
   );
 };
