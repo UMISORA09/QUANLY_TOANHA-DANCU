@@ -99,89 +99,11 @@ interface CustomSelectProps {
   className?: string;
 }
 
-const CustomSelect: React.FC<CustomSelectProps> = ({
-  value,
-  onChange,
-  options,
-  placeholder = 'Chọn một mục...',
-  className = '',
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const selectedOption = options.find((opt) => opt.value === value);
-
-  useEffect(() => {
-    const handlePointerDownOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handlePointerDownOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDownOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen]);
-
-  return (
-    <div ref={containerRef} className={`relative w-full ${isOpen ? 'z-50' : 'z-10'} ${className}`}>
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3.5 py-2 text-xs border rounded-2xl bg-white transition-all flex items-center justify-between gap-2 shadow-2xs cursor-pointer text-left ${
-          isOpen
-            ? 'border-neutral-900 ring-2 ring-neutral-900/10'
-            : value && value !== 'all' && value !== ''
-            ? 'border-neutral-300 font-semibold text-neutral-950 bg-neutral-50/40 hover:bg-neutral-50'
-            : 'border-neutral-200 text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50/50'
-        }`}
-      >
-        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
-        <ChevronDown
-          className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform duration-200 ${
-            isOpen ? 'rotate-180 text-neutral-900' : ''
-          }`}
-        />
-      </button>
-
-      {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 min-w-[200px] bg-white/95 backdrop-blur-2xl border border-neutral-200/90 rounded-2xl shadow-xl p-1.5 space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-150">
-          {options.map((opt) => {
-            const isSelected = opt.value === value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => {
-                  onChange(opt.value);
-                  setIsOpen(false);
-                }}
-                className={`w-full px-3 py-2 text-xs rounded-xl flex items-center justify-between transition-colors text-left cursor-pointer ${
-                  isSelected
-                    ? 'bg-neutral-950 text-white font-semibold shadow-2xs'
-                    : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
-                }`}
-              >
-                <span className="truncate">{opt.label}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1.5" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
+const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder = 'Chọn một mục...', className = '' }) => (
+  <select aria-label={placeholder} value={value} onChange={(event) => onChange(event.target.value)} className={`catalog-select w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 ${className}`}>
+    {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+  </select>
+);
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
   // Lấy dữ liệu khởi tạo ngay từ L1/L2 Cache (0ms perceived latency, không bị nháy loading)
@@ -701,7 +623,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   };
 
   return (
-    <div className={`${embedded ? 'w-full text-neutral-900' : 'min-h-screen bg-neutral-900/10 text-neutral-900 pb-16'} font-sans`}>
+    <div className={`catalog-ui ${embedded ? 'w-full text-neutral-900' : 'min-h-screen bg-neutral-900/10 text-neutral-900 pb-16'} font-sans`}>
       {/* Toast Notification */}
       {toast && (
         <div
@@ -781,7 +703,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               <button
                 type="button"
                 onClick={handleOpenCreate}
-                className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                className="catalog-primary px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Thêm tiện ích</span>
@@ -792,7 +714,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       )}
 
       {/* Page Header */}
-      <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${embedded ? 'pt-0' : 'pt-6'} pb-4`}>
+      <div className={`catalog-header ${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${embedded ? 'pt-0' : 'pt-6'} pb-4`}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -815,7 +737,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-start md:self-end">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-end">
             {embedded && (
               <>
                 <button
@@ -830,7 +752,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 <button
                   type="button"
                   onClick={handleOpenCreate}
-                  className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                  className="catalog-primary px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Thêm tiện ích</span>
@@ -854,7 +776,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} space-y-4`}>
         <AmenityBookingWorklist opening={openingBooking} onOpen={(id, code) => { const url = new URL(window.location.href); url.searchParams.set('amenity_id', id); url.searchParams.set('booking_code', code); window.history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }} />
         {/* Filters Bar Card */}
-        <div className="relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="catalog-toolbar relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {/* Search Input, Clear button & Searching spinner */}
             <div className="lg:col-span-2 relative">
@@ -962,7 +884,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         </div>
 
         {/* Data Table Card */}
-        <div className="relative z-10 bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+        <div className="catalog-table relative z-10 bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           {/* Table Container - Duy trì chiều cao tối thiểu để không bao giờ bị giật khung cuộn (Scroll Jump) khi đổi trang */}
           <div className="overflow-x-auto table-scrollbar min-h-[640px]">
             <table className="w-full text-left border-collapse text-xs">
