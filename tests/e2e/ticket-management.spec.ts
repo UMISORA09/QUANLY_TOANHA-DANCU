@@ -355,9 +355,9 @@ test('Thông báo đầu tiên tự làm mới danh sách sau khi trước đó 
   let lists = 0;
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path.endsWith('/ticket-notifications')) {
+    if (path.endsWith('/manager/notifications')) {
       notifications++;
-      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
+      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], latest_id: notifications === 1 ? null : 'notification-qa', unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
     }
     if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
     if (path.endsWith('/tickets')) { lists++; return route.fulfill({ json: { data: [], current_page: 1, last_page: 1, total: 0 } }); }
@@ -388,18 +388,19 @@ for (const actor of [
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url());
       const path = url.pathname;
-      if (path.endsWith('/ticket-notifications/notice-qa/read')) {
+      if (path.endsWith('/ticket-notifications/notice-qa/read') || path.endsWith('/manager/notifications/notice-qa/read')) {
         reads++;
         if (reads === 1) return route.fulfill({ status: 500, json: { message: 'Chưa thể đánh dấu đã đọc.' } });
         read = true;
-        return route.fulfill({ json: { success: true } });
+        return route.fulfill({ json: { success: true, unread_count: actor.role === 'resident' ? 0 : 1 } });
       }
-      if (path.endsWith('/ticket-notifications')) {
+      if (path.endsWith('/ticket-notifications') || path.endsWith('/manager/notifications')) {
         const second = url.searchParams.get('page') === '2';
-        return route.fulfill({ json: { items: second ? [{ id: 'old-qa', title: 'Thông báo sự cố cũ', body_message: 'Đã xử lý.', is_read: true, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` }] : [
-          { id: 'notice-qa', title: 'Sự cố vừa được cập nhật', body_message: 'Mở yêu cầu để xem kết quả.', is_read: read, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` },
-          { id: 'unsafe-qa', title: 'Liên kết không hợp lệ', body_message: 'QA kiểm tra liên kết.', is_read: true, deep_link_url: 'https://example.test/?tab=tickets' },
-        ], unread_count: read ? 0 : 1, page: second ? 2 : 1, total_pages: 2 } });
+        return route.fulfill({ json: { items: second ? [{ category: 'TICKET', created_at: '2026-10-19T07:00:00Z', id: 'old-qa', title: 'Thông báo sự cố cũ', body_message: 'Đã xử lý.', is_read: true, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` }] : [
+          { category: 'TICKET', created_at: '2026-10-19T09:00:00Z', id: 'notice-qa', title: 'Sự cố vừa được cập nhật', body_message: 'Mở yêu cầu để xem kết quả.', is_read: read, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` },
+          { category: 'TICKET', created_at: '2026-10-19T08:00:00Z', id: 'unsafe-qa', title: 'Liên kết không hợp lệ', body_message: 'QA kiểm tra liên kết.', is_read: true, deep_link_url: 'https://example.test/?tab=tickets' },
+          ...(actor.role === 'resident' ? [] : [{ id: 'amenity-qa', category: 'AMENITY_BOOKING', title: 'Thông báo tiện ích QA', body_message: 'Cần duyệt.', is_read: false, deep_link_url: '/quan-ly?tab=amenities', created_at: '2026-10-19T07:30:00Z' }]),
+        ], latest_id: 'notice-qa', unread_count: (read ? 0 : 1) + (actor.role === 'resident' ? 0 : 1), page: second ? 2 : 1, total_pages: 2 } });
       }
       if (path.endsWith('/amenity-booking-notifications') || path.endsWith('/amenity-notifications')) return route.fulfill({ json: { items: [{ id: 'amenity-qa', title: 'Thông báo tiện ích QA', message: 'Đăng ký tiện ích đã được duyệt.', category: 'AMENITY_BOOKING', isRead: false, deepLink: `${actor.portal}?tab=amenities`, timeAgo: 'Vừa xong' }], unread_count: 1, page: 1, total_pages: 1 } });
       if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
@@ -411,24 +412,25 @@ for (const actor of [
     // The feed is available even when the Ticket screen is not mounted.
     await page.goto(`${actor.portal}?tab=overview`);
     const bell = page.getByTitle('Thông báo hệ thống', { exact: true });
-    const otherUnread = actor.role === 'admin' ? 0 : 1;
+    const otherUnread = 1;
     await expect(bell).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread + 1} chưa đọc)`);
     await expect(page.getByRole('button', { name: /^Thông báo sự cố \(/ })).toHaveCount(0);
     await bell.click();
     if (otherUnread) await expect(page.getByText('Thông báo tiện ích QA', { exact: true }).last()).toBeVisible();
-    const feed = page.getByRole('region', { name: 'Thông báo sự cố', exact: true });
+    const feed = page.getByRole('region', { name: actor.role === 'resident' ? 'Thông báo sự cố' : 'Thông báo vận hành', exact: true });
     await expect(feed.getByText('Sự cố vừa được cập nhật', { exact: true })).toBeVisible();
-    await feed.getByRole('button', { name: 'Sự cố tiếp theo', exact: true }).click();
+    await feed.getByRole('button', { name: actor.role === 'resident' ? 'Sự cố tiếp theo' : 'Thông báo sau', exact: true }).click();
     await expect(feed).toContainText('Thông báo sự cố cũ');
-    await feed.getByRole('button', { name: 'Sự cố trước', exact: true }).click();
-    await feed.getByRole('button', { name: /Liên kết không hợp lệ/ }).click();
-    await expect(feed.getByRole('alert')).toContainText('Liên kết thông báo sự cố không hợp lệ');
+    await feed.getByRole('button', { name: actor.role === 'resident' ? 'Sự cố trước' : 'Thông báo trước', exact: true }).click();
+    const noticeButton = (title: string) => actor.role === 'resident' ? feed.getByRole('button', { name: new RegExp(title) }) : feed.getByRole('listitem').filter({ hasText: title }).getByRole('button', { name: 'Xem chi tiết', exact: true });
+    await noticeButton('Liên kết không hợp lệ').click();
+    await expect(feed.getByRole('alert')).toContainText(actor.role === 'resident' ? 'Liên kết thông báo sự cố không hợp lệ' : 'Liên kết thông báo không hợp lệ');
     expect(reads).toBe(0);
-    await feed.getByRole('button', { name: /Sự cố vừa được cập nhật/ }).click();
+    await noticeButton('Sự cố vừa được cập nhật').click();
     await expect(feed.getByRole('alert')).toContainText('Chưa thể đánh dấu đã đọc');
     await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'overview');
     await expect(bell).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread + 1} chưa đọc)`);
-    await feed.getByRole('button', { name: /Sự cố vừa được cập nhật/ }).click();
+    await noticeButton('Sự cố vừa được cập nhật').click();
     await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'tickets' && url.searchParams.get('ticket_id') === 'qa-ticket');
     await expect(page.getByText('Yêu cầu mở từ chuông', { exact: true })).toBeVisible();
     await expect(page.getByTitle('Thông báo hệ thống', { exact: true })).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread} chưa đọc)`);

@@ -152,22 +152,27 @@ test('quản lý nhận đăng ký mới ở tab khác và mở đúng đơn t�
   });
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/notice-test/read')) { read = true; return route.fulfill({ json: { success: true } }); }
-    if (url.pathname.endsWith('/amenity-booking-notifications')) {
+    if (url.pathname.endsWith('/notice-test/read')) { read = true; return route.fulfill({ json: { unread_count: 0 } }); }
+    if (url.pathname.endsWith('/manager/notifications')) {
       polls++;
-      return route.fulfill({ json: { items: arrived ? [{ ...notice, isRead: read }] : [], unread_count: arrived && !read ? 1 : 0 } });
+      return route.fulfill({ json: { items: arrived ? [{ ...notice, body_message: notice.message, deep_link_url: notice.deepLink, is_read: read, created_at: '2026-10-19T09:00:00Z' }] : [], latest_id: arrived ? notice.id : null, unread_count: arrived && !read ? 1 : 0, page: 1, total_pages: 1 } });
     }
     if (url.pathname.endsWith('/amenities/amenity-test')) return route.fulfill({ json: amenity });
     if (url.pathname.endsWith('/bookings')) return route.fulfill({ json: [{ ...booking, resident_name: 'Cư dân QA' }, { ...booking, id: 'other-booking', booking_code: 'BK-OTHER', resident_name: 'Người khác' }] });
     if (url.pathname.endsWith('/amenities')) return route.fulfill({ json: { items: [], total: 0, page: 1, limit: 10, total_pages: 1 } });
     return route.fulfill({ json: [] });
   });
+  await page.clock.install();
   await page.goto('/quan-ly');
   await expect.poll(() => polls).toBeGreaterThan(0);
   arrived = true;
   const alert = page.getByRole('status').filter({ hasText: notice.title });
-  await expect(alert).toBeVisible({ timeout: 12000 });
-  await alert.getByRole('button', { name: 'Xem đăng ký', exact: true }).click();
+  await page.clock.fastForward(15000);
+  await expect(page.getByTitle('Thông báo hệ thống', { exact: true })).toHaveAttribute('aria-label', 'Thông báo hệ thống (1 chưa đọc)');
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Thông báo vận hành' })).toHaveCount(0);
+  await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
+  await page.getByRole('region', { name: 'Thông báo vận hành' }).getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
   await expect(page).toHaveURL(/tab=amenities.*amenity_id=amenity-test.*booking_code=BK-TEST/);
   await expect(page.getByPlaceholder('Tìm mã booking, cư dân, căn hộ...')).toHaveValue('BK-TEST');
   await expect(page.getByRole('cell', { name: 'BK-TEST', exact: true })).toBeVisible();
@@ -284,14 +289,14 @@ test(`cư dân nhận thông báo duyệt và mở đúng QR từ cổng cư dâ
 }
 
 test('quản lý xem được thông báo cũ và lọc chưa đọc', async ({ page }) => {
-  const old = { id: 'old-notice', title: 'Đăng ký cũ chưa đọc', message: 'Cần duyệt', category: 'AMENITY_BOOKING', isRead: false, deepLink: '/quan-ly?tab=amenities', timeAgo: '1 ngày trước' };
+  const old = { id: 'old-notice', title: 'Đăng ký cũ chưa đọc', body_message: 'Cần duyệt', category: 'AMENITY_BOOKING', is_read: false, deep_link_url: '/quan-ly?tab=amenities', created_at: '2026-10-18T09:00:00Z' };
   await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'Quản lý QA' })); localStorage.setItem('smart_cassavas_token', 'test-admin-token'); });
   await page.route('**/api/**', (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/amenity-booking-notifications')) {
+    if (url.pathname.endsWith('/manager/notifications')) {
       const filtered = url.searchParams.get('unread') === '1';
       const second = url.searchParams.get('page') === '2';
-      return route.fulfill({ json: { items: filtered || second ? [old] : Array.from({ length: 20 }, (_, i) => ({ ...old, id: 'new-' + i, title: 'Thông báo đã đọc ' + i, isRead: true })), latest_unread: old, unread_count: 1, page: second ? 2 : 1, total_pages: filtered ? 1 : 2 } });
+      return route.fulfill({ json: { items: filtered || second ? [old] : Array.from({ length: 15 }, (_, i) => ({ ...old, id: 'new-' + i, title: 'Thông báo đã đọc ' + i, is_read: true })), latest_unread: old, unread_count: 1, page: second ? 2 : 1, total_pages: filtered ? 1 : 2 } });
     }
     return route.fulfill({ json: [] });
   });
@@ -299,7 +304,7 @@ test('quản lý xem được thông báo cũ và lọc chưa đọc', async ({ 
   await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
   await page.getByRole('button', { name: 'Thông báo sau', exact: true }).click();
   await expect(page.getByText(old.title, { exact: true }).last()).toBeVisible();
-  await page.getByLabel('Chỉ thông báo tiện ích chưa đọc').check();
+  await page.getByLabel('Chỉ thông báo chưa đọc').check();
   await expect(page.getByRole('button', { name: 'Thông báo sau', exact: true })).toBeDisabled();
 });
 
