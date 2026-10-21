@@ -313,7 +313,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       category_id: selectedCategory || undefined,
       block_id: selectedBlock || undefined,
       is_active: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
-      sort: sortOrder,
+      sort: debouncedSearch.trim() ? 'relevance' : sortOrder,
       page: currentPage,
       limit,
     };
@@ -451,7 +451,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         category_id: selectedCategory || undefined,
         block_id: selectedBlock || undefined,
         is_active: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
-        sort: sortOrder,
+        sort: debouncedSearch.trim() ? 'relevance' : sortOrder,
         page: targetPage,
         limit,
       });

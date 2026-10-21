@@ -12,12 +12,14 @@ for (const viewport of viewports) {
       localStorage.setItem('smart_cassavas_user', JSON.stringify({ id: 'qa-manager', full_name: 'UI QA', roles: ['BUILDING_MANAGER'] }));
     });
     let search = '';
+    let requestedSort = '';
     const category = { id: 'category-qa', category_name: 'Thể thao', category_code: 'SPORT', description: 'Dữ liệu QA', amenities_count: 1 };
     let categories = [category];
     const amenity = { id: 'amenity-qa', amenity_name: 'Phòng tập cộng đồng', amenity_code: 'GYM_QA', category_id: category.id, category_name: category.category_name, block_id: 'block-qa', block_name: 'Tòa A', location_detail: 'Tầng 2', max_capacity_per_slot: 12, hourly_rate: 50000, security_deposit_required: 100000, advance_booking_days_limit: 7, min_cancel_hours_before: 12, requires_admin_approval: true, is_active: true, updated_at: '2026-10-20T08:00:00+07:00', created_at: '2026-10-20T08:00:00+07:00', time_slots_count: 2, blackout_dates_count: 0 };
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname.endsWith('/amenities')) {
+        requestedSort = url.searchParams.get('sort') || '';
         search = url.searchParams.get('search') || url.searchParams.get('q') || '';
         return route.fulfill({ json: { items: [amenity], total: 1, page: 1, limit: 15, total_pages: 1 } });
       }
@@ -38,6 +40,7 @@ for (const viewport of viewports) {
     const searchInput = page.getByPlaceholder('Tìm theo tên tiện ích hoặc mã tiện ích (VD: GYM, BƠI)...');
     await searchInput.fill('Phòng tập');
     await expect.poll(() => search).toBe('Phòng tập');
+    await expect.poll(() => requestedSort).toBe('relevance');
     if (process.env.UI_AUDIT_PHASE === 'before') {
       await page.getByRole('button', { name: 'Tất cả danh mục', exact: true }).click();
       await page.getByRole('button', { name: 'Thể thao', exact: true }).click();
