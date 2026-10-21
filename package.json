@@ -30,7 +30,7 @@
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.118.0",
-        "lucide": "^1.45.0",
+        "lucide": "^1.59.0",
         "lucide-react": "^1.44.0",
         "morphicons": "^1.7.1",
         "react": "^19.3.0",
