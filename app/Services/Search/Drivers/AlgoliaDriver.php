@@ -2,6 +2,7 @@
 
 namespace App\Services\Search\Drivers;
 
+use App\Services\Search\AlgoliaTaskPendingException;
 use App\Services\Search\Contracts\SearchDriverInterface;
 use App\Services\Search\DTOs\SearchResult;
 use App\Services\Search\VietnameseNormalizer;
@@ -144,8 +145,13 @@ class AlgoliaDriver implements SearchDriverInterface
         if (! $response->successful() || ! is_numeric($response->json('taskID'))) {
             throw new RuntimeException('Algolia index write failed. The synchronization job must be retried.');
         }
-        $taskId = (int) $response->json('taskID');
-        $deadline = microtime(true) + ($suffix === '/settings' ? 45 : 25);
+        $this->waitForTask($index, (int) $response->json('taskID'), $suffix === '/settings' ? 45 : 25);
+    }
+
+    public function waitForTask(string $index, int $taskId, int $timeout = 25): void
+    {
+        $path = '/indexes/'.$this->indexName($index);
+        $deadline = microtime(true) + $timeout;
         while (microtime(true) < $deadline) {
             $status = $this->client()->get($path.'/task/'.$taskId);
             if ($status->successful() && $status->json('status') === 'published') {
@@ -156,6 +162,6 @@ class AlgoliaDriver implements SearchDriverInterface
             }
             usleep(300000);
         }
-        throw new RuntimeException('Algolia task '.$taskId.' is not published yet. Retry synchronization.');
+        throw new AlgoliaTaskPendingException($taskId);
     }
 }

@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Events\AmenityUpdated;
 use App\Jobs\SyncAmenitySearchIndex;
+use App\Services\Search\AlgoliaTaskPendingException;
 use App\Services\Search\Drivers\AlgoliaDriver;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -176,5 +178,49 @@ class AlgoliaAmenitySearchTest extends TestCase
         $this->assertDatabaseMissing('failed_jobs', ['uuid' => $failedId]);
         $this->assertDatabaseHas('failed_jobs', ['queue' => 'unrelated-queue']);
         Http::assertNothingSent();
+    }
+
+    public function test_pending_publication_resumes_the_same_task_without_rewriting(): void
+    {
+        $taskId = 28422546552;
+        $published = false;
+        Http::fake(function ($request) use ($taskId, &$published) {
+            if ($request->method() === 'PUT') {
+                return Http::response(['taskID' => $taskId]);
+            }
+            if ($published) {
+                return Http::response(['status' => 'published']);
+            }
+            throw new AlgoliaTaskPendingException($taskId);
+        });
+        (new SyncAmenitySearchIndex($this->amenityId))->handle();
+        $payload = json_decode(DB::table('jobs')->where('queue', 'amenity-search')->value('payload'), true);
+        $this->assertSame($taskId, unserialize($payload['data']['command'])->taskId);
+        $this->assertSame('smart', $this->driver()->search('amenities', 'pool')->engine);
+        $this->travel(31)->seconds();
+        $published = true;
+        Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'amenity-search', '--once' => true]);
+        $this->assertSame(0, DB::table('jobs')->where('queue', 'amenity-search')->count());
+        Http::assertSent(fn ($request) => $request->method() === 'GET' && str_ends_with($request->url(), '/task/'.$taskId));
+        $this->assertCount(1, Http::recorded(fn ($request) => $request->method() === 'PUT'));
+    }
+
+    public function test_old_serialized_jobs_without_task_id_still_synchronize(): void
+    {
+        $job = new SyncAmenitySearchIndex($this->amenityId);
+        unset($job->taskId);
+        Http::fake(['*/task/*' => Http::response(['status' => 'published']), '*' => Http::response(['taskID' => 42])]);
+        $job->handle();
+        Http::assertSent(fn ($request) => $request->method() === 'PUT');
+    }
+
+    public function test_schema_inspection_requires_machine_secret_and_does_not_run_jobs(): void
+    {
+        config(['search.sync_secret' => str_repeat('d', 40)]);
+        $this->withHeader('Authorization', '')->getJson('/api/v1/internal/amenity-search/process?inspect=schema')->assertUnauthorized();
+        $this->withToken(str_repeat('d', 40))->getJson('/api/v1/internal/amenity-search/process?inspect=schema')
+            ->assertOk()->assertJsonPath('tables.amenity_bookings', true)->assertJsonPath('tables.amenity_booking_payments', true)
+            ->assertJsonMissingPath('host')->assertJsonMissingPath('password');
+        $this->assertSame(0, DB::table('jobs')->where('queue', 'amenity-search')->count());
     }
 }

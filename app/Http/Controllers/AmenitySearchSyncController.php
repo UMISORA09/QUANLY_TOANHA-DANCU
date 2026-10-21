@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class AmenitySearchSyncController extends Controller
 {
@@ -14,6 +15,15 @@ class AmenitySearchSyncController extends Controller
         $secret = (string) config('search.sync_secret', '');
         abort_unless(strlen($secret) >= 32 && hash_equals($secret, (string) $request->bearerToken()), 401);
         abort_unless(config('search.drivers.algolia.sync_enabled'), 503);
+
+        if ($request->isMethod('get') && $request->query('inspect') === 'schema') {
+            $host = (string) DB::connection()->getConfig('host');
+
+            return response()->json([
+                'database_provider' => collect(['aiven', 'tidbcloud', 'railway', 'amazonaws'])->first(fn (string $provider): bool => str_contains($host, $provider), 'unknown'),
+                'tables' => ['amenity_bookings' => Schema::hasTable('amenity_bookings'), 'amenity_booking_payments' => Schema::hasTable('amenity_booking_payments')],
+            ]);
+        }
 
         if ($request->isMethod('post')) {
             abort_if(DB::table('jobs')->where('queue', 'amenity-search')->exists(), 409, 'Synchronization is already queued.');
