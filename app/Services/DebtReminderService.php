@@ -54,8 +54,8 @@ class DebtReminderService
             'sent_by_user_id' => $staffUserId,
         ]);
 
-        // Đẩy vào Laravel Queue xử lý bất đồng bộ
-        SendDebtReminderEmailJob::dispatch($log->id);
+        // Đẩy vào Laravel Queue xử lý bất đồng bộ sau khi đã trả response
+        SendDebtReminderEmailJob::dispatch($log->id)->afterResponse();
 
         Log::info("Dispatched debt reminder job for invoice {$invoice->invoice_number} (Log ID: {$log->id})");
 
@@ -120,8 +120,9 @@ class DebtReminderService
             $query->where('due_date', '<=', $maxDueDate);
         }
 
-        // Bỏ qua các hóa đơn đã được gửi nhắc nợ trong vòng 24 giờ qua để tránh spam
+        // Bỏ qua các hóa đơn đã được gửi nhắc nợ thành công hoặc đang chờ xử lý trong vòng 24 giờ qua để tránh spam
         $recentRemindedInvoiceIds = DebtReminderLog::where('created_at', '>=', Carbon::now()->subHours(24))
+            ->whereIn('channel_status', ['SENT', 'QUEUED'])
             ->pluck('invoice_id')
             ->toArray();
 
@@ -199,13 +200,24 @@ class DebtReminderService
         $totalDebtReminded = (float) DebtReminderLog::sum('debt_amount');
         $overdueRemindersCount = DebtReminderLog::where('days_overdue', '>', 0)->count();
 
-        $unremindedOverdueCount = Invoice::whereIn('status', ['ISSUED', 'PARTIAL', 'OVERDUE'])
+        // Tính số hóa đơn nợ quá hạn chưa được gửi nhắc nợ thành công trong vòng 24h qua
+        $recentRemindedIds = DebtReminderLog::where('created_at', '>=', Carbon::now()->subHours(24))
+            ->whereIn('channel_status', ['SENT', 'QUEUED'])
+            ->pluck('invoice_id')
+            ->toArray();
+
+        $unremindedQuery = Invoice::whereIn('status', ['ISSUED', 'PARTIAL', 'OVERDUE'])
             ->where('remaining_balance', '>', 0)
             ->where(function ($q) {
                 $q->where('status', 'OVERDUE')
                     ->orWhere('due_date', '<', Carbon::today()->format('Y-m-d'));
-            })
-            ->count();
+            });
+
+        if (! empty($recentRemindedIds)) {
+            $unremindedQuery->whereNotIn('id', $recentRemindedIds);
+        }
+
+        $unremindedOverdueCount = $unremindedQuery->count();
 
         $successRate = $totalReminders > 0 ? round(($sentCount / $totalReminders) * 100, 1) : 100.0;
 

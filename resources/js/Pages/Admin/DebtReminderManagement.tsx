@@ -1,5 +1,40 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+    Mail,
+    Send,
+    RefreshCw,
+    Download,
+    Search,
+    Filter,
+    Layers,
+    AlertTriangle,
+    CheckCircle2,
+    Clock,
+    X,
+    ChevronLeft,
+    ChevronRight,
+    Copy,
+    Check,
+    Building2,
+    Sparkles,
+    Eye,
+    Play,
+    FileText,
+    ShieldCheck,
+    AlertCircle,
+    ArrowUpDown,
+    RotateCcw,
+    Zap,
+    Inbox,
+    Receipt,
+    Banknote,
+    FileSpreadsheet,
+    HelpCircle,
+    History,
+    Radio
+} from 'lucide-react';
 import { invoiceApi } from '../../Services/invoiceApi';
+import { useRealtimeSync } from '../../Hooks/useRealtimeSync';
 
 interface BlockOption {
     id: string;
@@ -154,6 +189,14 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
         loadData(1);
     }, [loadData]);
 
+    // Lắng nghe sự kiện Realtime tự động cập nhật qua WebSocket/SSE
+    useRealtimeSync({
+        channel: ['invoices.reminders', 'xuanhoa.debt-reminders', 'invoices'],
+        onEvent: () => {
+            loadData(pagination.current_page);
+        },
+    });
+
     // Xử lý sao chép mã HĐ
     const handleCopy = (text: string) => {
         navigator.clipboard.writeText(text);
@@ -305,288 +348,153 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
     };
 
     return (
-        <div className="space-y-4 pb-12">
-            {/* Toast Notification */}
+        <div className="max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 animate-in fade-in duration-300">
+            {/* TOAST THÔNG BÁO */}
             {toast && (
                 <div
-                    className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-0 ${
+                    className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold animate-in slide-in-from-bottom duration-200 ${
                         toast.type === 'success'
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-rose-600 text-white'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : 'bg-rose-50 text-rose-800 border-rose-300'
                     }`}
                 >
                     {toast.type === 'success' ? (
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                        </svg>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     ) : (
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                     )}
-                    <span className="text-sm font-semibold">{toast.text}</span>
+                    <span>{toast.text}</span>
                 </div>
             )}
 
-            {/* HEADER CHUẨN CN5-10 */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-xs border border-slate-200/80">
+            {/* HEADER TIÊU ĐỀ */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
                 <div>
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-600 mb-1">
-                        <span>Hệ thống Kế toán & Thu tiền</span>
-                        <span>•</span>
-                        <span className="bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full text-[11px] font-bold">
-                            Chức năng #11 (Laravel Queue Debt Reminders)
-                        </span>
+                    <div className="text-[11px] font-bold text-sky-600 font-mono tracking-wider uppercase flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>HỆ THỐNG KẾ TOÁN & THU TIỀN</span>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight flex items-center gap-3">
+                    <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight mt-1">
                         Hàng Đợi & Email Nhắc Nợ Tự Động
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5"></span>
-                            Queue Worker Live
-                        </span>
                     </h1>
-                    <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+                    <p className="text-xs sm:text-sm text-slate-500 max-w-3xl font-medium mt-1">
                         Giám sát tiến trình xử lý nền Laravel Queue, tự động gửi email nhắc nợ thông minh kèm mã VietQR gạch nợ tự động theo chu kỳ cước.
                     </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                    <button
-                        onClick={() => setAutoScanModalOpen(true)}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white bg-sky-600 hover:bg-sky-700 border border-sky-600 shadow-2xs active:scale-[0.98] transition-all"
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        <span>Quét & Xếp Hàng Tự Động</span>
-                    </button>
-
-                    <button
-                        onClick={handleExportCsv}
-                        className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-sm text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 active:scale-[0.98] transition-all"
-                        title="Xuất bảng nhật ký ra file CSV"
-                    >
-                        <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <span>Xuất CSV</span>
-                    </button>
-
-                    <button
-                        onClick={() => loadData(pagination.current_page)}
-                        disabled={loading}
-                        className="p-2.5 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 active:scale-[0.98] transition-all disabled:opacity-50"
-                        title="Làm mới dữ liệu"
-                    >
-                        <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                    </button>
-                </div>
+                {onBackToList && (
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onBackToList}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold shadow-2xs transition-all active:scale-[0.98] cursor-pointer"
+                        >
+                            <ChevronLeft className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Quay Lại Danh Sách Hóa Đơn</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
-            {/* THANH ĐIỀU HƯỚNG LIÊN KẾT NHANH GIỮA CÁC CHỨC NĂNG */}
-            <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100/70 rounded-2xl">
-                <button
-                    onClick={() => onNavigateTab ? onNavigateTab('meter_readings') : (window.location.href = '/quan-ly/meter-readings')}
-                    className="flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-white hover:text-neutral-900 transition-all flex items-center gap-1.5"
-                >
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    CN6: Chỉ số Điện/Nước
-                </button>
-                <button
-                    onClick={() => onNavigateTab ? onNavigateTab('invoices') : (window.location.href = '/quan-ly/invoices')}
-                    className="flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-white hover:text-neutral-900 transition-all flex items-center gap-1.5"
-                >
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    CN7: Quản lý Hóa Đơn
-                </button>
-                <button
-                    onClick={() => onNavigateTab ? onNavigateTab('thu_tien_gach_no') : (window.location.href = '/quan-ly/thu-tien-gach-no')}
-                    className="flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-white hover:text-neutral-900 transition-all flex items-center gap-1.5"
-                >
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    CN8: Thu Tiền & Gạch Nợ
-                </button>
-                <button
-                    onClick={() => onNavigateTab ? onNavigateTab('payment_history') : (window.location.href = '/quan-ly/payment-history')}
-                    className="flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-white hover:text-neutral-900 transition-all flex items-center gap-1.5"
-                >
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    CN10: Lịch Sử Giao Dịch
-                </button>
-                <button
-                    className="flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-sky-700 bg-white border border-slate-200/80 shadow-2xs transition-all flex items-center gap-1.5"
-                >
-                    <span className="w-2 h-2 rounded-full bg-sky-600 animate-pulse"></span>
-                    CN11: Email Nhắc Nợ & Queue (Đang xem)
-                </button>
-                <button
-                    onClick={() => onNavigateTab ? onNavigateTab('financial_reports') : (window.location.href = '/quan-ly/bao-cao-tai-chinh')}
-                    className="flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-white hover:text-neutral-900 transition-all flex items-center gap-1.5"
-                >
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    CN13: Báo Cáo Tài Chính
-                </button>
-            </div>
-
-            {/* LIVE QUEUE STATUS BANNER */}
-            <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 flex-shrink-0">
-                        <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-black text-neutral-900">Kiến Trúc Hàng Đợi Bất Đồng Bộ (Laravel Queue & Jobs)</span>
-                            <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-md border border-emerald-200">
-                                ACTIVE
-                            </span>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                            Driver: <code className="bg-slate-100 px-1 py-0.5 rounded text-sky-700">database / sync</code> • Retry attempts: 3 lần • Backoff: 30s • Tự động kích hoạt qua Artisan <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-700">invoices:send-debt-reminders</code>
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3 self-end md:self-center">
-                    <div className="text-right">
-                        <div className="text-[11px] text-slate-400 font-medium">HĐ nợ chưa gửi nhắc 24h</div>
-                        <div className="text-base font-black font-mono text-amber-600">
-                            {summary ? summary.unreminded_overdue_count : 0} hóa đơn
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => setAutoScanModalOpen(true)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white border border-sky-600 shadow-2xs transition-all"
-                    >
-                        Quét Ngay
-                    </button>
-                </div>
-            </div>
-
-            {/* 4 THẺ KPI GLASSMORPHISM */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Card 1: Tổng lượt nhắc nợ */}
-                <div className="relative overflow-hidden bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80">
+            {/* 4 THẺ KPI METRIC CARDS CHUẨN SASS-DB-KPI-CARD */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+                {/* Thẻ 1: Tổng lượt nhắc nợ */}
+                <div className="sass-db-kpi-card">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Tổng Lượt Nhắc Nợ
-                        </span>
-                        <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-500">TỔNG LƯỢT NHẮC NỢ</span>
+                        <div className="kpi-icon-wrapper bg-sky-50 text-sky-600">
+                            <Mail className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="mt-3 flex items-baseline gap-2">
-                        <span className="text-2xl font-black text-neutral-900 tracking-tight font-mono">
-                            {summary ? summary.total_reminders.toLocaleString('vi-VN') : 0}
-                        </span>
-                        <span className="text-xs font-medium text-slate-500">lượt gửi</span>
+                    <div className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black text-neutral-900 font-mono tracking-tight">
+                        {summary ? Number(summary.total_reminders || 0).toLocaleString('vi-VN') : 0}
                     </div>
-                    <div className="mt-2 text-xs text-sky-600 font-medium flex items-center gap-1">
-                        <span>Đã lưu vết trong hệ thống</span>
+                    <div className="mt-1 text-[10px] sm:text-[11px] text-sky-700 font-semibold truncate">
+                        Đã lưu vết trong hệ thống
                     </div>
                 </div>
 
-                {/* Card 2: Đã gửi thành công */}
-                <div className="relative overflow-hidden bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80">
+                {/* Thẻ 2: Đã gửi thành công */}
+                <div className="sass-db-kpi-card">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Đã Gửi Thành Công
-                        </span>
-                        <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-500">ĐÃ GỬI THÀNH CÔNG</span>
+                        <div className="kpi-icon-wrapper bg-emerald-50 text-emerald-600">
+                            <CheckCircle2 className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="mt-3 flex items-baseline gap-2">
-                        <span className="text-2xl font-black text-emerald-600 tracking-tight font-mono">
-                            {summary ? summary.sent_count.toLocaleString('vi-VN') : 0}
-                        </span>
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                            {summary ? summary.success_rate : 100}% thành công
-                        </span>
+                    <div className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black text-emerald-600 font-mono tracking-tight">
+                        {summary ? Number(summary.sent_count || 0).toLocaleString('vi-VN') : 0}
                     </div>
-                    <div className="mt-2 text-xs text-slate-500">
-                        Cư dân đã nhận qua hộp thư
+                    <div className="mt-1 text-[10px] sm:text-[11px] text-emerald-700 font-semibold truncate">
+                        Tỷ lệ thành công: <strong className="text-neutral-900 font-bold">{summary ? summary.success_rate : 100}%</strong>
                     </div>
                 </div>
 
-                {/* Card 3: Đang trong Queue xử lý */}
-                <div className="relative overflow-hidden bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80">
+                {/* Thẻ 3: Đang chờ trong Queue */}
+                <div className="sass-db-kpi-card">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Đang Chờ Trong Queue
-                        </span>
-                        <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                            <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-500">ĐANG CHỜ TRONG QUEUE</span>
+                        <div className="kpi-icon-wrapper bg-amber-50 text-amber-600">
+                            <Clock className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="mt-3 flex items-baseline gap-2">
-                        <span className="text-2xl font-black text-amber-600 tracking-tight font-mono">
-                            {summary ? summary.queued_count.toLocaleString('vi-VN') : 0}
-                        </span>
-                        <span className="text-xs font-medium text-slate-500">jobs chờ dispatch</span>
+                    <div className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black text-amber-600 font-mono tracking-tight">
+                        {summary ? Number(summary.queued_count || 0).toLocaleString('vi-VN') : 0}
                     </div>
-                    <div className="mt-2 text-xs text-amber-600 font-medium flex items-center gap-1">
+                    <div className="mt-1 text-[10px] sm:text-[11px] text-amber-700 font-semibold truncate flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                        <span>Đang xử lý nền bởi worker</span>
+                        Đang xử lý nền bởi worker
                     </div>
                 </div>
 
-                {/* Card 4: Tổng tiền công nợ được nhắc */}
-                <div className="relative overflow-hidden bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80">
+                {/* Thẻ 4: Tổng tiền nợ đã nhắc */}
+                <div className="sass-db-kpi-card col-span-2 sm:col-span-1">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Tổng Tiền Nợ Đã Nhắc
-                        </span>
-                        <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-500">TỔNG TIỀN NỢ ĐÃ NHẮC</span>
+                        <div className="kpi-icon-wrapper bg-rose-50 text-rose-600">
+                            <AlertTriangle className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="mt-3 flex items-baseline gap-2">
-                        <span className="text-xl sm:text-2xl font-black text-rose-600 tracking-tight font-mono">
-                            {formatCurrency(summary ? summary.total_debt_reminded : 0)}
-                        </span>
+                    <div className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black text-rose-600 font-mono tracking-tight">
+                        {Number(summary ? summary.total_debt_reminded : 0).toLocaleString('vi-VN')} <span className="text-xs font-normal text-slate-400">đ</span>
                     </div>
-                    <div className="mt-2 text-xs text-slate-500">
-                        {summary ? summary.overdue_reminders_count : 0} thông báo quá hạn
+                    <div className="mt-1 text-[10px] sm:text-[11px] text-rose-700 font-semibold truncate">
+                        <strong className="text-neutral-900 font-bold">{summary ? summary.overdue_reminders_count : 0}</strong> thông báo quá hạn
                     </div>
                 </div>
             </div>
 
             {/* BỘ LỌC TÌM KIẾM ĐA CHIỀU */}
-            <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/80 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                    {/* Tìm kiếm */}
-                    <div className="relative">
+            <div className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-2xl shadow-xs space-y-4">
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                    {/* Ô tìm kiếm từ khóa */}
+                    <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Mã HĐ, căn hộ, email cư dân..."
+                            placeholder="Tìm kiếm theo mã HĐ, căn hộ, email cư dân..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-slate-900"
+                            className="w-full bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-9 py-2 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium transition-all"
                         />
-                        <svg className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
                     </div>
 
-                    {/* Lọc Trạng thái Queue */}
-                    <div>
+                    {/* Các dropdown lọc */}
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                        {/* Lọc Trạng thái Queue */}
                         <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-slate-900 font-medium"
+                            className="bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all cursor-pointer"
                         >
                             <option value="ALL">Tất cả trạng thái Queue</option>
                             <option value="SENT">Đã gửi thành công (SENT)</option>
@@ -594,14 +502,12 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                             <option value="FAILED">Thất bại / Lỗi (FAILED)</option>
                             <option value="CANCELLED">Đã hủy / Đã trả trước (CANCELLED)</option>
                         </select>
-                    </div>
 
-                    {/* Lọc Khối nhà */}
-                    <div>
+                        {/* Lọc Khối nhà */}
                         <select
                             value={blockFilter}
                             onChange={(e) => setBlockFilter(e.target.value)}
-                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-slate-900 font-medium"
+                            className="bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all cursor-pointer"
                         >
                             <option value="">Tất cả khối tòa nhà</option>
                             {blocks.map((b) => (
@@ -610,14 +516,12 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                 </option>
                             ))}
                         </select>
-                    </div>
 
-                    {/* Preset nhanh */}
-                    <div>
+                        {/* Preset thời gian */}
                         <select
                             value={quickDatePreset}
                             onChange={(e: any) => setQuickDatePreset(e.target.value)}
-                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-slate-900 font-medium"
+                            className="bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all cursor-pointer"
                         >
                             <option value="all">Thời gian: Tất cả</option>
                             <option value="today">Hôm nay</option>
@@ -628,33 +532,61 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                     </div>
                 </div>
 
-                {/* Thanh trạng thái lọc và nút Reset */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/80 text-xs">
-                    <div className="flex items-center gap-2 text-slate-500">
-                        <span>Đang hiển thị <strong>{logs.length}</strong> bản ghi nhật ký</span>
+                {/* Thanh trạng thái lọc và các nút hành động */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200/80 text-xs">
+                    <div className="flex flex-wrap items-center gap-2.5 text-slate-500">
+                        <span>Đang hiển thị <strong className="text-slate-800 font-bold">{logs.length}</strong> bản ghi nhật ký</span>
                         {selectedLogIds.length > 0 && (
-                            <span className="bg-sky-50 text-sky-700 font-semibold px-2 py-0.5 rounded-full">
+                            <span className="bg-sky-50 text-sky-700 font-semibold px-2 py-0.5 rounded-full border border-sky-200 shadow-2xs">
                                 Đã chọn {selectedLogIds.length} mục
                             </span>
                         )}
+                        <span className="text-slate-300 hidden sm:inline">•</span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider font-mono">HĐ nợ chưa gửi 24h:</span>
+                            <span className="font-bold font-mono text-amber-600">
+                                {summary ? summary.unreminded_overdue_count : 0} hóa đơn
+                            </span>
+                        </div>
                     </div>
 
-                    {(searchQuery || statusFilter !== 'ALL' || blockFilter || quickDatePreset !== 'all') && (
+                    <div className="flex items-center gap-2.5">
+                        {(searchQuery || statusFilter !== 'ALL' || blockFilter || quickDatePreset !== 'all') && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    setStatusFilter('ALL');
+                                    setBlockFilter('');
+                                    setQuickDatePreset('all');
+                                }}
+                                className="text-xs text-rose-600 font-bold hover:underline flex items-center gap-1 cursor-pointer mr-1"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Xóa bộ lọc</span>
+                            </button>
+                        )}
+
                         <button
-                            onClick={() => {
-                                setSearchQuery('');
-                                setStatusFilter('ALL');
-                                setBlockFilter('');
-                                setQuickDatePreset('all');
-                            }}
-                            className="text-xs text-rose-600 font-semibold hover:underline flex items-center gap-1"
+                            type="button"
+                            onClick={() => setAutoScanModalOpen(true)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-2xs transition-all active:scale-[0.98] cursor-pointer"
                         >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            <span>Xóa bộ lọc</span>
+                            <Zap className="w-3.5 h-3.5" />
+                            <span>Quét Ngay</span>
                         </button>
-                    )}
+
+                        <button
+                            type="button"
+                            onClick={handleExportCsv}
+                            disabled={loading || logs.length === 0}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-xs font-bold shadow-2xs transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                            title="Tải file CSV sao kê danh sách nhật ký hàng đợi"
+                        >
+                            <Download className="w-3.5 h-3.5 text-teal-600" />
+                            <span>Xuất Nhật Ký CSV</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -663,7 +595,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-sm">
                         <thead>
-                            <tr className="bg-slate-100/50 border-b border-slate-200/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">
                                 <th className="p-4 w-10 text-center">
                                     <input
                                         type="checkbox"
@@ -699,15 +631,13 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                 ))
                             ) : logs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                                    <td colSpan={9} className="py-16 text-center text-slate-400">
                                         <div className="flex flex-col items-center justify-center gap-3">
                                             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                                </svg>
+                                                <Mail className="w-8 h-8 stroke-[1.5]" />
                                             </div>
-                                            <p className="text-base font-semibold text-slate-700">Không tìm thấy thông báo nhắc nợ nào</p>
-                                            <p className="text-xs text-slate-500 max-w-sm">
+                                            <p className="text-base font-bold text-slate-700">Không tìm thấy thông báo nhắc nợ nào</p>
+                                            <p className="text-xs text-slate-500 max-w-sm font-medium">
                                                 Hãy bấm "Quét & Xếp Hàng Tự Động" để quét các hóa đơn nợ đọng và đưa vào hàng đợi Queue gửi cư dân.
                                             </p>
                                         </div>
@@ -724,8 +654,8 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                     return (
                                         <tr
                                             key={log.id}
-                                            className={`hover:bg-slate-50 transition-colors ${
-                                                isSelected ? 'bg-sky-50/40' : ''
+                                            className={`hover:bg-slate-50/80 transition-colors ${
+                                                isSelected ? 'bg-sky-50/50' : ''
                                             }`}
                                         >
                                             {/* Checkbox */}
@@ -740,7 +670,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
 
                                             {/* Thời gian */}
                                             <td className="p-4">
-                                                <div className="text-xs font-semibold text-slate-900">
+                                                <div className="text-xs font-bold text-slate-900">
                                                     {formatRelativeTime(log.sent_at || log.created_at)}
                                                 </div>
                                                 <div className="text-[11px] text-slate-400 font-mono mt-0.5">
@@ -756,23 +686,20 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                                         {invNumber}
                                                     </span>
                                                     <button
+                                                        type="button"
                                                         onClick={() => handleCopy(invNumber)}
-                                                        className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors"
+                                                        className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors cursor-pointer"
                                                         title="Sao chép mã hóa đơn"
                                                     >
                                                         {copiedRef === invNumber ? (
-                                                            <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                                                            </svg>
+                                                            <Check className="w-3.5 h-3.5 text-emerald-500" />
                                                         ) : (
-                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                            </svg>
+                                                            <Copy className="w-3.5 h-3.5" />
                                                         )}
                                                     </button>
                                                 </div>
-                                                <div className="text-[11px] text-slate-500">
-                                                    Kỳ cước: <span className="font-semibold">{billingPeriod}</span>
+                                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                                    Kỳ cước: <span className="font-semibold text-slate-700">{billingPeriod}</span>
                                                 </div>
                                             </td>
 
@@ -781,20 +708,18 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                                 <div className="font-bold text-slate-800 text-xs">
                                                     {aptNumber}
                                                 </div>
-                                                <div className="text-[11px] text-slate-400">
+                                                <div className="text-[11px] text-slate-400 mt-0.5">
                                                     {blockName}
                                                 </div>
                                             </td>
 
                                             {/* Người nhận */}
                                             <td className="p-4">
-                                                <div className="text-xs font-semibold text-slate-900">
+                                                <div className="text-xs font-bold text-slate-900">
                                                     {log.recipient_name}
                                                 </div>
-                                                <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
-                                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                                    </svg>
+                                                <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono mt-0.5">
+                                                    <Mail className="w-3 h-3 text-slate-400" />
                                                     <span>{log.recipient_email}</span>
                                                 </div>
                                             </td>
@@ -804,7 +729,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                                 <div className="font-mono text-sm font-bold text-rose-600">
                                                     {formatCurrency(log.debt_amount)}
                                                 </div>
-                                                <div className="text-[11px] text-slate-400">
+                                                <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
                                                     Hạn: {log.due_date ? String(log.due_date).slice(0, 10).split('-').reverse().join('/') : 'N/A'}
                                                 </div>
                                             </td>
@@ -812,11 +737,11 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                             {/* Quá hạn */}
                                             <td className="p-4 text-center">
                                                 {log.days_overdue > 0 ? (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs whitespace-nowrap">
                                                         Quá hạn {log.days_overdue} ngày
                                                     </span>
                                                 ) : (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs whitespace-nowrap">
                                                         Trong hạn
                                                     </span>
                                                 )}
@@ -825,62 +750,63 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                             {/* Trạng thái Queue */}
                                             <td className="p-4 text-center">
                                                 {log.channel_status === 'SENT' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                        Đã Gửi (SENT)
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs whitespace-nowrap">
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                        <span>Đã Gửi (SENT)</span>
                                                     </span>
                                                 ) : log.channel_status === 'QUEUED' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                                        Đang Chờ (QUEUED)
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs whitespace-nowrap">
+                                                        <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse shrink-0" />
+                                                        <span>Đang Chờ (QUEUED)</span>
                                                     </span>
                                                 ) : log.channel_status === 'FAILED' ? (
                                                     <div className="group relative inline-block">
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 border border-rose-200 cursor-help">
-                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                            </svg>
-                                                            Thất bại (FAILED)
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs cursor-help whitespace-nowrap">
+                                                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                                            <span>Thất Bại (FAILED)</span>
                                                         </span>
                                                         {log.error_message && (
-                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 bg-slate-900 text-white text-[11px] rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20">
+                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2.5 bg-slate-900 text-white text-[11px] rounded-xl shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 font-medium leading-relaxed">
                                                                 {log.error_message}
                                                             </div>
                                                         )}
                                                     </div>
                                                 ) : (
-                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs whitespace-nowrap">
                                                         {log.channel_status}
                                                     </span>
                                                 )}
                                             </td>
 
                                             {/* Thao tác */}
-                                            <td className="p-4 text-right">
-                                                <div className="flex items-center justify-end gap-1.5">
+                                            <td className="p-4 text-right pr-6">
+                                                <div className="flex items-center justify-end gap-2">
                                                     <button
+                                                        type="button"
                                                         onClick={() => handleOpenPreview(log.id)}
-                                                        className="px-2.5 py-1 rounded-lg text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors flex items-center gap-1"
-                                                        title="Xem trước nội dung email"
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 shadow-2xs transition-all active:scale-[0.98] cursor-pointer whitespace-nowrap"
+                                                        title="Xem trước nội dung email mẫu"
                                                     >
-                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                        </svg>
+                                                        <Eye className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                                                         <span>Xem Email</span>
                                                     </button>
 
-                                                    {(log.channel_status === 'FAILED' || log.channel_status === 'SENT') && (
+                                                    {(log.channel_status === 'FAILED' || log.channel_status === 'SENT') ? (
                                                         <button
+                                                            type="button"
                                                             onClick={() => handleRetry(log.id)}
                                                             disabled={retryingLogId === log.id}
-                                                            className="p-1 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50"
-                                                            title="Gửi lại thông báo này"
+                                                            className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 shadow-2xs transition-all active:scale-[0.95] disabled:opacity-50 cursor-pointer group shrink-0"
+                                                            title="Gửi lại thông báo nhắc nợ này (Đẩy vào Queue)"
                                                         >
-                                                            <svg className={`w-4 h-4 ${retryingLogId === log.id ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                            </svg>
+                                                            {retryingLogId === log.id ? (
+                                                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                                                            ) : (
+                                                                <Send className="w-3.5 h-3.5 text-amber-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
+                                                            )}
                                                         </button>
+                                                    ) : (
+                                                        <div className="w-8 h-8 shrink-0" aria-hidden="true" />
                                                     )}
                                                 </div>
                                             </td>
@@ -894,27 +820,31 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
 
                 {/* Phân trang */}
                 {pagination.total > 0 && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 bg-slate-50/50 border-t border-slate-200/80 text-xs text-slate-500">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 bg-slate-50/50 border-t border-slate-200/80 text-xs text-slate-500 font-medium">
                         <div>
-                            Hiển thị <strong>{logs.length}</strong> trên tổng số <strong>{pagination.total}</strong> lượt nhắc
+                            Hiển thị <strong className="text-slate-800 font-bold">{logs.length}</strong> trên tổng số <strong className="text-slate-800 font-bold">{pagination.total}</strong> lượt nhắc
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
                             <button
+                                type="button"
                                 onClick={() => loadData(pagination.current_page - 1)}
                                 disabled={pagination.current_page <= 1 || loading}
-                                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white disabled:opacity-40 hover:bg-slate-50 font-medium"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 cursor-pointer"
                             >
-                                Trước
+                                <ChevronLeft className="w-3.5 h-3.5" />
+                                <span>Trước</span>
                             </button>
-                            <span className="px-3 py-1.5 font-bold text-slate-800">
+                            <span className="px-3 py-1.5 font-bold font-mono text-slate-800 bg-white border border-slate-200 rounded-xl shadow-2xs">
                                 {pagination.current_page} / {pagination.last_page}
                             </span>
                             <button
+                                type="button"
                                 onClick={() => loadData(pagination.current_page + 1)}
                                 disabled={pagination.current_page >= pagination.last_page || loading}
-                                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white disabled:opacity-40 hover:bg-slate-50 font-medium"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 cursor-pointer"
                             >
-                                Sau
+                                <span>Sau</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
                             </button>
                         </div>
                     </div>
@@ -924,48 +854,46 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
             {/* MODAL 1: XEM TRƯỚC NỘI DUNG EMAIL NHẮC NỢ (PREVIEW MODAL) */}
             {previewModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/80 max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         {/* Header Modal */}
-                        <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-white">
+                        <div className="p-5 sm:p-6 border-b border-slate-200/80 flex items-center justify-between bg-white">
                             <div>
-                                <span className="text-[10px] uppercase font-bold tracking-widest text-sky-600">
-                                    Bản Xem Trước Email Mẫu (HTML Preview)
+                                <span className="text-[10px] uppercase font-bold tracking-widest text-sky-600 font-mono flex items-center gap-1.5">
+                                    <Mail className="w-3.5 h-3.5" />
+                                    <span>BẢN XEM TRƯỚC EMAIL MẪU (HTML PREVIEW)</span>
                                 </span>
-                                <h3 className="text-lg font-black text-neutral-900 mt-0.5">
+                                <h3 className="text-lg font-black text-neutral-900 tracking-tight mt-1">
                                     {previewData ? previewData.subject : 'Đang tải nội dung email...'}
                                 </h3>
                             </div>
                             <button
+                                type="button"
                                 onClick={() => setPreviewModalOpen(false)}
-                                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                             >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                                <X className="w-5 h-5" />
                             </button>
                         </div>
 
                         {/* Body Modal Preview */}
-                        <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
+                        <div className="p-5 sm:p-6 overflow-y-auto flex-1 bg-slate-50/50">
                             {loadingPreview ? (
                                 <div className="py-16 text-center text-slate-400">
-                                    <svg className="w-8 h-8 animate-spin mx-auto mb-3 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                    </svg>
-                                    <p className="text-sm font-medium">Đang kết xuất giao diện email mẫu...</p>
+                                    <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-sky-600" />
+                                    <p className="text-sm font-semibold text-slate-600">Đang kết xuất giao diện email mẫu...</p>
                                 </div>
                             ) : previewData ? (
                                 <div className="space-y-4">
                                     {/* Thông tin metadata người nhận */}
-                                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs grid grid-cols-2 gap-2 text-slate-600">
-                                        <div>Người nhận: <strong className="text-slate-900">{previewData.recipient_name}</strong></div>
-                                        <div>Email: <strong className="text-sky-600 font-mono">{previewData.recipient_email}</strong></div>
-                                        <div>Hóa đơn: <strong className="font-mono">{previewData.invoice_number}</strong></div>
-                                        <div>Dư nợ: <strong className="text-rose-600 font-mono">{formatCurrency(previewData.debt_amount)}</strong></div>
+                                    <div className="bg-white p-4 rounded-xl border border-slate-200/80 text-xs grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-slate-600 shadow-2xs">
+                                        <div>Người nhận: <strong className="text-neutral-900 font-bold">{previewData.recipient_name}</strong></div>
+                                        <div>Email: <strong className="text-sky-600 font-mono font-bold">{previewData.recipient_email}</strong></div>
+                                        <div>Hóa đơn: <strong className="font-mono text-slate-800 font-bold">{previewData.invoice_number}</strong></div>
+                                        <div>Dư nợ: <strong className="text-rose-600 font-mono font-bold">{formatCurrency(previewData.debt_amount)}</strong></div>
                                     </div>
 
                                     {/* HTML Render */}
-                                    <div className="bg-white p-4 rounded-xl shadow-inner border border-slate-200 overflow-x-auto text-slate-900">
+                                    <div className="bg-white p-4 rounded-xl shadow-inner border border-slate-200/80 overflow-x-auto text-slate-900">
                                         <div
                                             dangerouslySetInnerHTML={{ __html: previewData.html }}
                                             className="email-preview-container"
@@ -976,13 +904,14 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                         </div>
 
                         {/* Footer Modal */}
-                        <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between">
-                            <span className="text-xs text-slate-500">
+                        <div className="p-4 bg-white border-t border-slate-200/80 flex items-center justify-between">
+                            <span className="text-xs text-slate-500 font-medium">
                                 Email được gửi tự động qua dịch vụ Mail facade & Queue của Laravel.
                             </span>
                             <button
+                                type="button"
                                 onClick={() => setPreviewModalOpen(false)}
-                                className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
                             >
                                 Đóng
                             </button>
@@ -994,44 +923,41 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
             {/* MODAL 2: QUÉT & XẾP HÀNG TỰ ĐỘNG (AUTO DISPATCH MODAL) */}
             {autoScanModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/80 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         {/* Header Modal */}
-                        <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-white">
+                        <div className="p-5 sm:p-6 border-b border-slate-200/80 flex items-center justify-between bg-white">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
+                                <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 shrink-0">
+                                    <Zap className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-black text-neutral-900">Quét & Xếp Hàng Nhắc Nợ</h3>
-                                    <p className="text-xs text-slate-500">Tự động đẩy hóa đơn nợ vào hàng đợi Queue xử lý nền</p>
+                                    <h3 className="text-lg font-black text-neutral-900 tracking-tight">Quét & Xếp Hàng Nhắc Nợ</h3>
+                                    <p className="text-xs text-slate-500 font-medium mt-0.5">Tự động đẩy hóa đơn nợ vào hàng đợi Queue xử lý nền</p>
                                 </div>
                             </div>
                             <button
+                                type="button"
                                 onClick={() => setAutoScanModalOpen(false)}
-                                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                             >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                                <X className="w-5 h-5" />
                             </button>
                         </div>
 
                         {/* Body Modal */}
-                        <div className="p-6 space-y-4">
+                        <div className="p-5 sm:p-6 space-y-4">
                             <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 text-xs text-slate-600 space-y-1">
                                 <p className="font-bold flex items-center gap-1.5 text-neutral-900">
-                                    <svg className="w-4 h-4 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
+                                    <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0" />
                                     Quy tắc bảo vệ chống gửi trùng lặp (Anti-Spam):
                                 </p>
-                                <p>Hệ thống tự động bỏ qua các hóa đơn đã được gửi nhắc nợ trong vòng <strong>24 giờ qua</strong> để tránh làm phiền cư dân.</p>
+                                <p className="font-medium text-slate-600">
+                                    Hệ thống tự động bỏ qua các hóa đơn đã được gửi nhắc nợ trong vòng <strong className="text-slate-800">24 giờ qua</strong> để tránh làm phiền cư dân.
+                                </p>
                             </div>
 
                             <div className="space-y-3">
-                                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
                                     Phạm Vi Hóa Đơn Cần Quét
                                 </label>
 
@@ -1040,7 +966,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                         onClick={() => setAutoScanOverdueOnly(true)}
                                         className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
                                             autoScanOverdueOnly
-                                                ? 'border-sky-500 bg-sky-50/40'
+                                                ? 'border-sky-500 bg-sky-50/50 shadow-2xs'
                                                 : 'border-slate-200 hover:bg-slate-50'
                                         }`}
                                     >
@@ -1052,10 +978,10 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                             className="mt-0.5 text-sky-600 focus:ring-sky-500"
                                         />
                                         <div>
-                                            <div className="text-sm font-bold text-slate-900">
+                                            <div className="text-sm font-bold text-neutral-900">
                                                 Chỉ quét các hóa đơn đã QUÁ HẠN (Khuyên dùng)
                                             </div>
-                                            <div className="text-xs text-slate-500 mt-0.5">
+                                            <div className="text-xs text-slate-500 mt-0.5 font-medium">
                                                 Gửi thông báo cảnh báo quá hạn cho các hóa đơn có trạng thái OVERDUE hoặc có ngày đến hạn trước ngày hôm nay.
                                             </div>
                                         </div>
@@ -1065,7 +991,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                         onClick={() => setAutoScanOverdueOnly(false)}
                                         className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
                                             !autoScanOverdueOnly
-                                                ? 'border-sky-500 bg-sky-50/40'
+                                                ? 'border-sky-500 bg-sky-50/50 shadow-2xs'
                                                 : 'border-slate-200 hover:bg-slate-50'
                                         }`}
                                     >
@@ -1077,10 +1003,10 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                             className="mt-0.5 text-sky-600 focus:ring-sky-500"
                                         />
                                         <div>
-                                            <div className="text-sm font-bold text-slate-900">
+                                            <div className="text-sm font-bold text-neutral-900">
                                                 Quét cả hóa đơn SẮP ĐẾN HẠN
                                             </div>
-                                            <div className="text-xs text-slate-500 mt-0.5">
+                                            <div className="text-xs text-slate-500 mt-0.5 font-medium">
                                                 Gửi thông báo nhắc nhở cho các hóa đơn sắp đến hạn trong vòng:
                                                 <input
                                                     type="number"
@@ -1089,7 +1015,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                                     value={autoScanDaysBefore}
                                                     onChange={(e) => setAutoScanDaysBefore(parseInt(e.target.value) || 3)}
                                                     onClick={(e) => e.stopPropagation()}
-                                                    className="inline-block w-14 mx-1.5 px-2 py-0.5 rounded border border-slate-300 text-center font-bold text-xs"
+                                                    className="inline-block w-14 mx-1.5 px-2 py-0.5 rounded border border-slate-300 text-center font-bold text-xs bg-white text-slate-900"
                                                 />
                                                 ngày tới.
                                             </div>
@@ -1100,31 +1026,29 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                         </div>
 
                         {/* Footer Modal */}
-                        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+                        <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex items-center justify-end gap-2.5">
                             <button
+                                type="button"
                                 onClick={() => setAutoScanModalOpen(false)}
                                 disabled={triggeringAutoScan}
-                                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-slate-200/80 hover:bg-slate-300 transition-colors"
+                                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
                             >
                                 Hủy bỏ
                             </button>
                             <button
+                                type="button"
                                 onClick={handleTriggerAutoScan}
                                 disabled={triggeringAutoScan}
-                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-sky-600 hover:bg-sky-700 border border-sky-600 shadow-2xs active:scale-[0.98] transition-all disabled:opacity-50"
+                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 border border-sky-600 shadow-2xs active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
                             >
                                 {triggeringAutoScan ? (
                                     <>
-                                        <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                        </svg>
+                                        <RefreshCw className="w-4 h-4 animate-spin" />
                                         <span>Đang quét & xếp hàng...</span>
                                     </>
                                 ) : (
                                     <>
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                                        </svg>
+                                        <Zap className="w-4 h-4" />
                                         <span>Bắt Đầu Xếp Hàng Queue</span>
                                     </>
                                 )}
