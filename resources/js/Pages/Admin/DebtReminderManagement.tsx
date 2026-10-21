@@ -58,6 +58,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
 
     // Bộ lọc
     const [statusFilter, setStatusFilter] = useState<string>('ALL');
+    const [overdueRangeFilter, setOverdueRangeFilter] = useState<string>('ALL');
     const [blockFilter, setBlockFilter] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [quickDatePreset, setQuickDatePreset] = useState<'all' | 'today' | '7days' | 'this_month' | 'overdue_30'>('all');
@@ -85,6 +86,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
     const [autoScanModalOpen, setAutoScanModalOpen] = useState<boolean>(false);
     const [autoScanOverdueOnly, setAutoScanOverdueOnly] = useState<boolean>(true);
     const [autoScanDaysBefore, setAutoScanDaysBefore] = useState<number>(3);
+    const [autoScanMinOverdueDays, setAutoScanMinOverdueDays] = useState<number>(0);
     const [triggeringAutoScan, setTriggeringAutoScan] = useState<boolean>(false);
 
     // Thao tác gửi lại đơn lẻ
@@ -150,6 +152,17 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                     });
                 }
 
+                // Filter theo mức độ quá hạn
+                if (overdueRangeFilter === 'OVERDUE_ONLY') {
+                    filteredItems = filteredItems.filter((item: any) => (item.days_overdue || 0) > 0);
+                } else if (overdueRangeFilter === 'OVERDUE_7') {
+                    filteredItems = filteredItems.filter((item: any) => (item.days_overdue || 0) >= 7);
+                } else if (overdueRangeFilter === 'OVERDUE_30') {
+                    filteredItems = filteredItems.filter((item: any) => (item.days_overdue || 0) >= 30);
+                } else if (overdueRangeFilter === 'DUE_SOON') {
+                    filteredItems = filteredItems.filter((item: any) => (item.days_overdue || 0) === 0);
+                }
+
                 // Filter theo quick preset
                 if (quickDatePreset === 'overdue_30') {
                     filteredItems = filteredItems.filter((item: any) => (item.days_overdue || 0) >= 30);
@@ -183,7 +196,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [searchQuery, statusFilter, blockFilter, quickDatePreset]);
+    }, [searchQuery, statusFilter, overdueRangeFilter, blockFilter, quickDatePreset]);
 
     useEffect(() => {
         loadData(1);
@@ -245,6 +258,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
             const res = await invoiceApi.autoDispatchDebtReminders({
                 overdue_only: autoScanOverdueOnly,
                 days_before_due: autoScanDaysBefore,
+                min_days_overdue: autoScanMinOverdueDays,
             });
             if (res.success) {
                 showToast('success', res.message || 'Đã quét và xếp hàng nhắc nợ thành công.');
@@ -503,6 +517,19 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                             <option value="CANCELLED">Đã hủy / Đã trả trước (CANCELLED)</option>
                         </select>
 
+                        {/* Lọc Mức Độ Quá Hạn */}
+                        <select
+                            value={overdueRangeFilter}
+                            onChange={(e) => setOverdueRangeFilter(e.target.value)}
+                            className="bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all cursor-pointer"
+                        >
+                            <option value="ALL">Tất cả mức nợ</option>
+                            <option value="OVERDUE_ONLY">Đã quá hạn (&gt; 0 ngày)</option>
+                            <option value="OVERDUE_7">Quá hạn &ge; 7 ngày</option>
+                            <option value="OVERDUE_30">Quá hạn &ge; 30 ngày</option>
+                            <option value="DUE_SOON">Sắp đến hạn (0 ngày)</option>
+                        </select>
+
                         {/* Lọc Khối nhà */}
                         <select
                             value={blockFilter}
@@ -551,12 +578,13 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2.5">
-                        {(searchQuery || statusFilter !== 'ALL' || blockFilter || quickDatePreset !== 'all') && (
+                        {(searchQuery || statusFilter !== 'ALL' || overdueRangeFilter !== 'ALL' || blockFilter || quickDatePreset !== 'all') && (
                             <button
                                 type="button"
                                 onClick={() => {
                                     setSearchQuery('');
                                     setStatusFilter('ALL');
+                                    setOverdueRangeFilter('ALL');
                                     setBlockFilter('');
                                     setQuickDatePreset('all');
                                 }}
@@ -977,12 +1005,22 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                                             onChange={() => setAutoScanOverdueOnly(true)}
                                             className="mt-0.5 text-sky-600 focus:ring-sky-500"
                                         />
-                                        <div>
+                                        <div className="flex-1">
                                             <div className="text-sm font-bold text-neutral-900">
                                                 Chỉ quét các hóa đơn đã QUÁ HẠN (Khuyên dùng)
                                             </div>
-                                            <div className="text-xs text-slate-500 mt-0.5 font-medium">
-                                                Gửi thông báo cảnh báo quá hạn cho các hóa đơn có trạng thái OVERDUE hoặc có ngày đến hạn trước ngày hôm nay.
+                                            <div className="text-xs text-slate-500 mt-1 font-medium flex flex-wrap items-center gap-1.5">
+                                                <span>Quét các hóa đơn quá hạn từ:</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="365"
+                                                    value={autoScanMinOverdueDays}
+                                                    onChange={(e) => setAutoScanMinOverdueDays(Math.max(0, parseInt(e.target.value) || 0))}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="inline-block w-14 px-2 py-0.5 rounded border border-slate-300 text-center font-bold text-xs bg-white text-slate-900"
+                                                />
+                                                <span>ngày trở lên (nhập 0 = tất cả hóa đơn quá hạn).</span>
                                             </div>
                                         </div>
                                     </label>
