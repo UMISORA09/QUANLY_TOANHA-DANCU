@@ -1,5 +1,63 @@
 @import 'tailwindcss';
 
+/* Catalog-only surfaces; other portals keep their existing theme. */
+.catalog-ui, .catalog-dialog {
+    --feature-primary: #1e40af;
+    --feature-primary-hover: #1e3a8a;
+    --feature-border: #cbd5e1;
+    --feature-text: #0f172a;
+    --feature-shadow: 0 6px 20px rgb(15 23 42 / .05);
+    color: var(--feature-text);
+}
+.catalog-ui { min-width: 0; }
+.catalog-ui .catalog-header {
+    margin-bottom: 1.25rem;
+    padding: 1.5rem;
+    border: 1px solid #dbeafe;
+    border-left: 4px solid var(--feature-primary);
+    border-radius: 1.25rem;
+    background: rgb(239 246 255 / .8);
+}
+.catalog-ui h1, .catalog-dialog h2 { color: var(--feature-text); text-wrap: balance; }
+.catalog-ui .catalog-toolbar { border-color: var(--feature-border); box-shadow: var(--feature-shadow); }
+.catalog-ui .catalog-table { border-color: #e2e8f0; box-shadow: var(--feature-shadow); }
+.catalog-ui .catalog-table thead { background: #eff6ff; color: #334155; }
+.catalog-ui .catalog-table tbody tr:hover { background: #f8fbff; }
+.catalog-ui .catalog-table td { font-variant-numeric: tabular-nums; }
+.catalog-ui .catalog-primary, .catalog-dialog button[type=submit] {
+    min-height: 2.75rem;
+    background: var(--feature-primary);
+    color: #fff;
+    border-color: var(--feature-primary);
+}
+.catalog-ui .catalog-primary:hover, .catalog-dialog button[type=submit]:hover { background: var(--feature-primary-hover); }
+.catalog-ui .catalog-toolbar :is(input, select), .catalog-dialog :is(input:not([type=checkbox]), select, textarea) {
+    min-height: 2.75rem;
+    border-radius: .75rem;
+    border-color: var(--feature-border);
+    font-size: .875rem;
+}
+.catalog-ui :is(button, input, select, a):focus-visible, .catalog-dialog :is(button, input, select, textarea):focus-visible {
+    outline: 3px solid rgb(30 64 175 / .55);
+    outline-offset: 2px;
+}
+.catalog-dialog > div:last-child { border: 1px solid #dbeafe; box-shadow: 0 16px 40px rgb(15 23 42 / .12); }
+.catalog-dialog > div:last-child > div:first-child { border-color: #dbeafe; }
+.catalog-dialog form { background: #f8fafc; border-color: #e2e8f0; }
+.catalog-dialog .text-neutral-400 { color: #475569; }
+.catalog-dialog button { min-height: 2.75rem; min-width: 2.75rem; }
+.catalog-dialog::backdrop { background: rgb(15 23 42 / .35); }
+.catalog-ui .catalog-select { cursor: pointer; }
+@supports (appearance: base-select) {
+    .catalog-ui .catalog-select, .catalog-ui .catalog-select::picker(select) { appearance: base-select; }
+    .catalog-ui .catalog-select::picker(select) { border: 1px solid #cbd5e1; border-radius: .75rem; padding: .375rem; max-height: 16rem; overflow-y: auto; box-shadow: var(--feature-shadow); }
+    .catalog-ui .catalog-select option { border-radius: .5rem; padding: .625rem; }
+    .catalog-ui .catalog-select option:checked { background: #dbeafe; color: #1e3a8a; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .catalog-ui *, .catalog-dialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../views/**/*.blade.php';
