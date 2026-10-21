@@ -20,6 +20,10 @@ class AmenitySearchSyncController extends Controller
             DB::transaction(function (): void {
                 DB::table('amenities')->orderBy('id')->lockForUpdate()->first();
                 abort_if(DB::table('jobs')->where('queue', 'amenity-search')->exists(), 409, 'Synchronization is already queued.');
+                $failedIds = DB::table('failed_jobs')->where('connection', 'database')->where('queue', 'amenity-search')->pluck('uuid')->all();
+                if ($failedIds !== []) {
+                    abort_unless(Artisan::call('queue:retry', ['id' => $failedIds]) === 0, 503);
+                }
                 abort_unless(Artisan::call('search:sync-amenities') === 0, 503);
             });
 
@@ -28,9 +32,16 @@ class AmenitySearchSyncController extends Controller
 
         $exitCode = 0;
         if (DB::table('jobs')->where('queue', 'amenity-search')->exists()) {
-            $exitCode = Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'amenity-search', '--once' => true, '--tries' => 5, '--timeout' => 25]);
+            $exitCode = Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'amenity-search', '--once' => true, '--tries' => 5, '--timeout' => 45]);
         }
 
-        return response()->json(['pending' => DB::table('jobs')->where('queue', 'amenity-search')->count(), 'failed' => DB::table('failed_jobs')->where('queue', 'amenity-search')->count()], $exitCode === 0 ? 200 : 503);
+        $failures = DB::table('failed_jobs')->where('queue', 'amenity-search')->pluck('exception')->map(fn (string $exception): string => match (true) {
+            str_contains($exception, 'is not published yet') => 'algolia_task_pending',
+            str_contains($exception, 'Algolia index write failed') => 'algolia_write_failed',
+            str_contains($exception, 'Algolia task status request failed') => 'algolia_task_status_failed',
+            default => 'worker_failed',
+        })->countBy()->all();
+
+        return response()->json(['pending' => DB::table('jobs')->where('queue', 'amenity-search')->count(), 'failed' => array_sum($failures), 'failure_codes' => $failures], $exitCode === 0 ? 200 : 503);
     }
 }

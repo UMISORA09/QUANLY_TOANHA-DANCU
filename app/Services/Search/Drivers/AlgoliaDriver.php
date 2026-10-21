@@ -145,7 +145,7 @@ class AlgoliaDriver implements SearchDriverInterface
             throw new RuntimeException('Algolia index write failed. The synchronization job must be retried.');
         }
         $taskId = (int) $response->json('taskID');
-        $deadline = microtime(true) + ($suffix === '/settings' ? 45 : 12);
+        $deadline = microtime(true) + ($suffix === '/settings' ? 45 : 25);
         while (microtime(true) < $deadline) {
             $status = $this->client()->get($path.'/task/'.$taskId);
             if ($status->successful() && $status->json('status') === 'published') {
