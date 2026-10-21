@@ -7,6 +7,7 @@ use App\Services\Search\Drivers\AlgoliaDriver;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use LogicException;
 
 class SyncAmenitySearch extends Command
 {
@@ -25,6 +26,10 @@ class SyncAmenitySearch extends Command
             $this->error('Enable ALGOLIA_SYNC_ENABLED after configuring a dedicated index.');
 
             return self::FAILURE;
+        }
+        $connection = config('queue.connections.database.connection') ?: config('database.default');
+        if ($connection !== DB::getDefaultConnection()) {
+            throw new LogicException('Amenity search queue must use the business database connection for atomic writes.');
         }
         if ($this->option('configure')) {
             (new AlgoliaDriver(config('search.drivers.algolia')))->configure();

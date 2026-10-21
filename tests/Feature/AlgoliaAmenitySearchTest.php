@@ -145,4 +145,15 @@ class AlgoliaAmenitySearchTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->driver()->delete('amenities', $this->amenityId);
     }
+
+    public function test_protected_reindex_queues_existing_rows_once(): void
+    {
+        config(['search.sync_secret' => str_repeat('b', 40)]);
+        Http::fake(['*/task/*' => Http::response(['status' => 'published']), '*' => Http::response(['taskID' => 42])]);
+        $this->withHeader('Authorization', '')->postJson('/api/v1/internal/amenity-search/reindex')->assertUnauthorized();
+        $expected = DB::table('amenities')->count();
+        $this->withToken(str_repeat('b', 40))->postJson('/api/v1/internal/amenity-search/reindex')->assertStatus(202)->assertJsonPath('pending', $expected);
+        $this->postJson('/api/v1/internal/amenity-search/reindex')->assertStatus(409);
+        $this->assertSame($expected, DB::table('jobs')->where('queue', 'amenity-search')->count());
+    }
 }

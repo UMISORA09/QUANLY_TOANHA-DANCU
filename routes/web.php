@@ -874,4 +874,6 @@ Route::fallback(function () {
     return response()->view('errors.404', [], 404);
 });
 
-Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:6,1');
+Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:30,1');
+
+Route::post('/api/v1/internal/amenity-search/reindex', AmenitySearchSyncController::class)->middleware('throttle:6,1');
