@@ -13,6 +13,8 @@ import {
     X,
     ChevronLeft,
     ChevronRight,
+    ChevronsLeft,
+    ChevronsRight,
     Copy,
     Check,
     Building2,
@@ -359,6 +361,25 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
         if (diffDays === 1) return 'Hôm qua';
         if (diffDays < 7) return `${diffDays} ngày trước`;
         return d.toLocaleDateString('vi-VN');
+    };
+
+    // Helper tính toán các nút số trang hiển thị
+    const getPageNumbers = (currentPage: number, lastPage: number) => {
+        if (lastPage <= 7) {
+            return Array.from({ length: lastPage }, (_, i) => i + 1);
+        }
+
+        const pages: (number | string)[] = [];
+
+        if (currentPage <= 4) {
+            pages.push(1, 2, 3, 4, 5, '...', lastPage);
+        } else if (currentPage >= lastPage - 3) {
+            pages.push(1, '...', lastPage - 4, lastPage - 3, lastPage - 2, lastPage - 1, lastPage);
+        } else {
+            pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', lastPage);
+        }
+
+        return pages;
     };
 
     return (
@@ -852,27 +873,81 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                         <div>
                             Hiển thị <strong className="text-slate-800 font-bold">{logs.length}</strong> trên tổng số <strong className="text-slate-800 font-bold">{pagination.total}</strong> lượt nhắc
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                            {/* Nút về trang đầu (<<) */}
+                            <button
+                                type="button"
+                                onClick={() => loadData(1)}
+                                disabled={pagination.current_page <= 1 || loading}
+                                title="Trang đầu"
+                                className="w-8 h-8 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                                <ChevronsLeft className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Nút trang trước (<) */}
                             <button
                                 type="button"
                                 onClick={() => loadData(pagination.current_page - 1)}
                                 disabled={pagination.current_page <= 1 || loading}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 cursor-pointer"
+                                title="Trang trước"
+                                className="w-8 h-8 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                             >
                                 <ChevronLeft className="w-3.5 h-3.5" />
-                                <span>Trước</span>
                             </button>
-                            <span className="px-3 py-1.5 font-bold font-mono text-slate-800 bg-white border border-slate-200 rounded-xl shadow-2xs">
-                                {pagination.current_page} / {pagination.last_page}
-                            </span>
+
+                            {/* Các nút số trang */}
+                            <div className="flex items-center gap-1">
+                                {getPageNumbers(pagination.current_page, pagination.last_page).map((pNum, idx) => {
+                                    if (pNum === '...') {
+                                        return (
+                                            <span key={`ellipsis-${idx}`} className="px-1.5 text-slate-400 font-bold font-mono select-none">
+                                                ...
+                                            </span>
+                                        );
+                                    }
+
+                                    const isCurrent = pNum === pagination.current_page;
+                                    const numVal = Number(pNum);
+
+                                    return (
+                                        <button
+                                            key={`page-${pNum}`}
+                                            type="button"
+                                            disabled={loading}
+                                            onClick={() => loadData(numVal)}
+                                            className={`min-w-[32px] h-8 px-2.5 rounded-xl text-xs font-mono transition-all cursor-pointer ${
+                                                isCurrent
+                                                    ? 'bg-sky-600 text-white font-black shadow-xs border border-sky-600'
+                                                    : 'bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 shadow-2xs active:scale-[0.98]'
+                                            }`}
+                                        >
+                                            {pNum}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Nút trang sau (>) */}
                             <button
                                 type="button"
                                 onClick={() => loadData(pagination.current_page + 1)}
                                 disabled={pagination.current_page >= pagination.last_page || loading}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 cursor-pointer"
+                                title="Trang sau"
+                                className="w-8 h-8 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                             >
-                                <span>Sau</span>
                                 <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Nút đến trang cuối (>>) */}
+                            <button
+                                type="button"
+                                onClick={() => loadData(pagination.last_page)}
+                                disabled={pagination.current_page >= pagination.last_page || loading}
+                                title="Trang cuối"
+                                className="w-8 h-8 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center shadow-2xs transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                                <ChevronsRight className="w-3.5 h-3.5" />
                             </button>
                         </div>
                     </div>
