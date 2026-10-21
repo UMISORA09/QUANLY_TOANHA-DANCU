@@ -54,8 +54,8 @@ class DebtReminderService
             'sent_by_user_id' => $staffUserId,
         ]);
 
-        // Đẩy vào Laravel Queue xử lý bất đồng bộ sau khi đã trả response
-        SendDebtReminderEmailJob::dispatch($log->id)->afterResponse();
+        // Đẩy vào Laravel Queue (kết nối database) để xử lý nền tức thì, không nghẽn HTTP
+        SendDebtReminderEmailJob::dispatch($log->id)->onConnection('database');
 
         Log::info("Dispatched debt reminder job for invoice {$invoice->invoice_number} (Log ID: {$log->id})");
 
@@ -104,17 +104,22 @@ class DebtReminderService
     /**
      * Tự động quét và đẩy queue nhắc nợ định kỳ (cho Scheduler & Artisan Command)
      */
-    public function autoDispatchScheduledReminders(bool $overdueOnly = true, int $daysBeforeDue = 3): int
+    public function autoDispatchScheduledReminders(bool $overdueOnly = true, int $daysBeforeDue = 3, int $minDaysOverdue = 0): int
     {
         $query = Invoice::with(['apartment.block', 'residentUser'])
             ->whereIn('status', ['ISSUED', 'PARTIAL', 'OVERDUE'])
             ->where('remaining_balance', '>', 0);
 
         if ($overdueOnly) {
-            $query->where(function ($q) {
-                $q->where('status', 'OVERDUE')
-                    ->orWhere('due_date', '<', Carbon::today()->format('Y-m-d'));
-            });
+            if ($minDaysOverdue > 0) {
+                $cutoffDate = Carbon::today()->subDays($minDaysOverdue)->format('Y-m-d');
+                $query->where('due_date', '<=', $cutoffDate);
+            } else {
+                $query->where(function ($q) {
+                    $q->where('status', 'OVERDUE')
+                        ->orWhere('due_date', '<', Carbon::today()->format('Y-m-d'));
+                });
+            }
         } else {
             $maxDueDate = Carbon::today()->addDays($daysBeforeDue)->format('Y-m-d');
             $query->where('due_date', '<=', $maxDueDate);
@@ -301,7 +306,7 @@ class DebtReminderService
             'error_message' => null,
         ]);
 
-        SendDebtReminderEmailJob::dispatch($log->id);
+        SendDebtReminderEmailJob::dispatch($log->id)->onConnection('database');
 
         return $log;
     }
