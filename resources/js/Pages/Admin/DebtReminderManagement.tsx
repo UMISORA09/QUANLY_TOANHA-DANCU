@@ -416,19 +416,6 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
                         Giám sát tiến trình xử lý nền Laravel Queue, tự động gửi email nhắc nợ thông minh kèm mã VietQR gạch nợ tự động theo chu kỳ cước.
                     </p>
                 </div>
-
-                {onBackToList && (
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={onBackToList}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold shadow-2xs transition-all active:scale-[0.98] cursor-pointer"
-                        >
-                            <ChevronLeft className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Quay Lại Danh Sách Hóa Đơn</span>
-                        </button>
-                    </div>
-                )}
             </div>
 
             {/* 4 THẺ KPI METRIC CARDS CHUẨN SASS-DB-KPI-CARD */}
