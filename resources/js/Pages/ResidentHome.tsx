@@ -34,9 +34,13 @@ import {
 } from 'lucide-react';
 import { api, AmenityBookingNotification } from '../Services/api';
 import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
+import { TicketNotificationList, useTicketNotifications } from '../Components/TicketNotifications';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
+import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
+import { ResidentPushNotificationToggle } from '../Components/ResidentPushNotificationToggle';
+import { ResidentParcelWidget } from '../Components/ResidentParcelWidget';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -63,6 +67,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   userRole,
   residentType = 'OWNER',
 }) => {
+  const ticketNotices = useTicketNotifications();
   const notices = useAmenityNotifications('resident');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const openAmenityNotice = async (item: AmenityBookingNotification) => {
@@ -79,6 +84,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
     try {
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab) return urlTab;
+      if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) return 'tickets';
     } catch {
       // ignore
     }
@@ -90,6 +96,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab) {
         setActiveMenuId(urlTab);
+      } else if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) {
+        setActiveMenuId('tickets');
       } else if (residentType === 'TENANT') {
         setActiveMenuId('rentals');
       }
@@ -99,7 +107,16 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   }, [residentType]);
 
   useEffect(() => {
-    const syncTab = () => setActiveMenuId(new URLSearchParams(window.location.search).get('tab') || (residentType === 'TENANT' ? 'rentals' : 'overview'));
+    const syncTab = () => {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab) {
+        setActiveMenuId(tab);
+      } else if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) {
+        setActiveMenuId('tickets');
+      } else {
+        setActiveMenuId(residentType === 'TENANT' ? 'rentals' : 'overview');
+      }
+    };
     window.addEventListener('popstate', syncTab);
     return () => window.removeEventListener('popstate', syncTab);
   }, [residentType]);
@@ -239,8 +256,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText={residentType === 'TENANT' ? 'Cổng khách thuê & tìm căn hộ' : 'Cổng dịch vụ cư dân trực tuyến'}
-      unreadNotificationCount={notices.unreadCount}
-      onNotificationClick={() => { setIsNotificationOpen((value) => !value); notices.retry(); }}
+      unreadNotificationCount={notices.unreadCount + ticketNotices.unread}
+      onNotificationClick={() => { setIsNotificationOpen((value) => !value); notices.retry(); ticketNotices.retry(); }}
       extraTopbarActions={
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200/80 text-xs font-medium text-neutral-800 bg-white/85 backdrop-blur-md shadow-xs hover:border-sky-300 transition-colors">
           <Building className="w-3.5 h-3.5 text-sky-600" />
@@ -257,7 +274,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       }
     >
       {notices.alert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{notices.alert.title}</p><p className="mt-1 text-xs text-neutral-600">{notices.alert.message}</p></div><button type="button" aria-label="Đóng cảnh báo tiện ích" onClick={() => notices.setAlert(null)} className="rounded-lg p-1"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openAmenityNotice(notices.alert!)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
-      {isNotificationOpen && <section aria-label="Thông báo tiện ích cư dân" className="fixed top-20 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-neutral-200 bg-white p-4 shadow-lg"><div className="flex justify-between"><h2 className="font-bold text-sm">Thông báo tiện ích · {notices.unreadCount} chưa đọc</h2><button type="button" aria-label="Đóng thông báo cư dân" onClick={() => setIsNotificationOpen(false)}><X className="h-4 w-4" /></button></div><label className="my-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo chưa đọc</label><div className="max-h-[45vh] space-y-2 overflow-y-auto">{notices.loading && <p role="status" className="text-xs">Đang tải thông báo…</p>}{notices.error && <p role="alert" className="text-xs text-rose-700">Không thể tải thông báo. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}{!notices.loading && !notices.error && notices.items.length === 0 && <p className="text-xs text-neutral-500">Chưa có thông báo tiện ích.</p>}{notices.items.map((item) => <button type="button" key={item.id} onClick={() => void openAmenityNotice(item)} className={`w-full rounded-xl border p-3 text-left text-xs ${item.isRead ? 'border-neutral-200' : 'border-emerald-200 bg-emerald-50'}`}><span className="block font-semibold">{item.title}</span><span className="mt-1 block">{item.message}</span><span className="mt-1 block text-neutral-500">{item.timeAgo}</span></button>)}</div><div className="mt-3 flex justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div></section>}
+      {isNotificationOpen && <section aria-label="Thông báo cư dân" className="max-h-[calc(100dvh-6rem)] overflow-y-auto fixed top-20 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-neutral-200 bg-white p-4 shadow-lg"><div className="flex justify-between"><h2 className="font-bold text-sm">Thông báo cư dân · {notices.unreadCount + ticketNotices.unread} chưa đọc</h2><button type="button" aria-label="Đóng thông báo cư dân" onClick={() => setIsNotificationOpen(false)}><X className="h-4 w-4" /></button></div><label className="my-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo tiện ích chưa đọc</label><div className="max-h-[45vh] space-y-2 overflow-y-auto">{notices.loading && <p role="status" className="text-xs">Đang tải thông báo…</p>}{notices.error && <p role="alert" className="text-xs text-rose-700">Không thể tải thông báo. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}{!notices.loading && !notices.error && notices.items.length === 0 && <p className="text-xs text-neutral-500">Chưa có thông báo tiện ích.</p>}{notices.items.map((item) => <button type="button" key={item.id} onClick={() => void openAmenityNotice(item)} className={`w-full rounded-xl border p-3 text-left text-xs ${item.isRead ? 'border-neutral-200' : 'border-emerald-200 bg-emerald-50'}`}><span className="block font-semibold">{item.title}</span><span className="mt-1 block">{item.message}</span><span className="mt-1 block text-neutral-500">{item.timeAgo}</span></button>)}</div><div className="mt-3 flex justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div><TicketNotificationList feed={ticketNotices} /></section>}
       <div className="p-6 sm:p-8 lg:p-10">
         {/* ================= VIEW 1: TÒA NHÀ & CĂN HỘ CHO THUÊ ================= */}
         {activeMenuId === 'rentals' ? (
@@ -519,6 +536,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           <ResidentAmenityBookingPanel />
         ) : activeMenuId === 'visitors' ? (
           <ResidentVisitorRegistrationPanel />
+        ) : activeMenuId === 'tickets' ? (
+          <ResidentTicketPanel onNavigateOverview={() => selectMenu('overview')} />
         ) : activeMenuId === 'overview' ? (
           /* ================= VIEW 2: TỔNG QUAN CƯ DÂN ================= */
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
@@ -552,6 +571,12 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
               </button>
             </div>
 
+            {/* Web Push Notification Activation for Resident */}
+            <ResidentPushNotificationToggle />
+
+            {/* Resident Parcels & PIN Pickup Codes Widget */}
+            <ResidentParcelWidget />
+
             {/* 4 Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
@@ -572,7 +597,11 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
+              <div
+                onClick={() => selectMenu('tickets')}
+                className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between cursor-pointer group"
+                title="Bấm để xem danh sách yêu cầu sự cố"
+              >
                 <div className="flex items-center justify-between text-xs text-neutral-500 font-medium">
                   <span>Yêu cầu đang xử lý</span>
                   <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
@@ -668,7 +697,11 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                           </span>
                         </td>
                       </tr>
-                      <tr className="hover:bg-neutral-50/80 transition-colors">
+                      <tr
+                        onClick={() => selectMenu('tickets')}
+                        className="hover:bg-neutral-50/80 transition-colors cursor-pointer"
+                        title="Bấm để xem danh sách sự cố"
+                      >
                         <td className="py-3.5 px-4 font-semibold text-neutral-900 flex items-center gap-2">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                           Sửa vòi nước phòng tắm

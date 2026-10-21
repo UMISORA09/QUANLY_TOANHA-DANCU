@@ -535,6 +535,7 @@ class AmenityBookingPaymentTest extends TestCase
         $this->getJson('/api/v1/resident/amenity-bookings/'.$id)->assertJsonPath('status', 'CANCELLED')->assertJsonPath('payment.status', 'REVIEW');
         $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
         $this->postJson($this->confirmUrl($id), array_merge($this->receipt(), ['received_at' => $receivedAt]))->assertOk()->assertJsonPath('payment.status', 'REVIEW')->assertJsonPath('payment.refund_required', true);
+        $this->travelBack();
     }
 
     public function test_receipt_time_cannot_precede_payment_request_or_be_in_future(): void

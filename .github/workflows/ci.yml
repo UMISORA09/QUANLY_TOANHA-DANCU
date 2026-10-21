@@ -113,6 +113,7 @@ jobs:
           php-version: '8.4'
           extensions: pdo, pdo_mysql, pdo_sqlite, curl, mbstring, xml, ctype, iconv, intl, bcmath, gd, zip
           coverage: none
+          ini-values: memory_limit=1024M
 
       - name: Get Composer Cache Directory
         id: composer-cache
@@ -190,7 +191,7 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: rootpassword
           APP_ENV: testing
-        run: vendor/bin/phpunit --colors=always --log-junit phpunit-report.xml
+        run: php -d memory_limit=1024M vendor/bin/phpunit --colors=always --log-junit phpunit-report.xml
 
       - name: Upload PHPUnit Results Artifact
         uses: actions/upload-artifact@v4
@@ -243,6 +244,9 @@ jobs:
         with:
           name: frontend-build-artifacts
           path: public/build
+
+      - name: Sync Frontend Index HTML
+        run: node scripts/sync-index-html.js
 
       - name: Configure E2E Testing Environment
         env:

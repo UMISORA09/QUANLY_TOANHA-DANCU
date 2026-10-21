@@ -64,7 +64,8 @@ class RealtimeStreamController extends Controller
             ], 403);
         }
 
-        $sinceId = (int) $request->input('since_id', 0);
+        $headerLastId = $request->header('Last-Event-ID');
+        $sinceId = (int) ($headerLastId ?: $request->input('since_id', 0));
         $sinceMs = (int) $request->input('since_ms', 0);
 
         // Giải phóng khóa session PHP ngay lập tức để không block các request mutation khác
@@ -91,6 +92,8 @@ class RealtimeStreamController extends Controller
 
             // Gửi 2KB padding để ép trình duyệt và web server/proxy xả buffer chunk ngay lập tức
             echo ': '.str_repeat(' ', 2048)."\n\n";
+            // Chỉ định cho EventSource client reconnect sau 3000ms nếu stream đóng
+            echo "retry: 3000\n\n";
             @ob_flush();
             @flush();
 
@@ -105,42 +108,49 @@ class RealtimeStreamController extends Controller
             @flush();
 
             $lastEventId = $sinceId;
+            $hasEmittedEvents = false;
 
             // Catch-up initial missed events
             if ($sinceId > 0 || $sinceMs > 0) {
                 $backlog = QuocTinRealtimeService::getEvents($authorizedChannels, $sinceId, $sinceMs, 50);
-                foreach ($backlog as $ev) {
-                    echo "id: {$ev['id']}\nevent: QuocTinEvent\ndata: ".json_encode($ev, JSON_UNESCAPED_UNICODE)."\n\n";
-                    $lastEventId = max($lastEventId, (int) $ev['id']);
-                }
-                @ob_flush();
-                @flush();
-            }
-
-            // Stream loop: Chạy tối đa 2.0s hoặc thoát ngay khi có event mới
-            // Điều này đảm bảo PHP CLI Server (php -S) gửi toàn bộ bytes qua socket ngay lập tức mà không buffer
-            $startTime = microtime(true);
-
-            while ((microtime(true) - $startTime) < 2.0) {
-                if (connection_aborted()) {
-                    break;
-                }
-
-                // Query new events since $lastEventId
-                $newEvents = QuocTinRealtimeService::getEvents($authorizedChannels, $lastEventId, 0, 20);
-                if (! empty($newEvents)) {
-                    foreach ($newEvents as $ev) {
+                if (! empty($backlog)) {
+                    foreach ($backlog as $ev) {
                         echo "id: {$ev['id']}\nevent: QuocTinEvent\ndata: ".json_encode($ev, JSON_UNESCAPED_UNICODE)."\n\n";
                         $lastEventId = max($lastEventId, (int) $ev['id']);
                     }
+                    $hasEmittedEvents = true;
                     @ob_flush();
                     @flush();
-                    // Thoát vòng lặp ngay khi có event để client B nhận ngay lập tức!
-                    break;
                 }
+            }
 
-                // Kiểm tra lại sau 50ms
-                usleep(50000);
+            // Short-lived stream loop:
+            // Nếu đã có backlog events, giải phóng PHP-FPM worker ngay lập tức để không chiếm dụng pool
+            // Nếu chưa có events, chỉ giữ kết nối tối đa 2.5s (poll mỗi 150ms) rồi ngắt kết nối an toàn
+            if (! $hasEmittedEvents) {
+                $startTime = microtime(true);
+
+                while ((microtime(true) - $startTime) < 2.5) {
+                    if (connection_aborted()) {
+                        break;
+                    }
+
+                    // Query new events since $lastEventId
+                    $newEvents = QuocTinRealtimeService::getEvents($authorizedChannels, $lastEventId, 0, 20);
+                    if (! empty($newEvents)) {
+                        foreach ($newEvents as $ev) {
+                            echo "id: {$ev['id']}\nevent: QuocTinEvent\ndata: ".json_encode($ev, JSON_UNESCAPED_UNICODE)."\n\n";
+                            $lastEventId = max($lastEventId, (int) $ev['id']);
+                        }
+                        @ob_flush();
+                        @flush();
+                        // Thoát vòng lặp ngay khi có event để giải phóng worker
+                        break;
+                    }
+
+                    // Kiểm tra lại sau 150ms thay vì 50ms nhằm giảm tải DB & CPU
+                    usleep(150000);
+                }
             }
 
             // Graceful cycle signal for auto-reconnect
@@ -149,7 +159,8 @@ class RealtimeStreamController extends Controller
             @flush();
         }, 200, [
             'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache, no-transform',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate, no-transform',
+            'Pragma' => 'no-cache',
             'Connection' => 'keep-alive',
             'X-Accel-Buffering' => 'no',
             'Content-Encoding' => 'none',
