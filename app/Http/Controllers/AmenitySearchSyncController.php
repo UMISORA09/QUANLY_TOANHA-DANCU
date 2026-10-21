@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\Search\Drivers\AlgoliaDriver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -18,7 +17,6 @@ class AmenitySearchSyncController extends Controller
 
         if ($request->isMethod('post')) {
             abort_if(DB::table('jobs')->where('queue', 'amenity-search')->exists(), 409, 'Synchronization is already queued.');
-            (new AlgoliaDriver(config('search.drivers.algolia')))->configure();
             DB::transaction(function (): void {
                 DB::table('amenities')->orderBy('id')->lockForUpdate()->first();
                 abort_if(DB::table('jobs')->where('queue', 'amenity-search')->exists(), 409, 'Synchronization is already queued.');
