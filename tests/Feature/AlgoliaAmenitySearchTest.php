@@ -8,6 +8,7 @@ use App\Services\Search\Drivers\AlgoliaDriver;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
@@ -155,6 +156,25 @@ class AlgoliaAmenitySearchTest extends TestCase
         $this->withToken(str_repeat('b', 40))->postJson('/api/v1/internal/amenity-search/reindex')->assertStatus(202)->assertJsonPath('pending', $expected);
         $this->postJson('/api/v1/internal/amenity-search/reindex')->assertStatus(409);
         $this->assertSame($expected, DB::table('jobs')->where('queue', 'amenity-search')->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_reindex_retries_only_its_failed_jobs_and_redacts_diagnostics(): void
+    {
+        config(['search.sync_secret' => str_repeat('c', 40), 'queue.failed.driver' => 'database-uuids', 'queue.failed.database' => config('database.default')]);
+        $jobId = app('queue')->connection('database')->push(new SyncAmenitySearchIndex($this->amenityId), '', 'amenity-search');
+        $payload = DB::table('jobs')->where('id', $jobId)->value('payload');
+        DB::table('jobs')->where('id', $jobId)->delete();
+        $failedId = (string) Str::uuid();
+        foreach (['amenity-search' => $failedId, 'unrelated-queue' => (string) Str::uuid()] as $queue => $uuid) {
+            DB::table('failed_jobs')->insert(['uuid' => $uuid, 'connection' => 'database', 'queue' => $queue, 'payload' => $payload, 'exception' => 'RuntimeException: Algolia task 42 is not published yet. private-value-must-not-leak', 'failed_at' => now()]);
+        }
+        $this->withToken(str_repeat('c', 40))->getJson('/api/v1/internal/amenity-search/process')
+            ->assertOk()->assertJsonPath('failure_codes.algolia_task_pending', 1)->assertDontSee('private-value-must-not-leak');
+        $expected = DB::table('amenities')->count() + 1;
+        $this->postJson('/api/v1/internal/amenity-search/reindex')->assertStatus(202)->assertJsonPath('pending', $expected);
+        $this->assertDatabaseMissing('failed_jobs', ['uuid' => $failedId]);
+        $this->assertDatabaseHas('failed_jobs', ['queue' => 'unrelated-queue']);
         Http::assertNothingSent();
     }
 }
