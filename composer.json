@@ -34,6 +34,7 @@
         }
     },
     "scripts": {
+        "vercel": "@php artisan amenities:prepare-payment-schema --no-interaction",
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",

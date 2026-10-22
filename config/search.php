@@ -10,6 +10,7 @@ return [
     |
     */
     'default' => env('SEARCH_DRIVER', 'smart'),
+    'sync_secret' => env('AMENITY_SEARCH_SYNC_SECRET', ''),
 
     /*
     |--------------------------------------------------------------------------
@@ -17,6 +18,13 @@ return [
     |--------------------------------------------------------------------------
     */
     'drivers' => [
+        'algolia' => [
+            'app_id' => env('ALGOLIA_APP_ID', ''),
+            'key' => env('ALGOLIA_API_KEY', ''),
+            'amenities_index' => env('ALGOLIA_AMENITIES_INDEX', ''),
+            'sync_enabled' => env('ALGOLIA_SYNC_ENABLED', false),
+            'allow_flush' => false,
+        ],
         'smart' => [
             'min_token_length' => 2,
             'fuzzy_enabled' => true,

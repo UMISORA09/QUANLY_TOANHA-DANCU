@@ -4,6 +4,7 @@ use App\Http\Controllers\AccessCardController;
 use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
+use App\Http\Controllers\AmenitySearchSyncController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
@@ -756,9 +757,9 @@ Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);
 Route::get('/meta/blocks', [AmenityController::class, 'getBlocks']);
 
 // Smart Search Engine APIs (Full-Text, Autocomplete & AI Knowledge Hybrid Search)
-Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities']);
-Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities']);
-Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions']);
+Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
+Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
+Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
@@ -890,3 +891,7 @@ Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'coold
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);
 });
+
+Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:30,1');
+
+Route::post('/api/v1/internal/amenity-search/reindex', AmenitySearchSyncController::class)->middleware('throttle:6,1');
