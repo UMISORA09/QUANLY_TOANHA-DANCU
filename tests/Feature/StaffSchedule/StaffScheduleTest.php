@@ -43,30 +43,43 @@ class StaffScheduleTest extends TestCase
     {
         parent::setUp();
 
+        StaffScheduleService::resetInitialDataCache();
         $this->service = app(StaffScheduleService::class);
-        $this->service->ensureInitialData();
+        $this->service->ensureInitialData(true);
 
         // 1. Tạo Manager User
         [$this->manager, $this->managerToken] = $this->createUserWithRole('BUILDING_MANAGER');
 
         // 2. Tạo Resident User (không có quyền quản lý lịch)
-        [$this->resident, $this->residentToken] = $this->createUserWithRole('RESIDENT');
+        [$this->resident, $this->residentToken] = $this->createUserWithRole('RESIDENT_OWNER');
 
-        // 3. Lấy hoặc tạo staff profiles cho Lễ tân và An ninh
+        // 3. Đảm bảo Departments luôn tồn tại
+        $deptReception = Department::firstOrCreate(
+            ['department_code' => 'FRONT_DESK'],
+            ['department_name' => 'Bộ phận Lễ Tân']
+        );
+
+        $deptSecurity = Department::firstOrCreate(
+            ['department_code' => 'SECURITY'],
+            ['department_name' => 'Bộ phận An Ninh / Bảo Vệ']
+        );
+
+        // 4. Lấy hoặc tạo staff profiles cho Lễ tân và An ninh
         $this->receptionProfile = StaffProfile::whereHas('user.roles', function ($q) {
             $q->where('roles.role_code', 'RECEPTIONIST');
         })->first();
 
         if (! $this->receptionProfile) {
             [$receptionUser] = $this->createUserWithRole('RECEPTIONIST');
-            $dept = Department::where('department_code', 'FRONT_DESK')->first();
             $this->receptionProfile = StaffProfile::create([
                 'id' => (string) Str::uuid(),
                 'user_id' => $receptionUser->id,
-                'employee_code' => 'LT-TEST-'.strtoupper(Str::random(4)),
-                'department_id' => $dept->id,
+                'employee_code' => 'LT-TEST-'.strtoupper(Str::random(6)),
+                'department_id' => $deptReception->id,
                 'job_title' => 'Nhân viên Lễ tân',
                 'hire_date' => now()->toDateString(),
+                'contract_type' => 'FULL_TIME',
+                'base_salary' => 9000000,
             ]);
         }
 
@@ -76,21 +89,28 @@ class StaffScheduleTest extends TestCase
 
         if (! $this->securityProfile) {
             [$securityUser] = $this->createUserWithRole('SECURITY_GUARD');
-            $dept = Department::where('department_code', 'SECURITY')->first();
             $this->securityProfile = StaffProfile::create([
                 'id' => (string) Str::uuid(),
                 'user_id' => $securityUser->id,
-                'employee_code' => 'BV-TEST-'.strtoupper(Str::random(4)),
-                'department_id' => $dept->id,
+                'employee_code' => 'BV-TEST-'.strtoupper(Str::random(6)),
+                'department_id' => $deptSecurity->id,
                 'job_title' => 'Nhân viên Bảo vệ',
                 'hire_date' => now()->toDateString(),
+                'contract_type' => 'FULL_TIME',
+                'base_salary' => 8500000,
             ]);
         }
 
-        // 4. Lấy các loại ca trực
+        // 5. Lấy các loại ca trực
         $this->morningShift = ShiftType::where('shift_code', 'CA_SANG')->first();
         $this->afternoonShift = ShiftType::where('shift_code', 'CA_CHIEU')->first();
         $this->overnightShift = ShiftType::where('shift_code', 'CA_DEM')->first();
+    }
+
+    protected function tearDown(): void
+    {
+        StaffScheduleService::resetInitialDataCache();
+        parent::tearDown();
     }
 
     /**
@@ -106,15 +126,16 @@ class StaffScheduleTest extends TestCase
                 'id' => (string) Str::uuid(),
                 'role_code' => $roleCode,
                 'role_name' => 'Role '.$roleCode,
-                'is_system' => 1,
+                'is_system_role' => 1,
             ]);
         }
 
+        $suffix = str_replace('-', '', (string) Str::uuid());
         $user = User::create([
             'id' => (string) Str::uuid(),
-            'username' => 'test_'.strtolower($roleCode).'_'.Str::random(6),
+            'username' => 'test_'.strtolower($roleCode).'_'.$suffix,
             'phone_number' => '09'.rand(10000000, 99999999),
-            'email' => 'test_'.strtolower($roleCode).'_'.Str::random(6).'@cassavas.vn',
+            'email' => 'test_'.strtolower($roleCode).'_'.$suffix.'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Nhân Viên '.$roleCode.' Test',
             'status' => 'ACTIVE',
@@ -128,7 +149,7 @@ class StaffScheduleTest extends TestCase
             'assigned_at' => now(),
         ]);
 
-        $token = 'smart_token_'.$user->id.'_'.Str::random(32);
+        $token = 'smart_token_'.$user->id.'_'.$suffix;
         $tokenHash = hash('sha256', $token);
 
         DB::table('user_sessions')->insert([
@@ -448,6 +469,7 @@ class StaffScheduleTest extends TestCase
         $earlyMorningShift = ShiftType::firstOrCreate(
             ['shift_code' => 'CA_SOM_TEST'],
             [
+                'id' => (string) Str::uuid(),
                 'shift_name' => 'Ca Sớm Đặc Biệt (05:00 - 09:00)',
                 'start_time' => '05:00:00',
                 'end_time' => '09:00:00',

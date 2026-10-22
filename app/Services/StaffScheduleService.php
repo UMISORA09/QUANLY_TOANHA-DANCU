@@ -20,19 +20,27 @@ class StaffScheduleService
 {
     private static bool $initialDataChecked = false;
 
+    public static function resetInitialDataCache(): void
+    {
+        self::$initialDataChecked = false;
+        Cache::forget('staff_schedule_initial_data_done');
+    }
+
     /**
      * Khởi tạo dữ liệu ca trực mẫu và liên kết tài khoản Lễ tân & Bảo vệ vào hồ sơ nhân viên
      */
-    public function ensureInitialData(): void
+    public function ensureInitialData(bool $force = false): void
     {
-        if (self::$initialDataChecked) {
-            return;
-        }
+        if (! $force && ! app()->environment('testing')) {
+            if (self::$initialDataChecked) {
+                return;
+            }
 
-        if (Cache::has('staff_schedule_initial_data_done')) {
-            self::$initialDataChecked = true;
+            if (Cache::has('staff_schedule_initial_data_done')) {
+                self::$initialDataChecked = true;
 
-            return;
+                return;
+            }
         }
         // 1. Khởi tạo Departments nếu chưa có
         $deptReception = Department::firstOrCreate(
@@ -120,8 +128,10 @@ class StaffScheduleService
             }
         }
 
-        Cache::put('staff_schedule_initial_data_done', true, 86400);
-        self::$initialDataChecked = true;
+        if (! app()->environment('testing')) {
+            Cache::put('staff_schedule_initial_data_done', true, 86400);
+            self::$initialDataChecked = true;
+        }
     }
 
     /**
@@ -410,7 +420,7 @@ class StaffScheduleService
             entityId: $schedule->id,
             extra: [
                 'schedule' => $schedule->toArray(),
-                'work_date' => $schedule->work_date->format('Y-m-d'),
+                'work_date' => Carbon::parse($schedule->work_date)->format('Y-m-d'),
                 'staff_profile_id' => $schedule->staff_profile_id,
             ],
             actorId: $creator?->id,
@@ -437,14 +447,14 @@ class StaffScheduleService
 
             $targetStaffId = $data['staff_profile_id'] ?? $item->staff_profile_id;
             $targetShiftId = $data['shift_type_id'] ?? $item->shift_type_id;
-            $targetWorkDate = isset($data['work_date']) ? Carbon::parse($data['work_date'])->toDateString() : $item->work_date->format('Y-m-d');
+            $targetWorkDate = isset($data['work_date']) ? Carbon::parse($data['work_date'])->toDateString() : Carbon::parse($item->work_date)->format('Y-m-d');
             $targetStatus = isset($data['status']) ? strtoupper($data['status']) : $item->status;
 
             // Nếu thay đổi ngày, nhân viên hoặc loại ca, kiểm tra xung đột
             if (
                 $targetStaffId !== $item->staff_profile_id ||
                 $targetShiftId !== $item->shift_type_id ||
-                $targetWorkDate !== $item->work_date->format('Y-m-d')
+                $targetWorkDate !== Carbon::parse($item->work_date)->format('Y-m-d')
             ) {
                 if ($targetStatus !== 'CANCELLED') {
                     $this->validateNoConflict($targetStaffId, $targetShiftId, $targetWorkDate, $item->id);
@@ -491,7 +501,7 @@ class StaffScheduleService
             entityId: $schedule->id,
             extra: [
                 'schedule' => $schedule->toArray(),
-                'work_date' => $schedule->work_date->format('Y-m-d'),
+                'work_date' => Carbon::parse($schedule->work_date)->format('Y-m-d'),
                 'staff_profile_id' => $schedule->staff_profile_id,
             ],
             actorId: $actor?->id,
@@ -534,7 +544,7 @@ class StaffScheduleService
                 ->where('schedule_id', $id)
                 ->exists();
 
-            $workDate = $item->work_date->format('Y-m-d');
+            $workDate = Carbon::parse($item->work_date)->format('Y-m-d');
             $staffProfileId = $item->staff_profile_id;
 
             // Nếu đã có chấm công hoặc người dùng chọn hủy ca: chuyển trạng thái CANCELLED
