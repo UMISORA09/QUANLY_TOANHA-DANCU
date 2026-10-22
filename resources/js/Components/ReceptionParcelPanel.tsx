@@ -369,7 +369,7 @@ export const CustomSelectModal: React.FC<{
 
       {/* Menu Popup chuẩn 100% Ảnh 2 */}
       {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
+        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 max-h-56 overflow-y-auto custom-scrollbar">
           {searchable && (
             <div className="p-1 border-b border-slate-100 mb-1">
               <input
@@ -1813,7 +1813,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
             {/* Courier Dropdown Menu Popup */}
             {isCourierDropdownOpen && (
-              <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[200px] max-h-64 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[200px] max-h-64 overflow-y-auto">
                 <div
                   onClick={() => {
                     setCourierFilter('ALL');
@@ -1903,7 +1903,7 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
                   {/* Dropdown Menu Popup (Chuẩn 100% Ảnh 2) */}
                   {isStatusDropdownOpen && (
-                    <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[220px] animate-in fade-in zoom-in-95 duration-100">
+                    <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[220px]">
                       {statusOptions.map((opt) => {
                         const isSelected = statusFilter === opt.id;
                         return (
