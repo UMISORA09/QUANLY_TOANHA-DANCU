@@ -34,6 +34,7 @@ use App\Http\Controllers\RevenueAnalyticsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
+use App\Http\Controllers\StaffScheduleController;
 use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\UserController;
@@ -219,6 +220,23 @@ Route::post('/api/v1/reception/parcels/{id}/check-out', [ReceptionParcelControll
 Route::post('/api/v1/reception/parcels/{id}/handover', [ReceptionParcelController::class, 'checkOut']);
 Route::post('/api/v1/reception/parcels/{id}/remind', [ReceptionParcelController::class, 'remind']);
 Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
+
+// =========================================================================
+// API Quản lý Xếp ca trực theo tuần/tháng cho Lễ tân & Bảo vệ (Module #12)
+// =========================================================================
+Route::get('/api/v1/management/schedules', [StaffScheduleController::class, 'index']);
+Route::get('/api/v1/management/schedules/shift-types', [StaffScheduleController::class, 'shiftTypes']);
+Route::get('/api/v1/management/schedules/staff-candidates', [StaffScheduleController::class, 'staffCandidates']);
+Route::post('/api/v1/management/schedules', [StaffScheduleController::class, 'store']);
+Route::match(['PUT', 'POST'], '/api/v1/management/schedules/{id}', [StaffScheduleController::class, 'update']);
+Route::delete('/api/v1/management/schedules/{id}', [StaffScheduleController::class, 'destroy']);
+
+Route::get('/api/schedules', [StaffScheduleController::class, 'index']);
+Route::get('/api/schedules/shift-types', [StaffScheduleController::class, 'shiftTypes']);
+Route::get('/api/schedules/staff-candidates', [StaffScheduleController::class, 'staffCandidates']);
+Route::post('/api/schedules', [StaffScheduleController::class, 'store']);
+Route::match(['PUT', 'POST'], '/api/schedules/{id}', [StaffScheduleController::class, 'update']);
+Route::delete('/api/schedules/{id}', [StaffScheduleController::class, 'destroy']);
 
 Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
     Route::get('/', [TicketManagementController::class, 'index']);

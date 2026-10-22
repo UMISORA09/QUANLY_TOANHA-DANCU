@@ -128,7 +128,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100 min-w-[200px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col min-w-[200px]">
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -289,7 +289,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col">
           {residents.length >= 4 && (
             <div className="p-2 border-b border-slate-100 bg-slate-50/90">
               <div className="relative">
@@ -447,7 +447,7 @@ const CardTypeCombobox: React.FC<CardTypeComboboxProps> = ({ value, onChange }) 
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 min-w-[240px]">
           {CARD_TYPE_OPTIONS.map((opt) => {
             const isSelected = opt.id === value;
             const Icon = opt.icon;
@@ -597,7 +597,7 @@ const CardStatusCombobox: React.FC<CardStatusComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 min-w-[240px]">
           {availableOptions.map((opt) => {
             const isSelected = opt.id === value;
             const Icon = opt.icon;
@@ -708,7 +708,7 @@ const IssuedDateCombobox: React.FC<IssuedDateComboboxProps> = ({ value, onChange
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-2 text-xs space-y-2 animate-in fade-in zoom-in-95 duration-100 min-w-[220px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-2 text-xs space-y-2 min-w-[220px]">
           <div className="text-[11px] font-bold text-slate-500 px-1 uppercase tracking-wider">
             Chọn nhanh ngày cấp
           </div>
@@ -831,7 +831,7 @@ const ExpiryDateCombobox: React.FC<ExpiryDateComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-2 text-xs space-y-2 animate-in fade-in zoom-in-95 duration-100 min-w-[220px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-2 text-xs space-y-2 min-w-[220px]">
           <div className="text-[11px] font-bold text-slate-500 px-1 uppercase tracking-wider">
             Thời hạn nhanh
           </div>
@@ -947,7 +947,7 @@ const DepositFeeCombobox: React.FC<DepositFeeComboboxProps> = ({ value, onChange
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-2 text-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-100 min-w-[220px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-2 text-xs space-y-1.5 min-w-[220px]">
           <div className="text-[11px] font-bold text-slate-500 px-1 uppercase tracking-wider">
             Chọn nhanh tiền cọc
           </div>
@@ -1095,7 +1095,7 @@ const StatusFilterCombobox: React.FC<StatusFilterComboboxProps> = ({ value, onCh
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[210px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 min-w-[210px]">
           {STATUS_FILTER_OPTIONS.map((opt) => {
             const isSelected = opt.id === value;
             const Icon = opt.icon;
@@ -1231,7 +1231,7 @@ const CardTypeFilterCombobox: React.FC<CardTypeFilterComboboxProps> = ({ value, 
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[210px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 min-w-[210px]">
           {CARD_TYPE_FILTER_OPTIONS.map((opt) => {
             const isSelected = opt.id === value;
             const Icon = opt.icon;
