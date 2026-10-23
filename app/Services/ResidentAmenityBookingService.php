@@ -244,9 +244,20 @@ class ResidentAmenityBookingService
 
     public function notifyManagers(string $amenityId, string $bookingCode, string $title, string $message): void
     {
+        $blockId = $amenityId !== '' ? DB::table('amenities')->where('id', $amenityId)->value('block_id') : null;
+        if ($bookingCode !== '') {
+            $blockId = DB::table('amenity_bookings as b')->join('apartments as a', 'a.id', '=', 'b.apartment_id')->where('b.booking_code', $bookingCode)->value('a.block_id') ?? $blockId;
+        }
         $recipients = User::query()->where('status', 'ACTIVE')->whereHas('roles', function (Builder $roles): void {
             $roles->whereIn('role_code', ['SUPER_ADMIN', 'SUPER_ADMI'])
                 ->orWhereHas('permissions', fn (Builder $permissions): Builder => $permissions->where('permission_code', 'AMENITY:UPDATE'));
+        })->get()->filter(function (User $user) use ($amenityId, $blockId): bool {
+            if ($user->isSuperAdmin()) {
+                return true;
+            }
+            $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
+
+            return $user->hasRole('BUILDING_MANAGER') && $profile && ($profile->assigned_block_id === null || ($amenityId !== '' && $profile->assigned_block_id === $blockId));
         })->pluck('id');
         $rows = $recipients->map(fn (string $id): array => [
             'id' => (string) Str::uuid(), 'recipient_user_id' => $id,
@@ -272,7 +283,8 @@ class ResidentAmenityBookingService
     /** @param array{page?: int|string, unread?: bool|string} $data */
     public function notifications(User $user, string $category, array $data): array
     {
-        $query = DB::table('user_in_app_notifications')->where('recipient_user_id', $user->id)->where('category', $category);
+        $query = $category === 'AMENITY_BOOKING' ? app(ManagerNotificationService::class)->inbox($user)->where('category', $category)
+            : DB::table('user_in_app_notifications')->where('recipient_user_id', $user->id)->where('category', $category);
         $unread = (clone $query)->where('is_read', 0)->count();
         $latest = (clone $query)->where('is_read', 0)->orderByDesc('created_at')->orderByDesc('id')->first();
         if (filter_var($data['unread'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
@@ -293,7 +305,8 @@ class ResidentAmenityBookingService
 
     public function readNotification(User $user, string $category, string $id): void
     {
-        $query = DB::table('user_in_app_notifications')->where('id', $id)->where('recipient_user_id', $user->id)->where('category', $category);
+        $query = $category === 'AMENITY_BOOKING' ? app(ManagerNotificationService::class)->inbox($user)->where('category', $category)->where('id', $id)
+            : DB::table('user_in_app_notifications')->where('id', $id)->where('recipient_user_id', $user->id)->where('category', $category);
         abort_unless((clone $query)->exists(), 404);
         $query->where('is_read', 0)->update(['is_read' => 1, 'read_at' => now()]);
     }
