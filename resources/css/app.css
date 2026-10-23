@@ -1,5 +1,143 @@
 @import 'tailwindcss';
 
+/* Catalog-only surfaces; other portals keep their existing theme. */
+.catalog-ui, .catalog-dialog {
+    --feature-primary: #1e40af;
+    --feature-primary-hover: #1e3a8a;
+    --feature-border: #cbd5e1;
+    --feature-text: #0f172a;
+    --feature-shadow: 0 6px 20px rgb(15 23 42 / .05);
+    color: var(--feature-text);
+}
+.catalog-ui { min-width: 0; }
+.catalog-ui .catalog-header {
+    margin-bottom: 1.25rem;
+    padding: 1.5rem;
+    border: 1px solid #dbeafe;
+    border-left: 4px solid var(--feature-primary);
+    border-radius: 1.25rem;
+    background: rgb(239 246 255 / .8);
+}
+.catalog-ui h1, .catalog-dialog h2 { color: var(--feature-text); text-wrap: balance; }
+.catalog-ui .catalog-toolbar { border-color: var(--feature-border); box-shadow: var(--feature-shadow); }
+.catalog-ui .catalog-table { border-color: #e2e8f0; box-shadow: var(--feature-shadow); }
+.catalog-ui .catalog-table thead { background: #eff6ff; color: #334155; }
+.catalog-ui .catalog-table tbody tr:hover { background: #f8fbff; }
+.catalog-ui .catalog-table td { font-variant-numeric: tabular-nums; }
+.catalog-ui .catalog-primary, .catalog-dialog button[type=submit] {
+    min-height: 2.75rem;
+    background: var(--feature-primary);
+    color: #fff;
+    border-color: var(--feature-primary);
+}
+.catalog-ui .catalog-primary:hover, .catalog-dialog button[type=submit]:hover { background: var(--feature-primary-hover); }
+.catalog-ui .catalog-toolbar :is(input, select), .catalog-dialog :is(input:not([type=checkbox]), select, textarea) {
+    min-height: 2.75rem;
+    border-radius: .75rem;
+    border-color: var(--feature-border);
+    font-size: .875rem;
+}
+.catalog-ui :is(button, input, select, a):focus-visible, .catalog-dialog :is(button, input, select, textarea):focus-visible {
+    outline: 3px solid rgb(30 64 175 / .55);
+    outline-offset: 2px;
+}
+.catalog-dialog > div:last-child { border: 1px solid #dbeafe; box-shadow: 0 16px 40px rgb(15 23 42 / .12); }
+.catalog-dialog > div:last-child > div:first-child { border-color: #dbeafe; }
+.catalog-dialog form { background: #f8fafc; border-color: #e2e8f0; }
+.catalog-dialog .text-neutral-400 { color: #475569; }
+.catalog-dialog button { min-height: 2.75rem; min-width: 2.75rem; }
+.catalog-dialog::backdrop { background: rgb(15 23 42 / .35); }
+.catalog-ui .catalog-select { cursor: pointer; }
+@supports (appearance: base-select) {
+    .catalog-ui .catalog-select, .catalog-ui .catalog-select::picker(select) { appearance: base-select; }
+    .catalog-ui .catalog-select::picker(select) { border: 1px solid #cbd5e1; border-radius: .75rem; padding: .375rem; max-height: 16rem; overflow-y: auto; box-shadow: var(--feature-shadow); }
+    .catalog-ui .catalog-select option { border-radius: .5rem; padding: .625rem; }
+    .catalog-ui .catalog-select option:checked { background: #dbeafe; color: #1e3a8a; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .catalog-ui *, .catalog-dialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+
+
+/* Resident booking only; manager and payment behavior are unchanged. */
+.resident-booking-ui {
+    --feature-primary: #1e40af;
+    --feature-primary-hover: #1e3a8a;
+    --feature-border: #cbd5e1;
+    --feature-shadow: 0 6px 20px rgb(15 23 42 / .05);
+    min-width: 0;
+    color: #0f172a;
+}
+.resident-booking-ui .booking-header {
+    padding: 1rem;
+    border: 1px solid #dbeafe;
+    border-left: 4px solid var(--feature-primary);
+    border-radius: 1.25rem;
+    background: rgb(239 246 255 / .8);
+}
+.resident-booking-ui :is(h1, h2, h3) { text-wrap: balance; }
+.resident-booking-ui .booking-tabs { gap: .5rem; border-color: #dbeafe; }
+.resident-booking-ui .booking-tabs button { min-height: 2.75rem; }
+.resident-booking-ui .booking-tabs button[aria-pressed=true] { background: var(--feature-primary); color: #fff; }
+.resident-booking-ui .booking-toolbar { border-color: var(--feature-border); box-shadow: var(--feature-shadow); }
+.resident-booking-ui .booking-amenity { border-color: #cbd5e1; box-shadow: var(--feature-shadow); }
+.resident-booking-ui .booking-amenity:hover { border-color: #0f766e; }
+.resident-booking-ui .booking-amenity[aria-pressed=true] { border-color: var(--feature-primary); outline: 2px solid #bfdbfe; }
+.resident-booking-ui .booking-cover { background: #f0fdfa; border-bottom: 1px solid #ccfbf1; }
+.resident-booking-ui .booking-cover > svg { color: #0f766e; }
+.resident-booking-ui .booking-amenity strong { font-size: .875rem; font-variant-numeric: tabular-nums; }
+.resident-booking-ui .booking-primary { min-height: 2.75rem; background: var(--feature-primary); }
+.resident-booking-ui .booking-primary:hover:not(:disabled) { background: var(--feature-primary-hover); }
+.resident-booking-ui .booking-input { min-height: 2.75rem; border-color: var(--feature-border); }
+.resident-booking-ui :is(button, a, input, select, textarea):focus-visible { outline: 3px solid rgb(30 64 175 / .55); outline-offset: 2px; }
+.resident-booking-ui dialog { max-height: 90dvh; border-color: #cbd5e1; box-shadow: 0 16px 40px rgb(15 23 42 / .12); }
+.resident-booking-ui dialog > div:first-child { border-color: #dbeafe; }
+.resident-booking-ui dialog .sticky.top-0 { background: #eff6ff; }
+.resident-booking-ui .booking-summary { border-color: #bfdbfe; background: #f8fbff; box-shadow: var(--feature-shadow); }
+.resident-booking-ui .booking-summary dl { font-variant-numeric: tabular-nums; }
+.resident-booking-ui .booking-summary dl > div:last-child { color: #1e40af; font-size: 1rem; border-color: #bfdbfe; }
+.resident-booking-ui .booking-summary .text-neutral-400 { color: #475569; }
+.resident-booking-ui .booking-history { border-color: #e2e8f0; border-left: 3px solid #0f766e; box-shadow: var(--feature-shadow); }
+.resident-booking-ui .booking-history .font-mono { color: #475569; }
+.resident-booking-ui table thead { background: #eff6ff; }
+.resident-booking-ui table :is(th, td) { font-variant-numeric: tabular-nums; }
+.resident-booking-ui nav { padding: .75rem; border-radius: .75rem; background: #f8fafc; }
+@media (prefers-reduced-motion: reduce) {
+    .resident-booking-ui * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (min-width: 640px) {
+    .resident-booking-ui .booking-header { padding: 1.5rem; }
+}
+
+
+
+
+/* Availability presentation follows the server's available flag and reason. */
+.availability-ui .availability-section {
+    padding: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 1rem;
+    background: #f8fafc;
+}
+.availability-ui .availability-section h3 { color: #1e40af; text-wrap: balance; }
+.availability-ui .availability-slot { min-height: 6rem; border-color: #99d5cb; background: #f0fdfa; color: #115e59; }
+.availability-ui .availability-slot:hover:not(:disabled) { border-color: #0f766e; box-shadow: 0 3px 10px rgb(15 23 42 / .06); }
+.availability-ui .availability-slot[data-state=selected] { border-color: #1e40af; background: #dbeafe; color: #1e3a8a; box-shadow: inset 0 0 0 1px #1e40af; }
+.availability-ui .availability-slot[data-state=unavailable] { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.availability-ui .availability-slot[data-state=maintenance] { border-color: #fecdd3; background: #fff1f2; color: #9f1239; }
+.availability-ui .availability-slot[data-state=blocked] { border-color: #cbd5e1; background: #f1f5f9; color: #475569; }
+.availability-ui .availability-slot:disabled { cursor: not-allowed; }
+.availability-ui .availability-slot:focus-visible { outline: 3px solid rgb(30 64 175 / .55); outline-offset: 3px; }
+.availability-ui [role=alert] { border-left-width: 4px; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+    .availability-ui * { animation: none !important; transition: none !important; }
+}
+
+
+
+
+
 /* Booking review surfaces only; no global admin or resident styles. */
 .booking-review-worklist { border-color: #bfdbfe; border-left: 4px solid #1e40af; box-shadow: 0 6px 20px rgb(15 23 42 / .05); }
 .booking-review-worklist h2 { color: #1e3a8a; font-size: 1.125rem; text-wrap: balance; }
@@ -47,6 +185,7 @@
 }
 
 
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../views/**/*.blade.php';
@@ -56,18 +195,18 @@
     --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-:is(.resident-amenity-select, .amenity-booking-select) {
-    border-radius: 1rem;
+:is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select) {
+    border-radius: 0.75rem;
     cursor: pointer;
 }
 
 @supports (appearance: base-select) {
-    :is(.resident-amenity-select, .amenity-booking-select),
-    :is(.resident-amenity-select, .amenity-booking-select)::picker(select) {
+    :is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select),
+    :is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select)::picker(select) {
         appearance: base-select;
     }
 
-    :is(.resident-amenity-select, .amenity-booking-select)::picker(select) {
+    :is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select)::picker(select) {
         margin-block: 0.375rem;
         padding: 0.375rem;
         border: 1px solid #e5e5e5;
@@ -78,18 +217,18 @@
         overflow-y: auto;
     }
 
-    :is(.resident-amenity-select, .amenity-booking-select) option {
+    :is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select) option {
         padding: 0.625rem 0.75rem;
         border-radius: 0.75rem;
         cursor: pointer;
     }
 
-    :is(.resident-amenity-select, .amenity-booking-select) option:hover,
-    :is(.resident-amenity-select, .amenity-booking-select) option:focus {
+    :is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select) option:hover,
+    :is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select) option:focus {
         background: #f5f5f5;
     }
 
-    :is(.resident-amenity-select, .amenity-booking-select) option:checked {
+    :is(.resident-amenity-select, .amenity-booking-select, .resident-ticket-select) option:checked {
         background: #0a0a0a;
         color: white;
     }
@@ -613,6 +752,28 @@
     display: none;
 }
 
+/* Luôn hiển thị thanh cuộn dọc (visible vertical scrollbar) */
+.visible-scrollbar {
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #f1f5f9;
+}
+.visible-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.visible-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 9999px;
+    margin: 4px 0;
+}
+.visible-scrollbar::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 9999px;
+}
+.visible-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
 /* Subtle clean horizontal scrollbar for dashboard and flow tables */
 .scrollbar-subtle {
     scrollbar-width: thin;
@@ -678,7 +839,30 @@
     border-radius: 999px;
     border: 2px solid #f1f5f9;
 }
+/* Hide number input spinners (up/down arrows) */
+input.no-spinner::-webkit-outer-spin-button,
+input.no-spinner::-webkit-inner-spin-button,
+.no-spinner input[type="number"]::-webkit-outer-spin-button,
+.no-spinner input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 
+input.no-spinner,
+.no-spinner input[type="number"],
+input[type="number"].no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
 
-
+/* Safety rules for browser print preview */
+@media print {
+    *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        text-shadow: none !important;
+    }
+}
 

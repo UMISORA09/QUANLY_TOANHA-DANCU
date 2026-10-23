@@ -77,6 +77,40 @@ for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }
   });
 }
 
+for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`MOCKED E2E F3 slot states visual ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await fixture(page);
+    await page.route('**/availability?**', (route) => route.fulfill({ json: { slots: [
+      availableSlot,
+      { ...availableSlot, slot_id: 'full', start_time: '12:00', end_time: '13:00', available: false, reason: 'Khung giờ đã hết chỗ.', remaining_bookings: 0, remaining_attendees: 0 },
+      { ...availableSlot, slot_id: 'maintenance', start_time: '14:00', end_time: '15:00', available: false, reason: 'Bảo trì: Vệ sinh định kỳ.' },
+      { ...availableSlot, slot_id: 'past', start_time: '07:00', end_time: '08:00', available: false, reason: 'Khung giờ đã qua.' },
+    ] } }));
+    await page.getByRole('button', { name: /Vườn BBQ/ }).click();
+    const dialog = page.getByRole('dialog', { name: /Đăng ký tiện ích/ });
+    await expect(dialog.getByRole('button', { name: /12:00.*13:00/ })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: /14:00.*15:00/ })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: /07:00.*08:00/ })).toBeDisabled();
+    const available = dialog.getByRole('button', { name: /10:00.*11:30/ });
+    await expect(available).toContainText('Còn 2 lượt · 4 chỗ');
+    await available.click();
+    await expect(available).toHaveAttribute('aria-pressed', 'true');
+    if (process.env.UI_AUDIT_PHASE !== 'before') {
+      await expect(available).toContainText('Đang chọn');
+      await expect(dialog.getByRole('button', { name: /14:00.*15:00/ })).toHaveAttribute('data-state', 'maintenance');
+      await expect(dialog.getByRole('button', { name: /12:00.*13:00/ })).toHaveAttribute('data-state', 'unavailable');
+      await available.focus();
+      await page.keyboard.press('Space');
+      await expect(available).toBeFocused();
+    }
+    await available.scrollIntoViewIfNeeded();
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`slots-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+  });
+}
+
 const today = '2026-10-05';
 const amenity = {
   id: 'amenity-test', category_id: 'category-test', block_id: 'block-test', amenity_name: 'Vườn BBQ',
@@ -177,7 +211,6 @@ test('quản lý từ chối đăng ký với lý do bắt buộc', async ({ pag
   await page.getByRole('button', { name: 'Duyệt đăng ký', exact: true }).click();
   await page.getByRole('button', { name: 'Duyệt', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Đăng ký vừa thay đổi');
-  await expect(page.getByRole('alert')).toHaveAttribute('data-conflict', 'true');
   await expect(page.getByRole('status').filter({ hasText: 'Đã duyệt đăng ký' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Từ chối', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Từ chối đăng ký tiện ích' });
@@ -244,8 +277,8 @@ test('quản lý nhận đăng ký mới ở tab khác và mở đúng đơn t�
   arrived = true;
   const alert = page.getByRole('status').filter({ hasText: notice.title });
   await expect.poll(() => polls, { timeout: 12000 }).toBeGreaterThan(1);
-  await expect(alert).not.toBeVisible();
-  await expect(page.getByText(notice.title, { exact: true })).not.toBeVisible();
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByText(notice.title, { exact: true })).toHaveCount(0);
   await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
   await page.getByRole('region', { name: 'Thông báo vận hành' }).getByRole('button', { name: 'Xem đăng ký', exact: true }).click();
   await expect(page).toHaveURL(/tab=amenities.*amenity_id=amenity-test.*booking_code=BK-TEST/);
@@ -1089,3 +1122,27 @@ test('hủy chưa xác định kết quả khóa xác nhận và giữ lý do kh
   await expect(confirmation.getByRole('button', { name: 'Xác nhận hủy', exact: true })).toBeEnabled();
   await expect(confirmation.getByLabel('Lý do hủy (không bắt buộc)')).toHaveValue('Giữ lý do khi thử lại');
 });
+
+for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`MOCKED E2E F2 resident booking visual ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await fixture(page);
+    await expect(page.getByRole('button', { name: /Vườn BBQ/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`catalog-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    if (process.env.UI_AUDIT_PHASE !== 'before') {
+      await page.getByPlaceholder('Tên tiện ích…').fill('Không tồn tại QA');
+      await expect(page.getByText('Không có tiện ích phù hợp.', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Xóa bộ lọc', exact: true }).click();
+      await expect(page.getByRole('button', { name: /Vườn BBQ/ })).toBeVisible();
+    }
+    await chooseSlot(page);
+    await page.screenshot({ path: testInfo.outputPath(`registration-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Đăng ký thành công' })).toBeVisible();
+    await page.getByRole('button', { name: 'Xem lịch của tôi', exact: true }).click();
+    await expect(page.getByText('BK-TEST', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`history-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+  });
+}

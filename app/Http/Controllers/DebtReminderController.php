@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DebtReminderLog;
 use App\Models\Invoice;
 use App\Services\DebtReminderService;
 use Illuminate\Http\JsonResponse;
@@ -82,6 +83,79 @@ class DebtReminderController extends Controller
         return response()->json([
             'success' => true,
             'data' => $logs,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/invoices/reminders/summary
+     * Thống kê KPI tổng quan hàng đợi email nhắc nợ
+     */
+    public function summary(): JsonResponse
+    {
+        $summary = $this->reminderService->getReminderSummary();
+
+        return response()->json([
+            'success' => true,
+            'data' => $summary,
+        ]);
+    }
+
+    /**
+     * POST /api/v1/invoices/reminders/auto-dispatch
+     * Kích hoạt quét & xếp hàng nhắc nợ tự động
+     */
+    public function autoDispatch(Request $request): JsonResponse
+    {
+        $overdueOnly = $request->boolean('overdue_only', true);
+        $daysBeforeDue = max(1, min(30, (int) $request->input('days_before_due', 3)));
+
+        $count = $this->reminderService->autoDispatchScheduledReminders($overdueOnly, $daysBeforeDue);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Hệ thống đã quét và đưa thành công {$count} thông báo nhắc nợ vào hàng đợi Queue xử lý nền.",
+            'data' => [
+                'dispatched_count' => $count,
+                'overdue_only' => $overdueOnly,
+                'days_before_due' => $daysBeforeDue,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/invoices/reminders/{id}/preview
+     * Xem trước nội dung email mẫu
+     */
+    public function preview(string $id): JsonResponse
+    {
+        try {
+            $preview = $this->reminderService->previewEmail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $preview,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy hóa đơn hoặc nhật ký nhắc nợ tương ứng: '.$e->getMessage(),
+            ], 404);
+        }
+    }
+
+    /**
+     * POST /api/v1/invoices/reminders/{id}/retry
+     * Thử lại gửi email nhắc nợ cho bản ghi lỗi
+     */
+    public function retry(string $id): JsonResponse
+    {
+        $log = DebtReminderLog::findOrFail($id);
+        $this->reminderService->retryLog($log);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Đã đưa lại email nhắc nợ cho hóa đơn {$log->invoice?->invoice_number} vào hàng đợi Queue.",
+            'data' => $log,
         ]);
     }
 }

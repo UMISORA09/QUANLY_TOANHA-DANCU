@@ -4,6 +4,7 @@ use App\Http\Controllers\AccessCardController;
 use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
+use App\Http\Controllers\AmenitySearchSyncController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
@@ -19,19 +20,24 @@ use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PushNotificationController;
 use App\Http\Controllers\RealtimeStreamController;
+use App\Http\Controllers\ReceptionDashboardController;
 use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\ResidentTicketController;
 use App\Http\Controllers\ResidentVisitorController;
 use App\Http\Controllers\RevenueAnalyticsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
+use App\Http\Controllers\StaffScheduleController;
 use App\Http\Controllers\TemporaryRegistrationController;
+use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -154,6 +160,14 @@ Route::get('/receptionist/{any}', function () {
     return view('welcome');
 })->where('any', '.*');
 
+Route::get('/reception', function () {
+    return view('welcome');
+});
+
+Route::get('/reception/{any}', function () {
+    return view('welcome');
+})->where('any', '.*');
+
 Route::get('/an-ninh', function () {
     return view('welcome');
 });
@@ -187,24 +201,87 @@ Route::get('/api/management/overview', [ManagementDashboardController::class, 'o
 // API Reception Portal
 Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
 
+// API Reception Dashboard (Module #13: Giám sát Bưu phẩm tồn đọng & Lượng khách trong tòa nhà)
+Route::get('/api/v1/reception/dashboard', [ReceptionDashboardController::class, 'index']);
+Route::get('/api/reception/dashboard', [ReceptionDashboardController::class, 'index']);
+
 // API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
 Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
 Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
 Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
 Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
 
-// API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Upload ảnh)
+// API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Module #11: Bàn giao & Check-out)
 Route::get('/api/v1/reception/parcels', [ReceptionParcelController::class, 'index']);
+Route::get('/api/v1/reception/parcels/lookup', [ReceptionParcelController::class, 'lookup']);
+Route::post('/api/v1/reception/parcels/check-out', [ReceptionParcelController::class, 'checkOut']);
 Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'store']);
 Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
 Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
+Route::post('/api/v1/reception/parcels/remind-expiring', [ReceptionParcelController::class, 'remindExpiring']);
 Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
-Route::put('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+Route::post('/api/v1/reception/parcels/{id}/check-out', [ReceptionParcelController::class, 'checkOut']);
+Route::post('/api/v1/reception/parcels/{id}/handover', [ReceptionParcelController::class, 'checkOut']);
+Route::post('/api/v1/reception/parcels/{id}/remind', [ReceptionParcelController::class, 'remind']);
+Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
+
+// =========================================================================
+// API Quản lý Xếp ca trực theo tuần/tháng cho Lễ tân & Bảo vệ (Module #12)
+// =========================================================================
+Route::get('/api/v1/management/schedules', [StaffScheduleController::class, 'index']);
+Route::get('/api/v1/management/schedules/shift-types', [StaffScheduleController::class, 'shiftTypes']);
+Route::get('/api/v1/management/schedules/staff-candidates', [StaffScheduleController::class, 'staffCandidates']);
+Route::post('/api/v1/management/schedules', [StaffScheduleController::class, 'store']);
+Route::match(['PUT', 'POST'], '/api/v1/management/schedules/{id}', [StaffScheduleController::class, 'update']);
+Route::delete('/api/v1/management/schedules/{id}', [StaffScheduleController::class, 'destroy']);
+
+Route::get('/api/schedules', [StaffScheduleController::class, 'index']);
+Route::get('/api/schedules/shift-types', [StaffScheduleController::class, 'shiftTypes']);
+Route::get('/api/schedules/staff-candidates', [StaffScheduleController::class, 'staffCandidates']);
+Route::post('/api/schedules', [StaffScheduleController::class, 'store']);
+Route::match(['PUT', 'POST'], '/api/schedules/{id}', [StaffScheduleController::class, 'update']);
+Route::delete('/api/schedules/{id}', [StaffScheduleController::class, 'destroy']);
+
+Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('/', [TicketManagementController::class, 'index']);
+    Route::get('options', [TicketManagementController::class, 'options']);
+    Route::post('/', [TicketManagementController::class, 'store']);
+    Route::get('{id}', [TicketManagementController::class, 'show']);
+    Route::patch('{id}', [TicketManagementController::class, 'update']);
+    Route::delete('{id}', [TicketManagementController::class, 'destroy']);
+    Route::get('{id}/technicians', [TicketManagementController::class, 'technicians']);
+    Route::delete('{id}/attachments/{attachmentId}', [TicketManagementController::class, 'removeAttachment']);
+    Route::post('{id}/workflow', [TicketManagementController::class, 'workflow']);
+});
+Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/ticket-notifications/{id}/read', [TicketManagementController::class, 'readNotification'])->middleware('auth.bearer:strict');
+
+// API Web Push Notifications (Module #10: Tự động thông báo bưu phẩm)
+Route::post('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'subscribe']);
+Route::delete('/api/v1/notifications/push-subscription', [PushNotificationController::class, 'unsubscribe']);
+Route::get('/api/v1/notifications/push-status', [PushNotificationController::class, 'status']);
+Route::get('/api/v1/notifications/vapid-public-key', [PushNotificationController::class, 'vapidPublicKey']);
 
 // API Resident Portal
 Route::get('/api/v1/resident/overview', [ResidentPortalController::class, 'overview'])->middleware('auth.bearer:strict');
-Route::post('/api/v1/resident/tickets', [ResidentPortalController::class, 'createTicket'])->middleware('auth.bearer:strict');
+
 Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {
+    // Ticket & Incident Management (Báo cáo sự cố kỹ thuật - Cư dân)
+    Route::get('tickets', [ResidentTicketController::class, 'index']);
+    Route::get('tickets/categories', [ResidentTicketController::class, 'categories']);
+    Route::post('tickets', [ResidentTicketController::class, 'store'])->middleware('throttle:30,1');
+    Route::get('tickets/{id}', [ResidentTicketController::class, 'show']);
+    Route::patch('tickets/{id}', [ResidentTicketController::class, 'update']);
+    Route::post('tickets/{id}/cancel', [ResidentTicketController::class, 'cancel']);
+    Route::post('tickets/{id}/confirm', [ResidentTicketController::class, 'confirm']);
+    Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
+    Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
+    Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
+
+    // Tiện ích
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
     Route::get('amenities/{id}/availability', [ResidentAmenityBookingController::class, 'availability']);
     Route::post('amenity-bookings', [ResidentAmenityBookingController::class, 'store']);
@@ -217,6 +294,22 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
     Route::post('amenity-bookings/{id}/payment/checkout', [AmenityBookingPaymentController::class, 'checkout'])->middleware('throttle:10,1');
     Route::post('amenity-bookings/{id}/payment', [AmenityBookingPaymentController::class, 'show']);
     Route::post('amenity-bookings/{id}/payment/report', [AmenityBookingPaymentController::class, 'report'])->middleware('throttle:10,1');
+});
+
+// Alias routes cho /api/resident/tickets (theo chuẩn RESTful của đặc tả)
+Route::prefix('api/resident')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('tickets', [ResidentTicketController::class, 'index']);
+    Route::get('tickets/categories', [ResidentTicketController::class, 'categories']);
+    Route::post('tickets', [ResidentTicketController::class, 'store'])->middleware('throttle:30,1');
+    Route::get('tickets/{id}', [ResidentTicketController::class, 'show']);
+    Route::patch('tickets/{id}', [ResidentTicketController::class, 'update']);
+    Route::post('tickets/{id}/cancel', [ResidentTicketController::class, 'cancel']);
+    Route::post('tickets/{id}/confirm', [ResidentTicketController::class, 'confirm']);
+    Route::post('tickets/{id}/reopen', [ResidentTicketController::class, 'reopen']);
+    Route::get('tickets/{id}/history', [ResidentTicketController::class, 'history']);
+    Route::get('tickets/{ticketId}/attachments/{attachmentId}', [ResidentTicketController::class, 'downloadAttachment']);
+    Route::post('tickets/{id}/attachments', [ResidentTicketController::class, 'addAttachments']);
+    Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
 });
 
 // API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)
@@ -539,7 +632,18 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('invoices/analytics/category-breakdown', [RevenueAnalyticsController::class, 'categoryBreakdown']);
     Route::get('invoices/analytics/top-debtors', [RevenueAnalyticsController::class, 'topDebtors']);
 
+    // ==========================================
+    // LARAVEL QUEUE GỬI EMAIL NHẮC NỢ TỰ ĐỘNG (CHỨC NĂNG 11 - XUANHOA)
+    // ==========================================
+    Route::get('invoices/reminders/summary', [DebtReminderController::class, 'summary']);
+    Route::get('invoices/reminders/history', [DebtReminderController::class, 'logs']);
+    Route::post('invoices/reminders/auto-dispatch', [DebtReminderController::class, 'autoDispatch']);
+    Route::get('invoices/reminders/{id}/preview', [DebtReminderController::class, 'preview']);
+    Route::post('invoices/reminders/{id}/retry', [DebtReminderController::class, 'retry']);
+    Route::post('invoices/bulk-send-reminders', [DebtReminderController::class, 'sendBulk']);
+
     Route::get('invoices/{id}', [InvoiceManagementController::class, 'show']);
+    Route::post('invoices/{id}/send-reminder', [DebtReminderController::class, 'sendSingle']);
     Route::post('invoices/{id}/cancel', [InvoiceManagementController::class, 'cancel']);
     Route::post('invoices/bulk-cancel', [InvoiceManagementController::class, 'bulkCancel']);
 
@@ -558,13 +662,6 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('payments/{id}/receipt', [PaymentController::class, 'receipt']);
 
     // ==========================================
-    // LARAVEL QUEUE GỬI EMAIL NHẮC NỢ TỰ ĐỘNG (CHỨC NĂNG 11 - XUANHOA)
-    // ==========================================
-    Route::post('invoices/{id}/send-reminder', [DebtReminderController::class, 'sendSingle']);
-    Route::post('invoices/bulk-send-reminders', [DebtReminderController::class, 'sendBulk']);
-    Route::get('invoices/reminders/history', [DebtReminderController::class, 'logs']);
-
-    // ==========================================
     // XUẤT BÁO CÁO TÀI CHÍNH VÀ CÔNG NỢ (CHỨC NĂNG 13 - XUANHOA)
     // ==========================================
     Route::get('reports/financial/preview', [FinancialReportController::class, 'preview']);
@@ -576,6 +673,18 @@ Route::get('/quan-ly/sinh-hoa-don', function () {
     return view('welcome');
 });
 Route::get('/admin/invoice-generation', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/email-nhac-no', function () {
+    return view('welcome');
+});
+Route::get('/quan-ly/debt-reminders', function () {
+    return view('welcome');
+});
+Route::get('/admin/email-nhac-no', function () {
+    return view('welcome');
+});
+Route::get('/admin/debt-reminders', function () {
     return view('welcome');
 });
 
@@ -653,9 +762,9 @@ Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);
 Route::get('/meta/blocks', [AmenityController::class, 'getBlocks']);
 
 // Smart Search Engine APIs (Full-Text, Autocomplete & AI Knowledge Hybrid Search)
-Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities']);
-Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities']);
-Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions']);
+Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
+Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
+Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
@@ -787,3 +896,7 @@ Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'coold
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);
 });
+
+Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:30,1');
+
+Route::post('/api/v1/internal/amenity-search/reindex', AmenitySearchSyncController::class)->middleware('throttle:6,1');

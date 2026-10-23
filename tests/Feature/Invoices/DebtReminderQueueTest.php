@@ -292,4 +292,103 @@ class DebtReminderQueueTest extends TestCase
         $this->assertEquals('SENT', $data[0]['channel_status']);
         $this->assertEquals('resident.debtor@cassavas.com', $data[0]['recipient_email']);
     }
+
+    public function test_get_reminder_summary_kpi(): void
+    {
+        DebtReminderLog::create([
+            'invoice_id' => $this->overdueInvoice->id,
+            'apartment_id' => $this->apartment->id,
+            'recipient_email' => 'resident.debtor@cassavas.com',
+            'recipient_name' => 'Lê Văn Nợ',
+            'reminder_type' => 'EMAIL',
+            'debt_amount' => 2200000,
+            'due_date' => $this->overdueInvoice->due_date,
+            'days_overdue' => 15,
+            'channel_status' => 'SENT',
+            'sent_at' => Carbon::now(),
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/invoices/reminders/summary');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'total_reminders' => 1,
+                    'sent_count' => 1,
+                    'queued_count' => 0,
+                    'failed_count' => 0,
+                ],
+            ]);
+    }
+
+    public function test_auto_dispatch_endpoint_pushes_overdue_invoices_to_queue(): void
+    {
+        Queue::fake();
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/invoices/reminders/auto-dispatch', [
+            'overdue_only' => true,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+            ]);
+
+        Queue::assertPushed(SendDebtReminderEmailJob::class, 1);
+    }
+
+    public function test_preview_debt_reminder_email(): void
+    {
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/invoices/reminders/'.$this->overdueInvoice->id.'/preview');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+            ]);
+
+        $this->assertNotEmpty($response->json('data.html'));
+        $this->assertStringContainsString($this->overdueInvoice->invoice_number, $response->json('data.html'));
+    }
+
+    public function test_retry_failed_reminder_log(): void
+    {
+        Queue::fake();
+
+        $log = DebtReminderLog::create([
+            'invoice_id' => $this->overdueInvoice->id,
+            'apartment_id' => $this->apartment->id,
+            'recipient_email' => 'resident.debtor@cassavas.com',
+            'recipient_name' => 'Lê Văn Nợ',
+            'reminder_type' => 'EMAIL',
+            'debt_amount' => 2200000,
+            'due_date' => $this->overdueInvoice->due_date,
+            'days_overdue' => 15,
+            'channel_status' => 'FAILED',
+            'error_message' => 'Connection timeout',
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/invoices/reminders/'.$log->id.'/retry');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+            ]);
+
+        $this->assertEquals('QUEUED', $log->fresh()->channel_status);
+        $this->assertNull($log->fresh()->error_message);
+        Queue::assertPushed(SendDebtReminderEmailJob::class, 1);
+    }
 }

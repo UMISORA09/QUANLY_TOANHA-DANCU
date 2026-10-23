@@ -91,12 +91,12 @@ class TemporaryRegistrationService
             $query->where('police_status', strtoupper($status));
         }
 
-        // 6. Lọc theo khoảng thời gian
+        // 6. Lọc theo khoảng thời gian (Sargable direct comparison on DATE columns)
         if ($startDate !== '') {
-            $query->whereDate('start_date', '>=', $startDate);
+            $query->where('start_date', '>=', $startDate);
         }
         if ($endDate !== '') {
-            $query->whereDate('end_date', '<=', $endDate);
+            $query->where('end_date', '<=', $endDate);
         }
 
         // 7. Sắp xếp

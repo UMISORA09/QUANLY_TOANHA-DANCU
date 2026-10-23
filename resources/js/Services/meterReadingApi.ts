@@ -373,7 +373,7 @@ export const meterReadingApi = {
     /**
      * Khóa sổ kỳ chốt số
      */
-    async lockCycle(cycle: string, blockId?: string): Promise<{ locked_count: number; message: string }> {
+    async lockCycle(cycle: string, blockId?: string): Promise<{ locked_count: number; is_locked?: boolean; message: string }> {
         const res = await fetch('/api/v1/meter-readings/lock-cycle', {
             method: 'POST',
             headers: getAuthHeaders(),
@@ -392,7 +392,7 @@ export const meterReadingApi = {
     /**
      * Mở khóa sổ kỳ chốt số
      */
-    async unlockCycle(cycle: string, blockId?: string): Promise<{ unlocked_count: number; message: string }> {
+    async unlockCycle(cycle: string, blockId?: string): Promise<{ unlocked_count: number; is_locked?: boolean; message: string }> {
         const res = await fetch('/api/v1/meter-readings/unlock-cycle', {
             method: 'POST',
             headers: getAuthHeaders(),
@@ -411,8 +411,8 @@ export const meterReadingApi = {
     /**
      * Tải tệp mẫu Excel/CSV ghi chỉ số đo kỳ hiện tại
      */
-    async downloadTemplate(cycle: string, blockId?: string, meterType?: string): Promise<void> {
-        const params = new URLSearchParams({ cycle });
+    async downloadTemplate(cycle: string, blockId?: string, meterType?: string, format: string = 'excel'): Promise<void> {
+        const params = new URLSearchParams({ cycle, format });
         if (blockId && blockId !== 'ALL') params.append('block_id', blockId);
         if (meterType && meterType !== 'ALL') params.append('meter_type', meterType);
 
@@ -422,11 +422,13 @@ export const meterReadingApi = {
         if (!res.ok) {
             throw new Error('Không thể tải tệp mẫu');
         }
-        
+
         const rawBlob = await res.blob();
-        const blob = new Blob([rawBlob], { type: 'text/csv;charset=utf-8;' });
+        const mimeType = format === 'excel' ? 'application/vnd.ms-excel;charset=utf-8;' : 'text/csv;charset=utf-8;';
+        const blob = new Blob([rawBlob], { type: mimeType });
         const url = window.URL.createObjectURL(blob);
-        const filename = `mau_chot_chi_so_${cycle}.csv`;
+        const ext = format === 'excel' ? 'xls' : 'csv';
+        const filename = `mau_chot_chi_so_${cycle}.${ext}`;
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
@@ -434,7 +436,7 @@ export const meterReadingApi = {
         a.setAttribute('download', filename);
         document.body.appendChild(a);
         a.click();
-        
+
         setTimeout(() => {
             if (document.body.contains(a)) {
                 document.body.removeChild(a);
