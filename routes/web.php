@@ -5,6 +5,7 @@ use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\AmenitySearchSyncController;
+use App\Http\Controllers\AnnouncementManagementController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
@@ -238,6 +239,22 @@ Route::get('/api/schedules/staff-candidates', [StaffScheduleController::class, '
 Route::post('/api/schedules', [StaffScheduleController::class, 'store']);
 Route::match(['PUT', 'POST'], '/api/schedules/{id}', [StaffScheduleController::class, 'update']);
 Route::delete('/api/schedules/{id}', [StaffScheduleController::class, 'destroy']);
+
+Route::prefix('api/v1/admin/announcements')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('/', [AnnouncementManagementController::class, 'index']);
+    Route::get('options', [AnnouncementManagementController::class, 'options']);
+    Route::post('preview', [AnnouncementManagementController::class, 'preview']);
+    Route::post('uploads', [AnnouncementManagementController::class, 'prepareUpload'])->middleware('throttle:30,1');
+    Route::put('uploads/{token}', [AnnouncementManagementController::class, 'uploadLocal']);
+    Route::post('uploads/discard', [AnnouncementManagementController::class, 'discardUpload']);
+    Route::post('/', [AnnouncementManagementController::class, 'store']);
+    Route::get('{id}', [AnnouncementManagementController::class, 'show']);
+    Route::patch('{id}', [AnnouncementManagementController::class, 'update']);
+    Route::post('{id}/publish', [AnnouncementManagementController::class, 'publish']);
+    Route::post('{id}/unpublish', [AnnouncementManagementController::class, 'unpublish']);
+    Route::delete('{id}', [AnnouncementManagementController::class, 'destroy']);
+    Route::get('{id}/attachments/{attachmentId}', [AnnouncementManagementController::class, 'attachment']);
+});
 
 Route::prefix('api/v1/tickets')->middleware('auth.bearer:strict')->group(function () {
     Route::get('{id}/comments', [TicketDiscussionController::class, 'index']);

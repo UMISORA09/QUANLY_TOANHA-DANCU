@@ -2316,6 +2316,37 @@ class ApiService {
   async getTicketDiscussionHistory(id: string, cursor?: string, signal?: AbortSignal) {
     return this.request<TicketDiscussionPage<TicketHistoryItem>>(`/tickets/${id}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { signal, cache: 'no-store' });
   }
+  async getAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<AnnouncementPage>(`/admin/announcements?${params}`, { signal, cache: 'no-store' }); }
+  async getAnnouncementOptions(signal?: AbortSignal) { return this.request<AnnouncementOptions>('/admin/announcements/options', { signal, cache: 'no-store' }); }
+  async getAnnouncement(id: string, signal?: AbortSignal) { return this.request<Announcement>(`/admin/announcements/${id}`, { signal, cache: 'no-store' }); }
+  async saveAnnouncement(id: string | null, body: FormData) { if (id) body.set('_method', 'PATCH'); return this.request<Announcement>(`/admin/announcements${id ? `/${id}` : ''}`, { method: 'POST', body, cache: 'no-store' }); }
+  async previewAnnouncement(content_html: string) { return this.request<{ content_html: string }>('/admin/announcements/preview', { method: 'POST', body: JSON.stringify({ content_html }), cache: 'no-store' }); }
+  async announcementAction(id: string, action: 'publish' | 'unpublish' | 'archive', payload: { version: number; reason?: string; publish_at?: string | null }) { return this.request<Announcement>(`/admin/announcements/${id}${action === 'archive' ? '' : `/${action}`}`, { method: action === 'archive' ? 'DELETE' : 'POST', body: JSON.stringify(payload), cache: 'no-store' }); }
+  async uploadAnnouncementFile(id: string, file: File): Promise<AnnouncementUpload> {
+    const ticket = await this.request<AnnouncementUpload>('/admin/announcements/uploads', { method: 'POST', body: JSON.stringify({ announcement_id: id, file_name: file.name, size: file.size, mime_type: file.type }) });
+    const local = ticket.transport === 'local';
+    if (local ? !ticket.url.startsWith('/api/v1/admin/announcements/uploads/') : !ticket.url.startsWith('https://')) throw new Error('Địa chỉ upload không hợp lệ.');
+    const url = local ? `${API_BASE_URL}/admin/announcements/uploads/${encodeURIComponent(ticket.token)}` : ticket.url;
+    try {
+      const response = await fetch(url, { method: 'PUT', body: file, credentials: 'omit', headers: { ...ticket.headers, ...(local ? { Authorization: `Bearer ${this.getToken() || ''}` } : {}) } });
+      if (!response.ok) throw new Error('Upload chưa hoàn tất. Vui lòng thử lại; bản nhập vẫn được giữ.');
+      return ticket;
+    } catch (error) { void this.discardAnnouncementUpload(ticket.token).catch(() => {}); throw error; }
+  }
+  async discardAnnouncementUpload(token: string) { return this.request('/admin/announcements/uploads/discard', { method: 'POST', body: JSON.stringify({ token }) }); }
+  async announcementAttachment(id: string, attachmentId: string): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/admin/announcements/${id}/attachments/${attachmentId}`, { cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    if (!response.ok) throw new Error('Không tải được tệp. Kiểm tra phiên đăng nhập và quyền xem bài.');
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      const result: { download_url: string } = await response.json();
+      if (!result.download_url.startsWith('https://')) throw new Error('Địa chỉ tải không hợp lệ.');
+      const download = await fetch(result.download_url, { credentials: 'omit', cache: 'no-store' });
+      if (!download.ok) throw new Error('Không tải được tệp từ kho riêng tư.');
+      return download.blob();
+    }
+    return response.blob();
+  }
+
 }
 
 export interface TicketParticipant { id: string; full_name: string; role: string; }
@@ -2620,3 +2651,20 @@ export interface PermissionRbac {
 
 export const api = new ApiService();
 export default api;
+
+export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED' | 'SCHEDULED' | 'EXPIRED';
+export interface AnnouncementAttachment { id: string; file_name: string; mime_type: string; file_size_bytes: number; }
+export interface Announcement {
+  id: string; title: string; summary_excerpt: string | null; content_html: string; category: string;
+  target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; target_block_id: string | null; target_floor_id: string | null;
+  is_pinned: boolean; is_urgent: boolean; publish_at: string; expires_at: string | null; author_name?: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED'; display_status: AnnouncementStatus; version: number; created_at: string;
+  actions: { edit: boolean; publish: boolean; archive: boolean }; attachments?: AnnouncementAttachment[];
+}
+export interface AnnouncementPage { data: Announcement[]; current_page: number; last_page: number; total: number; }
+export interface AnnouncementOptions {
+  timezone: string; categories: Record<string, string>; blocks: { id: string; block_name: string }[];
+  floors: { id: string; block_id: string; floor_name: string }[]; can_target_all: boolean; can_create: boolean; can_publish: boolean;
+}
+
+export interface AnnouncementUpload { token: string; transport: 'local' | 's3'; url: string; headers: Record<string, string>; expires_at: number; }

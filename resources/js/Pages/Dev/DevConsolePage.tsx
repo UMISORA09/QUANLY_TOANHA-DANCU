@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Terminal,
   Bot,
@@ -20,6 +20,8 @@ import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
 import { TicketManagementPanel } from '../../Components/TicketManagementPanel';
 import { TicketNotificationList, useTicketNotifications } from '../../Components/TicketNotifications';
+
+const AnnouncementManagement = lazy(() => import('../../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -510,6 +512,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
 
         {/* TAB 5: CI/CD & DEVOPS */}
         {activeTab === 'tickets' && <TicketManagementPanel />}
+        {activeTab === 'news' && <Suspense fallback={<p role="status">Đang mở bảng tin…</p>}><AnnouncementManagement /></Suspense>}
         {activeTab === 'cicd' && (
           <div className="space-y-6">
             <CicdDashboard userRole="admin" />

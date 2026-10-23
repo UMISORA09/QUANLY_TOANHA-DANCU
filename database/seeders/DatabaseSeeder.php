@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             ServicePricingSeeder::class,
             ResidentTicketSeeder::class,
             TicketPermissionsSeeder::class,
+            AnnouncementPermissionsSeeder::class,
             InvoiceSampleSeeder::class,
         ]);
 
@@ -35,6 +36,7 @@ class DatabaseSeeder extends Seeder
         ) {
             $this->call(SharedDemoDataSeeder::class);
             $this->call(TicketDiscussionSeeder::class);
+            $this->call(AnnouncementSeeder::class);
         }
     }
 }

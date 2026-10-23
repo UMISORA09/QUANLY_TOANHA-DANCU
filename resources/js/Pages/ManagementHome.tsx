@@ -54,6 +54,7 @@ import { ticketStatuses } from '../Components/TicketManagementPanel';
 
 const BuildingListManagement = lazy(() => import('../Components/Admin/BuildingListManagement').then(m => ({ default: m.BuildingListManagement })));
 const AmenityManagement = lazy(() => import('./Admin/AmenityManagement').then(m => ({ default: m.AmenityManagement })));
+const AnnouncementManagement = lazy(() => import('../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
 const TicketManagementPanel = lazy(() => import('../Components/TicketManagementPanel').then(m => ({ default: m.TicketManagementPanel })));
 const CicdDashboard = lazy(() => import('../Components/Cicd/CicdDashboard').then(m => ({ default: m.CicdDashboard })));
 const RbacManagement = lazy(() => import('./Admin/RbacManagement').then(m => ({ default: m.RbacManagement })));
@@ -565,7 +566,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'thu_tien_gach_no', label: 'Thu Tiền & Gạch Nợ (CN8)', icon: Banknote, badge: 'Gạch Nợ' },
         { id: 'financial_reports', label: 'Báo cáo Tài chính', icon: FileSpreadsheet, badge: 'Excel/PDF' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
-        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${unreadNotificationCount} mới` },
+        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
         { id: 'ekyc', label: 'eKYC & Xác thực CCCD', icon: ShieldCheck, badge: 'AI' },
         { id: 'assets', label: 'Tài sản & Bảo trì thiết bị', icon: ShieldAlert, badge: null },
@@ -885,7 +886,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       )}
       {activeMenuId !== 'overview' && activeMenuId !== 'dashboard' && activeMenuId !== 'tong_quan' ? (
         <Suspense fallback={<PageLoadingFallback message="Đang nạp phân hệ..." />}>
-          {activeMenuId === 'tickets' ? (
+          {activeMenuId === 'news' ? (<div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 py-6"><AnnouncementManagement /></div>) : activeMenuId === 'tickets' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <TicketManagementPanel />
             </div>
