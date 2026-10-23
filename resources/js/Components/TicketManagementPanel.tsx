@@ -27,6 +27,22 @@ const statusBadge = (ticket: ManagedTicket) => (
 const blank = { title: '', description: '', location: '', category_id: '', priority: 'MEDIUM', preferred_service_time: '', block_id: '', apartment_id: '', reporter_user_id: '', version: 1, idempotency_key: '' };
 const workflowLabels: Record<string, string> = { receive: 'Tiếp nhận', assign: 'Phân công kỹ thuật', start: 'Bắt đầu xử lý', resolve: 'Báo đã khắc phục', cancel: 'Hủy yêu cầu' };
 
+const workflowButtonStyles: Record<string, string> = {
+  receive: 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-xs',
+  assign: 'bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600 shadow-xs',
+  start: 'bg-amber-600 text-white hover:bg-amber-700 border-amber-600 shadow-xs',
+  resolve: 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600 shadow-xs',
+  cancel: 'border-rose-200 text-rose-700 hover:bg-rose-50 shadow-2xs',
+};
+
+const workflowSubmitStyles: Record<string, string> = {
+  receive: 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600',
+  assign: 'bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600',
+  start: 'bg-amber-600 text-white hover:bg-amber-700 border-amber-600',
+  resolve: 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600',
+  cancel: 'bg-rose-600 text-white hover:bg-rose-700 border-rose-600',
+};
+
 export function TicketManagementPanel() {
   const [options, setOptions] = useState<TicketOptions | null>(null);
   const [rows, setRows] = useState<ManagedTicket[]>([]);
@@ -123,7 +139,7 @@ export function TicketManagementPanel() {
       <header className="relative z-10 flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1.5">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50/90 border border-blue-200/70 shadow-2xs mb-1">
-            <span>TRUNG TÂM VẬN HÀNH & KỸ THUẬT</span>
+            <span>QUY TRÌNH TIẾP NHẬN & XỬ LÝ SỰ CỐ</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
             Yêu cầu / Sự cố
@@ -400,7 +416,7 @@ export function TicketManagementPanel() {
               <button
                 key={key}
                 disabled={busy}
-                className={`${buttonBase} ${key === 'cancel' ? 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50' : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-xs'}`}
+                className={`${buttonBase} ${workflowButtonStyles[key] || 'bg-blue-600 text-white hover:bg-blue-700'}`}
                 onClick={async () => {
                   setAction(key); setReason(''); setTechnician(''); setError(''); setForm({ ...blank, version: selected.version });
                   if (key === 'assign') {
@@ -416,22 +432,59 @@ export function TicketManagementPanel() {
               </button>
             ))}
           </div>
-          <section className="space-y-3 border-t border-slate-100 pt-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Lịch sử xử lý</h4>
+
+          {/* Workflow Timeline Section */}
+          <section className="space-y-3.5 border-t border-slate-100 pt-5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Tiến trình & Lịch sử xử lý
+              </h4>
+              {selected.history && selected.history.length > 0 && (
+                <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                  {selected.history.length} mốc sự kiện
+                </span>
+              )}
+            </div>
             {selected.history?.length ? (
-              <ol className="space-y-3">
-                {selected.history.map((entry) => (
-                  <li key={entry.id} className="relative pl-5 border-l-2 border-blue-300 text-sm">
-                    <span className="absolute -left-[5px] top-1.5 h-2 w-2 rounded-full bg-blue-600 ring-2 ring-white" />
-                    <p className="break-words font-medium text-slate-800">{entry.notes}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {entry.performer?.full_name || 'Hệ thống'} · {new Date(entry.created_at).toLocaleString('vi-VN')}
-                    </p>
-                  </li>
-                ))}
-              </ol>
+              <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2.5 before:bottom-2.5 before:w-0.5 before:bg-slate-200">
+                {selected.history.map((entry, index) => {
+                  const isLatest = index === 0;
+                  return (
+                    <div key={entry.id} className="relative">
+                      <span
+                        className={`absolute -left-6 top-1.5 flex h-5 w-5 items-center justify-center rounded-full ring-4 ring-white ${
+                          isLatest
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'bg-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${isLatest ? 'bg-white animate-pulse' : 'bg-slate-500'}`} />
+                      </span>
+                      <div className={`rounded-2xl p-3.5 transition-colors ${
+                        isLatest
+                          ? 'bg-blue-50/70 border border-blue-200/70 shadow-2xs'
+                          : 'bg-slate-50/60 border border-slate-200/60'
+                      }`}>
+                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                          <span className="text-xs font-bold text-slate-800">
+                            {entry.performer?.full_name || 'Hệ thống'}
+                          </span>
+                          <time className="text-[11px] font-medium text-slate-500" dateTime={entry.created_at}>
+                            {new Date(entry.created_at).toLocaleString('vi-VN')}
+                          </time>
+                        </div>
+                        <p className="break-words text-sm leading-relaxed text-slate-700">
+                          {entry.notes}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <p className="text-xs text-slate-500">Chưa có cập nhật xử lý.</p>
+              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
+                Chưa có cập nhật xử lý.
+              </div>
             )}
           </section>
         </div>
@@ -452,7 +505,13 @@ export function TicketManagementPanel() {
           <button
             type="submit"
             form="ticket-management-form"
-            className={`${buttonBase} ${mode === 'archive' || (mode === 'workflow' && action === 'cancel') ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-700' : 'border-slate-950 bg-slate-950 text-white hover:bg-slate-800'}`}
+            className={`${buttonBase} ${
+              mode === 'archive' || (mode === 'workflow' && action === 'cancel')
+                ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-700'
+                : mode === 'workflow' && workflowSubmitStyles[action]
+                ? workflowSubmitStyles[action]
+                : 'bg-slate-950 text-white hover:bg-slate-800'
+            }`}
             disabled={cannotSubmit}
           >
             {busy ? 'Đang lưu…' : mode === 'archive' ? 'Xác nhận lưu trữ' : mode === 'workflow' ? workflowLabels[action] : 'Lưu yêu cầu'}

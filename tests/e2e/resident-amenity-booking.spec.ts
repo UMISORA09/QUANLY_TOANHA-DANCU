@@ -166,8 +166,11 @@ test('quản lý nhận đăng ký mới ở tab khác và mở đúng đơn t�
   await expect.poll(() => polls).toBeGreaterThan(0);
   arrived = true;
   const alert = page.getByRole('status').filter({ hasText: notice.title });
-  await expect(alert).toBeVisible({ timeout: 12000 });
-  await alert.getByRole('button', { name: 'Xem đăng ký', exact: true }).click();
+  await expect.poll(() => polls, { timeout: 12000 }).toBeGreaterThan(1);
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByText(notice.title, { exact: true })).toHaveCount(0);
+  await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
+  await page.getByRole('region', { name: 'Thông báo vận hành' }).getByRole('button', { name: 'Xem đăng ký', exact: true }).click();
   await expect(page).toHaveURL(/tab=amenities.*amenity_id=amenity-test.*booking_code=BK-TEST/);
   await expect(page.getByPlaceholder('Tìm mã booking, cư dân, căn hộ...')).toHaveValue('BK-TEST');
   await expect(page.getByRole('cell', { name: 'BK-TEST', exact: true })).toBeVisible();

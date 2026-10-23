@@ -4,6 +4,7 @@ use App\Http\Controllers\AccessCardController;
 use App\Http\Controllers\AccountProvisioningController;
 use App\Http\Controllers\AmenityBookingPaymentController;
 use App\Http\Controllers\AmenityController;
+use App\Http\Controllers\AmenitySearchSyncController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingStructureController;
 use App\Http\Controllers\CicdDashboardController;
@@ -21,6 +22,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PushNotificationController;
 use App\Http\Controllers\RealtimeStreamController;
+use App\Http\Controllers\ReceptionDashboardController;
 use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ReceptionVisitorController;
@@ -33,6 +35,7 @@ use App\Http\Controllers\RevenueAnalyticsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
+use App\Http\Controllers\StaffScheduleController;
 use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\UserController;
@@ -198,6 +201,10 @@ Route::get('/api/management/overview', [ManagementDashboardController::class, 'o
 // API Reception Portal
 Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
 
+// API Reception Dashboard (Module #13: Giám sát Bưu phẩm tồn đọng & Lượng khách trong tòa nhà)
+Route::get('/api/v1/reception/dashboard', [ReceptionDashboardController::class, 'index']);
+Route::get('/api/reception/dashboard', [ReceptionDashboardController::class, 'index']);
+
 // API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
 Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
 Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
@@ -218,6 +225,23 @@ Route::post('/api/v1/reception/parcels/{id}/check-out', [ReceptionParcelControll
 Route::post('/api/v1/reception/parcels/{id}/handover', [ReceptionParcelController::class, 'checkOut']);
 Route::post('/api/v1/reception/parcels/{id}/remind', [ReceptionParcelController::class, 'remind']);
 Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
+
+// =========================================================================
+// API Quản lý Xếp ca trực theo tuần/tháng cho Lễ tân & Bảo vệ (Module #12)
+// =========================================================================
+Route::get('/api/v1/management/schedules', [StaffScheduleController::class, 'index']);
+Route::get('/api/v1/management/schedules/shift-types', [StaffScheduleController::class, 'shiftTypes']);
+Route::get('/api/v1/management/schedules/staff-candidates', [StaffScheduleController::class, 'staffCandidates']);
+Route::post('/api/v1/management/schedules', [StaffScheduleController::class, 'store']);
+Route::match(['PUT', 'POST'], '/api/v1/management/schedules/{id}', [StaffScheduleController::class, 'update']);
+Route::delete('/api/v1/management/schedules/{id}', [StaffScheduleController::class, 'destroy']);
+
+Route::get('/api/schedules', [StaffScheduleController::class, 'index']);
+Route::get('/api/schedules/shift-types', [StaffScheduleController::class, 'shiftTypes']);
+Route::get('/api/schedules/staff-candidates', [StaffScheduleController::class, 'staffCandidates']);
+Route::post('/api/schedules', [StaffScheduleController::class, 'store']);
+Route::match(['PUT', 'POST'], '/api/schedules/{id}', [StaffScheduleController::class, 'update']);
+Route::delete('/api/schedules/{id}', [StaffScheduleController::class, 'destroy']);
 
 Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
     Route::get('/', [TicketManagementController::class, 'index']);
@@ -738,9 +762,9 @@ Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);
 Route::get('/meta/blocks', [AmenityController::class, 'getBlocks']);
 
 // Smart Search Engine APIs (Full-Text, Autocomplete & AI Knowledge Hybrid Search)
-Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities']);
-Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities']);
-Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions']);
+Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
+Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
+Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
@@ -872,3 +896,7 @@ Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'coold
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);
 });
+
+Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:30,1');
+
+Route::post('/api/v1/internal/amenity-search/reindex', AmenitySearchSyncController::class)->middleware('throttle:6,1');

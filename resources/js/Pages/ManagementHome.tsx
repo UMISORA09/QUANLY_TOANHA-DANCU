@@ -71,6 +71,7 @@ const DebtReminderManagement = lazy(() => import('./Admin/DebtReminderManagement
 const RevenueAnalyticsDashboard = lazy(() => import('./Admin/RevenueAnalyticsDashboard').then(m => ({ default: m.RevenueAnalyticsDashboard })));
 const FinancialReportManagement = lazy(() => import('./Admin/FinancialReportManagement').then(m => ({ default: m.FinancialReportManagement })));
 const RfidManagement = lazy(() => import('./Admin/RfidManagement').then(m => ({ default: m.RfidManagement })));
+const ManagementStaffSchedulePanel = lazy(() => import('../Components/ManagementStaffSchedulePanel'));
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api, AmenityBookingNotification } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -178,6 +179,19 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.includes('rfid-cards')
     ) {
       return 'rfid_cards';
+    }
+    if (
+      path === '/quan-ly/schedules' ||
+      path === '/admin/schedules' ||
+      path === '/quan-ly/xep-ca' ||
+      path === '/admin/xep-ca' ||
+      path === '/quan-ly/lich-truc' ||
+      path === '/admin/lich-truc' ||
+      path.startsWith('/quan-ly/schedules') ||
+      path.startsWith('/admin/schedules') ||
+      path.startsWith('/quan-ly/xep-ca')
+    ) {
+      return 'schedules';
     }
     if (
       path === '/quan-ly/blocks' ||
@@ -302,6 +316,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       if (tabParam === 'buildings') return 'blocks';
       if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
       if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'meter_readings';
+      if (tabParam === 'schedules' || tabParam === 'shifts' || tabParam === 'xep-ca' || tabParam === 'lich-truc') return 'schedules';
       return tabParam;
     }
 
@@ -309,6 +324,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     if (initialTab && initialTab !== 'overview') {
       if (initialTab === 'pricing' || initialTab === 'don_gia') return 'pricing_configs';
       if (initialTab === 'metering' || initialTab === 'meter-readings' || initialTab === 'chot-chi-so' || initialTab === 'chot_chi_so') return 'meter_readings';
+      if (initialTab === 'schedules' || initialTab === 'shifts' || initialTab === 'xep-ca' || initialTab === 'lich-truc') return 'schedules';
       return initialTab;
     }
 
@@ -810,9 +826,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       unreadNotificationCount={unreadNotificationCount}
     >
       {/* Notifications Dropdown Panel */}
-      {bookingAlert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{bookingAlert.title}</p><p className="mt-1 text-xs text-neutral-600">{bookingAlert.message}</p></div><button type="button" aria-label="Đóng cảnh báo đăng ký mới" onClick={() => setBookingAlert(null)} className="rounded-lg p-1 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openBookingNotification(bookingAlert)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
       {isNotificationOpen && (
-        <div role="region" aria-label="Thông báo vận hành" className="max-h-[calc(100dvh-6rem)] overflow-y-auto fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div role="region" aria-label="Thông báo vận hành" className="fixed top-20 right-4 sm:right-10 max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
@@ -953,6 +968,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'rfid_cards' || activeMenuId === 'rfid' || activeMenuId === 'the_rfid' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <RfidManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'schedules' || activeMenuId === 'shifts' || activeMenuId === 'xep_ca' || activeMenuId === 'lich_truc' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <ManagementStaffSchedulePanel embedded={true} />
             </div>
           ) : null}
         </Suspense>
