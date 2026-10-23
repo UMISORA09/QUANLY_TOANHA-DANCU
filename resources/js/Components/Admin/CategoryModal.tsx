@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Edit2, Trash2, Tag, Check, AlertCircle, Sparkles } from 'lucide-react';
 import { api, Category } from '../../Services/api';
 import { amenityCache } from '../../Services/amenityCache';
@@ -10,6 +10,16 @@ interface CategoryModalProps {
 }
 
 export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, onChanged }) => {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const element = dialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    element?.showModal();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { if (element?.open) element.close(); document.body.style.overflow = previous; if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [isOpen]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -166,7 +176,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4">
+    <dialog ref={dialog} aria-label="Quản lý danh mục tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting) onClose(); }} className="catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
       {/* Backdrop */}
       <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 
@@ -228,7 +238,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
                 minLength={2}
                 maxLength={50}
                 placeholder="VD: BBQ, GYM, POOL"
-                value={code}
+                aria-label="Mã danh mục" value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
                 className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white uppercase font-mono focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
@@ -250,7 +260,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
                 minLength={2}
                 maxLength={100}
                 placeholder="VD: Vườn nướng BBQ ngoài trời"
-                value={name}
+                aria-label="Tên danh mục" value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
@@ -269,7 +279,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
               type="text"
               maxLength={255}
               placeholder="Mô tả chi tiết danh mục..."
-              value={description}
+              aria-label="Mô tả danh mục" value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
             />
@@ -309,7 +319,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
             Danh sách hiện có ({categories.length})
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-1 space-y-2">
+          <div role="list" aria-label="Danh mục tiện ích" className="flex-1 overflow-y-auto pr-1 space-y-2">
             {loading ? (
               <div className="py-8 text-center text-neutral-400 text-xs flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-neutral-400 border-t-neutral-800 rounded-full animate-spin" />
@@ -323,6 +333,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
               categories.map((cat) => (
                 <div
                   key={cat.id}
+                  role="listitem"
                   className="p-3 bg-white border border-neutral-200/80 rounded-xl flex items-center justify-between hover:border-neutral-300 transition-colors shadow-2xs"
                 >
                   <div className="min-w-0 pr-3">
@@ -384,6 +395,6 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

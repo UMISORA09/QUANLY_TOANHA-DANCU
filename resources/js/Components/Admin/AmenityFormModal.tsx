@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, Building, AlertCircle, Shield, Info, Image, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { api, Amenity, Category, BlockOption } from '../../Services/api';
 
@@ -106,6 +106,16 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
   // Form states
   const [categoryId, setCategoryId] = useState('');
   const [blockId, setBlockId] = useState<string>('');
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const element = dialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    element?.showModal();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { if (element?.open) element.close(); document.body.style.overflow = previous; if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [isOpen]);
   const [amenityName, setAmenityName] = useState('');
   const [amenityCode, setAmenityCode] = useState('');
   const [locationDetail, setLocationDetail] = useState('');
@@ -391,7 +401,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <dialog ref={dialog} aria-label="Cấu hình tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting) onClose(); }} className="catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
       {/* Backdrop */}
       <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 
@@ -482,7 +492,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                 </label>
                 <select
                   required
-                  value={categoryId}
+                  aria-label="Danh mục tiện ích" value={categoryId}
                   onChange={(e) => handleCategoryChange(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
                 >
@@ -498,7 +508,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-neutral-700 mb-1">Tòa nhà trực thuộc</label>
                 <select
-                  value={blockId}
+                  aria-label="Tòa nhà tiện ích" value={blockId}
                   onChange={(e) => handleBlockChange(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
                 >
@@ -521,7 +531,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   type="text"
                   required
                   placeholder="Nhập tên tiện ích..."
-                  value={amenityName}
+                  aria-label="Tên tiện ích" value={amenityName}
                   onChange={(e) => setAmenityName(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white text-neutral-900 font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
                 />
@@ -535,7 +545,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   type="text"
                   required
                   placeholder="Mã tiện ích..."
-                  value={amenityCode}
+                  aria-label="Mã tiện ích" value={amenityCode}
                   onChange={(e) => setAmenityCode(e.target.value.toUpperCase())}
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white text-neutral-900 uppercase font-mono font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
                 />
@@ -550,7 +560,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                 type="text"
                 required
                 placeholder="Nhập vị trí chi tiết..."
-                value={locationDetail}
+                aria-label="Vị trí tiện ích" value={locationDetail}
                 onChange={(e) => setLocationDetail(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white text-neutral-900 font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
@@ -776,6 +786,6 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </dialog>
   );
 };

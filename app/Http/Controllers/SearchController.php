@@ -57,11 +57,13 @@ class SearchController extends Controller
         ], fn ($v) => $v !== null && $v !== '');
 
         $filterString = ! empty($filtersArray) ? md5(json_encode($filtersArray)) : 'none';
-        $cacheKey = "amenity_search:{$normalizedQuery}:{$filterString}:{$page}";
+        $driverName = (string) config('search.default', 'smart');
+        $context = hash('sha256', json_encode([$rawQuery, $limit, $sort, $driverName, $user?->id]));
+        $cacheKey = "amenity_search:{$normalizedQuery}:{$filterString}:{$page}:{$context}";
 
         $startTime = microtime(true);
 
-        $responsePayload = SearchCacheService::remember($cacheKey, 60, function () use (
+        $load = function () use (
             $rawQuery,
             $norm,
             $correction,
@@ -71,7 +73,7 @@ class SearchController extends Controller
             $sort,
             $startTime
         ) {
-            $driver = $this->searchManager->driver('smart');
+            $driver = $this->searchManager->driver();
             $searchResult = $driver->search('amenities', $rawQuery, $filtersArray, [
                 'page' => $page,
                 'per_page' => $limit,
@@ -88,9 +90,11 @@ class SearchController extends Controller
                 'normalized_query' => $norm['normalized'],
                 'corrected_query' => $searchResult->metadata['corrected_query'] ?? $correction['corrected'],
                 'total' => $total,
+                'engine' => $searchResult->engine,
                 'search_time_ms' => round($elapsedMs, 2),
             ];
-        });
+        };
+        $responsePayload = $driverName === 'algolia' ? $load() : SearchCacheService::remember($cacheKey, 60, $load);
 
         // Nếu lấy từ Cache, cập nhật search_time_ms phản ánh thời gian thực (< 1ms)
         $totalElapsed = (microtime(true) - $startTime) * 1000;
@@ -107,6 +111,7 @@ class SearchController extends Controller
     {
         $query = (string) $request->query('q', '');
         $type = (string) $request->query('type', 'amenities');
+        abort_unless($type === 'amenities', 422, 'Only amenities suggestions are supported here.');
         $limit = max(min((int) $request->query('limit', 5), 20), 1);
 
         $startTime = microtime(true);
