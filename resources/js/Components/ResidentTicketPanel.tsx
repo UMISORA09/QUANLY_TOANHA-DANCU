@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TicketImage } from './TicketImage';
+import { TicketDiscussion } from './TicketDiscussion';
 import { TicketDialog } from './TicketDialog';
 import { useTicketNotificationRefresh } from './TicketNotifications';
 import { CustomSelect } from './Common/CustomSelect';
@@ -1529,49 +1530,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
             )}
           </div>
 
-          {/* Timeline Lịch sử tiến độ xử lý */}
-          <div className="bg-white/90 backdrop-blur-md border border-neutral-200/80 rounded-2xl p-6 shadow-xs space-y-4">
-            <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-neutral-500" />
-              <span>Tiến độ xử lý & Lịch sử cập nhật trạng thái</span>
-            </h3>
-
-            {detailTicket.history && detailTicket.history.length > 0 ? (
-              <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-neutral-200">
-                {detailTicket.history.map((h, idx) => (
-                  <div key={h.id || idx} className="relative text-xs">
-                    <span className="absolute -left-6 top-1 w-3 h-3 rounded-full bg-white border-2 border-neutral-900" />
-                    <div className="flex items-center gap-2 font-mono text-[11px] text-neutral-400">
-                      <span>{formatDateTime(h.created_at)}</span>
-                      <span>•</span>
-                      <span className="font-sans font-semibold text-neutral-700">
-                        {h.performer?.full_name || 'Hệ thống'}
-                      </span>
-                    </div>
-                    <div className="font-semibold text-neutral-900 mt-0.5">
-                      {h.action_type === 'CREATED' && 'Tạo mới yêu cầu báo cáo sự cố'}
-                      {h.action_type === 'STATUS_CHANGED' && (
-                        <span>
-                          Chuyển trạng thái từ{' '}
-                          <strong className="text-neutral-600">{h.old_status}</strong> sang{' '}
-                          <strong className="text-neutral-950">{h.new_status}</strong>
-                        </span>
-                      )}
-                      {h.action_type === 'UPDATED' && 'Cư dân cập nhật nội dung sự cố'}
-                      {h.action_type === 'ASSIGNED' && 'Phân công kỹ thuật viên tiếp nhận'}
-                    </div>
-                    {h.notes && (
-                      <p className="text-neutral-600 bg-neutral-50 p-2.5 rounded-lg border border-neutral-100 mt-1.5 leading-relaxed">
-                        {h.notes}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-neutral-400 italic">Chưa có lịch sử thay đổi.</p>
-            )}
-          </div>
+          <TicketDiscussion key={detailTicket.id} ticketId={detailTicket.id} active={!isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId && !previewImage} />
         </div>
       )}
 

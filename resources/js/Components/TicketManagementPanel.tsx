@@ -3,6 +3,7 @@ import { api, ManagedTicket, TicketOptions } from '../Services/api';
 import { CustomSelect } from './Common/CustomSelect';
 import { TicketDialog } from './TicketDialog';
 import { TicketImage } from './TicketImage';
+import { TicketDiscussion } from './TicketDiscussion';
 import { useTicketNotificationRefresh } from './TicketNotifications';
 
 export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã hoàn tất', CANCELLED: 'Đã hủy' };
@@ -432,60 +433,7 @@ export function TicketManagementPanel() {
             ))}
           </div>
 
-          {/* Workflow Timeline Section */}
-          <section className="space-y-3.5 border-t border-slate-100 pt-5">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                Tiến trình & Lịch sử xử lý
-              </h4>
-              {selected.history && selected.history.length > 0 && (
-                <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                  {selected.history.length} mốc sự kiện
-                </span>
-              )}
-            </div>
-            {selected.history?.length ? (
-              <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2.5 before:bottom-2.5 before:w-0.5 before:bg-slate-200">
-                {selected.history.map((entry, index) => {
-                  const isLatest = index === 0;
-                  return (
-                    <div key={entry.id} className="relative">
-                      <span
-                        className={`absolute -left-6 top-1.5 flex h-5 w-5 items-center justify-center rounded-full ring-4 ring-white ${
-                          isLatest
-                            ? 'bg-blue-600 text-white shadow-2xs'
-                            : 'bg-slate-300 text-slate-600'
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${isLatest ? 'bg-white animate-pulse' : 'bg-slate-500'}`} />
-                      </span>
-                      <div className={`rounded-2xl p-3.5 transition-colors ${
-                        isLatest
-                          ? 'bg-blue-50/70 border border-blue-200/70 shadow-2xs'
-                          : 'bg-slate-50/60 border border-slate-200/60'
-                      }`}>
-                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
-                          <span className="text-xs font-bold text-slate-800">
-                            {entry.performer?.full_name || 'Hệ thống'}
-                          </span>
-                          <time className="text-[11px] font-medium text-slate-500" dateTime={entry.created_at}>
-                            {new Date(entry.created_at).toLocaleString('vi-VN')}
-                          </time>
-                        </div>
-                        <p className="break-words text-sm leading-relaxed text-slate-700">
-                          {entry.notes}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
-                Chưa có cập nhật xử lý.
-              </div>
-            )}
-          </section>
+          <TicketDiscussion key={selected.id} ticketId={selected.id} />
         </div>
       )}
     </TicketDialog>
@@ -509,7 +457,7 @@ export function TicketManagementPanel() {
                 ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-700'
                 : mode === 'workflow' && workflowSubmitStyles[action]
                 ? workflowSubmitStyles[action]
-                : 'bg-slate-950 text-white hover:bg-slate-800'
+                : 'border-slate-950 bg-slate-950 text-white hover:bg-slate-800'
             }`}
             disabled={cannotSubmit}
           >
