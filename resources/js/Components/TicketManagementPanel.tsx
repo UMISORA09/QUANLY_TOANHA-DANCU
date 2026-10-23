@@ -86,8 +86,7 @@ export function TicketManagementPanel() {
   useEffect(() => {
     const openLinked = () => { const id = new URLSearchParams(location.search).get('ticket_id'); if (id) void open(id); };
     window.addEventListener('popstate', openLinked);
-    window.addEventListener('TICKET_NOTIFICATION_RECEIVED', openLinked);
-    return () => { window.removeEventListener('popstate', openLinked); window.removeEventListener('TICKET_NOTIFICATION_RECEIVED', openLinked); };
+    return () => { window.removeEventListener('popstate', openLinked); };
   }, [open]);
   const fail = async (err: any) => {
     setError(err.message); setFields(err.errors || {});

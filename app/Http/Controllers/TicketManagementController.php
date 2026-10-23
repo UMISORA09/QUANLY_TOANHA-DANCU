@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\User;
+use App\Services\ManagerNotificationService;
 use App\Services\ResidentTicketService;
 use App\Services\TicketConflictException;
 use App\Services\TicketManagementService;
@@ -140,7 +141,7 @@ class TicketManagementController extends Controller
     public function notifications(Request $request): JsonResponse
     {
         $data = $request->validate(['page' => 'nullable|integer|min:1']);
-        $query = DB::table('user_in_app_notifications')->where('recipient_user_id', $request->user()->id)->where('category', 'TICKET');
+        $query = app(ManagerNotificationService::class)->tickets($request->user());
         $unread = (clone $query)->where('is_read', 0)->count();
         $page = $query->orderByDesc('created_at')->orderByDesc('id')->paginate(15, ['id', 'title', 'body_message', 'deep_link_url', 'is_read', 'created_at'], 'page', $data['page'] ?? 1);
 
@@ -149,7 +150,7 @@ class TicketManagementController extends Controller
 
     public function readNotification(Request $request, string $id): JsonResponse
     {
-        $query = DB::table('user_in_app_notifications')->where('recipient_user_id', $request->user()->id)->where('category', 'TICKET')->where('id', $id);
+        $query = app(ManagerNotificationService::class)->tickets($request->user())->where('id', $id);
         abort_unless((clone $query)->exists(), 404);
         $query->where('is_read', 0)->update(['is_read' => 1, 'read_at' => now()]);
 

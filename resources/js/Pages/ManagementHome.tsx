@@ -73,10 +73,10 @@ const FinancialReportManagement = lazy(() => import('./Admin/FinancialReportMana
 const RfidManagement = lazy(() => import('./Admin/RfidManagement').then(m => ({ default: m.RfidManagement })));
 const ManagementStaffSchedulePanel = lazy(() => import('../Components/ManagementStaffSchedulePanel'));
 import { AppLayout } from '../Components/Layout/AppLayout';
-import { api, AmenityBookingNotification } from '../Services/api';
+import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
-import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
-import { TicketNotificationList, useTicketNotifications } from '../Components/TicketNotifications';
+import { ManagerNotificationCenter, useManagerNotifications } from '../Components/ManagerNotificationCenter';
+
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -512,37 +512,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   });
 
   // Notifications state
-  const ticketNotices = useTicketNotifications();
-  const notices = useAmenityNotifications('admin');
-  const { items: amenityNotifications, unreadCount: amenityUnreadCount, alert: bookingAlert, setAlert: setBookingAlert } = notices;
-  const [notifications, setNotifications] = useState<Array<{
-    id: string;
-    title: string;
-    message: string;
-    category?: string;
-    timeAgo?: string;
-    isRead?: boolean;
-  }>>([
-    { id: '2', title: 'Hóa đơn quá hạn', message: '8 hóa đơn dịch vụ tháng 8 chưa hoàn tất thanh toán.', timeAgo: '45 phút trước', isRead: false },
-    { id: '3', title: 'Đồng bộ chỉ số', message: 'Đã đồng bộ 270 chỉ số công tơ điện nước thông minh.', timeAgo: '2 giờ trước', isRead: false },
-    { id: '4', title: 'Lịch bảo trì thang máy', message: 'Đội kỹ thuật Otis tiến hành kiểm định thang T2 Tháp A.', timeAgo: '3 giờ trước', isRead: false },
-    { id: '5', title: 'Cư dân đăng ký mới', message: 'Hộ gia đình căn B1405 hoàn tất xác thực eKYC.', timeAgo: '5 giờ trước', isRead: false },
-  ]);
-
-  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING', 'TICKET'].includes(item.category || ''))];
-  const unreadNotificationCount = ticketNotices.unread + amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING', 'TICKET'].includes(item.category || '')).length;
-
-  const openBookingNotification = async (notification: AmenityBookingNotification) => {
-    const target = new URL(notification.deepLink, window.location.origin);
-    if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
-    target.pathname = userRole === 'manager' ? '/quan-ly' : '/admin';
-    window.history.pushState({}, '', target.pathname + target.search);
-    setActiveMenuId('amenities');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    setIsNotificationOpen(false);
-    setBookingAlert(null);
-    await notices.markRead(notification);
-  };
+  const notices = useManagerNotifications();
+  const unreadNotificationCount = notices.unread;
 
   // Sidebar Menu Items dynamically bound to Database KPIs and userRole
   const menuItems = useMemo(
@@ -694,9 +665,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         if (data.activities?.length) {
           setActivities(data.activities);
         }
-        if (data.notifications?.length) {
-          setNotifications(data.notifications);
-        }
+
         try {
           sessionStorage.setItem('smartcassavas_dashboard_cache', JSON.stringify(data));
         } catch {
@@ -821,68 +790,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       userEmail={userEmail}
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
-      onNotificationClick={() => { setIsNotificationOpen(!isNotificationOpen); ticketNotices.retry(); }}
+      onNotificationClick={() => { setIsNotificationOpen(!isNotificationOpen); notices.retry(); }}
       onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
       unreadNotificationCount={unreadNotificationCount}
     >
       {/* Notifications Dropdown Panel */}
-      {isNotificationOpen && (
-        <div role="region" aria-label="Thông báo vận hành" className="fixed top-20 right-4 sm:right-10 max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-semibold">
-                {unreadNotificationCount} mới
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsNotificationOpen(false)}
-              className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-1"
-            >
-              Đóng
-            </button>
-          </div>
-          <div className="relative mt-2">
-            <label className="mb-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo tiện ích chưa đọc</label>
-            {notices.error && <p role="alert" className="mb-2 text-xs text-rose-700">Không thể cập nhật thông báo tiện ích. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}
-            <div className="space-y-2 max-h-[260px] overflow-y-auto custom-scrollbar pr-1 pb-7">
-              {displayedNotifications.map((notif) => {
-                const isError = notif.category === 'TICKET' || notif.title.includes('Sự cố');
-                const isWarning = notif.category === 'BILLING' || notif.title.includes('quá hạn');
-                const isSuccess = notif.category === 'IOT' || notif.title.includes('Đồng bộ');
-                const isInfo = notif.category === 'MAINTENANCE' || notif.title.includes('bảo trì');
-
-                const badgeColor = isError
-                  ? 'text-rose-600'
-                  : isWarning
-                  ? 'text-amber-600'
-                  : isSuccess
-                  ? 'text-emerald-600'
-                  : isInfo
-                  ? 'text-sky-600'
-                  : 'text-purple-600';
-
-                return (
-                  <div
-                    key={notif.id}
-                    className="p-2.5 rounded-xl bg-slate-50/90 hover:bg-slate-100/90 transition-colors border border-slate-100 text-left"
-                  >
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span className={`font-semibold ${badgeColor}`}>{notif.title}</span>
-                      <span>{notif.timeAgo || 'Vừa xong'}</span>
-                    </div>
-                    <p className="text-xs text-slate-700 mt-0.5">{notif.message}</p>
-                    {notif.category === 'AMENITY_BOOKING' && <button type="button" onClick={() => void openBookingNotification(notif as AmenityBookingNotification)} className="mt-2 text-xs font-semibold text-emerald-700 underline">{notif.isRead ? 'Xem lại đăng ký' : 'Xem đăng ký'}</button>}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-2 flex items-center justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div>
-          </div>
-          <TicketNotificationList feed={ticketNotices} />
-        </div>
-      )}
+      {isNotificationOpen && <ManagerNotificationCenter feed={notices} onClose={() => setIsNotificationOpen(false)} />}
       {activeMenuId !== 'overview' && activeMenuId !== 'dashboard' && activeMenuId !== 'tong_quan' ? (
         <Suspense fallback={<PageLoadingFallback message="Đang nạp phân hệ..." />}>
           {activeMenuId === 'tickets' ? (

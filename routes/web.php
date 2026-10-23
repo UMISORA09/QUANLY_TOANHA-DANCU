@@ -16,6 +16,7 @@ use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InvoiceGenerationController;
 use App\Http\Controllers\InvoiceManagementController;
 use App\Http\Controllers\ManagementDashboardController;
+use App\Http\Controllers\ManagerNotificationController;
 use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
@@ -255,6 +256,8 @@ Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(f
     Route::post('{id}/workflow', [TicketManagementController::class, 'workflow']);
 });
 Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
+Route::get('/api/v1/manager/notifications', [ManagerNotificationController::class, 'index'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/manager/notifications/{id}/read', [ManagerNotificationController::class, 'read'])->middleware('auth.bearer:strict');
 Route::post('/api/v1/ticket-notifications/{id}/read', [TicketManagementController::class, 'readNotification'])->middleware('auth.bearer:strict');
 
 // API Web Push Notifications (Module #10: Tự động thông báo bưu phẩm)

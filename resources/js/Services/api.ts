@@ -487,6 +487,7 @@ class ApiService {
 
   public setToken(token: string) {
     localStorage.setItem('smart_cassavas_token', token);
+    window.dispatchEvent(new Event('AUTH_SESSION_CHANGED'));
   }
 
   public removeToken() {
@@ -532,6 +533,7 @@ class ApiService {
       // ignore
     }
     amenityCache.clearAll();
+    window.dispatchEvent(new Event('AUTH_SESSION_CHANGED'));
   }
 
   /**
@@ -2206,6 +2208,12 @@ class ApiService {
   async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
   async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
   async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
+  async getManagerNotifications(page: number, category: string, unread: boolean, signal?: AbortSignal) {
+    const query = new URLSearchParams({ page: String(page), unread: unread ? '1' : '0' });
+    if (category) query.set('category', category);
+    return this.request<{ items: ManagerNotification[]; unread_count: number; latest_id: string | null; page: number; total_pages: number }>(`/manager/notifications?${query}`, { signal, cache: 'no-store' });
+  }
+  async readManagerNotification(id: string) { return this.request<{ unread_count: number }>(`/manager/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', cache: 'no-store' }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
 
   async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
@@ -2309,6 +2317,7 @@ export interface ManagedTicket extends TicketItem {
   actions: Record<string, boolean>;
 }
 export interface TicketNotification { id: string; title: string; body_message: string; deep_link_url: string; is_read: boolean | number; created_at: string; }
+export interface ManagerNotification extends TicketNotification { category: 'TICKET' | 'AMENITY_BOOKING'; }
 export interface TicketOptions {
   categories: TicketCategoryItem[];
   blocks: { id: string; block_name: string }[];
