@@ -1,0 +1,70 @@
+name: Amenity Search Synchronization
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      reindex:
+        description: 'Import the current production amenities before processing jobs'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amenity-search-sync-production
+  cancel-in-progress: false
+
+jobs:
+  synchronize:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SYNC_SECRET: ${{ secrets.AMENITY_SEARCH_SYNC_SECRET }}
+      BASE_URL: https://quanly-toanha-dancu.vercel.app
+    steps:
+      - name: Check configuration
+        id: configuration
+        shell: bash
+        run: |
+          if [ -z "$SYNC_SECRET" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Amenity search synchronization is not configured."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import production amenities
+        if: steps.configuration.outputs.enabled == 'true' && inputs.reindex == true
+        shell: bash
+        run: |
+          curl --proto '=https' --fail --silent --show-error --max-time 65             --request POST --header "Authorization: Bearer $SYNC_SECRET"             "$BASE_URL/api/v1/internal/amenity-search/reindex"
+
+      - name: Process only the amenity-search queue
+        if: steps.configuration.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          for batch in $(seq 1 45); do
+            pids=()
+            for worker in 1 2 3; do
+              curl --proto '=https' --fail --silent --show-error --max-time 55                 --header "Authorization: Bearer $SYNC_SECRET"                 "$BASE_URL/api/v1/internal/amenity-search/process" > "$RUNNER_TEMP/amenity-sync-$worker.json" &
+              pids+=("$!")
+            done
+            for pid in "${pids[@]}"; do wait "$pid"; done
+            pending=$(jq -s 'map(.pending) | max' "$RUNNER_TEMP"/amenity-sync-*.json)
+            failed=$(jq -s 'map(.failed) | max' "$RUNNER_TEMP"/amenity-sync-*.json)
+            if [ "$failed" -gt 0 ]; then
+              jq -s 'map(.failure_codes)' "$RUNNER_TEMP"/amenity-sync-*.json
+              echo "::error::Amenity search has failed jobs requiring operator review."
+              exit 1
+            fi
+            if [ "$pending" -eq 0 ]; then
+              echo "Amenity search queue is empty."
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::notice::Pending jobs will continue in the next scheduled run."

@@ -261,6 +261,9 @@ class ManagementDashboardController extends Controller
             ];
         });
 
+        // Ticket details are served exclusively by the authenticated, building-scoped API.
+        unset($data['tickets']);
+
         return response()->json($data);
     }
 }

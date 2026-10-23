@@ -183,4 +183,114 @@ class DebtReminderService
 
         return $query->paginate($perPage);
     }
+
+    /**
+     * Lấy thống kê tổng quan KPI cho hệ thống hàng đợi nhắc nợ
+     *
+     * @return array<string, mixed>
+     */
+    public function getReminderSummary(): array
+    {
+        $totalReminders = DebtReminderLog::count();
+        $sentCount = DebtReminderLog::where('channel_status', 'SENT')->count();
+        $queuedCount = DebtReminderLog::where('channel_status', 'QUEUED')->count();
+        $failedCount = DebtReminderLog::where('channel_status', 'FAILED')->count();
+        $cancelledCount = DebtReminderLog::where('channel_status', 'CANCELLED')->count();
+        $totalDebtReminded = (float) DebtReminderLog::sum('debt_amount');
+        $overdueRemindersCount = DebtReminderLog::where('days_overdue', '>', 0)->count();
+
+        $unremindedOverdueCount = Invoice::whereIn('status', ['ISSUED', 'PARTIAL', 'OVERDUE'])
+            ->where('remaining_balance', '>', 0)
+            ->where(function ($q) {
+                $q->where('status', 'OVERDUE')
+                    ->orWhere('due_date', '<', Carbon::today()->format('Y-m-d'));
+            })
+            ->count();
+
+        $successRate = $totalReminders > 0 ? round(($sentCount / $totalReminders) * 100, 1) : 100.0;
+
+        return [
+            'total_reminders' => $totalReminders,
+            'sent_count' => $sentCount,
+            'queued_count' => $queuedCount,
+            'failed_count' => $failedCount,
+            'cancelled_count' => $cancelledCount,
+            'total_debt_reminded' => $totalDebtReminded,
+            'overdue_reminders_count' => $overdueRemindersCount,
+            'unreminded_overdue_count' => $unremindedOverdueCount,
+            'success_rate' => $successRate,
+        ];
+    }
+
+    /**
+     * Tạo nội dung xem trước HTML của email nhắc nợ
+     *
+     * @return array{
+     *     subject: string,
+     *     html: string,
+     *     recipient_name: string,
+     *     recipient_email: string,
+     *     invoice_number: string,
+     *     debt_amount: float
+     * }
+     */
+    public function previewEmail(string $id): array
+    {
+        $log = DebtReminderLog::with(['invoice.apartment.block', 'invoice.residentUser'])->find($id);
+
+        if ($log && $log->invoice) {
+            $invoice = $log->invoice;
+            $recipientName = $log->recipient_name;
+            $recipientEmail = $log->recipient_email;
+            $daysOverdue = $log->days_overdue;
+        } else {
+            $invoice = Invoice::with(['apartment.block', 'residentUser'])->findOrFail($id);
+            $recipientName = $invoice->residentUser?->full_name ?: "Cư dân Căn hộ {$invoice->apartment?->apartment_number}";
+            $recipientEmail = $invoice->residentUser?->email ?: 'cudan@cassavas.com';
+            $dueDate = Carbon::parse($invoice->due_date);
+            $today = Carbon::today();
+            $daysOverdue = $today->gt($dueDate) ? (int) $today->diffInDays($dueDate) : 0;
+        }
+
+        $paymentService = app(PaymentCollectionService::class);
+        $vietQrData = [];
+        try {
+            $vietQrData = $paymentService->getVietQrPayload($invoice->id);
+        } catch (\Throwable) {
+        }
+
+        $html = view('emails.debt_reminder', [
+            'invoice' => $invoice,
+            'recipientName' => $recipientName,
+            'daysOverdue' => $daysOverdue,
+            'vietQrData' => $vietQrData,
+        ])->render();
+
+        $prefix = $daysOverdue > 0 ? '[QUÁ HẠN]' : '[NHẮC NỢ]';
+        $subject = "{$prefix} Thông Báo Phí Dịch Vụ Căn Hộ {$invoice->apartment?->apartment_number} - Kỳ {$invoice->billing_period}";
+
+        return [
+            'subject' => $subject,
+            'html' => $html,
+            'recipient_name' => $recipientName,
+            'recipient_email' => $recipientEmail,
+            'invoice_number' => $invoice->invoice_number,
+            'debt_amount' => (float) $invoice->remaining_balance,
+        ];
+    }
+
+    /**
+     * Thử lại hoặc xếp hàng lại gửi email cho một log bị lỗi
+     */
+    public function retryLog(DebtReminderLog $log): DebtReminderLog
+    {
+        $log->update([
+            'channel_status' => 'QUEUED',
+            'error_message' => null,
+        ]);
+
+        SendDebtReminderEmailJob::dispatch($log->id);
+
+        return $log;
+    }
 }

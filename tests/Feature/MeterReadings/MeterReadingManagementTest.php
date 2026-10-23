@@ -341,22 +341,22 @@ class MeterReadingManagementTest extends TestCase
      */
     public function test_08_can_update_reading(): void
     {
-        $reading = MeterReading::first();
-        if (! $reading) {
-            $meter = Meter::first();
-            $reading = MeterReading::create([
-                'meter_id' => $meter->id,
-                'apartment_id' => $meter->apartment_id,
-                'billing_cycle' => '2026-10',
-                'period_start_date' => '2026-10-01',
-                'period_end_date' => '2026-10-31',
-                'previous_reading' => 100.0,
-                'current_reading' => 150.0,
-                'consumed_units' => 50.0,
-                'reading_source' => 'MANUAL',
-                'is_locked_for_billing' => false,
-            ]);
-        }
+        $meter = Meter::first();
+        $testCycle = '2098-'.str_pad((string) rand(1, 12), 2, '0', STR_PAD_LEFT);
+        MeterReading::where('meter_id', $meter->id)->where('billing_cycle', $testCycle)->delete();
+
+        $reading = MeterReading::create([
+            'meter_id' => $meter->id,
+            'apartment_id' => $meter->apartment_id,
+            'billing_cycle' => $testCycle,
+            'period_start_date' => '2098-01-01',
+            'period_end_date' => '2098-01-31',
+            'previous_reading' => 100.0,
+            'current_reading' => 150.0,
+            'consumed_units' => 50.0,
+            'reading_source' => 'MANUAL',
+            'is_locked_for_billing' => false,
+        ]);
         $this->assertNotNull($reading);
 
         $updatedCurrent = (float) $reading->previous_reading + 55.0;
@@ -384,22 +384,22 @@ class MeterReadingManagementTest extends TestCase
      */
     public function test_09_can_lock_cycle_and_prevent_modification(): void
     {
-        $reading = MeterReading::first();
-        if (! $reading) {
-            $meter = Meter::first();
-            $reading = MeterReading::create([
-                'meter_id' => $meter->id,
-                'apartment_id' => $meter->apartment_id,
-                'billing_cycle' => '2026-10',
-                'period_start_date' => '2026-10-01',
-                'period_end_date' => '2026-10-31',
-                'previous_reading' => 100.0,
-                'current_reading' => 150.0,
-                'consumed_units' => 50.0,
-                'reading_source' => 'MANUAL',
-                'is_locked_for_billing' => false,
-            ]);
-        }
+        $meter = Meter::first();
+        $cycle = '2097-'.str_pad((string) rand(1, 12), 2, '0', STR_PAD_LEFT);
+        MeterReading::where('meter_id', $meter->id)->where('billing_cycle', $cycle)->delete();
+
+        $reading = MeterReading::create([
+            'meter_id' => $meter->id,
+            'apartment_id' => $meter->apartment_id,
+            'billing_cycle' => $cycle,
+            'period_start_date' => '2097-01-01',
+            'period_end_date' => '2097-01-31',
+            'previous_reading' => 100.0,
+            'current_reading' => 150.0,
+            'consumed_units' => 50.0,
+            'reading_source' => 'MANUAL',
+            'is_locked_for_billing' => false,
+        ]);
         $this->assertNotNull($reading);
         $cycle = $reading->billing_cycle;
 

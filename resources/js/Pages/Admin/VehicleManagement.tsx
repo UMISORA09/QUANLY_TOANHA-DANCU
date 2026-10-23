@@ -203,7 +203,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col">
           {/* Ô tìm kiếm nhanh với debounce và loading indicator */}
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
@@ -391,7 +391,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col">
           {/* Ô tìm kiếm nhanh */}
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
@@ -539,7 +539,7 @@ const CategoryCombobox: React.FC<CategoryComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5">
           {VEHICLE_CATEGORIES.map((cat) => {
             const isSelected = cat.value === value;
             const CatIcon = cat.icon;
