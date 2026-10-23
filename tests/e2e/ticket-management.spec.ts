@@ -435,3 +435,33 @@ for (const actor of [
     expect(reads).toBe(2);
   });
 }
+
+for (const width of [375, 1440]) {
+  test(`MOCKED: nút thêm và lưu yêu cầu có chữ tương phản ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'QA Admin' }));
+      localStorage.setItem('smart_cassavas_token', 'qa-mocked-token');
+    });
+    await page.route('**/api/**', (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [{ id: 'cat', category_name: 'Điện nước' }], blocks: [], apartments: [], residents: [], can_create: true } });
+      return route.fulfill({ json: { data: [], items: [], total: 0, current_page: 1, last_page: 1, unread_count: 0 } });
+    });
+    await page.goto('/admin?tab=tickets');
+    const create = page.getByRole('button', { name: 'Thêm yêu cầu', exact: true });
+    const colors = async (element: typeof create) => element.evaluate((node) => ({ background: getComputedStyle(node).backgroundColor, color: getComputedStyle(node).color }));
+    await expect(create).toBeVisible();
+    const normal = await colors(create);
+    expect(normal.color).toBe('rgb(255, 255, 255)');
+    expect(normal.background).not.toBe('rgb(255, 255, 255)');
+    expect(normal.background).not.toBe('rgba(0, 0, 0, 0)');
+    await create.hover();
+    await expect.poll(async () => (await colors(create)).background).not.toBe('rgb(255, 255, 255)');
+    await create.click();
+    const save = page.getByRole('button', { name: 'Lưu yêu cầu', exact: true });
+    await expect(save).toBeVisible();
+    expect((await colors(save)).color).toBe('rgb(255, 255, 255)');
+    expect((await colors(save)).background).not.toBe('rgb(255, 255, 255)');
+  });
+}
