@@ -40,6 +40,10 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
+  const [detailBooking, setDetailBooking] = useState<AmenityBooking | null>(null);
+  const detailDialog = useRef<HTMLDialogElement>(null);
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
   const paymentBooking = bookings.find((booking) => booking.id === paymentBookingId) ?? null;
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +71,12 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
     else rejectionDialog.current?.close();
     if (!isOpen) setRejectingId(null);
   }, [isOpen, rejectingId]);
+
+  useEffect(() => {
+    if (isOpen && detailBooking) detailDialog.current?.showModal();
+    else detailDialog.current?.close();
+    if (!isOpen) setDetailBooking(null);
+  }, [isOpen, detailBooking]);
 
   const fetchBookings = useCallback(async (force = true) => {
     if (!amenity) return;
@@ -102,6 +112,9 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
       setSearch('');
       setStatusFilter('ALL');
       setPaymentFilter('ALL');
+      setStartDateFilter('');
+      setEndDateFilter('');
+      setDetailBooking(null);
       setPaymentBookingId(null);
       setError(null);
     }
@@ -140,6 +153,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
       if (status === 'CANCELLED') setCancellation(null);
       await fetchBookings(true);
     } catch (err: any) {
+      await fetchBookings(true);
       setError(err?.message || 'Không thể cập nhật trạng thái đặt chỗ.');
     } finally {
       setUpdatingId(null);
@@ -157,9 +171,12 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
         b.resident_name.toLowerCase().includes(term) ||
         (b.apartment_number && b.apartment_number.toLowerCase().includes(term)) ||
         (b.resident_phone && b.resident_phone.includes(term));
-      return matchStatus && matchSearch && (paymentFilter === 'ALL' || b.payment?.status === paymentFilter);
+      const matchPayment = paymentFilter === 'ALL' || b.payment?.status === paymentFilter;
+      const matchStartDate = !startDateFilter || b.booking_date >= startDateFilter;
+      const matchEndDate = !endDateFilter || b.booking_date <= endDateFilter;
+      return matchStatus && matchSearch && matchPayment && matchStartDate && matchEndDate;
     });
-  }, [bookings, search, statusFilter, paymentFilter]);
+  }, [bookings, search, statusFilter, paymentFilter, startDateFilter, endDateFilter]);
 
   const stats = useMemo(() => {
     const total = bookings.length;
@@ -334,6 +351,34 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
               <option value="CANCELLED">Đã hủy</option>
               <option value="REJECTED">Bị từ chối</option>
             </select>
+            <div className="flex items-center gap-1 text-xs text-neutral-500">
+              <span>Từ:</span>
+              <input
+                type="date"
+                aria-label="Lọc từ ngày sử dụng"
+                value={startDateFilter}
+                onChange={(e) => setStartDateFilter(e.target.value)}
+                className="amenity-booking-select text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-1.5 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
+              />
+              <span>Đến:</span>
+              <input
+                type="date"
+                aria-label="Lọc đến ngày sử dụng"
+                value={endDateFilter}
+                onChange={(e) => setEndDateFilter(e.target.value)}
+                className="amenity-booking-select text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2 py-1.5 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
+              />
+              {(startDateFilter || endDateFilter) && (
+                <button
+                  type="button"
+                  onClick={() => { setStartDateFilter(''); setEndDateFilter(''); }}
+                  className="px-2 py-1 text-[11px] text-neutral-500 hover:text-neutral-900 underline"
+                  title="Xóa lọc ngày"
+                >
+                  Xóa lọc
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -353,11 +398,11 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                 <th className="py-3 px-3.5">Mã Booking</th>
                 <th className="py-3 px-3">Cư dân</th>
                 <th className="py-3 px-3">Căn hộ</th>
-                <th className="py-3 px-3">Thời gian đặt</th>
+                <th className="py-3 px-3">Ngày & Giờ sử dụng</th>
                 <th className="py-3 px-3 text-center">Số người</th>
                 <th className="py-3 px-3">Chi phí / Cọc</th>
                 <th className="py-3 px-3 text-center">Trạng thái</th>
-                <th className="py-3 px-3">Ghi chú</th>
+                <th className="py-3 px-3">Ghi chú & Lý do</th>
                 <th className="py-3 px-3 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -378,7 +423,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                       <Ticket className="w-8 h-8 text-neutral-300 stroke-1" />
                       <p className="font-semibold text-neutral-700">Chưa có lượt đặt chỗ nào</p>
                       <p className="text-[11px] text-neutral-400">
-                        {search || statusFilter !== 'ALL'
+                        {search || statusFilter !== 'ALL' || startDateFilter || endDateFilter
                           ? 'Không tìm thấy kết quả phù hợp với bộ lọc.'
                           : 'Hiện chưa có cư dân nào đăng ký sử dụng tiện ích này.'}
                       </p>
@@ -452,31 +497,75 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
                       {b.payment && <p className="mt-2 text-[11px] text-neutral-600">{paymentStatusNames[b.payment.status]}</p>}
                     </td>
 
-                    {/* Ghi chú */}
-                    <td className="py-3 px-3 text-neutral-500 max-w-xs truncate" title={b.resident_notes || ''}>
-                      {b.resident_notes || '-'}
+                    {/* Ghi chú & Lý do từ chối */}
+                    <td className="py-3 px-3 text-neutral-500 max-w-xs">
+                      {b.status === 'REJECTED' && b.rejection_reason ? (
+                        <div className="text-rose-700 font-medium text-[11px] bg-rose-50 border border-rose-100 rounded-lg p-1.5" title={b.rejection_reason}>
+                          <span className="font-bold">Lý do từ chối:</span> {b.rejection_reason}
+                        </div>
+                      ) : (
+                        <span className="truncate block" title={b.resident_notes || ''}>
+                          {b.resident_notes || '-'}
+                        </span>
+                      )}
+                      {b.approved_at && (
+                        <div className="text-[10px] text-emerald-700 mt-0.5">
+                          Duyệt lúc: {new Date(b.approved_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} {new Date(b.approved_at).toLocaleDateString('vi-VN')}
+                        </div>
+                      )}
                     </td>
 
                     {/* Thao tác */}
                     <td className="py-3 px-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">{b.payment && <button type="button" onClick={() => setPaymentBookingId(b.id)} className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">Đối soát</button>}
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setDetailBooking(b)}
+                          className="rounded-lg bg-neutral-100 hover:bg-neutral-200 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 transition-colors"
+                          title="Xem chi tiết đặt chỗ"
+                        >
+                          Chi tiết
+                        </button>
+                        {b.payment && (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentBookingId(b.id)}
+                            className="rounded-lg bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 transition-colors"
+                          >
+                            Đối soát
+                          </button>
+                        )}
                         {['PENDING'].includes(b.status?.toUpperCase()) && (
                           <button
                             type="button"
-                            disabled={updatingId === b.id}
+                            disabled={Boolean(updatingId)}
                             onClick={() => handleUpdateStatus(b.id, 'APPROVED')}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[11px] transition-colors cursor-pointer disabled:opacity-50"
                             title="Duyệt đặt chỗ này"
                           >
-                            <Check className="w-3 h-3" />
-                            <span>Duyệt</span>
+                            {updatingId === b.id ? (
+                              <span className="w-3 h-3 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            <span>{updatingId === b.id ? 'Đang duyệt…' : 'Duyệt'}</span>
                           </button>
                         )}
-                        {b.status === 'PENDING' && <button type="button" disabled={updatingId === b.id} onClick={() => { setRejectingId(b.id); setRejectionReason(''); setError(null); }} className="rounded-lg bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-50">Từ chối</button>}
+                        {b.status === 'PENDING' && (
+                          <button
+                            type="button"
+                            disabled={Boolean(updatingId)}
+                            onClick={() => { setRejectingId(b.id); setRejectionReason(''); setError(null); }}
+                            className="rounded-lg bg-rose-50 hover:bg-rose-100 px-2.5 py-1 text-[11px] font-semibold text-rose-700 transition-colors disabled:opacity-50"
+                            title="Từ chối đặt chỗ này"
+                          >
+                            Từ chối
+                          </button>
+                        )}
                         {['PENDING', 'APPROVED', 'CONFIRMED'].includes(b.status?.toUpperCase()) && (
                           <button
                             type="button"
-                            disabled={updatingId === b.id}
+                            disabled={Boolean(updatingId)}
                             onClick={() => { setCancellation(b); setCancelReason(''); setError(null); }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-[11px] transition-colors cursor-pointer disabled:opacity-50"
                             title="Hủy đặt chỗ này"
@@ -493,6 +582,75 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
             </tbody>
           </table>
         </div>
+
+        <dialog ref={detailDialog} aria-labelledby="amenity-detail-title" onCancel={() => setDetailBooking(null)} onClose={() => setDetailBooking(null)} className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50">
+          {detailBooking && (
+            <div className="space-y-4 text-xs text-neutral-800">
+              <div className="flex items-start justify-between border-b pb-3">
+                <div>
+                  <h3 id="amenity-detail-title" className="text-base font-bold text-neutral-900">Chi tiết đặt chỗ: {detailBooking.booking_code}</h3>
+                  <p className="text-neutral-500 mt-0.5">{amenity.amenity_name} · Mã QR: <span className="font-mono">{detailBooking.checkin_qr_code}</span></p>
+                </div>
+                <button type="button" onClick={() => setDetailBooking(null)} className="p-1 rounded-lg hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700"><X className="w-4 h-4" /></button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-neutral-50 p-3 rounded-xl border border-neutral-200/70">
+                <div><span className="text-neutral-500 block">Cư dân</span><span className="font-bold">{detailBooking.resident_name}</span></div>
+                <div><span className="text-neutral-500 block">Số điện thoại</span><span className="font-mono">{detailBooking.resident_phone || 'Chưa có'}</span></div>
+                <div><span className="text-neutral-500 block">Căn hộ / Tòa</span><span className="font-semibold">{detailBooking.apartment_number || 'Chưa gán'} {detailBooking.block_name ? `· ${detailBooking.block_name}` : ''}</span></div>
+                <div><span className="text-neutral-500 block">Số người tham gia</span><span className="font-bold">{detailBooking.attendee_count} người</span></div>
+                <div><span className="text-neutral-500 block">Ngày sử dụng</span><span className="font-bold">{detailBooking.booking_date}</span></div>
+                <div><span className="text-neutral-500 block">Khung giờ</span><span className="font-bold">{detailBooking.start_time} - {detailBooking.end_time}</span></div>
+                <div><span className="text-neutral-500 block">Chi phí sử dụng</span><span className="font-bold text-neutral-900">{formatCurrency(detailBooking.total_amount)}</span></div>
+                <div><span className="text-neutral-500 block">Tiền cọc</span><span className="font-bold text-neutral-900">{formatCurrency(detailBooking.deposit_amount)}</span></div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-500">Trạng thái đặt chỗ:</span>
+                  <div>{getStatusBadge(detailBooking.status)}</div>
+                </div>
+                {detailBooking.payment && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-500">Trạng thái thanh toán:</span>
+                    <span className="font-semibold text-emerald-800">{paymentStatusNames[detailBooking.payment.status]}</span>
+                  </div>
+                )}
+                {detailBooking.approved_at && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-500">Thời gian duyệt:</span>
+                    <span className="font-medium text-emerald-700">{new Date(detailBooking.approved_at).toLocaleString('vi-VN')}</span>
+                  </div>
+                )}
+                {detailBooking.rejection_reason && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800">
+                    <span className="font-bold block mb-1">Lý do từ chối:</span>
+                    <p className="whitespace-pre-wrap">{detailBooking.rejection_reason}</p>
+                  </div>
+                )}
+                {detailBooking.resident_notes && (
+                  <div>
+                    <span className="text-neutral-500 block mb-0.5">Ghi chú của cư dân:</span>
+                    <p className="p-2 rounded-lg bg-neutral-50 border border-neutral-100 whitespace-pre-wrap">{detailBooking.resident_notes}</p>
+                  </div>
+                )}
+                {detailBooking.admin_notes && (
+                  <div>
+                    <span className="text-neutral-500 block mb-0.5">Ghi chú của quản lý:</span>
+                    <p className="p-2 rounded-lg bg-neutral-50 border border-neutral-100 whitespace-pre-wrap">{detailBooking.admin_notes}</p>
+                  </div>
+                )}
+                <div className="text-[11px] text-neutral-400 pt-2 border-t">
+                  Thời gian gửi yêu cầu: {new Date(detailBooking.created_at).toLocaleString('vi-VN')}
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button type="button" onClick={() => setDetailBooking(null)} className="rounded-xl bg-neutral-900 px-4 py-2 font-semibold text-white">Đóng</button>
+              </div>
+            </div>
+          )}
+        </dialog>
 
         <dialog ref={rejectionDialog} aria-labelledby="amenity-rejection-title" onCancel={(event) => { if (updatingId === rejectingId) event.preventDefault(); else setRejectingId(null); }} onClose={() => setRejectingId(null)} className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50">
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (rejectingId && !updatingId) void handleUpdateStatus(rejectingId, 'REJECTED', rejectionReason.trim()); }}>

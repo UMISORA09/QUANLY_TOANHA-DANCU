@@ -201,8 +201,8 @@ test('quản lý nhận đăng ký mới ở tab khác và mở đúng đơn t�
   arrived = true;
   const alert = page.getByRole('status').filter({ hasText: notice.title });
   await expect.poll(() => polls, { timeout: 12000 }).toBeGreaterThan(1);
-  await expect(alert).not.toBeVisible();
-  await expect(page.getByText(notice.title, { exact: true })).not.toBeVisible();
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByText(notice.title, { exact: true })).toHaveCount(0);
   await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
   await page.getByRole('region', { name: 'Thông báo vận hành' }).getByRole('button', { name: 'Xem đăng ký', exact: true }).click();
   await expect(page).toHaveURL(/tab=amenities.*amenity_id=amenity-test.*booking_code=BK-TEST/);
@@ -1046,3 +1046,27 @@ test('hủy chưa xác định kết quả khóa xác nhận và giữ lý do kh
   await expect(confirmation.getByRole('button', { name: 'Xác nhận hủy', exact: true })).toBeEnabled();
   await expect(confirmation.getByLabel('Lý do hủy (không bắt buộc)')).toHaveValue('Giữ lý do khi thử lại');
 });
+
+for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`MOCKED E2E F2 resident booking visual ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await fixture(page);
+    await expect(page.getByRole('button', { name: /Vườn BBQ/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`catalog-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    if (process.env.UI_AUDIT_PHASE !== 'before') {
+      await page.getByPlaceholder('Tên tiện ích…').fill('Không tồn tại QA');
+      await expect(page.getByText('Không có tiện ích phù hợp.', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Xóa bộ lọc', exact: true }).click();
+      await expect(page.getByRole('button', { name: /Vườn BBQ/ })).toBeVisible();
+    }
+    await chooseSlot(page);
+    await page.screenshot({ path: testInfo.outputPath(`registration-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Đăng ký thành công' })).toBeVisible();
+    await page.getByRole('button', { name: 'Xem lịch của tôi', exact: true }).click();
+    await expect(page.getByText('BK-TEST', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`history-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+  });
+}

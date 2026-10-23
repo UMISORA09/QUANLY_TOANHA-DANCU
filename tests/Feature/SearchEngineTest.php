@@ -18,6 +18,7 @@ class SearchEngineTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['search.default' => 'smart', 'search.drivers.algolia.sync_enabled' => false]);
 
         // Tự động sử dụng SQLite khi chạy trên máy trạm host ngoài container Docker
         if (config('database.connections.mysql.host') === 'db' && ! file_exists('/.dockerenv')) {
@@ -53,6 +54,10 @@ class SearchEngineTest extends TestCase
      */
     public function test_can_get_amenity_autocomplete_suggestions(): void
     {
+        $user = User::factory()->create();
+        $roleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'role_id' => $roleId]);
+        $this->withToken($this->sessionToken($user));
         $firstAmenity = DB::table('amenities')->whereNull('deleted_at')->first();
         $this->assertNotNull($firstAmenity, 'Cần ít nhất 1 tiện ích trong CSDL');
 
@@ -323,6 +328,10 @@ class SearchEngineTest extends TestCase
      */
     public function test_smart_search_api_endpoint_response_structure(): void
     {
+        $user = User::factory()->create();
+        $roleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'role_id' => $roleId]);
+        $this->withToken($this->sessionToken($user));
         $response = $this->getJson('/api/amenities/search?q='.urlencode('ku nghi duon'));
 
         $response->assertStatus(200)
@@ -358,6 +367,10 @@ class SearchEngineTest extends TestCase
      */
     public function test_smart_search_edge_cases_do_not_crash(): void
     {
+        $user = User::factory()->create();
+        $roleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'role_id' => $roleId]);
+        $this->withToken($this->sessionToken($user));
         $edgeQueries = [
             '',
             ' ',
@@ -505,14 +518,10 @@ class SearchEngineTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $responseNoPerm = $this->withHeaders([
-            'X-User-Id' => $noPermUserId,
-        ])->getJson('/api/amenities/search?q=gym');
+        $token = $this->sessionToken(User::findOrFail($noPermUserId));
+        $responseNoPerm = $this->withToken($token)->getJson('/api/amenities/search?q=gym');
 
-        $responseNoPerm->assertStatus(403)
-            ->assertJsonFragment([
-                'message' => 'Bạn không có quyền xem tiện ích (AMENITY:VIEW)',
-            ]);
+        $responseNoPerm->assertForbidden()->assertJsonPath('error', 'FORBIDDEN');
 
         // 2. Gán quyền SUPER_ADMIN cho user
         $adminRoleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
@@ -531,9 +540,7 @@ class SearchEngineTest extends TestCase
             'role_id' => $adminRoleId,
         ]);
 
-        $responseWithPerm = $this->withHeaders([
-            'X-User-Id' => $noPermUserId,
-        ])->getJson('/api/amenities/search?q=gym');
+        $responseWithPerm = $this->withToken($token)->getJson('/api/amenities/search?q=gym');
 
         $responseWithPerm->assertStatus(200);
 

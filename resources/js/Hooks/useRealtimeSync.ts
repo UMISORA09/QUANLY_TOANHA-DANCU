@@ -164,10 +164,10 @@ export function useRealtimeSync({
       // ignore BroadcastChannel failure
     }
 
-    let retryDelay = 300;
+    let retryDelay = 1000;
 
     const startStream = async () => {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || (typeof document !== 'undefined' && document.hidden)) return;
 
       // Abort previous connection if active
       if (abortControllerRef.current) {
@@ -203,13 +203,13 @@ export function useRealtimeSync({
         }
 
         // Reset reconnect delay on successful connection
-        retryDelay = 300;
+        retryDelay = 1000;
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
 
-        while (isMountedRef.current) {
+        while (isMountedRef.current && !document.hidden) {
           const { value, done } = await reader.read();
           if (done) break;
 
@@ -236,10 +236,11 @@ export function useRealtimeSync({
               }
             }
 
-            // Normal cycle termination to avoid hanging PHP workers
+            // Normal cycle termination to avoid hanging PHP workers:
+            // Cấu hình retry 3000ms giúp giải phóng worker cho các API request khác
             if (eventType === 'cycle') {
-              if (isMountedRef.current) {
-                setTimeout(startStream, 50);
+              if (isMountedRef.current && !document.hidden) {
+                reconnectTimeoutRef.current = setTimeout(startStream, 3000);
               }
               return;
             }
@@ -279,33 +280,41 @@ export function useRealtimeSync({
         }
 
         // Network or server drop -> schedule reconnect with exponential backoff
-        if (isMountedRef.current) {
+        if (isMountedRef.current && !document.hidden) {
           reconnectTimeoutRef.current = setTimeout(async () => {
-            if (isMountedRef.current) {
+            if (isMountedRef.current && !document.hidden) {
               await catchUpMissedEvents();
               onReconnectRef.current?.();
               startStream();
             }
           }, retryDelay);
 
-          retryDelay = Math.min(retryDelay * 2, 10000);
+          retryDelay = Math.min(retryDelay * 2, 15000);
         }
       }
     };
 
     startStream();
 
-    // Reconnect on tab focus or returning online
+    // Reconnect on tab focus or returning online, abort when hidden
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && isMountedRef.current) {
         catchUpMissedEvents();
         onReconnectRef.current?.();
         startStream();
+      } else if (document.hidden) {
+        // Giải phóng kết nối SSE ngay lập tức khi tab bị ẩn để giải phóng PHP worker
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
       }
     };
 
     const handleOnline = () => {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && !document.hidden) {
         catchUpMissedEvents();
         onReconnectRef.current?.();
         startStream();
@@ -317,6 +326,13 @@ export function useRealtimeSync({
 
     return () => {
       isMountedRef.current = false;
+      if (localBroadcastChannel) {
+        try {
+          localBroadcastChannel.close();
+        } catch {
+          // ignore
+        }
+      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }

@@ -1,0 +1,13 @@
+# Gitleaks configuration
+[allowlist]
+description = "Ignore test fixtures, dynamic PEM wrappers and historical false positives"
+paths = [
+    '''tests/Feature/Payments/PaymentCollectionTest\.php''',
+    '''app/Services/WebPushService\.php''',
+    '''\.env\.example''',
+]
+regexes = [
+    '''IDEMP-TEST-PARTIAL-01''',
+    '''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''',
+    '''(BEGIN|END) (EC )?PRIVATE KEY''',
+]

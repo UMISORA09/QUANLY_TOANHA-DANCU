@@ -14,6 +14,16 @@ export default defineConfig({
         tailwindcss(),
     ],
     server: {
+        proxy: {
+            '/storage': {
+                target: 'http://127.0.0.1:8000',
+                changeOrigin: true,
+            },
+            '/images': {
+                target: 'http://127.0.0.1:8000',
+                changeOrigin: true,
+            },
+        },
         watch: {
             ignored: ['**/storage/framework/views/**'],
         },
@@ -22,7 +32,10 @@ export default defineConfig({
         rollupOptions: {
             output: {
                 manualChunks(id) {
-                    if (id.includes('node_modules/lucide-react')) {
+                    if (id.includes('node_modules/three')) {
+                        return 'three';
+                    }
+                    if (id.includes('node_modules/lucide-react') || id.includes('node_modules/lucide')) {
                         return 'icons';
                     }
                     if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {

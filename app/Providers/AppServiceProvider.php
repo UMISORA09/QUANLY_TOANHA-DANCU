@@ -5,7 +5,10 @@ namespace App\Providers;
 use App\Events\AmenityCreated;
 use App\Events\AmenityDeleted;
 use App\Events\AmenityUpdated;
+use App\Events\ParcelReceivedEvent;
+use App\Events\QuocTinRealtimeEvent;
 use App\Listeners\InvalidateAmenityCacheListener;
+use App\Listeners\SendParcelNotificationListener;
 use App\Repositories\Contracts\AmenityRepositoryInterface;
 use App\Repositories\Eloquent\DatabaseAmenityRepository;
 use App\Services\Search\SearchManager;
@@ -32,6 +35,9 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(AmenityCreated::class, [InvalidateAmenityCacheListener::class, 'handle']);
         Event::listen(AmenityUpdated::class, [InvalidateAmenityCacheListener::class, 'handle']);
         Event::listen(AmenityDeleted::class, [InvalidateAmenityCacheListener::class, 'handle']);
+
+        Event::listen(ParcelReceivedEvent::class, [SendParcelNotificationListener::class, 'handle']);
+        Event::listen(QuocTinRealtimeEvent::class, [SendParcelNotificationListener::class, 'handle']);
 
         if (
             $this->app->environment('production')

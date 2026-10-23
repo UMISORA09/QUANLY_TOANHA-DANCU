@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\Models\Role;
 use App\Services\QuocTinRealtimeService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Schema;
 
@@ -11,6 +12,8 @@ abstract class TestCase extends BaseTestCase
 {
     protected function setUp(): void
     {
+        Carbon::setTestNow();
+
         parent::setUp();
 
         config(['cache.default' => 'array']);
@@ -41,6 +44,8 @@ abstract class TestCase extends BaseTestCase
 
     protected function tearDown(): void
     {
+        Carbon::setTestNow();
+
         foreach (['rbac', 'residents', 'temporary_registrations', 'account_provisioning', 'vehicles'] as $mod) {
             QuocTinRealtimeService::clearModuleCooldown($mod);
         }

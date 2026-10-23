@@ -72,6 +72,9 @@ export interface AmenityBooking {
   status: string;
   checkin_qr_code: string;
   checked_in_at?: string | null;
+  rejection_reason?: string | null;
+  approved_at?: string | null;
+  approved_by_user_id?: string | null;
   resident_notes?: string | null;
   admin_notes?: string | null;
   created_at: string;
@@ -328,6 +331,79 @@ export interface ReceptionVisitorLookupResponse {
   };
 }
 
+// ================= PARCEL RECEPTION (MODULE #9) =================
+export interface ParcelItem {
+  id: string;
+  tracking_number: string;
+  courier_company: string;
+  apartment_id: string;
+  recipient_user_id?: string | null;
+  recipient_name: string;
+  recipient_phone: string;
+  parcel_photo_url: string;
+  stored_location_type: 'RECEPTION_DESK' | 'SMART_LOCKER' | 'SECURITY_BOOTH' | string;
+  locker_compartment_id?: string | null;
+  pickup_pin_code: string;
+  pickup_qr_code: string;
+  status: 'RECEIVED_AT_RECEPTION' | 'RECEIVED' | 'DELIVERED' | 'RETURNED' | string;
+  received_at: string;
+  received_by_staff_id?: string | null;
+  collected_at?: string | null;
+  collected_by_name?: string | null;
+  collected_signature_url?: string | null;
+  checkout_staff_id?: string | null;
+  notes?: string | null;
+  created_at: string;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id?: string;
+    block?: {
+      id: string;
+      block_name?: string;
+      block_code?: string;
+    };
+  };
+  recipient_user?: {
+    id: string;
+    full_name: string;
+    phone_number?: string;
+  } | null;
+  received_by_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
+  checkout_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
+}
+
+export interface ParcelListResponse {
+  success: boolean;
+  data: ParcelItem[];
+  kpis: {
+    pending_parcels: number;
+    expiring_parcels?: number;
+    overdue_parcels: number;
+    received_today: number;
+    total_parcels: number;
+  };
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_more: boolean;
+  };
+}
+
+export interface ParcelDetailResponse {
+  success: boolean;
+  data: ParcelItem;
+}
+
+
 
 export interface TimeSlot {
   id: string;
@@ -368,7 +444,41 @@ export interface SwrOptions<T> {
 
 class ApiService {
   private getToken(): string | null {
-    return localStorage.getItem('smart_cassavas_token');
+    let token = typeof window !== 'undefined' ? localStorage.getItem('smart_cassavas_token') : null;
+    const sessionStr = typeof window !== 'undefined' ? localStorage.getItem('smartcassavas_session') : null;
+
+    // Dọn dẹp token demo sót lại nếu người dùng không hề có phiên đăng nhập active
+    if (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr) {
+      try {
+        localStorage.removeItem('smart_cassavas_token');
+        localStorage.removeItem('smart_cassavas_user');
+      } catch {
+        // ignore
+      }
+      token = null;
+    }
+
+    if (!token && sessionStr) {
+      try {
+        const session = JSON.parse(sessionStr);
+        if (session.token || session.access_token) {
+          token = session.token || session.access_token;
+        } else if (session.role === 'admin' || session.isDev) {
+          token = 'smart_token_admin_demo';
+        } else if (session.role === 'receptionist' || session.role === 'security') {
+          token = 'smart_token_reception_demo';
+        } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
+          token = 'smart_token_resident_demo';
+        } else if (session.role === 'manager' || session.role?.toLowerCase?.().includes('manager')) {
+          token = 'smart_token_manager_demo';
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Nếu không có token và không có phiên đăng nhập, tuyệt đối không tự động sinh token demo giả lập
+    return token || null;
   }
 
   public getAuthToken(): string | null {
@@ -390,6 +500,10 @@ class ApiService {
       return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
     }
     try {
+      const token = this.getToken();
+      if (!token) {
+        return null;
+      }
       const u = localStorage.getItem('smart_cassavas_user');
       return u ? JSON.parse(u) : null;
     } catch {
@@ -407,7 +521,16 @@ class ApiService {
 
   public logout() {
     this.removeToken();
-    localStorage.removeItem('smart_cassavas_user');
+    try {
+      localStorage.removeItem('smart_cassavas_user');
+      localStorage.removeItem('smartcassavas_session');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     amenityCache.clearAll();
   }
 
@@ -427,6 +550,10 @@ class ApiService {
       Accept: 'application/json',
       ...(options.headers as Record<string, string> || {}),
     };
+
+    if (options.body instanceof FormData) {
+      delete headers['Content-Type'];
+    }
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -473,6 +600,11 @@ class ApiService {
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const res = await this.requestWithEtag<T>(endpoint, null, options);
+    if ((!res || res.data === null) && options.signal?.aborted) {
+      const abortError = new Error('Request was aborted');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
     return res.data as T;
   }
 
@@ -1254,21 +1386,6 @@ class ApiService {
     return this.request<any>(`/resident/overview${query}`);
   }
 
-  async createResidentTicket(payload: {
-    title: string;
-    description: string;
-    category_id?: string;
-    priority?: string;
-    preferred_service_time?: string;
-    apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    return this.request<any>('/resident/tickets', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
   async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
     return this.request('/resident/amenities', { signal, cache: 'no-store' });
   }
@@ -1486,6 +1603,157 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  }
+
+  // ================= RECEPTION PARCEL RECEPTION & UPLOAD (MODULE #9) =================
+  async getReceptionParcels(
+    params: {
+      search?: string;
+      status?: string;
+      apartment_id?: string;
+      courier_company?: string;
+      from_date?: string;
+      to_date?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ParcelListResponse> {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.status) q.append('status', params.status);
+    if (params.apartment_id) q.append('apartment_id', params.apartment_id);
+    if (params.courier_company) q.append('courier_company', params.courier_company);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit || params.per_page) q.append('limit', String(params.limit || params.per_page));
+
+    return this.request<ParcelListResponse>(`/reception/parcels?${q.toString()}`, options);
+  }
+
+  async getParcels(
+    params: {
+      search?: string;
+      status?: string;
+      apartment_id?: string;
+      courier_company?: string;
+      from_date?: string;
+      to_date?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ParcelListResponse> {
+    return this.getReceptionParcels(params, options);
+  }
+
+  async receiveParcel(formData: FormData): Promise<{ success: boolean; message: string; data: ParcelItem }> {
+    return this.request<{ success: boolean; message: string; data: ParcelItem }>('/reception/parcels', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async getParcelDetail(id: string, options: RequestInit = {}): Promise<ParcelDetailResponse> {
+    return this.request<ParcelDetailResponse>(`/reception/parcels/${id}`, options);
+  }
+
+  async updateParcel(id: string, formData: FormData | object): Promise<{ success: boolean; message: string; data: ParcelItem }> {
+    const isFormData = formData instanceof FormData;
+    return this.request<{ success: boolean; message: string; data: ParcelItem }>(`/reception/parcels/${id}`, {
+      method: isFormData ? 'POST' : 'PUT',
+      body: isFormData ? formData : JSON.stringify(formData),
+    });
+  }
+
+  async deleteParcel(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/reception/parcels/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async searchParcelRecipients(keyword: string = '', apartmentId?: string): Promise<{ success: boolean; data: any[] }> {
+    const q = new URLSearchParams();
+    if (keyword) q.append('search', keyword);
+    if (apartmentId) q.append('apartment_id', apartmentId);
+    return this.request<{ success: boolean; data: any[] }>(`/reception/parcels/recipients/search?${q.toString()}`);
+  }
+
+  async searchParcelApartments(keyword: string = ''): Promise<{ success: boolean; data: any[] }> {
+    const q = new URLSearchParams();
+    if (keyword) q.append('search', keyword);
+    return this.request<{ success: boolean; data: any[] }>(`/reception/parcels/apartments/search?${q.toString()}`);
+  }
+
+  async checkoutReceptionParcel(
+    id: string,
+    data: {
+      collected_by_name?: string;
+      pin_code?: string;
+      qr_code?: string;
+      notes?: string;
+      collected_signature_url?: string;
+    } = {}
+  ): Promise<{ success: boolean; message: string; data: ParcelItem }> {
+    return this.request<{ success: boolean; message: string; data: ParcelItem }>(`/reception/parcels/${id}/check-out`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async lookupReceptionParcel(
+    code: string
+  ): Promise<{ success: boolean; data: ParcelItem | null; can_checkout?: boolean; message?: string }> {
+    const q = new URLSearchParams({ code });
+    return this.request<{ success: boolean; data: ParcelItem | null; can_checkout?: boolean; message?: string }>(
+      `/reception/parcels/lookup?${q.toString()}`
+    );
+  }
+
+  async remindReceptionParcel(
+    id: string
+  ): Promise<{ success: boolean; message: string; parcel?: ParcelItem; recipient_user_id?: string }> {
+    return this.request<{ success: boolean; message: string; parcel?: ParcelItem; recipient_user_id?: string }>(
+      `/reception/parcels/${id}/remind`,
+      { method: 'POST' }
+    );
+  }
+
+  async remindExpiringParcels(): Promise<{ success: boolean; count?: number; message: string }> {
+    return this.request<{ success: boolean; count?: number; message: string }>(
+      '/reception/parcels/remind-expiring',
+      { method: 'POST' }
+    );
+  }
+
+  // ================= WEB PUSH NOTIFICATIONS =================
+  async registerPushSubscription(subscriptionData: {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+    content_encoding?: string;
+  }): Promise<{ success: boolean; message: string; subscription_id?: string }> {
+    return this.request<{ success: boolean; message: string; subscription_id?: string }>('/notifications/push-subscription', {
+      method: 'POST',
+      body: JSON.stringify(subscriptionData),
+    });
+  }
+
+  async unregisterPushSubscription(endpoint: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/notifications/push-subscription', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
+  async getPushNotificationStatus(): Promise<{ success: boolean; is_subscribed: boolean; active_devices: number }> {
+    return this.request<{ success: boolean; is_subscribed: boolean; active_devices: number }>('/notifications/push-status');
+  }
+
+  async getVapidPublicKey(): Promise<{ success: boolean; public_key: string | null; is_configured: boolean }> {
+    return this.request<{ success: boolean; public_key: string | null; is_configured: boolean }>('/notifications/vapid-public-key');
   }
 
   // ================= RBAC MANAGEMENT =================
@@ -1920,6 +2188,235 @@ class ApiService {
       body: JSON.stringify(payload),
     });
   }
+
+  // ================= RESIDENT TICKETS =================
+  async getResidentTicketCategories() {
+    return this.request<{ success: boolean; data: TicketCategoryItem[] }>('/resident/tickets/categories');
+  }
+
+  async getManagedTickets(params: URLSearchParams, signal?: AbortSignal) {
+    return this.request<{ data: ManagedTicket[]; current_page: number; last_page: number; total: number }>(`/admin/tickets?${params}`, { signal });
+  }
+  async getTicketOptions() { return this.request<TicketOptions>('/admin/tickets/options'); }
+  async getManagedTicket(id: string) { return this.request<ManagedTicket>(`/admin/tickets/${id}`); }
+  async createManagedTicket(payload: Record<string, unknown>) { return this.request<ManagedTicket>('/admin/tickets', { method: 'POST', body: JSON.stringify(payload) }); }
+  async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
+  async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
+  async getTicketTechnicians(id: string) { return this.request<{ id: string; full_name: string }[]>(`/admin/tickets/${id}/technicians`); }
+  async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
+  async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
+  async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
+  async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
+
+  async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
+    if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
+    const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
+    const response = await fetch(url, { signal, headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    if (!response.ok) throw new Error('Không tải được ảnh sự cố.');
+    return response.blob();
+  }
+
+  async addTicketImages(id: string, files: File[], version: number) {
+    const body = new FormData();
+    files.forEach((file) => body.append('attachments[]', file));
+    body.append('version', String(version));
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments`, { method: 'POST', body });
+  }
+
+  async removeTicketImage(id: string, attachmentId: string, version: number) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) });
+  }
+
+  async getResidentTickets(filters?: {
+    status?: string;
+    category_id?: string;
+    priority?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  }, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.category_id && filters.category_id !== 'ALL') params.append('category_id', filters.category_id);
+    if (filters?.priority && filters.priority !== 'ALL') params.append('priority', filters.priority);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.per_page) params.append('per_page', String(filters.per_page));
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<TicketListResponse>(`/resident/tickets${query}`, { signal });
+  }
+
+  async getResidentTicketDetail(id: string) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`);
+  }
+
+  async createResidentTicket(payload: FormData | Record<string, any>, idempotencyKey?: string) {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers['X-Idempotency-Key'] = idempotencyKey;
+    }
+    const isFormData = payload instanceof FormData;
+    return this.request<{ success: boolean; message: string; data: TicketItem }>('/resident/tickets', {
+      method: 'POST',
+      body: isFormData ? payload : JSON.stringify(payload),
+      headers,
+    });
+  }
+
+  async updateResidentTicket(id: string, payload: {
+    title: string;
+    description: string;
+    location: string;
+    priority?: string;
+    preferred_service_time?: string | null;
+    version: number;
+    updated_at?: string;
+  }) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async cancelResidentTicket(id: string, version: number, reason: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, version }),
+    });
+  }
+
+  async confirmResidentTicket(id: string, version: number, note?: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ note, version }),
+    });
+  }
+
+  async reopenResidentTicket(id: string, version: number, reason: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/reopen`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, version }),
+    });
+  }
+
+  async getResidentTicketHistory(id: string) {
+    return this.request<{ success: boolean; data: TicketHistoryItem[] }>(`/resident/tickets/${id}/history`);
+  }
+}
+
+export interface ManagedTicket extends TicketItem {
+  actions: Record<string, boolean>;
+}
+export interface TicketNotification { id: string; title: string; body_message: string; deep_link_url: string; is_read: boolean | number; created_at: string; }
+export interface TicketOptions {
+  categories: TicketCategoryItem[];
+  blocks: { id: string; block_name: string }[];
+  apartments: { id: string; block_id: string; apartment_number: string }[];
+  residents: { id: string; apartment_id: string; full_name: string }[];
+  can_create: boolean;
+}
+
+export interface TicketCategoryItem {
+  id: string;
+  category_code: string;
+  category_name: string;
+  default_priority?: string;
+  sla_response_time_minutes?: number;
+  sla_resolution_time_hours?: number;
+}
+
+export interface TicketAttachmentItem {
+  id: string;
+  ticket_id: string;
+  file_name: string;
+  file_url: string;
+  storage_path?: string;
+  file_type: string;
+  is_resolution_proof?: boolean;
+  mime_type?: string;
+  file_size_bytes?: number;
+  created_at: string;
+}
+
+export interface TicketHistoryItem {
+  id: string;
+  ticket_id: string;
+  action_type: string;
+  old_status?: string | null;
+  new_status?: string | null;
+  notes?: string | null;
+  created_at: string;
+  performer?: {
+    id: string;
+    full_name: string;
+    email: string;
+  } | null;
+}
+
+export interface TicketItem {
+  id: string;
+  ticket_number: string;
+  category_id: string;
+  apartment_id: string;
+  creator_user_id: string;
+  title: string;
+  description: string;
+  location: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'NEW' | 'RECEIVED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'CANCELLED';
+  current_technician_user_id?: string | null;
+  preferred_service_time?: string | null;
+  sla_deadline?: string | null;
+  resolved_at?: string | null;
+  closed_at?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  category?: TicketCategoryItem;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block?: {
+      id: string;
+      block_name: string;
+      block_code: string;
+    };
+  };
+  creator?: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone_number?: string;
+  };
+  technician?: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone_number?: string;
+  } | null;
+  attachments?: TicketAttachmentItem[];
+  history?: TicketHistoryItem[];
+}
+
+export interface TicketListResponse {
+  success: boolean;
+  data: TicketItem[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+  counters: {
+    all: number;
+    new: number;
+    received?: number;
+    in_progress: number;
+    resolved: number;
+    closed: number;
+    cancelled: number;
+  };
 }
 
 export interface TemporaryRegistrationItem {
