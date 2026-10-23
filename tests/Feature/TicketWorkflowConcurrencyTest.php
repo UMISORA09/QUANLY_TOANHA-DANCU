@@ -40,6 +40,9 @@ class TicketWorkflowConcurrencyTest extends TestCase
             foreach ($ticketIds as $id) {
                 DB::table('user_in_app_notifications')->where('category', 'TICKET')->where('deep_link_url', 'like', '%'.$id.'%')->delete();
             }
+            $commentIds = DB::table('ticket_comments')->whereIn('ticket_id', $ticketIds)->pluck('id');
+            DB::table('audit_logs')->whereIn('record_id', $commentIds)->delete();
+            DB::table('ticket_comments')->whereIn('ticket_id', $ticketIds)->delete();
             DB::table('audit_logs')->whereIn('record_id', $ticketIds)->delete();
             DB::table('ticket_history')->whereIn('ticket_id', $ticketIds)->delete();
             DB::table('tickets')->whereIn('id', $ticketIds)->delete();
@@ -73,7 +76,7 @@ class TicketWorkflowConcurrencyTest extends TestCase
         Ticket::whereKey($this->ticketId)->update(['status' => $status]);
     }
 
-    private function race(array $requests, string $lockTable, string $lockId): array
+    private function race(array $requests, string $lockTable, string $lockId, array $allowedStatuses = [200, 201, 409]): array
     {
         $multi = curl_multi_init();
         $handles = [];
@@ -99,7 +102,7 @@ class TicketWorkflowConcurrencyTest extends TestCase
             $statuses = [];
             foreach ($handles as $handle) {
                 $status = curl_getinfo($handle, CURLINFO_HTTP_CODE);
-                $this->assertContains($status, [200, 201, 409], 'Unexpected QA HTTP status '.$status);
+                $this->assertContains($status, $allowedStatuses, 'Unexpected QA HTTP status '.$status);
                 $statuses[] = $status;
             }
             sort($statuses);
@@ -158,5 +161,63 @@ class TicketWorkflowConcurrencyTest extends TestCase
         $this->assertSame(1, Ticket::where('category_id', $this->ticketCategoryId)->count());
         $id = Ticket::where('category_id', $this->ticketCategoryId)->value('id');
         $this->assertSame(1, DB::table('user_in_app_notifications')->where('recipient_user_id', $this->adminUser->id)->where('category', 'TICKET')->where('deep_link_url', 'like', '%'.$id.'%')->count());
+    }
+
+    public function test_parallel_comment_retries_create_one_comment_audit_and_notification(): void
+    {
+        $this->createTicket();
+        $id = (string) Str::uuid();
+        $request = ['/api/v1/tickets/'.$this->ticketId.'/comments', $this->residentToken, ['id' => $id, 'comment_text' => 'QA gửi lặp đồng thời'], 'POST'];
+        $this->assertSame([200, 201], $this->race([$request, $request], 'tickets', $this->ticketId));
+        $this->assertSame(1, DB::table('ticket_comments')->where('ticket_id', $this->ticketId)->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('record_id', $id)->count());
+        $this->assertSame(1, DB::table('user_in_app_notifications')->where('recipient_user_id', $this->adminUser->id)->where('title', 'like', 'Trao đổi mới%')->where('deep_link_url', 'like', '%'.$this->ticketId.'%')->count());
+        $this->assertSame(1, Ticket::findOrFail($this->ticketId)->version);
+    }
+
+    public function test_two_residents_can_comment_concurrently_without_version_conflicts(): void
+    {
+        $this->createTicket();
+        $path = '/api/v1/tickets/'.$this->ticketId.'/comments';
+        $this->assertSame([201, 201], $this->race([
+            [$path, $this->residentToken, ['id' => (string) Str::uuid(), 'comment_text' => 'QA người thứ nhất'], 'POST'],
+            [$path, $this->secondToken, ['id' => (string) Str::uuid(), 'comment_text' => 'QA người thứ hai'], 'POST'],
+        ], 'tickets', $this->ticketId));
+        $this->assertSame(2, DB::table('ticket_comments')->where('ticket_id', $this->ticketId)->count());
+        $this->assertSame(1, Ticket::findOrFail($this->ticketId)->version);
+    }
+
+    public function test_comment_racing_with_closure_never_commits_after_closure(): void
+    {
+        $this->createTicket('RESOLVED');
+        $statuses = $this->race([
+            ['/api/v1/resident/tickets/'.$this->ticketId.'/confirm', $this->residentToken, ['version' => 1], 'POST'],
+            ['/api/v1/tickets/'.$this->ticketId.'/comments', $this->residentToken, ['id' => (string) Str::uuid(), 'comment_text' => 'QA gửi sát lúc đóng'], 'POST'],
+        ], 'tickets', $this->ticketId);
+        $this->assertContains($statuses, [[200, 201], [200, 409]]);
+        $this->assertSame($statuses === [200, 201] ? 1 : 0, DB::table('ticket_comments')->where('ticket_id', $this->ticketId)->count());
+        $this->assertSame('CLOSED', Ticket::findOrFail($this->ticketId)->status);
+        $this->assertSame(2, Ticket::findOrFail($this->ticketId)->version);
+    }
+
+    public function test_comment_racing_with_reassignment_rechecks_current_technician(): void
+    {
+        $this->createTicket('RECEIVED');
+        Role::firstOrCreate(['role_code' => 'TECHNICIAN'], ['role_name' => 'QA technician']);
+        (new TicketPermissionsSeeder)->run();
+        $this->departmentId = (string) Str::uuid();
+        DB::table('departments')->insert(['id' => $this->departmentId, 'department_code' => 'QA-'.Str::random(8), 'department_name' => 'QA Discussion']);
+        foreach ([$this->residentUser, $this->secondUser] as $user) {
+            $user->assignRole('TECHNICIAN');
+            DB::table('staff_profiles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'department_id' => $this->departmentId, 'employee_code' => 'QA-'.Str::random(8), 'job_title' => 'QA Technician', 'hire_date' => today(), 'assigned_block_id' => $this->blockId]);
+        }
+        Ticket::whereKey($this->ticketId)->update(['current_technician_user_id' => $this->secondUser->id]);
+        $statuses = $this->race([
+            ['/api/v1/admin/tickets/'.$this->ticketId.'/workflow', $this->adminToken, ['version' => 1, 'action' => 'assign', 'technician_user_id' => $this->residentUser->id], 'POST'],
+            ['/api/v1/tickets/'.$this->ticketId.'/comments', $this->secondToken, ['id' => (string) Str::uuid(), 'comment_text' => 'QA kỹ thuật viên cũ gửi'], 'POST'],
+        ], 'tickets', $this->ticketId, [200, 201, 404]);
+        $this->assertContains($statuses, [[200, 201], [200, 404]]);
+        $this->assertSame($statuses === [200, 201] ? 1 : 0, DB::table('ticket_comments')->where('ticket_id', $this->ticketId)->count());
+        $this->assertSame($this->residentUser->id, Ticket::findOrFail($this->ticketId)->current_technician_user_id);
     }
 }

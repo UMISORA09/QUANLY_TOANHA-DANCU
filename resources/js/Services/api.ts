@@ -2303,6 +2303,34 @@ class ApiService {
   async getResidentTicketHistory(id: string) {
     return this.request<{ success: boolean; data: TicketHistoryItem[] }>(`/resident/tickets/${id}/history`);
   }
+
+  async getTicketComments(id: string, filters: { cursor?: string; since?: string } = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams(filters);
+    return this.request<TicketCommentPage>(`/tickets/${id}/comments?${params}`, { signal, cache: 'no-store' });
+  }
+
+  async postTicketComment(id: string, payload: TicketCommentPayload, signal?: AbortSignal) {
+    return this.request<{ data: TicketComment }>(`/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify(payload), signal, cache: 'no-store' });
+  }
+
+  async getTicketDiscussionHistory(id: string, cursor?: string, signal?: AbortSignal) {
+    return this.request<TicketDiscussionPage<TicketHistoryItem>>(`/tickets/${id}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { signal, cache: 'no-store' });
+  }
+}
+
+export interface TicketParticipant { id: string; full_name: string; role: string; }
+export interface TicketComment {
+  id: string;
+  ticket_id: string;
+  comment_text: string;
+  is_internal_staff_note: boolean;
+  created_at: string;
+  sender: TicketParticipant | null;
+}
+export interface TicketCommentPayload { id: string; comment_text: string; is_internal_staff_note: boolean; }
+export interface TicketDiscussionPage<T> { items: T[]; next_cursor: string | null; }
+export interface TicketCommentPage extends TicketDiscussionPage<TicketComment> {
+  meta: { status: TicketItem['status']; ticket_version: number; history_count: number; can_comment: boolean; can_internal_note: boolean; can_view_internal: boolean; };
 }
 
 export interface ManagedTicket extends TicketItem {
@@ -2350,7 +2378,8 @@ export interface TicketHistoryItem {
   performer?: {
     id: string;
     full_name: string;
-    email: string;
+    email?: string;
+    role?: string;
   } | null;
 }
 

@@ -6,9 +6,48 @@ use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class TicketNotificationService
 {
+    public function commented(Ticket $ticket, User $sender, bool $internal): void
+    {
+        $access = app(TicketAccessService::class);
+        $ids = [$ticket->coordinator_user_id, $ticket->current_technician_user_id];
+        if (! $ticket->coordinator_user_id) {
+            $ids = [...$ids, ...User::where('status', 'ACTIVE')->whereHas('roles', fn ($query) => $query->whereIn('role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'BUILDING_MANAGER']))->pluck('id')->all()];
+        }
+        if (! $internal && ($access->manager($sender) || $access->technician($sender))) {
+            $ids[] = $ticket->creator_user_id;
+        }
+        foreach (User::with('roles.permissions')->where('status', 'ACTIVE')->whereIn('id', array_unique(array_filter($ids)))->where('id', '!=', $sender->id)->get() as $recipient) {
+            $staff = $access->manager($recipient) || $access->technician($recipient);
+            if ($internal && ! $staff) {
+                continue;
+            }
+            try {
+                $access->view($recipient, $ticket);
+                if (! $staff) {
+                    $access->resident($recipient, $ticket);
+                }
+            } catch (HttpExceptionInterface $exception) {
+                if (! in_array($exception->getStatusCode(), [403, 404], true)) {
+                    throw $exception;
+                }
+
+                continue;
+            }
+            $path = $staff ? ($recipient->isSuperAdmin() ? '/admin' : '/quan-ly') : '/cu-dan';
+            DB::table('user_in_app_notifications')->insert([
+                'id' => (string) Str::uuid(), 'recipient_user_id' => $recipient->id,
+                'title' => ($internal ? 'Ghi chú nội bộ mới' : 'Trao đổi mới').' · '.$ticket->ticket_number,
+                'body_message' => 'Có nội dung mới trong yêu cầu. Mở yêu cầu để xem chi tiết.',
+                'deep_link_url' => $path.'?'.http_build_query(['tab' => 'tickets', 'ticket_id' => $ticket->id]),
+                'category' => 'TICKET', 'is_read' => 0, 'created_at' => now(),
+            ]);
+        }
+    }
+
     public function changed(Ticket $ticket, string $action): void
     {
         $block = DB::table('apartments')->where('id', $ticket->apartment_id)->value('block_id');

@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             filter_var(env('SEED_DEMO_DATA', true), FILTER_VALIDATE_BOOLEAN)
         ) {
             $this->call(SharedDemoDataSeeder::class);
+            $this->call(TicketDiscussionSeeder::class);
         }
     }
 }

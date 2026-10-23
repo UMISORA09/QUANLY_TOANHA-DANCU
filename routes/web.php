@@ -36,6 +36,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServicePricingController;
 use App\Http\Controllers\StaffScheduleController;
 use App\Http\Controllers\TemporaryRegistrationController;
+use App\Http\Controllers\TicketDiscussionController;
 use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
@@ -237,6 +238,12 @@ Route::get('/api/schedules/staff-candidates', [StaffScheduleController::class, '
 Route::post('/api/schedules', [StaffScheduleController::class, 'store']);
 Route::match(['PUT', 'POST'], '/api/schedules/{id}', [StaffScheduleController::class, 'update']);
 Route::delete('/api/schedules/{id}', [StaffScheduleController::class, 'destroy']);
+
+Route::prefix('api/v1/tickets')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('{id}/comments', [TicketDiscussionController::class, 'index']);
+    Route::post('{id}/comments', [TicketDiscussionController::class, 'store']);
+    Route::get('{id}/history', [TicketDiscussionController::class, 'history']);
+});
 
 Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(function () {
     Route::get('/', [TicketManagementController::class, 'index']);

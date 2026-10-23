@@ -1,0 +1,84 @@
+@use 'variables' as vars;
+@use 'mixins' as mix;
+
+.ticket-discussion {
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid #e5e5e5;
+    border-radius: vars.$radius-lg;
+    background: #fff;
+
+    > * + * { margin-top: 1rem; }
+
+    &__button {
+        min-height: 2.75rem;
+        padding: .5rem .75rem;
+        border: 1px solid #e5e5e5;
+        border-radius: vars.$radius-md;
+        background: #fff;
+        color: #404040;
+        font-size: .875rem;
+        font-weight: 500;
+        cursor: pointer;
+
+        &:hover { background: #fafafa; }
+        &:disabled { cursor: not-allowed; opacity: .5; }
+    }
+
+    &__button[aria-selected='true'], &__submit {
+        border-color: vars.$color-neutral-950;
+        background: vars.$color-neutral-950;
+        color: #fff;
+
+        &:hover { background: #262626; }
+    }
+
+    &__button, &__comments, &__input {
+        &:focus-visible { outline: 2px solid vars.$color-sky-600; outline-offset: 2px; }
+    }
+
+    &__comments, &__history {
+        @include mix.custom-scroll-track;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+
+        > * + * { margin-top: .75rem; }
+    }
+
+    &__comments {
+        position: relative;
+        max-height: 20rem;
+        border-radius: vars.$radius-md;
+        overflow-anchor: none;
+    }
+
+    &__history { max-height: 24rem; }
+
+    &__comment {
+        padding: .75rem;
+        border: 1px solid #e5e5e5;
+        border-radius: vars.$radius-md;
+        background: rgba(250, 250, 250, .7);
+        font-size: .875rem;
+
+        &--internal { border-color: #fde68a; background: #fffbeb; }
+    }
+
+    &__new { width: 100%; border-color: #bae6fd; color: vars.$color-sky-700; }
+
+    &__input {
+        display: block;
+        width: 100%;
+        padding: .5rem .75rem;
+        border: 1px solid #e5e5e5;
+        border-radius: vars.$radius-md;
+        background: #fff;
+        color: vars.$color-neutral-900;
+        font-size: .875rem;
+        resize: vertical;
+
+        &:disabled { background: #fafafa; color: #737373; }
+    }
+
+    @media (min-width: 640px) { padding: 1.25rem; }
+}
