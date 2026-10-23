@@ -243,7 +243,7 @@ class AnnouncementManagementTest extends TestCase
         $this->assertSame($audits, DB::table('audit_logs')->count());
         $this->app->instance('env', 'production');
         try {
-            $this->seed(AnnouncementSeeder::class);
+            (new AnnouncementSeeder)->run();
             $this->assertSame($count, DB::table('announcements')->count());
         } finally {
             $this->app->instance('env', 'testing');

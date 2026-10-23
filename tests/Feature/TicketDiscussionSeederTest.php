@@ -63,7 +63,7 @@ class TicketDiscussionSeederTest extends TestCase
     {
         $this->app->instance('env', 'production');
         try {
-            $this->seed(TicketDiscussionSeeder::class);
+            (new TicketDiscussionSeeder)->run();
             $this->assertSame(0, DB::table('ticket_comments')->where('ticket_id', $this->ticket->id)->count());
         } finally {
             $this->app->instance('env', 'testing');
