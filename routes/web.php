@@ -22,6 +22,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PushNotificationController;
 use App\Http\Controllers\RealtimeStreamController;
+use App\Http\Controllers\ReceptionDashboardController;
 use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ReceptionVisitorController;
@@ -199,6 +200,10 @@ Route::get('/api/management/overview', [ManagementDashboardController::class, 'o
 
 // API Reception Portal
 Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
+
+// API Reception Dashboard (Module #13: Giám sát Bưu phẩm tồn đọng & Lượng khách trong tòa nhà)
+Route::get('/api/v1/reception/dashboard', [ReceptionDashboardController::class, 'index']);
+Route::get('/api/reception/dashboard', [ReceptionDashboardController::class, 'index']);
 
 // API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
 Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
