@@ -205,7 +205,7 @@ jobs:
       - name: Deploy to Production Server via SSH
         id: ssh-deploy
         if: steps.check-secrets.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           REGISTRY: ghcr.io
           IMAGE_NAME: ${{ github.repository }}
