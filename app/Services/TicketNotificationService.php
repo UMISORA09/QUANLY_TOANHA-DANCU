@@ -52,12 +52,18 @@ class TicketNotificationService
     {
         $block = DB::table('apartments')->where('id', $ticket->apartment_id)->value('block_id');
         $ids = [];
-        if ($action === 'created' || ($action === 'cancel' && ! $ticket->coordinator_user_id && ! $ticket->current_technician_user_id)) {
+        if (in_array($action, ['created', 'reopen'], true) || ($action === 'cancel' && ! $ticket->coordinator_user_id && ! $ticket->current_technician_user_id)) {
             foreach (User::where('status', 'ACTIVE')->whereHas('roles', fn ($q) => $q->whereIn('role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'BUILDING_MANAGER']))->get() as $user) {
                 $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
                 if ($user->isSuperAdmin() || ($profile && ($profile->assigned_block_id === null || $profile->assigned_block_id === $block) && $user->hasPermission('TICKET:VIEW') && $user->hasPermission('TICKET:UPDATE'))) {
                     $ids[] = $user->id;
                 }
+            }
+            if ($action === 'reopen') {
+                if (in_array($ticket->coordinator_user_id, $ids, true)) {
+                    $ids = [$ticket->coordinator_user_id];
+                }
+                $ids[] = $ticket->current_technician_user_id;
             }
         } elseif ($action === 'assign') {
             $ids[] = $ticket->current_technician_user_id;
@@ -76,6 +82,12 @@ class TicketNotificationService
                 continue;
             }
             $resident = $id === $ticket->creator_user_id;
+            if (! $resident && ! $user->isSuperAdmin()) {
+                $profile = DB::table('staff_profiles')->where('user_id', $id)->first();
+                if (! $profile || ($profile->assigned_block_id !== null && $profile->assigned_block_id !== $block) || ! $user->hasPermission('TICKET:VIEW')) {
+                    continue;
+                }
+            }
             $path = $resident ? '/cu-dan' : ($user->isSuperAdmin() ? '/admin' : '/quan-ly');
             DB::table('user_in_app_notifications')->insert(['id' => (string) Str::uuid(), 'recipient_user_id' => $id, 'title' => ($labels[$action] ?? 'Cập nhật yêu cầu').' · '.$ticket->ticket_number,
                 'body_message' => $ticket->title, 'deep_link_url' => $path.'?'.http_build_query(['tab' => 'tickets', 'ticket_id' => $ticket->id]), 'category' => 'TICKET', 'is_read' => 0, 'created_at' => now()]);

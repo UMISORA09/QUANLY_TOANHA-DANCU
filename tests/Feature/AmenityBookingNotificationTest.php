@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,11 @@ class AmenityBookingNotificationTest extends TestCase
     public function test_creation_notifies_authorized_active_managers_with_exact_booking_link(): void
     {
         $manager = User::factory()->create();
+        Role::firstOrCreate(['role_code' => 'BUILDING_MANAGER'], ['role_name' => 'Building manager']);
+        $manager->assignRole('BUILDING_MANAGER');
+        $department = (string) Str::uuid();
+        DB::table('departments')->insert(['id' => $department, 'department_code' => Str::random(12), 'department_name' => 'Notification QA']);
+        DB::table('staff_profiles')->insert(['id' => (string) Str::uuid(), 'user_id' => $manager->id, 'department_id' => $department, 'employee_code' => Str::random(12), 'job_title' => 'Manager', 'hire_date' => today(), 'assigned_block_id' => $this->blockId]);
         $roleId = (string) Str::uuid();
         DB::table('roles')->insert(['id' => $roleId, 'role_code' => 'TEST_'.Str::random(8), 'role_name' => 'Amenity manager']);
         $permissionId = DB::table('permissions')->where('permission_code', 'AMENITY:UPDATE')->value('id');

@@ -35,7 +35,7 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
   statusText,
   extraActions,
   onNotificationClick,
-  unreadNotificationCount = 3,
+  unreadNotificationCount = ['manager', 'admin', 'dev'].includes(portalRole || userRole) ? 0 : 3,
   onHelpClick,
   showPortalSwitcher = false,
 }) => {
@@ -338,7 +338,7 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
             >
               <Bell className="w-4 h-4 group-hover:scale-110 transition-transform" />
               {unreadNotificationCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white animate-pulse" />
+                ['manager', 'admin', 'dev'].includes(portalRole || userRole) ? <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span> : <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white animate-pulse" />
               )}
             </button>
           </div>

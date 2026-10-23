@@ -19,7 +19,7 @@ import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
 import { TicketManagementPanel } from '../../Components/TicketManagementPanel';
-import { TicketNotificationList, useTicketNotifications } from '../../Components/TicketNotifications';
+import { ManagerNotificationCenter, useManagerNotifications } from '../../Components/ManagerNotificationCenter';
 
 const AnnouncementManagement = lazy(() => import('../../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
 
@@ -41,7 +41,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
   initialTab = 'overview',
 }) => {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
-  const ticketNotices = useTicketNotifications();
+  const notices = useManagerNotifications();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
@@ -163,10 +163,10 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText="Hệ thống Quản trị & Kỹ thuật (Admin / Dev) đang vận hành ổn định"
-      unreadNotificationCount={ticketNotices.unread}
-      onNotificationClick={() => { setNotificationsOpen(!notificationsOpen); ticketNotices.retry(); }}
+      unreadNotificationCount={notices.unread}
+      onNotificationClick={() => { setNotificationsOpen(!notificationsOpen); notices.retry(); }}
     >
-      {notificationsOpen && <section aria-label="Thông báo quản trị" className="fixed right-4 top-20 z-[60] max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 shadow-lg" onKeyDown={(event) => { if (event.key === 'Escape') setNotificationsOpen(false); }}><div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold">Thông báo · {ticketNotices.unread} chưa đọc</h2><button type="button" aria-label="Đóng thông báo quản trị" className="min-h-9 rounded-lg px-2 text-xs hover:bg-neutral-100" onClick={() => setNotificationsOpen(false)}>Đóng</button></div><TicketNotificationList feed={ticketNotices} /></section>}
+      {notificationsOpen && <ManagerNotificationCenter feed={notices} onClose={() => setNotificationsOpen(false)} />}
       <div className="p-4 sm:p-6 lg:p-8 w-full max-w-[2000px] mx-auto space-y-6 animate-in fade-in duration-200">
         {/* Breadcrumb & Title Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
