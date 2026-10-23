@@ -7,7 +7,8 @@ import { useTicketNotificationRefresh } from './TicketNotifications';
 
 export const ticketStatuses = { NEW: 'Mới gửi', RECEIVED: 'Đã tiếp nhận', IN_PROGRESS: 'Đang xử lý', RESOLVED: 'Chờ nghiệm thu', CLOSED: 'Đã hoàn tất', CANCELLED: 'Đã hủy' };
 export const ticketPriorities = { LOW: 'Thấp', MEDIUM: 'Bình thường', HIGH: 'Cao', URGENT: 'Khẩn cấp' };
-const button = 'inline-flex items-center justify-center min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed';
+const buttonBase = 'inline-flex items-center justify-center min-h-11 rounded-xl border px-4 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed';
+const button = `${buttonBase} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`;
 const input = 'min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-2 focus-visible:outline-blue-600 shadow-2xs';
 const selectAppearance = { buttonClassName: 'min-h-11 text-sm' };
 const statusColors = {
@@ -137,7 +138,7 @@ export function TicketManagementPanel() {
           </button>
           {options?.can_create && (
             <button
-              className={`${button} bg-slate-950 text-white hover:bg-slate-800 shadow-sm transition-all`}
+              className={`${buttonBase} border-slate-950 bg-slate-950 text-white hover:bg-slate-800 shadow-sm transition-all`}
               onClick={() => { setForm({ ...blank, category_id: options.categories[0]?.id || '', idempotency_key: crypto.randomUUID() }); setFields({}); setError(''); setConflict(false); setMode('create'); }}
             >
               Thêm yêu cầu
@@ -159,7 +160,7 @@ export function TicketManagementPanel() {
         </label>
         <button
           type="button"
-          className={`${button} shrink-0 ${filtersOpen ? 'bg-slate-100 border-slate-300' : 'bg-white shadow-2xs'}`}
+          className={`${buttonBase} shrink-0 text-slate-700 hover:bg-slate-50 ${filtersOpen ? 'bg-slate-100 border-slate-300' : 'bg-white border-slate-200 shadow-2xs'}`}
           aria-expanded={filtersOpen}
           aria-controls="ticket-management-filters"
           onClick={() => setFiltersOpen(!filtersOpen)}
@@ -388,7 +389,7 @@ export function TicketManagementPanel() {
             )}
             {selected.actions.archive && (
               <button
-                className={`${button} border-rose-200 text-rose-700 hover:bg-rose-50 shadow-2xs`}
+                className={`${buttonBase} border-rose-200 bg-white text-rose-700 hover:bg-rose-50 shadow-2xs`}
                 disabled={busy}
                 onClick={() => { setReason(''); setForm({ ...blank, version: selected.version }); setError(''); setConflict(false); setMode('archive'); }}
               >
@@ -399,7 +400,7 @@ export function TicketManagementPanel() {
               <button
                 key={key}
                 disabled={busy}
-                className={`${button} ${key === 'cancel' ? 'border-rose-200 text-rose-700 hover:bg-rose-50' : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-xs'}`}
+                className={`${buttonBase} ${key === 'cancel' ? 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50' : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-xs'}`}
                 onClick={async () => {
                   setAction(key); setReason(''); setTechnician(''); setError(''); setForm({ ...blank, version: selected.version });
                   if (key === 'assign') {
@@ -451,7 +452,7 @@ export function TicketManagementPanel() {
           <button
             type="submit"
             form="ticket-management-form"
-            className={`${button} ${mode === 'archive' || (mode === 'workflow' && action === 'cancel') ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-700' : 'bg-slate-950 text-white hover:bg-slate-800'}`}
+            className={`${buttonBase} ${mode === 'archive' || (mode === 'workflow' && action === 'cancel') ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-700' : 'border-slate-950 bg-slate-950 text-white hover:bg-slate-800'}`}
             disabled={cannotSubmit}
           >
             {busy ? 'Đang lưu…' : mode === 'archive' ? 'Xác nhận lưu trữ' : mode === 'workflow' ? workflowLabels[action] : 'Lưu yêu cầu'}
@@ -554,7 +555,7 @@ export function TicketManagementPanel() {
         <button
           type="button"
           disabled={busy}
-          className={`${button} bg-rose-600 text-white border-rose-600 hover:bg-rose-700`}
+          className={`${buttonBase} bg-rose-600 text-white border-rose-600 hover:bg-rose-700`}
           onClick={async () => {
             if (!selected || !removeImageId || busy) return;
             setBusy(true); setError('');
