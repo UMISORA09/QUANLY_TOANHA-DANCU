@@ -155,6 +155,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'meter_readings', label: 'Chốt chỉ số điện & nước', icon: Zap, badge: 'IoT', badgeType: 'info', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: FileText },
+      { id: 'news', label: 'Bảng tin / Thông báo', icon: FileText },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'schedules', label: 'Quản lý Xếp ca trực', icon: CalendarDays, badge: 'Ca trực', badgeType: 'info', isNew: true },
       { id: 'audit_flags', label: 'Feature Flags & Logs', icon: Sliders, badge: '5 flags' },
