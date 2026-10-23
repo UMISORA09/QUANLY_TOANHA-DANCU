@@ -29,6 +29,7 @@ use App\Http\Controllers\ReceptionParcelController;
 use App\Http\Controllers\ReceptionPortalController;
 use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
+use App\Http\Controllers\ResidentAnnouncementController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
 use App\Http\Controllers\ResidentTicketController;
@@ -245,6 +246,14 @@ Route::get('/api/schedules/staff-candidates', [StaffScheduleController::class, '
 Route::post('/api/schedules', [StaffScheduleController::class, 'store']);
 Route::match(['PUT', 'POST'], '/api/schedules/{id}', [StaffScheduleController::class, 'update']);
 Route::delete('/api/schedules/{id}', [StaffScheduleController::class, 'destroy']);
+
+Route::prefix('api/v1/resident/announcements')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('/', [ResidentAnnouncementController::class, 'index']);
+    Route::get('/{id}', [ResidentAnnouncementController::class, 'show'])->whereUuid('id');
+    Route::post('/{id}/read', [ResidentAnnouncementController::class, 'read'])->whereUuid('id');
+    Route::post('/{id}/acknowledge', [ResidentAnnouncementController::class, 'acknowledge'])->whereUuid('id');
+    Route::get('/{id}/attachments/{attachmentId}', [ResidentAnnouncementController::class, 'attachment'])->whereUuid(['id', 'attachmentId']);
+});
 
 Route::prefix('api/v1/admin/announcements')->middleware('auth.bearer:strict')->group(function () {
     Route::get('/', [AnnouncementManagementController::class, 'index']);
