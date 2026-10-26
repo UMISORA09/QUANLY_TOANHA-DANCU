@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PDOException;
 
 class AmenitySearchSyncController extends Controller
 {
@@ -18,11 +19,26 @@ class AmenitySearchSyncController extends Controller
 
         if ($request->isMethod('get') && $request->query('inspect') === 'schema') {
             $host = (string) DB::connection()->getConfig('host');
+            $provider = collect(['aiven', 'tidbcloud', 'railway', 'amazonaws'])->first(fn (string $provider): bool => str_contains($host, $provider), 'unknown');
 
-            return response()->json([
-                'database_provider' => collect(['aiven', 'tidbcloud', 'railway', 'amazonaws'])->first(fn (string $provider): bool => str_contains($host, $provider), 'unknown'),
-                'tables' => ['amenity_bookings' => Schema::hasTable('amenity_bookings'), 'amenity_booking_payments' => Schema::hasTable('amenity_booking_payments')],
-            ]);
+            try {
+                return response()->json([
+                    'database_provider' => $provider,
+                    'tables' => ['amenity_bookings' => Schema::hasTable('amenity_bookings'), 'amenity_booking_payments' => Schema::hasTable('amenity_booking_payments')],
+                ])->header('Cache-Control', 'private, no-store');
+            } catch (PDOException $exception) {
+                $errorCode = match ((int) ($exception->errorInfo[1] ?? $exception->getCode())) {
+                    2006, 2013 => 'connection_lost',
+                    2002, 2003 => 'connection_unavailable',
+                    1045 => 'authentication_failed',
+                    1049 => 'database_missing',
+                    2026 => 'tls_failed',
+                    default => 'database_inspection_failed',
+                };
+
+                return response()->json(['database_provider' => $provider, 'database' => 'unhealthy', 'error_code' => $errorCode], 503)
+                    ->header('Cache-Control', 'private, no-store');
+            }
         }
 
         if ($request->isMethod('post')) {
