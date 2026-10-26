@@ -299,7 +299,6 @@ export interface ReceptionVisitorItem {
   } | null;
   created_at: string;
 }
-
 export interface ReceptionVisitorListResponse {
   success: boolean;
   data: ReceptionVisitorItem[];
@@ -416,7 +415,6 @@ export interface TimeSlot {
   is_active: boolean;
   created_at: string;
 }
-
 export interface Blackout {
   id: string;
   amenity_id: string;
@@ -427,7 +425,6 @@ export interface Blackout {
   created_by?: string | null;
   created_at: string;
 }
-
 export interface BlockOption {
   id: string;
   block_code: string;
@@ -2355,6 +2352,68 @@ class ApiService {
     return response.blob();
   }
 
+  // ================= F12: HÒM THƯ GÓP Ý & PHÂN TÍCH CẢM XÚC =================
+  async getResidentSuggestionBoxes(): Promise<{ success: boolean; data: SuggestionBoxItem[] }> {
+    return this.request('/resident/suggestion-boxes');
+  }
+
+  async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string }> {
+    return this.request('/resident/suggestions', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async getResidentSuggestions(params?: Record<string, any>): Promise<ResidentSuggestionListResponse> {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return this.request(`/resident/suggestions/my-suggestions${query}`);
+  }
+
+  async lookupAnonymousSuggestion(token: string): Promise<{ success: boolean; data: AnonymousSuggestionDetail }> {
+    return this.request(`/resident/suggestions/anonymous-lookup?token=${encodeURIComponent(token)}`);
+  }
+
+  async getManagementSuggestions(params?: Record<string, any>): Promise<ManagementSuggestionListResponse> {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return this.request(`/management/suggestions${query}`);
+  }
+
+  async getManagementSuggestionDetail(id: string): Promise<{ success: boolean; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}`);
+  }
+
+  async updateSuggestionStatus(id: string, payload: { status: string; version: number; rejection_reason?: string }): Promise<{ success: boolean; message: string; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async replySuggestion(id: string, payload: { official_response_text: string; version: number; status?: string }): Promise<{ success: boolean; message: string; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}/reply`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async analyzeSuggestionSentiment(suggestionId: string): Promise<{ success: boolean; status: string; message: string; data: SuggestionItem }> {
+    return this.request('/suggestions/ai-sentiment-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suggestion_id: suggestionId }),
+    });
+  }
+
+  async createSuggestionBox(payload: { box_name: string; block_id?: string | null; description?: string; is_open?: boolean }): Promise<{ success: boolean; message: string; data: SuggestionBoxItem }> {
+    return this.request('/management/suggestion-boxes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
 }
 
 export interface TicketParticipant { id: string; full_name: string; role: string; }
@@ -2406,7 +2465,6 @@ export interface TicketAttachmentItem {
   file_size_bytes?: number;
   created_at: string;
 }
-
 export interface TicketHistoryItem {
   id: string;
   ticket_id: string;
@@ -2677,3 +2735,113 @@ export interface AnnouncementOptions {
 }
 
 export interface AnnouncementUpload { token: string; transport: 'local' | 's3'; url: string; headers: Record<string, string>; expires_at: number; }
+
+// ================= F12 SUGGESTION INTERFACES =================
+export interface SuggestionBoxItem {
+  id: string;
+  box_name: string;
+  block_id: string | null;
+  description: string | null;
+  is_open: boolean;
+  created_at?: string;
+  block?: {
+    id: string;
+    block_name: string;
+    block_code: string;
+  } | null;
+}
+
+export interface SuggestionAttachmentItem {
+  id: string;
+  file_name: string;
+  storage_disk: string;
+  storage_path: string;
+  mime_type: string;
+  file_size_bytes: number;
+  url: string;
+}
+
+export interface SuggestionItem {
+  id: string;
+  box_id: string;
+  idempotency_key?: string | null;
+  resident_user_id?: string | null;
+  apartment_id?: string | null;
+  is_anonymous: boolean;
+  topic_category: 'AN_NINH' | 'VE_SINH' | 'BAI_XE' | 'TIEN_ICH' | 'THAI_DO_NHAN_VIEN' | 'KHAC' | string;
+  title: string;
+  content_text: string;
+  attached_files?: SuggestionAttachmentItem[];
+  status: 'RECEIVED' | 'REVIEWING' | 'ACCEPTED' | 'RESOLVED' | 'REJECTED' | string;
+  version: number;
+  official_response_text?: string | null;
+  rejection_reason?: string | null;
+  responded_by_staff_id?: string | null;
+  responded_at?: string | null;
+  ai_sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'VERY_ANGRY' | 'NOT_ANALYZED' | string;
+  ai_sentiment_score?: number | null;
+  created_at: string;
+  updated_at: string;
+  box?: SuggestionBoxItem;
+  resident_user?: {
+    id: string;
+    full_name: string;
+    phone_number?: string;
+  } | null;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id: string;
+  } | null;
+  responded_by_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
+}
+
+export interface SuggestionKpis {
+  total: number;
+  received: number;
+  reviewing: number;
+  accepted: number;
+  resolved: number;
+  rejected: number;
+  negative_sentiment: number;
+}
+
+export interface ManagementSuggestionListResponse {
+  success: boolean;
+  data: SuggestionItem[];
+  kpis: SuggestionKpis;
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface ResidentSuggestionListResponse {
+  success: boolean;
+  data: SuggestionItem[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface AnonymousSuggestionDetail {
+  id: string;
+  box_name?: string;
+  topic_category: string;
+  title: string;
+  content_text: string;
+  status: string;
+  attached_files?: SuggestionAttachmentItem[];
+  official_response_text?: string | null;
+  rejection_reason?: string | null;
+  responded_at?: string | null;
+  created_at: string;
+}

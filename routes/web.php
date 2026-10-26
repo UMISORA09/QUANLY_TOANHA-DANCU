@@ -17,6 +17,7 @@ use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InvoiceGenerationController;
 use App\Http\Controllers\InvoiceManagementController;
 use App\Http\Controllers\ManagementDashboardController;
+use App\Http\Controllers\ManagementSuggestionController;
 use App\Http\Controllers\ManagerNotificationController;
 use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
@@ -31,6 +32,7 @@ use App\Http\Controllers\ReceptionVisitorController;
 use App\Http\Controllers\ResidentAmenityBookingController;
 use App\Http\Controllers\ResidentController;
 use App\Http\Controllers\ResidentPortalController;
+use App\Http\Controllers\ResidentSuggestionController;
 use App\Http\Controllers\ResidentTicketController;
 use App\Http\Controllers\ResidentVisitorController;
 use App\Http\Controllers\RevenueAnalyticsController;
@@ -349,6 +351,36 @@ Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController:
 Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
 
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
+
+// F12: Hòm thư Góp ý & Phân tích Cảm xúc
+Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {
+    Route::get('suggestion-boxes', [ResidentSuggestionController::class, 'boxes']);
+    Route::post('suggestions', [ResidentSuggestionController::class, 'store'])->middleware('throttle:30,1');
+    Route::get('suggestions/my-suggestions', [ResidentSuggestionController::class, 'mySuggestions']);
+});
+
+// Tra cứu góp ý ẩn danh (Bảo vệ brute-force bằng throttle rate limiting)
+Route::get('/api/v1/resident/suggestions/anonymous-lookup', [ResidentSuggestionController::class, 'anonymousLookup'])->middleware('throttle:10,1');
+Route::post('/api/v1/resident/suggestions/anonymous-lookup', [ResidentSuggestionController::class, 'anonymousLookup'])->middleware('throttle:10,1');
+
+// Private attachment secure viewing
+Route::get('/api/v1/suggestions/{suggestionId}/attachments/{fileId}', [ResidentSuggestionController::class, 'showAttachment'])
+    ->name('suggestions.attachments.show');
+
+// Ban Quản lý - Quản lý góp ý & Workflow OCC
+Route::prefix('api/v1/management/suggestions')->middleware(['auth.bearer:strict', 'permission:SUGGESTION:VIEW'])->group(function () {
+    Route::get('', [ManagementSuggestionController::class, 'index']);
+    Route::get('{id}', [ManagementSuggestionController::class, 'show']);
+    Route::patch('{id}/status', [ManagementSuggestionController::class, 'updateStatus'])->middleware('permission:SUGGESTION:REPLY');
+    Route::put('{id}/reply', [ManagementSuggestionController::class, 'reply'])->middleware('permission:SUGGESTION:REPLY');
+});
+
+// Đảm bảo tương thích với đặc tả báo cáo nhóm
+Route::put('/api/v1/suggestions/{suggestionId}/reply', [ManagementSuggestionController::class, 'reply'])->middleware(['auth.bearer:strict', 'permission:SUGGESTION:REPLY']);
+Route::post('/api/v1/suggestions/ai-sentiment-analyze', [ManagementSuggestionController::class, 'analyzeSentiment'])->middleware(['auth.bearer:strict', 'permission:SUGGESTION:VIEW']);
+
+// Quản lý hòm thư
+Route::post('/api/v1/management/suggestion-boxes', [ManagementSuggestionController::class, 'storeBox'])->middleware(['auth.bearer:strict', 'permission:SUGGESTION:MANAGE']);
 
 // API Auth (Có Throttle Rate Limiting chống Brute-Force)
 Route::post('/api/v1/auth/login', [AuthController::class, 'login'])->middleware('throttle:60,1');
