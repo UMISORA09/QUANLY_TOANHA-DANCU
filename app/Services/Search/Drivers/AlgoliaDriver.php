@@ -220,7 +220,8 @@ class AlgoliaDriver implements SearchDriverInterface
         if (! $response->successful() || ! is_numeric($response->json('taskID'))) {
             throw new RuntimeException('Algolia index write failed. The synchronization job must be retried.');
         }
-        $this->waitForTask($index, (int) $response->json('taskID'), $suffix === '/settings' ? 45 : 25);
+        $configurationWrite = $suffix === '/settings' || str_starts_with($suffix, '/synonyms/');
+        $this->waitForTask($index, (int) $response->json('taskID'), $configurationWrite ? 120 : 25);
     }
 
     public function waitForTask(string $index, int $taskId, int $timeout = 25): void
