@@ -559,8 +559,12 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                 </p>
               </div>
               <button
+                type="button"
+                data-testid="close-survey-builder-modal"
+                aria-label="Đóng biểu mẫu khảo sát"
+                title="Đóng"
                 onClick={() => setIsFormModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 rounded-lg p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg p-1.5 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -799,8 +803,12 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                 </p>
               </div>
               <button
+                type="button"
+                data-testid="close-analytics-modal"
+                aria-label="Đóng báo cáo phân tích"
+                title="Đóng"
                 onClick={() => setAnalyticsSurveyId(null)}
-                className="text-slate-400 hover:text-slate-600 rounded-lg p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg p-1.5 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -964,6 +972,16 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAnalyticsSurveyId(null)}
+                className="px-5 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-medium transition-colors"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>

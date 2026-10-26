@@ -165,7 +165,8 @@ test.describe('F13: Khảo sát và Thống kê Mức độ Hài lòng Cư dân 
     await expect(page.getByText('Chỉ số CSAT')).toBeVisible();
     await expect(page.getByText('60%')).toBeVisible();
     await expect(page.getByText('3.6 / 5')).toBeVisible();
-    await page.locator('button:has-text("X"), button[title="Đóng"], svg.lucide-x').first().click();
+    await page.getByTestId('close-analytics-modal').click();
+    await expect(page.getByText('Chỉ số CSAT')).not.toBeVisible();
 
     // 5. Open Create Survey Modal
     await page.getByRole('button', { name: 'Tạo chiến dịch khảo sát' }).click();
