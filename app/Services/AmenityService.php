@@ -136,6 +136,7 @@ class AmenityService
                 'page' => $page,
                 'per_page' => $limit,
                 'sort' => $sort,
+                'cache_context' => $this->request->user()?->id,
             ]);
 
             $total = $searchResult->total;

@@ -70,6 +70,7 @@ class SearchController extends Controller
             $page,
             $limit,
             $sort,
+            $user,
             $startTime
         ) {
             $driver = $this->searchManager->driver();
@@ -77,6 +78,7 @@ class SearchController extends Controller
                 'page' => $page,
                 'per_page' => $limit,
                 'sort' => $sort,
+                'cache_context' => $user?->id,
             ]);
 
             $items = $searchResult->items;

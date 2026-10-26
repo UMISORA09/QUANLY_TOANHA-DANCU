@@ -3,11 +3,13 @@
 namespace App\Services\Search\Drivers;
 
 use App\Services\Search\AlgoliaTaskPendingException;
+use App\Services\Search\AmenitySearchSyncState;
 use App\Services\Search\Contracts\SearchDriverInterface;
 use App\Services\Search\DTOs\SearchResult;
 use App\Services\Search\VietnameseNormalizer;
 use App\Services\Search\VietnameseSpellCorrector;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -58,6 +60,7 @@ class AlgoliaDriver implements SearchDriverInterface
             }
             if (! ($this->config['sync_enabled'] ?? false) || ! Schema::hasTable('amenity_search_states')
                 || DB::table('amenity_search_states')->whereColumn('published_version', '<', 'desired_version')->exists()
+                || DB::table('amenity_search_states')->where('index_fingerprint', '!=', AmenitySearchSyncState::fingerprint())->exists()
                 || DB::table('amenities')->whereNotExists(fn ($query) => $query->selectRaw('1')->from('amenity_search_states')->whereColumn('amenity_id', 'amenities.id'))->exists()) {
                 $fallbackReason = 'index_not_synchronized';
                 throw new RuntimeException('Database search is required while the index is not synchronized.');
@@ -78,36 +81,48 @@ class AlgoliaDriver implements SearchDriverInterface
                 $rows->where(fn ($query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $filters['allowed_block_ids']));
             }
             $appliedQuery = $query;
-            $parameters = [
-                'query' => $query, 'page' => $page - 1, 'hitsPerPage' => $perPage,
-                'facetFilters' => $facets, 'attributesToRetrieve' => ['objectID', 'updated_at', 'search_version'],
-                'attributesToHighlight' => [],
-                'filters' => 'is_deleted:false AND search_schema_version:2',
-            ];
-            $calls++;
-            $response = $this->client()->post('/indexes/'.$name.'/query', $parameters);
-            if ($response->successful() && $response->json('nbHits') === 0) {
-                $correction = VietnameseSpellCorrector::correctQuery($query);
-                if ($correction['is_corrected'] && ! preg_match('/[0-9_-]/u', $query)) {
-                    $appliedQuery = $correction['corrected'];
-                    $calls++;
-                    $response = $this->client()->post('/indexes/'.$name.'/query', [...$parameters, 'query' => $appliedQuery]);
+            $cacheKey = 'amenity_algolia:'.hash('sha256', json_encode([
+                2, AmenitySearchSyncState::fingerprint(), (string) DB::table('amenity_search_states')->sum('desired_version'),
+                $query, $filters, $page, $perPage, $options['cache_context'] ?? null,
+            ]));
+            $remote = Cache::get($cacheKey);
+            $cacheHit = is_array($remote);
+            if (! $cacheHit) {
+                $parameters = [
+                    'query' => $query, 'page' => $page - 1, 'hitsPerPage' => $perPage,
+                    'facetFilters' => $facets, 'attributesToRetrieve' => ['objectID', 'updated_at', 'search_version'],
+                    'attributesToHighlight' => [],
+                    'filters' => 'is_deleted:false AND search_schema_version:2',
+                ];
+                $calls++;
+                $response = $this->client()->post('/indexes/'.$name.'/query', $parameters);
+                if ($response->successful() && $response->json('nbHits') === 0) {
+                    $correction = VietnameseSpellCorrector::correctQuery($query);
+                    if ($correction['is_corrected'] && ! preg_match('/[0-9_-]/u', $query)) {
+                        $appliedQuery = $correction['corrected'];
+                        $calls++;
+                        $response = $this->client()->post('/indexes/'.$name.'/query', [...$parameters, 'query' => $appliedQuery]);
+                    }
                 }
+                if (! $response->successful() || ! is_array($response->json('hits')) || ! is_numeric($response->json('nbHits')) || $response->json('exhaustiveNbHits') === false) {
+                    $fallbackReason = match ($response->status()) {
+                        402, 429 => 'quota_or_rate_limit', 401, 403 => 'credentials_or_acl', default => 'index_unavailable'
+                    };
+                    throw new RuntimeException('Algolia search is unavailable.');
+                }
+                $remote = ['data' => $response->json(), 'applied_query' => $appliedQuery];
+                Cache::put($cacheKey, $remote, 60);
             }
-            if (! $response->successful() || ! is_array($response->json('hits')) || ! is_numeric($response->json('nbHits')) || $response->json('exhaustiveNbHits') === false) {
-                $fallbackReason = match ($response->status()) {
-                    402, 429 => 'quota_or_rate_limit', 401, 403 => 'credentials_or_acl', default => 'index_unavailable'
-                };
-                throw new RuntimeException('Algolia search is unavailable.');
-            }
-            $ids = array_column($response->json('hits'), 'objectID');
+            $data = $remote['data'];
+            $appliedQuery = $remote['applied_query'];
+            $ids = array_column($data['hits'], 'objectID');
             $items = $rows->whereIn('amenities.id', $ids)->get()->keyBy('id');
             $versions = DB::table('amenity_search_states')->whereIn('amenity_id', $ids)->pluck('desired_version', 'amenity_id');
             if (count($ids) !== $items->count()) {
                 $fallbackReason = 'stale_results';
                 throw new RuntimeException('Index contains stale or out of scope results.');
             }
-            foreach ($response->json('hits') as $hit) {
+            foreach ($data['hits'] as $hit) {
                 if (! array_key_exists('updated_at', $hit) || $hit['updated_at'] !== $items[$hit['objectID']]->updated_at
                     || ! isset($hit['search_version']) || (int) $hit['search_version'] !== (int) $versions->get($hit['objectID'], -1)) {
                     $fallbackReason = 'stale_results';
@@ -115,9 +130,9 @@ class AlgoliaDriver implements SearchDriverInterface
                 }
             }
 
-            return new SearchResult(array_map(fn (string $id): object => $items[$id], $ids), (int) $response->json('nbHits'), $page, $perPage, (microtime(true) - $started) * 1000, 'algolia', false, [
+            return new SearchResult(array_map(fn (string $id): object => $items[$id], $ids), (int) $data['nbHits'], $page, $perPage, (microtime(true) - $started) * 1000, 'algolia', false, [
                 'applied_query' => $appliedQuery, 'corrected_query' => $appliedQuery, 'is_corrected' => $appliedQuery !== $query,
-                'fallback_reason' => null, 'algolia_calls' => $calls,
+                'fallback_reason' => null, 'algolia_calls' => $calls, 'cache_hit' => $cacheHit,
             ]);
         } catch (Throwable) {
             $result = (new SmartSearchDriver(config('search.drivers.smart', [])))->search($index, $query, $filters, $options);

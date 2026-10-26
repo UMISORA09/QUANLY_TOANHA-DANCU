@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Events\AmenityUpdated;
 use App\Jobs\SyncAmenitySearchIndex;
 use App\Services\Search\AlgoliaTaskPendingException;
+use App\Services\Search\AmenitySearchSyncState;
 use App\Services\Search\Drivers\AlgoliaDriver;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Artisan;
@@ -23,12 +24,13 @@ class AlgoliaAmenitySearchTest extends TestCase
     {
         parent::setUp();
         $this->createBookingFixture();
+        config(['search.drivers.algolia' => ['app_id' => 'TESTAPP', 'key' => 'test-private-key', 'amenities_index' => 'amenities_test', 'sync_enabled' => true]]);
         foreach (DB::table('amenities')->pluck('id') as $id) {
             DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], [
                 'desired_version' => 1, 'published_version' => 1, 'status' => 'synced', 'created_at' => now(), 'updated_at' => now(),
+                'index_fingerprint' => AmenitySearchSyncState::fingerprint(),
             ]);
         }
-        config(['search.drivers.algolia' => ['app_id' => 'TESTAPP', 'key' => 'test-private-key', 'amenities_index' => 'amenities_test', 'sync_enabled' => true]]);
         Http::preventStrayRequests();
     }
 

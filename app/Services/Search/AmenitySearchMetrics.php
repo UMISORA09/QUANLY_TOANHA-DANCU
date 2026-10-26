@@ -44,7 +44,8 @@ class AmenitySearchMetrics
             'p95_ms' => $latency->p95_ms === null ? null : round((float) $latency->p95_ms, 2),
             'engines' => (clone $metrics)->select('engine')->selectRaw('COUNT(*) AS requests')->groupBy('engine')->get(),
             'fallback_reasons' => (clone $metrics)->whereNotNull('fallback_reason')->select('fallback_reason')->selectRaw('COUNT(*) AS requests')->groupBy('fallback_reason')->get(),
-            'dirty_documents' => DB::table('amenity_search_states')->whereColumn('published_version', '<', 'desired_version')->count(),
+            'dirty_documents' => DB::table('amenity_search_states')->where(fn ($query) => $query->whereColumn('published_version', '<', 'desired_version')->orWhere('index_fingerprint', '!=', AmenitySearchSyncState::fingerprint()))->count()
+                + DB::table('amenities')->whereNotExists(fn ($query) => $query->selectRaw('1')->from('amenity_search_states')->whereColumn('amenity_id', 'amenities.id'))->count(),
             'failed_documents' => DB::table('amenity_search_states')->where('status', 'failed')->count(),
             'last_synced_at' => DB::table('amenity_search_states')->max('synced_at'),
         ];

@@ -26,6 +26,11 @@ class SyncAmenitySearchIndex implements ShouldQueue
         $states = app(AmenitySearchSyncState::class);
         $driver = new AlgoliaDriver(config('search.drivers.algolia', []));
         $version = $this->version ?? null;
+        if (($this->taskId ?? null) !== null && $version !== null
+            && DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)
+                ->where(fn ($query) => $query->where('published_version', '>=', $version)->orWhere('desired_version', '>', $version))->exists()) {
+            return;
+        }
         try {
             if (($this->taskId ?? null) === null || $version === null) {
                 $snapshot = $states->snapshot($this->amenityId);
