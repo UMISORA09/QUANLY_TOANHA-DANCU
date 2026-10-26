@@ -35,7 +35,7 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
   statusText,
   extraActions,
   onNotificationClick,
-  unreadNotificationCount = 3,
+  unreadNotificationCount = ['manager', 'admin', 'dev'].includes(portalRole || userRole) ? 0 : 3,
   onHelpClick,
   showPortalSwitcher = false,
 }) => {
@@ -172,11 +172,6 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
             {/* Live Vietnamese Time - Ẩn trên mobile để tối ưu không gian hiển thị */}
             <div className="text-[11px] font-medium text-slate-400 hidden sm:flex items-center gap-2 truncate">
               <span>{currentTime || 'Hệ thống Smart Cassavas'}</span>
-              <span className="w-1 h-1 rounded-full bg-slate-300" />
-              <span className="inline-flex items-center gap-1 font-medium shrink-0 text-slate-600">
-                <span className={`w-1.5 h-1.5 rounded-full ${roleMeta.pulseColor} animate-pulse`} />
-                {resolvedStatus}
-              </span>
             </div>
 
             {/* Chào & Vai trò người dùng (Tự động co giãn chống tràn) */}
@@ -318,14 +313,7 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
             </div>
           )}
 
-          {/* System Health Status */}
-          <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50/80 border border-emerald-200/60 text-emerald-700 text-xs font-medium">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <span>99.98% Ổn định</span>
-          </div>
+
 
           {/* Help Button */}
           {onHelpClick && (
@@ -346,10 +334,11 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
               onClick={onNotificationClick}
               className="p-2 rounded-xl bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 border border-slate-200/70 shadow-xs transition-all relative group cursor-pointer active:scale-95"
               title="Thông báo hệ thống"
+              aria-label={`Thông báo hệ thống (${unreadNotificationCount} chưa đọc)`}
             >
               <Bell className="w-4 h-4 group-hover:scale-110 transition-transform" />
               {unreadNotificationCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white animate-pulse" />
+                ['manager', 'admin', 'dev'].includes(portalRole || userRole) ? <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span> : <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white animate-pulse" />
               )}
             </button>
           </div>

@@ -394,4 +394,80 @@ class MeterReadingImportExcelTest extends TestCase
                 ],
             ]);
     }
+
+    /**
+     * Test 10: Tải tệp mẫu về và import trực tiếp ngay lập tức thành công 100% không bị lỗi rỗng
+     */
+    public function test_10_download_template_and_reimport_directly_succeeds_without_error(): void
+    {
+        $cycle = '2028-01';
+        MeterReading::where('billing_cycle', $cycle)->delete();
+
+        // 1. Tải mẫu template
+        $templateResponse = $this->withHeaders($this->authHeaders())->get("/api/v1/meter-readings/template?cycle={$cycle}");
+        $templateResponse->assertStatus(200);
+        $csvContent = $templateResponse->getContent();
+
+        // 2. Upload lại ngay file vừa tải về
+        $file = UploadedFile::fake()->createWithContent("mau_chot_chi_so_{$cycle}.csv", $csvContent);
+
+        $importResponse = $this->withHeaders($this->authHeaders())->post('/api/v1/meter-readings/import', [
+            'file' => $file,
+            'billing_cycle' => $cycle,
+        ]);
+
+        $importResponse->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'billing_month_year' => $cycle,
+                    'failed_records' => 0,
+                    'import_status' => 'COMPLETED',
+                ],
+            ]);
+
+        $this->assertGreaterThan(0, $importResponse->json('data.total_records'));
+        $this->assertEquals($importResponse->json('data.total_records'), $importResponse->json('data.success_records'));
+    }
+
+    /**
+     * Test 11: Tải tệp mẫu Excel có logo & nhận diện thương hiệu và import lại thành công 100%
+     */
+    public function test_11_download_excel_template_with_branding_and_reimport_directly_succeeds(): void
+    {
+        $cycle = '2028-02';
+        MeterReading::where('billing_cycle', $cycle)->delete();
+
+        // 1. Tải mẫu template Excel format
+        $templateResponse = $this->withHeaders($this->authHeaders())->get("/api/v1/meter-readings/template?cycle={$cycle}&format=excel");
+        $templateResponse->assertStatus(200);
+        $this->assertStringContainsString('application/vnd.ms-excel', $templateResponse->headers->get('Content-Type'));
+
+        $excelContent = $templateResponse->getContent();
+        $this->assertStringContainsString('SMART CASSAVAS', $excelContent);
+        $this->assertStringContainsString('BM-QLTN/05-CSDN', $excelContent);
+        $this->assertStringContainsString('Mã Đồng Hồ', $excelContent);
+        $this->assertStringContainsString('Chỉ Số Kỳ Này (*)', $excelContent);
+
+        // 2. Upload lại ngay file Excel vừa tải về
+        $file = UploadedFile::fake()->createWithContent("mau_chot_chi_so_{$cycle}.xls", $excelContent);
+
+        $importResponse = $this->withHeaders($this->authHeaders())->post('/api/v1/meter-readings/import', [
+            'file' => $file,
+            'billing_cycle' => $cycle,
+        ]);
+
+        $importResponse->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'billing_month_year' => $cycle,
+                    'failed_records' => 0,
+                    'import_status' => 'COMPLETED',
+                ],
+            ]);
+
+        $this->assertGreaterThan(0, $importResponse->json('data.total_records'));
+        $this->assertEquals($importResponse->json('data.total_records'), $importResponse->json('data.success_records'));
+    }
 }

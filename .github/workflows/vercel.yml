@@ -170,6 +170,7 @@ jobs:
           php-version: '8.4'
           extensions: pdo, pdo_mysql, pdo_sqlite, curl, mbstring, xml, ctype, iconv, intl, bcmath, gd, zip
           coverage: none
+          ini-values: memory_limit=1024M
 
       - name: Cache Composer Dependencies
         uses: actions/cache@v4
@@ -238,7 +239,7 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: rootpassword
           APP_ENV: testing
-        run: vendor/bin/phpunit --colors=always
+        run: php -d memory_limit=1024M vendor/bin/phpunit --colors=always
 
   production-migration:
     name: Production Database Migration Gate

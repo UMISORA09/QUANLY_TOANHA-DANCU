@@ -26,6 +26,7 @@ if (!cssEntry || !jsEntry) {
 
 const cssFile = cssEntry.file;
 const jsFile = jsEntry.file;
+const cssFiles = [...new Set([cssFile, ...(jsEntry.css || [])])];
 
 const htmlContent = `<!DOCTYPE html>
 <html lang="vi">
@@ -38,7 +39,7 @@ const htmlContent = `<!DOCTYPE html>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap&subset=vietnamese" rel="stylesheet">
-        <link rel="stylesheet" href="/build/${cssFile}">
+        ${cssFiles.map((file) => `<link rel="stylesheet" href="/build/${file}">`).join('\n        ')}
     </head>
     <body class="antialiased bg-[#FAFAFA] text-[#171717] min-h-screen">
         <div id="app"></div>

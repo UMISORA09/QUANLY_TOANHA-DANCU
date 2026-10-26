@@ -32,9 +32,13 @@ export function AmenityPaymentDialog({ booking, manager = false, onClose, onChan
   const previousStatus = useRef(booking.payment?.status);
 
   useEffect(() => {
+    const previousFocus = document.activeElement;
     dialog.current?.showModal();
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
   }, []);
 
   useEffect(() => {
@@ -115,7 +119,7 @@ export function AmenityPaymentDialog({ booking, manager = false, onClose, onChan
     finally { setBusy(false); }
   };
 
-  return <dialog ref={dialog} aria-labelledby="amenity-payment-title" onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }} className="amenity-booking-controls m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-xl backdrop:bg-neutral-950/50">
+  return <dialog ref={dialog} aria-labelledby="amenity-payment-title" onCancel={(event) => { event.stopPropagation(); event.preventDefault(); if (!busy) onClose(); }} className={`${manager ? 'booking-review-payment ' : ''}amenity-booking-controls m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-xl backdrop:bg-neutral-950/50`}>
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white p-4"><h2 id="amenity-payment-title" className="font-bold">{manager ? 'Đối soát thanh toán tiện ích' : 'Thanh toán tiện ích'}</h2><button type="button" aria-label="Đóng thanh toán" disabled={busy} onClick={onClose} className="rounded-lg p-2 hover:bg-neutral-100"><X className="h-5 w-5" /></button></div>
     <div className="space-y-4 p-4 sm:p-6">
       <p className="text-sm font-semibold">{booking.booking_code}</p>
@@ -146,7 +150,7 @@ export function AmenityPaymentDialog({ booking, manager = false, onClose, onChan
         </form>}
       </>}
       {!loading && !payment && !error && <p className="text-sm text-neutral-600">Đăng ký miễn phí hoặc được thu tiền theo quy trình cũ.</p>}
-      {error && <div role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error.status === 401 ? 'Phiên đăng nhập đã hết hạn.' : error.message || 'Không thể xử lý. Vui lòng kiểm tra lại kết quả trước khi chuyển tiền thêm.'}{error.status === 401 ? <a href="/dang-nhap" className="ml-2 underline">Đăng nhập lại</a> : !manager && <button type="button" disabled={busy} onClick={() => setLoadRevision((value) => value + 1)} className="ml-2 underline">Tải lại trạng thái</button>}</div>}
+      {error && <div role="alert" data-conflict={error.status === 409} className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error.status === 401 ? 'Phiên đăng nhập đã hết hạn.' : error.message || 'Không thể xử lý. Vui lòng kiểm tra lại kết quả trước khi chuyển tiền thêm.'}{error.status === 401 ? <a href="/dang-nhap" className="ml-2 underline">Đăng nhập lại</a> : !manager && <button type="button" disabled={busy} onClick={() => setLoadRevision((value) => value + 1)} className="ml-2 underline">Tải lại trạng thái</button>}</div>}
       {message && <p role="status" className="text-sm text-emerald-800">{message}</p>}
       <button type="button" disabled={busy} className={`${buttonClass} w-full`} onClick={onClose}>Đóng</button>
     </div>

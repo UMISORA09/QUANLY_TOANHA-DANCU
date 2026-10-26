@@ -8,7 +8,9 @@
     "require": {
         "php": "^8.4",
         "laravel/framework": "^13.17",
-        "laravel/tinker": "^3.0"
+        "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.25",
+        "symfony/html-sanitizer": "~8.1.8"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -33,6 +35,7 @@
         }
     },
     "scripts": {
+        "vercel": "@php artisan amenities:prepare-payment-schema --no-interaction",
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",

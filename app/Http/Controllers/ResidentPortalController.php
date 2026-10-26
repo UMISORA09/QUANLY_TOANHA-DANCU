@@ -235,6 +235,7 @@ class ResidentPortalController extends Controller
             'visitors' => $visitors,
             'available_amenities' => $availableAmenities,
             'ticket_categories' => $ticketCategories,
+            'apartments' => $apartments,
         ]);
     }
 

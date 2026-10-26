@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Terminal,
   Bot,
@@ -18,6 +18,10 @@ import {
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
+import { TicketManagementPanel } from '../../Components/TicketManagementPanel';
+import { ManagerNotificationCenter, useManagerNotifications } from '../../Components/ManagerNotificationCenter';
+
+const AnnouncementManagement = lazy(() => import('../../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -37,6 +41,8 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
   initialTab = 'overview',
 }) => {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const notices = useManagerNotifications();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
 
@@ -45,6 +51,21 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       setActiveTab(initialTab);
     }
   }, [initialTab]);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      try {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        if (tab) {
+          setActiveTab(tab);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, []);
 
   // State demo cho Feature Flags
   const [featureFlags, setFeatureFlags] = useState([
@@ -142,7 +163,10 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText="Hệ thống Quản trị & Kỹ thuật (Admin / Dev) đang vận hành ổn định"
+      unreadNotificationCount={notices.unread}
+      onNotificationClick={() => { setNotificationsOpen(!notificationsOpen); notices.retry(); }}
     >
+      {notificationsOpen && <ManagerNotificationCenter feed={notices} onClose={() => setNotificationsOpen(false)} />}
       <div className="p-4 sm:p-6 lg:p-8 w-full max-w-[2000px] mx-auto space-y-6 animate-in fade-in duration-200">
         {/* Breadcrumb & Title Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
@@ -487,6 +511,8 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         )}
 
         {/* TAB 5: CI/CD & DEVOPS */}
+        {activeTab === 'tickets' && <TicketManagementPanel />}
+        {activeTab === 'news' && <Suspense fallback={<p role="status">Đang mở bảng tin…</p>}><AnnouncementManagement /></Suspense>}
         {activeTab === 'cicd' && (
           <div className="space-y-6">
             <CicdDashboard userRole="admin" />

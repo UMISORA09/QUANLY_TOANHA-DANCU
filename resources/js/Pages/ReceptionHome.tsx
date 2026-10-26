@@ -40,6 +40,7 @@ import { VehicleManagement } from './Admin/VehicleManagement';
 import { RfidManagement } from './Admin/RfidManagement';
 import { ReceptionVisitorCheckinPanel } from '../Components/ReceptionVisitorCheckinPanel';
 import { ReceptionParcelPanel } from '../Components/ReceptionParcelPanel';
+import { ReceptionDashboardPanel } from '../Components/ReceptionDashboardPanel';
 
 
 export interface ReceptionHomeProps {
@@ -81,8 +82,8 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
   onLogout,
   onNavigateHome,
   onNavigateAdmin,
-  userName = 'Admin Cassavas',
-  userEmail = 'admin@cassavas.vn',
+  userName = 'Lễ Tân Sảnh Chính',
+  userEmail = 'receptionist@demo.local',
   userRole = 'receptionist',
   initialTab,
 }) => {
@@ -136,8 +137,6 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
   // Navigation & Interactive states
   const [activeMenuId, setActiveMenuId] = useState<string>(resolveInitialTab);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
-  const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
-  const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -314,13 +313,13 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Live Stats from Database / Seeders
+  // Live Stats from Database / Seeders (Chuẩn dữ liệu theo ảnh mẫu)
   const [kpis, setKpis] = useState({
-    activeGuests: 18,
+    activeGuests: 344,
     activeGuestsNote: 'Tất cả khu vực',
-    pendingParcels: 42,
-    overdueParcelsNote: '4 bưu phẩm quá hạn',
-    pendingVehicles: 7,
+    pendingParcels: 86,
+    overdueParcelsNote: '42 bưu phẩm quá hạn',
+    pendingVehicles: 174,
     pendingVehiclesNote: 'Cần kiểm tra giấy tờ',
     securityIncidents: '02',
     securityIncidentsNote: 'Đang được xử lý',
@@ -328,8 +327,8 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
 
   const [activities, setActivities] = useState<ActivityItem[]>([
     { num: '01', title: 'Khách Nguyễn Minh Anh đã check-in', time: '10 phút trước', type: 'guest' },
-    { num: '02', title: 'Bưu phẩm PKG-031 đã được tiếp nhận', time: '25 phút trước', type: 'parcel' },
-    { num: '03', title: 'Xe 30K-678.90 chờ duyệt đăng ký', time: '45 phút trước', type: 'vehicle' },
+    { num: '02', title: 'Bưu phẩm PKG–031 đã được tiếp nhận', time: '25 phút trước', type: 'parcel' },
+    { num: '03', title: 'Xe 30K–678.90 chờ duyệt đăng ký', time: '45 phút trước', type: 'vehicle' },
   ]);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([
@@ -382,29 +381,22 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
     fetchReceptionData();
   }, []);
 
-  // Menu items with live badges
+  // Menu items with live badges (Chuẩn 100% Ảnh mẫu)
   const menuItems: MenuItem[] = useMemo(
     () => [
       { id: 'overview', label: 'Tổng quan Lễ tân', icon: Gauge },
       { id: 'visitors', label: 'Khách & Check-in An ninh', icon: Users, badge: `${kpis.activeGuests}` },
-      { id: 'vehicle_reg', label: 'Đăng ký xe & Đẩy phí HĐ', icon: CreditCard, badge: `${kpis.pendingVehicles} chờ duyệt` },
+      { id: 'vehicle_reg', label: 'Đăng ký xe & Đẩy p...', icon: CreditCard, badge: `${kpis.pendingVehicles} chờ duyệt` },
       { id: 'rfid_cards', label: 'Quản lý Thẻ từ RFID', icon: CreditCard },
       { id: 'parking', label: 'Bãi đỗ xe & ANPR', icon: Car },
       { id: 'lost_found', label: 'Đồ thất lạc', icon: PackageOpen },
       { id: 'smart_lockers', label: 'Tủ đồ thông minh', icon: Layers, badge: '24 ô' },
-      { id: 'walkin_guest', label: 'Check-in Khách vãng lai', icon: UserPlus },
+      { id: 'walkin_guest', label: 'Check-In Khách vãng lai', icon: UserPlus },
       { id: 'parcels', label: 'Quản lý Bưu phẩm', icon: Package, badge: `${kpis.pendingParcels}` },
     ],
     [kpis]
   );
 
-  const buildingOptions = [
-    'Khu A - Tất cả tòa nhà',
-    'Tòa S1 - Sky Tower',
-    'Tòa S2 - Aqua Tower',
-    'Tòa S3 - Garden Tower',
-    'Toàn bộ khu đô thị',
-  ];
 
   const handleMenuClick = (id: string) => {
     setActiveMenuId(id);
@@ -564,268 +556,19 @@ export const ReceptionHome: React.FC<ReceptionHomeProps> = ({
             </div>
           </div>
         ) : (
-          <div className="w-full max-w-7xl mx-auto space-y-6">
-            {/* Section Breadcrumb Tag */}
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
-              <Building2 className="w-3.5 h-3.5 text-sky-500" />
-              <span>RECEPTION PORTAL</span>
-              <span>/</span>
-              <span className="text-slate-700">CA TRỰC HIỆN TẠI</span>
-            </div>
-
-            {/* Page Heading & Export Button */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight mt-1">
-                  Tổng quan Lễ tân
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                  Theo dõi khách vãng lai, bưu phẩm và đăng ký xe trong ca trực hiện tại.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                <button
-                  onClick={() => showToast('Đang kết xuất báo cáo ca trực định dạng Excel / PDF...')}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-neutral-900/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 group cursor-pointer"
-                >
-                  <Download className="w-4 h-4 text-sky-400 group-hover:translate-y-0.5 transition-transform" />
-                  <span>Xuất báo cáo</span>
-                </button>
-              </div>
-            </div>
-
-            {/* 4 Summary Stats Cards with Ultra Glassmorphism */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Stat 1: Khách đang ở trong tòa - CLICKABLE */}
-              <div
-                onClick={() => handleMenuClick('visitors')}
-                className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-xl hover:border-sky-400/90 hover:-translate-y-1 transition-all group relative overflow-hidden glass-specular-edge cursor-pointer"
-                title="Bấm để xem danh sách khách và thực hiện check-in/check-out"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium group-hover:text-sky-600 transition-colors">
-                    Khách đang ở trong tòa
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-sky-600 group-hover:text-white transition-all shadow-2xs">
-                    <Users className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight">
-                  {kpis.activeGuests}
-                </div>
-                <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>{kpis.activeGuestsNote}</span>
-                </div>
-                <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-sky-400/10 rounded-full blur-xl pointer-events-none" />
-              </div>
-
-              {/* Stat 2: Bưu phẩm chờ nhận - CLICKABLE */}
-              <div
-                onClick={() => handleMenuClick('parcels')}
-                className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-xl hover:border-amber-400/90 hover:-translate-y-1 transition-all group relative overflow-hidden glass-specular-edge cursor-pointer"
-                title="Bấm để xem danh sách bưu phẩm và tiếp nhận kiện hàng mới"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium group-hover:text-amber-600 transition-colors">
-                    Bưu phẩm chờ nhận
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-600 group-hover:text-white transition-all shadow-2xs">
-                    <Package className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight group-hover:text-amber-950 transition-colors">
-                  {kpis.pendingParcels}
-                </div>
-                <div className="text-[11px] text-amber-600 mt-2 font-medium flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3 h-3" />
-                    <span>{kpis.overdueParcelsNote}</span>
-                  </div>
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold">Quản lý ngay →</span>
-                </div>
-                <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-400/10 rounded-full blur-xl pointer-events-none" />
-              </div>
-
-              {/* Stat 3: Đăng ký xe chờ duyệt - CLICKABLE TO VEHICLE REGISTRATION */}
-              <div
-                onClick={() => handleMenuClick('vehicle_reg')}
-                className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-xl hover:border-indigo-400/90 hover:-translate-y-1 transition-all group relative overflow-hidden glass-specular-edge cursor-pointer"
-                title="Bấm để xem danh sách hồ sơ xe chờ duyệt và đẩy phí"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium group-hover:text-indigo-600 transition-colors">
-                    Đăng ký xe chờ duyệt
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-2xs">
-                    <Car className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight group-hover:text-indigo-900 transition-colors">
-                  {kpis.pendingVehicles}
-                </div>
-                <div className="text-[11px] text-indigo-600 mt-2 flex items-center justify-between font-medium">
-                  <span>{kpis.pendingVehiclesNote}</span>
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity font-bold">Xử lý ngay →</span>
-                </div>
-                <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-400/10 rounded-full blur-xl pointer-events-none" />
-              </div>
-
-              {/* Stat 4: Sự cố an ninh */}
-              <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-rose-300/80 transition-all group relative overflow-hidden glass-specular-edge">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium">Sự cố an ninh</span>
-                  <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xs">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-3xl sm:text-4xl font-black text-neutral-950 mt-3 tracking-tight">
-                  {kpis.securityIncidents}
-                </div>
-                <div className="text-[11px] text-rose-600 mt-2 font-medium flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-                  <span>{kpis.securityIncidentsNote}</span>
-                </div>
-                <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-rose-400/10 rounded-full blur-xl pointer-events-none" />
-              </div>
-            </div>
-
-            {/* 2 Main Panels Below with Ultra Glassmorphism */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Panel 1: Hoạt động trong ca */}
-              <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 sm:p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between glass-specular-edge">
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-base font-bold text-neutral-900">Hoạt động trong ca</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">Tổng hợp lượt ra vào mới nhất</p>
-                    </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-100/90 flex items-center justify-center text-slate-500">
-                      <User className="w-4 h-4" />
-                    </div>
-                  </div>
-
-                  <div className="mt-5 space-y-3">
-                    {activities.map((act) => {
-                      const isVehicle = act.type === 'vehicle';
-                      return (
-                        <div
-                          key={act.num}
-                          onClick={() => {
-                            if (isVehicle) {
-                              handleMenuClick('vehicle_reg');
-                            }
-                          }}
-                          className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
-                            isVehicle
-                              ? 'bg-indigo-50/60 hover:bg-indigo-100/80 border-indigo-100 cursor-pointer group'
-                              : 'bg-slate-50/80 hover:bg-slate-100/90 border-slate-100'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className={`text-xs font-bold rounded-lg px-2 py-1 shrink-0 shadow-2xs ${
-                              isVehicle ? 'bg-indigo-600 text-white' : 'text-slate-600 bg-white border border-slate-200'
-                            }`}>
-                              {act.num}
-                            </span>
-                            <span className="text-xs sm:text-sm font-semibold text-neutral-800 truncate">
-                              {act.title}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0 ml-2">
-                            {isVehicle && (
-                              <span className="text-[10px] font-bold text-indigo-700 bg-white/80 px-2 py-0.5 rounded-full border border-indigo-200 opacity-90 group-hover:opacity-100">
-                                Xem & Duyệt
-                              </span>
-                            )}
-                            <span className="text-[11px] text-slate-400">{act.time}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Dữ liệu đồng bộ tự động theo thời gian thực</span>
-                  <button
-                    onClick={() => fetchReceptionData(true)}
-                    className="text-sky-600 font-semibold hover:underline cursor-pointer"
-                  >
-                    Làm mới ngay
-                  </button>
-                </div>
-              </div>
-
-              {/* Panel 2: Thao tác nhanh */}
-              <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 sm:p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between glass-specular-edge">
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-base font-bold text-neutral-900">Thao tác nhanh</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">Các nghiệp vụ thường dùng tại quầy</p>
-                    </div>
-                    <div className="w-8 h-8 rounded-xl bg-slate-100/90 flex items-center justify-center text-slate-500">
-                      <Bell className="w-4 h-4" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 mt-5">
-                    {/* Action 1: Check-in khách - CLICKABLE */}
-                    <button
-                      onClick={() => handleMenuClick('visitors')}
-                      className="flex flex-col items-center justify-center p-4 sm:p-5 border border-slate-200/90 rounded-2xl hover:border-sky-400 hover:bg-sky-50/60 transition-all text-neutral-800 cursor-pointer group shadow-2xs hover:shadow-md"
-                      title="Mở phân hệ tra cứu & check-in khách"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-sky-500 group-hover:text-white flex items-center justify-center text-slate-700 transition-colors mb-2.5">
-                        <User className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                      </div>
-                      <span className="text-xs font-semibold text-neutral-800 group-hover:text-sky-900">
-                        Check-in khách
-                      </span>
-                    </button>
-
-                    {/* Action 2: Nhận bưu phẩm - CLICKABLE */}
-                    <button
-                      onClick={() => handleMenuClick('parcels')}
-                      className="flex flex-col items-center justify-center p-4 sm:p-5 border border-slate-200/90 rounded-2xl hover:border-amber-400 hover:bg-amber-50/60 transition-all text-neutral-800 cursor-pointer group shadow-2xs hover:shadow-md"
-                      title="Mở phân hệ tiếp nhận bưu phẩm & upload ảnh"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-amber-500 group-hover:text-white flex items-center justify-center text-slate-700 transition-colors mb-2.5">
-                        <Package className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                      </div>
-                      <span className="text-xs font-semibold text-neutral-800 group-hover:text-amber-900">
-                        Nhận bưu phẩm
-                      </span>
-                    </button>
-
-                    {/* Action 3: Đăng ký xe & Đẩy phí Hóa đơn - CLICKABLE */}
-                    <button
-                      onClick={() => handleMenuClick('vehicle_reg')}
-                      className="flex flex-col items-center justify-center p-4 sm:p-5 border border-slate-200/90 rounded-2xl hover:border-indigo-400 hover:bg-indigo-50/60 transition-all text-neutral-800 cursor-pointer group shadow-2xs hover:shadow-md"
-                      title="Mở hồ sơ đăng ký xe & đẩy phí hóa đơn"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center text-slate-700 transition-colors mb-2.5">
-                        <Car className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                      </div>
-                      <span className="text-xs font-semibold text-neutral-800 group-hover:text-indigo-950 text-center">
-                        Đăng ký xe & Phí HĐ
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Hỗ trợ phím tắt và quét mã vạch</span>
-                  <span className="text-emerald-600 font-medium">Sẵn sàng nhận lệnh</span>
-                </div>
-              </div>
-            </div>
+          <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+            <ReceptionDashboardPanel onNavigateTab={handleMenuClick} />
           </div>
         )}
-        </div>
+      </div>
 
+      {/* ================= TOAST NOTIFICATION ================= */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-neutral-900/90 text-white text-xs font-medium shadow-2xl backdrop-blur-md border border-white/10 animate-in fade-in slide-in-from-top-3 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </AppLayout>
   );
 };
