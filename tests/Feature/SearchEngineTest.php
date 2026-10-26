@@ -20,11 +20,15 @@ class SearchEngineTest extends TestCase
         parent::setUp();
         config(['search.default' => 'smart', 'search.drivers.algolia.sync_enabled' => false]);
 
-        // Tự động sử dụng SQLite khi chạy trên máy trạm host ngoài container Docker
-        if (config('database.connections.mysql.host') === 'db' && ! file_exists('/.dockerenv')) {
-            config(['database.default' => 'sqlite']);
-            config(['database.connections.sqlite.database' => database_path('database.sqlite')]);
-            DB::purge();
+        $this->createBookingFixture();
+        $this->withToken($this->adminToken);
+        foreach (['Khu Nghỉ Dưỡng', 'Phòng Gym', 'Hồ Bơi', 'Sân Tennis', 'Khu BBQ', 'Phòng Gym Tòa A'] as $name) {
+            DB::table('amenities')->insert([
+                'id' => (string) Str::uuid(), 'category_id' => $this->categoryId,
+                'amenity_name' => $name, 'amenity_code' => 'SEARCH-QA-'.Str::upper(Str::random(12)),
+                'location_detail' => 'QA', 'max_capacity_per_slot' => 20, 'hourly_rate' => 0,
+                'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
         }
     }
 
@@ -546,6 +550,7 @@ class SearchEngineTest extends TestCase
 
         // Dọn dẹp
         DB::table('user_roles')->where('user_id', $noPermUserId)->delete();
+        DB::table('user_sessions')->where('user_id', $noPermUserId)->delete();
         DB::table('users')->where('id', $noPermUserId)->delete();
     }
 }

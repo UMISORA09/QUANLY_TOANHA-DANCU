@@ -43,7 +43,15 @@ class SearchManager
 
     public function search(string $index, string $query, array $filters = [], array $options = []): SearchResult
     {
-        return $this->driver()->search($index, $query, $filters, $options);
+        $started = microtime(true);
+        $result = $this->driver()->search($index, $query, $filters, $options);
+        if ($index === 'amenities') {
+            app(AmenitySearchMetrics::class)->record($options['request_kind'] ?? 'manager_search', [
+                'engine' => $result->engine, 'total' => $result->total, ...$result->extra,
+            ], (microtime(true) - $started) * 1000);
+        }
+
+        return $result;
     }
 
     public function suggest(string $index, string $prefix, int $limit = 5): array

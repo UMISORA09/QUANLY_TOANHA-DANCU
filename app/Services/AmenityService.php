@@ -181,6 +181,10 @@ class AmenityService
             'search_time_ms' => round($searchTimeMs, 2),
             'corrected_query' => $correctedQuery,
             'is_fuzzy' => $isFuzzy,
+            'engine' => $searchResult->engine,
+            'applied_query' => $searchResult->extra['applied_query'] ?? $correctedQuery ?? $search,
+            'is_corrected' => $searchResult->extra['is_corrected'] ?? ($correctedQuery !== null && $correctedQuery !== $search),
+            'fallback_reason' => $searchResult->extra['fallback_reason'] ?? null,
         ];
     }
 

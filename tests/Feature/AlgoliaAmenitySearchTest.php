@@ -23,6 +23,11 @@ class AlgoliaAmenitySearchTest extends TestCase
     {
         parent::setUp();
         $this->createBookingFixture();
+        foreach (DB::table('amenities')->pluck('id') as $id) {
+            DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], [
+                'desired_version' => 1, 'published_version' => 1, 'status' => 'synced', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
         config(['search.drivers.algolia' => ['app_id' => 'TESTAPP', 'key' => 'test-private-key', 'amenities_index' => 'amenities_test', 'sync_enabled' => true]]);
         Http::preventStrayRequests();
     }
@@ -34,7 +39,7 @@ class AlgoliaAmenitySearchTest extends TestCase
 
     public function test_search_hydrates_mysql_instead_of_returning_remote_fields(): void
     {
-        Http::fake(['*/query' => Http::response(['hits' => [['objectID' => $this->amenityId, 'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at'), 'amenity_name' => 'Untrusted remote name']], 'nbHits' => 1])]);
+        Http::fake(['*/query' => Http::response(['hits' => [['objectID' => $this->amenityId, 'search_version' => 1, 'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at'), 'amenity_name' => 'Untrusted remote name']], 'nbHits' => 1])]);
         $result = $this->driver()->search('amenities', 'pool', ['block_id' => $this->blockId], ['page' => 2, 'per_page' => 15]);
         $this->assertSame('algolia', $result->engine);
         $this->assertSame($this->amenityId, $result->items[0]->id);
@@ -91,11 +96,13 @@ class AlgoliaAmenitySearchTest extends TestCase
     {
         Http::fake(['*/task/*' => Http::response(['status' => 'published']), '*' => Http::response(['taskID' => 42])]);
         DB::table('amenities')->where('id', $this->amenityId)->update(['amenity_name' => 'Latest QA name']);
+        AmenityUpdated::dispatch($this->amenityId, []);
         (new SyncAmenitySearchIndex($this->amenityId))->handle();
-        Http::assertSent(fn ($request) => $request->method() === 'PUT' && $request['amenity_name'] === 'Latest QA name');
+        Http::assertSent(fn ($request) => $request->method() === 'POST' && $request['amenity_name'] === 'Latest QA name');
         DB::table('amenities')->where('id', $this->amenityId)->update(['deleted_at' => now()]);
+        AmenityUpdated::dispatch($this->amenityId, []);
         (new SyncAmenitySearchIndex($this->amenityId))->handle();
-        Http::assertSent(fn ($request) => $request->method() === 'DELETE');
+        Http::assertSent(fn ($request) => $request->method() === 'POST' && $request['is_deleted'] === true && $request['search_version']['value'] === 3);
     }
 
     public function test_public_search_and_suggestions_require_a_real_session(): void
@@ -109,7 +116,7 @@ class AlgoliaAmenitySearchTest extends TestCase
     public function test_api_uses_configured_driver_and_preserves_rbac(): void
     {
         config(['search.default' => 'algolia']);
-        Http::fake(['*/query' => Http::response(['hits' => [['objectID' => $this->amenityId, 'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at')]], 'nbHits' => 1])]);
+        Http::fake(['*/query' => Http::response(['hits' => [['objectID' => $this->amenityId, 'search_version' => 1, 'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at')]], 'nbHits' => 1])]);
         $this->withToken($this->residentToken)->getJson('/api/v1/amenities/search?q=pool')->assertForbidden();
         $this->withToken($this->adminToken)->getJson('/api/v1/amenities/search?q=pool')->assertOk()->assertJsonPath('engine', 'algolia')->assertJsonPath('data.0.id', $this->amenityId);
     }
@@ -185,7 +192,7 @@ class AlgoliaAmenitySearchTest extends TestCase
         $taskId = 28422546552;
         $published = false;
         Http::fake(function ($request) use ($taskId, &$published) {
-            if ($request->method() === 'PUT') {
+            if ($request->method() === 'POST') {
                 return Http::response(['taskID' => $taskId]);
             }
             if ($published) {
@@ -193,6 +200,8 @@ class AlgoliaAmenitySearchTest extends TestCase
             }
             throw new AlgoliaTaskPendingException($taskId);
         });
+        AmenityUpdated::dispatch($this->amenityId, []);
+        DB::table('jobs')->where('queue', 'amenity-search')->delete();
         (new SyncAmenitySearchIndex($this->amenityId))->handle();
         $payload = json_decode(DB::table('jobs')->where('queue', 'amenity-search')->value('payload'), true);
         $this->assertSame($taskId, unserialize($payload['data']['command'])->taskId);
@@ -202,16 +211,17 @@ class AlgoliaAmenitySearchTest extends TestCase
         Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'amenity-search', '--once' => true]);
         $this->assertSame(0, DB::table('jobs')->where('queue', 'amenity-search')->count());
         Http::assertSent(fn ($request) => $request->method() === 'GET' && str_ends_with($request->url(), '/task/'.$taskId));
-        $this->assertCount(1, Http::recorded(fn ($request) => $request->method() === 'PUT'));
+        $this->assertCount(1, Http::recorded(fn ($request) => $request->method() === 'POST'));
     }
 
     public function test_old_serialized_jobs_without_task_id_still_synchronize(): void
     {
         $job = new SyncAmenitySearchIndex($this->amenityId);
         unset($job->taskId);
+        AmenityUpdated::dispatch($this->amenityId, []);
         Http::fake(['*/task/*' => Http::response(['status' => 'published']), '*' => Http::response(['taskID' => 42])]);
         $job->handle();
-        Http::assertSent(fn ($request) => $request->method() === 'PUT');
+        Http::assertSent(fn ($request) => $request->method() === 'POST');
     }
 
     public function test_schema_inspection_requires_machine_secret_and_does_not_run_jobs(): void

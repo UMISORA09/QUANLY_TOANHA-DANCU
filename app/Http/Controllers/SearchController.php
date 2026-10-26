@@ -5,10 +5,10 @@ namespace App\Http\Controllers;
 use App\Services\AmenityService;
 use App\Services\RbacService;
 use App\Services\Search\AiVectorSearchService;
+use App\Services\Search\AmenitySearchMetrics;
 use App\Services\Search\SearchCacheService;
 use App\Services\Search\SearchManager;
 use App\Services\Search\VietnameseNormalizer;
-use App\Services\Search\VietnameseSpellCorrector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,6 +27,7 @@ class SearchController extends Controller
      */
     public function searchAmenities(Request $request): JsonResponse
     {
+        $request->validate(['q' => 'nullable|string|max:200', 'category_id' => 'nullable|uuid', 'block_id' => 'nullable|uuid']);
         // 1. Kiểm tra RBAC: Người dùng phải có quyền AMENITY:VIEW nếu có định danh
         $user = RbacService::resolveUser($request);
         if ($user && ! RbacService::hasPermission($user, 'AMENITY:VIEW')) {
@@ -46,7 +47,6 @@ class SearchController extends Controller
 
         // Chuẩn hóa truy vấn và sửa lỗi gõ tiếng Việt
         $norm = VietnameseNormalizer::normalize($rawQuery);
-        $correction = VietnameseSpellCorrector::correctQuery($rawQuery);
         $normalizedQuery = $norm['normalized'] !== '' ? $norm['normalized'] : 'empty';
 
         // Xây dựng Cache key: amenity_search:{normalized_query}:{filters}:{page}
@@ -58,7 +58,7 @@ class SearchController extends Controller
 
         $filterString = ! empty($filtersArray) ? md5(json_encode($filtersArray)) : 'none';
         $driverName = (string) config('search.default', 'smart');
-        $context = hash('sha256', json_encode([$rawQuery, $limit, $sort, $driverName, $user?->id]));
+        $context = hash('sha256', json_encode([2, $rawQuery, $limit, $sort, $driverName, config('search.drivers.algolia.amenities_index'), $user?->id]));
         $cacheKey = "amenity_search:{$normalizedQuery}:{$filterString}:{$page}:{$context}";
 
         $startTime = microtime(true);
@@ -66,7 +66,6 @@ class SearchController extends Controller
         $load = function () use (
             $rawQuery,
             $norm,
-            $correction,
             $filtersArray,
             $page,
             $limit,
@@ -88,7 +87,12 @@ class SearchController extends Controller
                 'data' => $items,
                 'query' => $rawQuery,
                 'normalized_query' => $norm['normalized'],
-                'corrected_query' => $searchResult->metadata['corrected_query'] ?? $correction['corrected'],
+                'corrected_query' => $searchResult->extra['corrected_query'] ?? $rawQuery,
+                'applied_query' => $searchResult->extra['applied_query'] ?? $searchResult->extra['corrected_query'] ?? $rawQuery,
+                'is_corrected' => $searchResult->extra['is_corrected'] ?? (($searchResult->extra['corrected_query'] ?? $rawQuery) !== $rawQuery),
+                'fallback_reason' => $searchResult->extra['fallback_reason'] ?? null,
+                'algolia_calls' => $searchResult->extra['algolia_calls'] ?? 0,
+                'page' => $page, 'per_page' => $limit, 'total_pages' => $searchResult->getTotalPages(),
                 'total' => $total,
                 'engine' => $searchResult->engine,
                 'search_time_ms' => round($elapsedMs, 2),
@@ -99,8 +103,16 @@ class SearchController extends Controller
         // Nếu lấy từ Cache, cập nhật search_time_ms phản ánh thời gian thực (< 1ms)
         $totalElapsed = (microtime(true) - $startTime) * 1000;
         $responsePayload['search_time_ms'] = round($totalElapsed, 2);
+        app(AmenitySearchMetrics::class)->record('manager_search', $responsePayload, $totalElapsed);
 
-        return response()->json($responsePayload);
+        return response()->json($responsePayload)->header('Cache-Control', 'private, no-store');
+    }
+
+    public function metrics(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->hasRole(['ADMIN', 'SUPER_ADMIN', 'SUPER_ADMI']), 403);
+
+        return response()->json(app(AmenitySearchMetrics::class)->summary())->header('Cache-Control', 'private, no-store');
     }
 
     /**
