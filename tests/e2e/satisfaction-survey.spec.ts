@@ -162,17 +162,18 @@ test.describe('F13: Khảo sát và Thống kê Mức độ Hài lòng Cư dân 
 
     // 4. Open Analytics Modal
     await page.getByRole('button', { name: 'Phân tích CSAT' }).click();
-    await expect(page.getByText('Chỉ số CSAT')).toBeVisible();
+    await expect(page.getByTestId('analytics-modal')).toBeVisible();
     await expect(page.getByText('60%')).toBeVisible();
     await expect(page.getByText('3.6 / 5')).toBeVisible();
     await page.getByTestId('close-analytics-modal').click();
-    await expect(page.getByText('Chỉ số CSAT')).not.toBeVisible();
+    await expect(page.getByTestId('analytics-modal')).not.toBeVisible();
 
     // 5. Open Create Survey Modal
     await page.getByRole('button', { name: 'Tạo chiến dịch khảo sát' }).click();
-    await expect(page.getByText('Thiết lập Chiến dịch Khảo sát Mới')).toBeVisible();
+    await expect(page.getByTestId('survey-builder-modal')).toBeVisible();
     await page.getByPlaceholder('Ví dụ: Khảo sát Mức độ Hài lòng Dịch vụ Quý 4/2026...').fill('Khảo sát Thang máy 2026');
     await page.getByRole('button', { name: 'Tạo khảo sát' }).click();
+    await expect(page.getByTestId('survey-builder-modal')).not.toBeVisible();
 
     // Verify that the new survey appears in the list
     await expect(page.getByText('Khảo sát Thang máy 2026')).toBeVisible();
