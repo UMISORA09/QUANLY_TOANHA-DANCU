@@ -9,6 +9,11 @@ use LogicException;
 
 class AmenitySearchSyncState
 {
+    public static function fingerprint(): string
+    {
+        return hash('sha256', config('search.drivers.algolia.app_id').':'.config('search.drivers.algolia.amenities_index'));
+    }
+
     public function queue(string $amenityId): void
     {
         $connection = config('queue.connections.database.connection') ?: config('database.default');
@@ -21,6 +26,7 @@ class AmenitySearchSyncState
             $state = DB::table('amenity_search_states')->where('amenity_id', $amenityId)->lockForUpdate()->first();
             DB::table('amenity_search_states')->where('amenity_id', $amenityId)->update([
                 'desired_version' => $state->desired_version + 1, 'status' => 'pending',
+                'index_fingerprint' => self::fingerprint(),
                 'error_code' => null, 'task_id' => null, 'task_version' => null, 'updated_at' => now(),
             ]);
             Queue::connection('database')->push(new SyncAmenitySearchIndex($amenityId), '', 'amenity-search');
@@ -35,9 +41,13 @@ class AmenitySearchSyncState
             $this->initialize($amenityId);
             $state = DB::table('amenity_search_states')->where('amenity_id', $amenityId)->lockForUpdate()->first();
             $version = (int) $state->desired_version;
-            if ($version === 0) {
-                $version = 1;
-                DB::table('amenity_search_states')->where('amenity_id', $amenityId)->update(['desired_version' => $version]);
+            if ($version === 0 || $state->index_fingerprint !== self::fingerprint()) {
+                $version++;
+                DB::table('amenity_search_states')->where('amenity_id', $amenityId)->update([
+                    'desired_version' => $version, 'index_fingerprint' => self::fingerprint(),
+                    'status' => 'pending', 'task_id' => null, 'task_version' => null, 'error_code' => null,
+                ]);
+                $state->task_id = null;
             } elseif ($state->published_version >= $version) {
                 return null;
             }
@@ -66,6 +76,7 @@ class AmenitySearchSyncState
     {
         DB::table('amenity_search_states')->insertOrIgnore([
             'amenity_id' => $amenityId, 'desired_version' => 0, 'published_version' => 0,
+            'index_fingerprint' => self::fingerprint(),
             'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
         ]);
     }
