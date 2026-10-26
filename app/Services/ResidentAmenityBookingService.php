@@ -40,7 +40,7 @@ class ResidentAmenityBookingService
         $apartment = $this->apartment($user, $apartmentId);
         $result = app(SearchManager::class)->search('amenities', $query, [
             'allowed_block_ids' => [$apartment->block_id], 'is_active' => true, 'category_id' => $categoryId,
-        ], ['page' => $page, 'per_page' => $limit, 'request_kind' => $limit === 5 ? 'resident_suggestions' : 'resident_search']);
+        ], ['page' => $page, 'per_page' => $limit, 'cache_context' => $user->id, 'request_kind' => $limit === 5 ? 'resident_suggestions' : 'resident_search']);
 
         return [
             'items' => array_map(fn ($item): array => app(AmenityService::class)->formatAmenityDto((object) $item), $result->items),

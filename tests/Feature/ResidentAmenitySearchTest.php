@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Search\AmenitySearchSyncState;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -93,7 +94,7 @@ class ResidentAmenitySearchTest extends TestCase
     {
         config(['search.default' => 'algolia', 'search.drivers.algolia' => ['app_id' => 'TESTAPP', 'key' => 'qa-key', 'amenities_index' => 'amenities_test', 'sync_enabled' => true]]);
         foreach (DB::table('amenities')->pluck('id') as $id) {
-            DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], ['desired_version' => 1, 'published_version' => 1, 'status' => 'synced', 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], ['desired_version' => 1, 'published_version' => 1, 'status' => 'synced', 'created_at' => now(), 'updated_at' => now(), 'index_fingerprint' => AmenitySearchSyncState::fingerprint()]);
         }
         Http::fake(['*/query' => Http::response(['hits' => [['objectID' => $this->amenityId, 'search_version' => 1, 'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at')]], 'nbHits' => 1])]);
         $this->getJson($this->url('search', ['q' => 'BBQ']))->assertOk()->assertJsonPath('engine', 'algolia');
