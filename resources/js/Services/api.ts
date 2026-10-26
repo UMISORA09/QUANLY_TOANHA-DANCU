@@ -1407,8 +1407,18 @@ class ApiService {
     return this.request<any>(`/resident/overview${query}`);
   }
 
-  async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
-    return this.request('/resident/amenities', { signal, cache: 'no-store' });
+  async getResidentAmenities(signal?: AbortSignal, metadataOnly = false): Promise<ResidentAmenityCatalog> {
+    return this.request(`/resident/amenities${metadataOnly ? '?metadata_only=1' : ''}`, { signal, cache: 'no-store' });
+  }
+
+  async searchResidentAmenities(params: { q: string; apartment_id: string; category_id: string; page: number }, signal?: AbortSignal): Promise<AmenityListResponse> {
+    const query = new URLSearchParams({ q: params.q, apartment_id: params.apartment_id, page: String(params.page) });
+    if (params.category_id) query.set('category_id', params.category_id);
+    return this.request(`/resident/amenities/search?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentAmenity(id: string, apartmentId: string, signal?: AbortSignal): Promise<Amenity> {
+    return this.request(`/resident/amenities/${id}?apartment_id=${encodeURIComponent(apartmentId)}`, { signal, cache: 'no-store' });
   }
 
   async getAmenitySearchMetrics(signal?: AbortSignal): Promise<AmenitySearchMetrics> {

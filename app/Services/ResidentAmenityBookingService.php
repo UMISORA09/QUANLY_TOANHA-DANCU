@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\Search\SearchCacheService;
+use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -19,17 +20,36 @@ class ResidentAmenityBookingService
     public function __construct(public DatabaseResidentAmenityBookingRepository $repository, public AmenityBookingPaymentService $payments) {}
 
     /** @return array{apartments: Collection, amenities: Collection, categories: Collection, today: string, timezone: string} */
-    public function catalog(User $user): array
+    public function catalog(User $user, bool $includeAmenities = true): array
     {
         $apartments = $this->repository->apartments($user->id);
-        $amenities = $apartments->isEmpty() ? collect() : $this->repository->amenities($apartments->pluck('block_id')->all());
+        $amenities = $apartments->isEmpty() || ! $includeAmenities ? collect() : $this->repository->amenities($apartments->pluck('block_id')->all());
 
         return [
             'apartments' => $apartments,
             'amenities' => $amenities,
-            'categories' => $amenities->map(fn (object $amenity): array => ['id' => $amenity->category_id, 'category_name' => $amenity->category_name])->unique('id')->values(),
+            'categories' => $apartments->isEmpty() ? collect() : $this->repository->categories($apartments->pluck('block_id')->all()),
             'today' => today()->toDateString(),
             'timezone' => config('app.timezone'),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function search(User $user, string $query, ?string $apartmentId, ?string $categoryId, int $page = 1, int $limit = 15): array
+    {
+        $apartment = $this->apartment($user, $apartmentId);
+        $result = app(SearchManager::class)->search('amenities', $query, [
+            'allowed_block_ids' => [$apartment->block_id], 'is_active' => true, 'category_id' => $categoryId,
+        ], ['page' => $page, 'per_page' => $limit, 'request_kind' => $limit === 5 ? 'resident_suggestions' : 'resident_search']);
+
+        return [
+            'items' => array_map(fn ($item): array => app(AmenityService::class)->formatAmenityDto((object) $item), $result->items),
+            'total' => $result->total, 'page' => $result->page, 'limit' => $result->perPage, 'total_pages' => $result->getTotalPages(),
+            'applied_query' => $result->extra['applied_query'] ?? $result->extra['corrected_query'] ?? $query,
+            'corrected_query' => $result->extra['corrected_query'] ?? $query,
+            'is_corrected' => $result->extra['is_corrected'] ?? (($result->extra['corrected_query'] ?? $query) !== $query),
+            'engine' => $result->engine, 'fallback_reason' => $result->extra['fallback_reason'] ?? null,
+            'search_time_ms' => round($result->searchTimeMs, 2),
         ];
     }
 
@@ -56,6 +76,18 @@ class ResidentAmenityBookingService
         abort_unless($amenity && ! $amenity->deleted_at && (! $amenity->block_id || $amenity->block_id === $apartment->block_id), 404, 'Không tìm thấy tiện ích được phép đăng ký.');
 
         return $amenity;
+    }
+
+    /** @return array<string, mixed> */
+    public function amenityDetail(User $user, string $id, ?string $apartmentId): array
+    {
+        $apartment = $this->apartment($user, $apartmentId);
+        $amenity = $this->accessibleAmenity($id, $apartment);
+        abort_unless($amenity->is_active, 409, 'Tiện ích hiện đang tạm ngưng hoạt động.');
+        $amenity->category_name = DB::table('amenity_categories')->where('id', $amenity->category_id)->value('category_name');
+        $amenity->block_name = $amenity->block_id ? $apartment->block_name : null;
+
+        return app(AmenityService::class)->formatAmenityDto($amenity);
     }
 
     private function validateDate(object $amenity, string $date): Carbon
