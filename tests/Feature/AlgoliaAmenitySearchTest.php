@@ -10,7 +10,9 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use PDOException;
 use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
@@ -212,6 +214,28 @@ class AlgoliaAmenitySearchTest extends TestCase
         Http::fake(['*/task/*' => Http::response(['status' => 'published']), '*' => Http::response(['taskID' => 42])]);
         $job->handle();
         Http::assertSent(fn ($request) => $request->method() === 'PUT');
+    }
+
+    public function test_schema_inspection_classifies_connection_errors_without_exposing_credentials(): void
+    {
+        config(['search.sync_secret' => str_repeat('d', 40)]);
+        $exception = new PDOException('Secret hostname and password must not be returned');
+        $exception->errorInfo = ['HY000', 2006, 'Secret database details'];
+        Schema::shouldReceive('hasTable')->once()->with('amenity_bookings')->andThrow($exception);
+        $response = $this->withToken(str_repeat('d', 40))->getJson('/api/v1/internal/amenity-search/process?inspect=schema')
+            ->assertStatus(503)->assertJsonPath('error_code', 'connection_lost')
+            ->assertJsonPath('database', 'unhealthy')->assertJsonStructure(['database_provider'])
+            ->assertJsonMissingPath('host')->assertJsonMissingPath('password')->assertJsonMissingPath('tables');
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->assertStringNotContainsString('Secret', $response->getContent());
+        $this->assertSame(0, DB::table('jobs')->where('queue', 'amenity-search')->count());
+    }
+
+    public function test_schema_inspection_rejects_unauthorized_requests_before_reading_schema(): void
+    {
+        config(['search.sync_secret' => str_repeat('d', 40)]);
+        Schema::shouldReceive('hasTable')->never();
+        $this->withToken('invalid')->getJson('/api/v1/internal/amenity-search/process?inspect=schema')->assertUnauthorized();
     }
 
     public function test_schema_inspection_requires_machine_secret_and_does_not_run_jobs(): void
