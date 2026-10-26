@@ -163,8 +163,8 @@ test.describe('F13: Khảo sát và Thống kê Mức độ Hài lòng Cư dân 
     // 4. Open Analytics Modal
     await page.getByRole('button', { name: 'Phân tích CSAT' }).click();
     await expect(page.getByTestId('analytics-modal')).toBeVisible();
-    await expect(page.getByText('60%')).toBeVisible();
-    await expect(page.getByText('3.6 / 5')).toBeVisible();
+    await expect(page.getByTestId('analytics-modal').getByText('60%', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('analytics-modal').getByText('3.6 / 5', { exact: true })).toBeVisible();
     await page.getByTestId('close-analytics-modal').click();
     await expect(page.getByTestId('analytics-modal')).not.toBeVisible();
 
