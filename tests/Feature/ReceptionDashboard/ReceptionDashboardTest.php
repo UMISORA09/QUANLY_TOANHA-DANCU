@@ -67,6 +67,8 @@ class ReceptionDashboardTest extends TestCase
                 'id' => $floorId,
                 'block_id' => $blockId,
                 'floor_number' => 8,
+                'floor_code' => 'F8',
+                'floor_name' => 'Tầng 8',
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -167,6 +169,7 @@ class ReceptionDashboardTest extends TestCase
      */
     public function test_aggregates_parcels_pending_and_delivered_accurately(): void
     {
+        $this->travelTo(Carbon::now(config('app.timezone'))->setTime(12, 0));
         $now = Carbon::now();
 
         // Tạo 1 bưu phẩm đang chờ giao (< 24h)
@@ -270,6 +273,7 @@ class ReceptionDashboardTest extends TestCase
      */
     public function test_aggregates_visitors_currently_inside_and_checked_out(): void
     {
+        $this->travelTo(Carbon::now(config('app.timezone'))->setTime(12, 0));
         $now = Carbon::now();
 
         // 1. Tạo lượt đăng ký khách
