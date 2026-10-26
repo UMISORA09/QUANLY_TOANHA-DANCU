@@ -59,8 +59,6 @@ class AlgoliaDriver implements SearchDriverInterface
                 throw new RuntimeException('Database search is required for this sort.');
             }
             if (! ($this->config['sync_enabled'] ?? false) || ! Schema::hasTable('amenity_search_states')
-                || DB::table('amenity_search_states')->whereColumn('published_version', '<', 'desired_version')->exists()
-                || DB::table('amenity_search_states')->where('index_fingerprint', '!=', AmenitySearchSyncState::fingerprint())->exists()
                 || DB::table('amenities')->whereNotExists(fn ($query) => $query->selectRaw('1')->from('amenity_search_states')->whereColumn('amenity_id', 'amenities.id'))->exists()) {
                 $fallbackReason = 'index_not_synchronized';
                 throw new RuntimeException('Database search is required while the index is not synchronized.');
@@ -81,8 +79,18 @@ class AlgoliaDriver implements SearchDriverInterface
                 $rows->where(fn ($query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $filters['allowed_block_ids']));
             }
             $appliedQuery = $query;
+            $versionsQuery = DB::table('amenity_search_states')->selectRaw(
+                'COALESCE(SUM(desired_version), 0) AS desired, COALESCE(SUM(published_version), 0) AS published, COUNT(*) AS documents, COALESCE(SUM(desired_version > published_version OR index_fingerprint <> ?), 0) AS dirty',
+                [AmenitySearchSyncState::fingerprint()]
+            );
+            $versionSnapshot = $versionsQuery->first();
+            if ((int) $versionSnapshot->dirty > 0) {
+                $fallbackReason = 'index_not_synchronized';
+                throw new RuntimeException('Database search is required while the index is not synchronized.');
+            }
+            $generation = json_encode($versionSnapshot);
             $cacheKey = 'amenity_algolia:'.hash('sha256', json_encode([
-                2, AmenitySearchSyncState::fingerprint(), (string) DB::table('amenity_search_states')->sum('desired_version'),
+                3, AmenitySearchSyncState::fingerprint(), $generation,
                 $query, $filters, $page, $perPage, $options['cache_context'] ?? null,
             ]));
             $remote = Cache::get($cacheKey);
@@ -111,7 +119,6 @@ class AlgoliaDriver implements SearchDriverInterface
                     throw new RuntimeException('Algolia search is unavailable.');
                 }
                 $remote = ['data' => $response->json(), 'applied_query' => $appliedQuery];
-                Cache::put($cacheKey, $remote, 60);
             }
             $data = $remote['data'];
             $appliedQuery = $remote['applied_query'];
@@ -128,6 +135,14 @@ class AlgoliaDriver implements SearchDriverInterface
                     $fallbackReason = 'stale_results';
                     throw new RuntimeException('Index document version is stale.');
                 }
+            }
+
+            if ($generation !== json_encode($versionsQuery->first())) {
+                $fallbackReason = 'stale_results';
+                throw new RuntimeException('Index changed while searching.');
+            }
+            if (! $cacheHit) {
+                Cache::put($cacheKey, $remote, 60);
             }
 
             return new SearchResult(array_map(fn (string $id): object => $items[$id], $ids), (int) $data['nbHits'], $page, $perPage, (microtime(true) - $started) * 1000, 'algolia', false, [

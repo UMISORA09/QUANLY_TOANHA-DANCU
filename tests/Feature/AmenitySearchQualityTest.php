@@ -93,6 +93,27 @@ class AmenitySearchQualityTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_a_sync_finishing_during_search_cannot_cache_a_stale_empty_page(): void
+    {
+        $calls = 0;
+        Http::fake(['*/query' => function () use (&$calls) {
+            $calls++;
+            if ($calls === 1) {
+                DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)->update(['desired_version' => 2, 'published_version' => 2]);
+
+                return Http::response(['hits' => [], 'nbHits' => 0]);
+            }
+
+            return Http::response(['hits' => [$this->hit(2)], 'nbHits' => 1]);
+        }]);
+        $this->assertSame('smart', $this->driver()->search('amenities', 'BBQ')->engine);
+        $result = $this->driver()->search('amenities', 'BBQ');
+        $this->assertSame('algolia', $result->engine);
+        $this->assertSame(1, $result->total);
+        $this->assertFalse($result->extra['cache_hit']);
+        Http::assertSentCount(2);
+    }
+
     public function test_codes_are_not_spell_corrected_and_quota_failure_has_a_safe_reason(): void
     {
         Http::fake(['*/query' => Http::response(['hits' => [], 'nbHits' => 0])]);
