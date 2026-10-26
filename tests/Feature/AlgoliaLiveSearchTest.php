@@ -72,7 +72,7 @@ class AlgoliaLiveSearchTest extends TestCase
         config(['search.drivers.algolia.sync_enabled' => true]);
         $this->observeRequestBudget();
         $driver = new AlgoliaDriver(config('search.drivers.algolia'));
-        $driver->configure();
+        // The CRUD test configures the QA index; benchmarking must not rewrite those settings again.
         $base = (array) DB::table('amenities')->where('id', $this->amenityId)->first();
         $ids = [$this->amenityId];
         $cases = [];
