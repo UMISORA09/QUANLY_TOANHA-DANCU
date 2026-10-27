@@ -329,7 +329,9 @@ class SuggestionManagementTest extends TestCase
     // 5. Tải ảnh hợp lệ
     public function test_05_upload_valid_image_attachments(): void
     {
-        $fakeImage = UploadedFile::fake()->image('evidence.jpg', 600, 400);
+        $fakeImage = UploadedFile::fake()->createWithContent('evidence.png', base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a5sAAAAASUVORK5CYII=', true,
+        ));
 
         $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
             ->post('/api/v1/resident/suggestions', [
@@ -344,12 +346,12 @@ class SuggestionManagementTest extends TestCase
         $suggestion = Suggestion::find($response->json('data.id'));
         $this->assertNotNull($suggestion);
         $this->assertCount(1, $suggestion->attached_files);
-        $this->assertSame('image/jpeg', $suggestion->attached_files[0]['mime_type']);
+        $this->assertSame('image/png', $suggestion->attached_files[0]['mime_type']);
 
         // Download attachment
         $downloadRes = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
             ->get($suggestion->attached_files[0]['url']);
-        $downloadRes->assertOk();
+        $downloadRes->assertOk()->assertHeader('Content-Type', 'image/png');
     }
 
     // 6. Chặn file không hợp lệ (không phải ảnh hoặc quá 5MB)
