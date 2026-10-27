@@ -2414,6 +2414,68 @@ class ApiService {
     });
   }
 
+  // ================= F13: KHAO SAT & THONG KE CSAT =================
+  async getResidentActiveSurveys(): Promise<{ status: string; data: ResidentSurveyItem[] }> {
+    return this.request('/resident/surveys/active');
+  }
+
+  async getResidentSurveyDetails(id: string): Promise<{ status: string; data: ResidentSurveyDetailResponse }> {
+    return this.request(`/resident/surveys/${id}`);
+  }
+
+  async submitResidentSurvey(id: string, answers: Record<string, any>, idempotencyKey?: string): Promise<{ status: string; message: string; data: { response_id: string; submitted_at: string } }> {
+    return this.request(`/resident/surveys/${id}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers, idempotency_key: idempotencyKey }),
+    });
+  }
+
+  async getManagementSurveys(params?: Record<string, any>): Promise<ManagementSurveyListResponse> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '') {
+          query.append(key, String(val));
+        }
+      });
+    }
+    const qStr = query.toString();
+    return this.request(`/management/surveys${qStr ? `?${qStr}` : ''}`);
+  }
+
+  async getManagementSurveyKpis(): Promise<{ status: string; data: SurveyOverviewKpis }> {
+    return this.request('/management/surveys/kpis');
+  }
+
+  async createManagementSurvey(payload: CreateSurveyPayload): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request('/management/surveys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateManagementSurvey(id: string, payload: UpdateSurveyPayload): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async toggleManagementSurveyStatus(id: string, isActive: boolean): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}/toggle-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive }),
+    });
+  }
+
+  async getManagementSurveyAnalytics(id: string): Promise<{ status: string; data: SurveyAnalyticsData }> {
+    return this.request(`/management/surveys/${id}/analytics`);
+  }
+
 }
 
 export interface TicketParticipant { id: string; full_name: string; role: string; }
@@ -2844,4 +2906,183 @@ export interface AnonymousSuggestionDetail {
   rejection_reason?: string | null;
   responded_at?: string | null;
   created_at: string;
+}
+
+// ================= F13 TYPES: KHAO SAT CSAT =================
+export interface SurveyQuestionItem {
+  id: string;
+  question_order: number;
+  question_text: string;
+  question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+  options?: string[];
+  options_json?: string[];
+  is_required: boolean;
+}
+
+export interface ResidentSurveyItem {
+  id: string;
+  survey_code: string;
+  title: string;
+  description?: string;
+  target_block_name: string;
+  start_date: string;
+  end_date: string;
+  days_left: number;
+  total_questions: number;
+  has_submitted: boolean;
+  is_open: boolean;
+}
+
+export interface ResidentSurveyDetailResponse {
+  survey: {
+    id: string;
+    survey_code: string;
+    title: string;
+    description?: string;
+    target_block_name: string;
+    start_date: string;
+    end_date: string;
+    is_open: boolean;
+    has_submitted: boolean;
+    submitted_at?: string | null;
+  };
+  questions: SurveyQuestionItem[];
+}
+
+export interface SatisfactionSurveyItem {
+  id: string;
+  survey_code: string;
+  title: string;
+  description?: string | null;
+  target_block_id?: string | null;
+  target_block?: { id: string; block_name: string } | null;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  computed_status: 'ACTIVE' | 'UPCOMING' | 'CLOSED' | 'DISABLED';
+  version: number;
+  created_at: string;
+  questions_count?: number;
+  responses_count?: number;
+  eligible_count?: number;
+  participation_rate_percent?: number;
+  questions?: SurveyQuestionItem[];
+}
+
+export interface SurveyOverviewKpis {
+  total_surveys: number;
+  active_surveys: number;
+  total_responses: number;
+  overall_average_rating: number;
+  overall_csat_percentage: number;
+  total_valid_ratings: number;
+  dissatisfied_count: number;
+}
+
+export interface QuestionRatingDistribution {
+  stars: number;
+  count: number;
+  percent: number;
+}
+
+export interface QuestionOptionDistribution {
+  option: string;
+  count: number;
+  percent: number;
+}
+
+export interface QuestionAnalyticsItem {
+  question_id: string;
+  question_order: number;
+  question_text: string;
+  question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+  is_required: boolean;
+  total_answers: number;
+  average_rating?: number;
+  csat_percentage?: number;
+  satisfied_count?: number;
+  neutral_count?: number;
+  dissatisfied_count?: number;
+  rating_distribution?: QuestionRatingDistribution[];
+  yes_count?: number;
+  no_count?: number;
+  yes_percentage?: number;
+  no_percentage?: number;
+  options_distribution?: QuestionOptionDistribution[];
+  text_responses?: Array<{ id: string; answer: string; created_at: string }>;
+  notice?: string;
+}
+
+export interface SurveyAnalyticsData {
+  survey: {
+    id: string;
+    survey_code: string;
+    title: string;
+    description?: string;
+    target_block_id?: string | null;
+    target_block_name: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    computed_status: string;
+    version: number;
+  };
+  kpis: {
+    total_responses: number;
+    eligible_apartments_count: number;
+    participation_rate_percent: number;
+    overall_average_rating: number;
+    overall_csat_percentage: number;
+    total_valid_ratings: number;
+    satisfied_ratings_count: number;
+    neutral_ratings_count: number;
+    dissatisfied_ratings_count: number;
+  };
+  question_stats: QuestionAnalyticsItem[];
+}
+
+export interface CreateSurveyPayload {
+  survey_code?: string;
+  title: string;
+  description?: string;
+  target_block_id?: string | null;
+  start_date: string;
+  end_date: string;
+  is_active?: boolean;
+  questions: Array<{
+    question_text: string;
+    question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+    options_json?: string[];
+    is_required?: boolean;
+    question_order?: number;
+  }>;
+}
+
+export interface UpdateSurveyPayload {
+  version: number;
+  title?: string;
+  description?: string;
+  target_block_id?: string | null;
+  start_date?: string;
+  end_date?: string;
+  is_active?: boolean;
+  questions?: Array<{
+    question_text: string;
+    question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+    options_json?: string[];
+    is_required?: boolean;
+    question_order?: number;
+  }>;
+}
+
+export interface ManagementSurveyListResponse {
+  status: string;
+  data: SatisfactionSurveyItem[];
+  kpis: SurveyOverviewKpis;
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
 }
