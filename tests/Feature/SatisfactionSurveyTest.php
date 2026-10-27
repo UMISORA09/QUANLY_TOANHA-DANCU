@@ -14,6 +14,7 @@ use App\Models\SurveyResponseDetail;
 use App\Models\User;
 use App\Services\SatisfactionSurveyService;
 use App\Services\SurveyAnalyticsService;
+use Database\Seeders\SatisfactionSurveySeeder;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -835,6 +836,27 @@ class SatisfactionSurveyTest extends TestCase
             $this->assertTrue($survey->fresh()->is_active);
             $this->assertSame('Khảo sát hồi quy', $survey->fresh()->title);
             $this->assertSame(0, DB::table('audit_logs')->where('record_id', $survey->id)->count());
+        }
+    }
+
+    public function test_production_seeder_only_grants_permissions_without_creating_demo_surveys(): void
+    {
+        $this->assertSame(0, SatisfactionSurvey::count());
+        $this->app->instance('env', 'production');
+
+        try {
+            $this->artisan('db:seed', ['--class' => SatisfactionSurveySeeder::class, '--force' => true, '--no-interaction' => true])->assertSuccessful();
+            $permissionCount = DB::table('permissions')->count();
+            $grantCount = DB::table('role_permissions')->count();
+            $this->artisan('db:seed', ['--class' => SatisfactionSurveySeeder::class, '--force' => true, '--no-interaction' => true])->assertSuccessful();
+
+            $this->assertSame(0, SatisfactionSurvey::count());
+            $this->assertSame(0, SurveyQuestion::count());
+            $this->assertSame(5, Permission::where('module', 'SURVEY')->count());
+            $this->assertSame($permissionCount, DB::table('permissions')->count());
+            $this->assertSame($grantCount, DB::table('role_permissions')->count());
+        } finally {
+            $this->app->instance('env', 'testing');
         }
     }
 

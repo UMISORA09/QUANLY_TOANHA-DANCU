@@ -55,6 +55,10 @@ class SatisfactionSurveySeeder extends Seeder
             }
         }
 
+        if (app()->environment('production')) {
+            return;
+        }
+
         // 2. Seed default surveys if empty
         if (SatisfactionSurvey::count() === 0) {
             $adminUser = User::whereHas('roles', function ($q): void {
