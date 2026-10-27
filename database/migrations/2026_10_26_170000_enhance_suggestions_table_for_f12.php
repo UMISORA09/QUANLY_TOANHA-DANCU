@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('suggestions', function (Blueprint $table) {
+        Schema::table('suggestions', function (Blueprint $table): void {
             if (! Schema::hasColumn('suggestions', 'version')) {
                 $table->unsignedInteger('version')->default(1)->after('status');
             }
@@ -27,11 +27,19 @@ return new class extends Migration
         });
 
         // Add performance indexes if not existing
-        Schema::table('suggestions', function (Blueprint $table) {
-            $table->index('created_at', 'idx_suggestions_created_at');
-            $table->index('anonymous_access_token_hash', 'idx_suggestions_anon_hash');
-            $table->index('idempotency_key', 'idx_suggestions_idempotency');
-            $table->index('topic_category', 'idx_suggestions_topic');
+        Schema::table('suggestions', function (Blueprint $table): void {
+            if (! Schema::hasIndex('suggestions', 'idx_suggestions_created_at')) {
+                $table->index('created_at', 'idx_suggestions_created_at');
+            }
+            if (! Schema::hasIndex('suggestions', 'idx_suggestions_anon_hash')) {
+                $table->index('anonymous_access_token_hash', 'idx_suggestions_anon_hash');
+            }
+            if (! Schema::hasIndex('suggestions', 'idx_suggestions_idempotency')) {
+                $table->index('idempotency_key', 'idx_suggestions_idempotency');
+            }
+            if (! Schema::hasIndex('suggestions', 'idx_suggestions_topic')) {
+                $table->index('topic_category', 'idx_suggestions_topic');
+            }
         });
     }
 
@@ -40,17 +48,17 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('suggestions', function (Blueprint $table) {
-            if (Schema::hasColumn('suggestions', 'idx_suggestions_created_at')) {
+        Schema::table('suggestions', function (Blueprint $table): void {
+            if (Schema::hasIndex('suggestions', 'idx_suggestions_created_at')) {
                 $table->dropIndex('idx_suggestions_created_at');
             }
-            if (Schema::hasColumn('suggestions', 'idx_suggestions_anon_hash')) {
+            if (Schema::hasIndex('suggestions', 'idx_suggestions_anon_hash')) {
                 $table->dropIndex('idx_suggestions_anon_hash');
             }
-            if (Schema::hasColumn('suggestions', 'idx_suggestions_idempotency')) {
+            if (Schema::hasIndex('suggestions', 'idx_suggestions_idempotency')) {
                 $table->dropIndex('idx_suggestions_idempotency');
             }
-            if (Schema::hasColumn('suggestions', 'idx_suggestions_topic')) {
+            if (Schema::hasIndex('suggestions', 'idx_suggestions_topic')) {
                 $table->dropIndex('idx_suggestions_topic');
             }
 
