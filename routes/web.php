@@ -22,6 +22,7 @@ use App\Http\Controllers\MeterReadingController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PublicContentController;
 use App\Http\Controllers\PushNotificationController;
 use App\Http\Controllers\RealtimeStreamController;
 use App\Http\Controllers\ReceptionDashboardController;
@@ -51,13 +52,15 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
-Route::get('/', function () {
-    return redirect('/home');
-});
-
-Route::get('/home', function () {
-    return view('welcome');
-});
+Route::get('/', [PublicContentController::class, 'show'])->name('public.root');
+Route::get('/home', [PublicContentController::class, 'show'])->name('public.home');
+Route::redirect('/index.html', '/home', 308);
+Route::get('/{page}', [PublicContentController::class, 'show'])
+    ->where('page', 'about|contact|privacy|docs')->name('public.page');
+Route::get('/{page}.md', [PublicContentController::class, 'markdown'])
+    ->where('page', 'home|about|contact|privacy|docs');
+Route::get('/sitemap.xml', [PublicContentController::class, 'sitemap']);
+Route::get('/.well-known/mcp', [PublicContentController::class, 'mcpDiscovery']);
 
 Route::get('/login', function () {
     return view('welcome');
@@ -920,9 +923,7 @@ Route::get('/api/v1/realtime/events', [RealtimeStreamController::class, 'events'
 Route::get('/api/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
 Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
 
-Route::fallback(function () {
-    return response()->view('errors.404', [], 404);
-});
+Route::fallback([PublicContentController::class, 'missing']);
 
 Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:30,1');
 
