@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, ResidentSurveyItem, ResidentSurveyDetailResponse, SurveyQuestionItem } from '../Services/api';
 import {
   ClipboardCheck,
@@ -29,6 +29,7 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitSuccess, setSubmitSuccess] = useState<boolean>(false);
+  const viewGeneration = useRef(0);
 
   // Fetch active surveys
   const fetchSurveys = useCallback(async () => {
@@ -46,30 +47,39 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
 
   useEffect(() => {
     fetchSurveys();
+    return () => { viewGeneration.current += 1; };
   }, [fetchSurveys]);
 
   // Open survey for answering
   const handleOpenSurvey = async (surveyId: string) => {
+    const generation = ++viewGeneration.current;
     setActiveSurveyId(surveyId);
+    setSurveyDetail(null);
+    setError(null);
     setDetailLoading(true);
     setAnswers({});
     setValidationErrors({});
     setSubmitSuccess(false);
+    setIsSubmitting(false);
     try {
       const res = await api.getResidentSurveyDetails(surveyId);
+      if (generation !== viewGeneration.current) return;
       setSurveyDetail(res.data);
     } catch (err: any) {
+      if (generation !== viewGeneration.current) return;
       setError(err?.message || 'Không thể tải câu hỏi khảo sát.');
       setActiveSurveyId(null);
     } finally {
-      setDetailLoading(false);
+      if (generation === viewGeneration.current) setDetailLoading(false);
     }
   };
 
   const handleBackToList = () => {
+    viewGeneration.current += 1;
     setActiveSurveyId(null);
     setSurveyDetail(null);
     setSubmitSuccess(false);
+    setIsSubmitting(false);
     fetchSurveys();
   };
 
@@ -87,7 +97,8 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
   // Submit survey
   const handleSubmitSurvey = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!surveyDetail || !activeSurveyId) return;
+    if (!surveyDetail || !activeSurveyId || isSubmitting) return;
+    const generation = viewGeneration.current;
 
     // Validate required questions
     const errors: Record<string, string> = {};
@@ -106,13 +117,31 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    setError(null);
     try {
       await api.submitResidentSurvey(activeSurveyId, answers);
+      if (generation !== viewGeneration.current) return;
       setSubmitSuccess(true);
     } catch (err: any) {
-      alert(err?.message || 'Gửi khảo sát thất bại. Vui lòng thử lại.');
+      if (generation !== viewGeneration.current) return;
+      if (err?.status === 409) {
+        try {
+          const [list, detail] = await Promise.all([
+            api.getResidentActiveSurveys(), api.getResidentSurveyDetails(activeSurveyId),
+          ]);
+          if (generation !== viewGeneration.current) return;
+          setSurveys(list.data || []);
+          setSurveyDetail(detail.data);
+          setError(err.message || 'Khảo sát đã thay đổi. Vui lòng kiểm tra thông tin mới nhất.');
+        } catch {
+          if (generation !== viewGeneration.current) return;
+          setError('Không thể đồng bộ trạng thái khảo sát. Câu trả lời đã nhập được giữ lại; vui lòng kiểm tra kết nối và thử lại.');
+        }
+      } else {
+        setError(err?.message || 'Gửi khảo sát thất bại. Vui lòng thử lại.');
+      }
     } finally {
-      setIsSubmitting(false);
+      if (generation === viewGeneration.current) setIsSubmitting(false);
     }
   };
 
@@ -137,16 +166,15 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
   };
 
   // VIEW 1: Survey Question Answering Screen
+  if (activeSurveyId && detailLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 space-y-4">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+        <p className="text-sm font-medium text-slate-600">Đang tải biểu mẫu khảo sát...</p>
+      </div>
+    );
+  }
   if (activeSurveyId && surveyDetail) {
-    if (detailLoading) {
-      return (
-        <div className="flex flex-col items-center justify-center p-12 space-y-4">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-          <p className="text-sm font-medium text-slate-600">Đang tải biểu mẫu khảo sát...</p>
-        </div>
-      );
-    }
-
     if (submitSuccess) {
       return (
         <div className="max-w-2xl mx-auto my-8 p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-center space-y-6">
@@ -239,6 +267,7 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
         </div>
 
         {/* Survey Form */}
+        {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
         <form onSubmit={handleSubmitSurvey} className="space-y-6">
           {surveyDetail.questions.map((q, idx) => {
             const hasError = !!validationErrors[q.id];

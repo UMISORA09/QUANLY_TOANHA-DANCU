@@ -37,12 +37,13 @@ class SurveyAnalyticsService
 
         // 3. Question-level statistics
         $questions = $survey->questions()->orderBy('question_order', 'asc')->get();
+        $detailsByQuestion = SurveyResponseDetail::whereIn('question_id', $questions->pluck('id'))->get()->groupBy('question_id');
         $questionStats = [];
 
         $allRatingScores = [];
 
         foreach ($questions as $question) {
-            $details = SurveyResponseDetail::where('question_id', $question->id)->get();
+            $details = $detailsByQuestion->get($question->id, collect());
             $answersCount = $details->count();
 
             $stat = [
@@ -205,30 +206,18 @@ class SurveyAnalyticsService
         $query = SatisfactionSurvey::query();
         $this->accessService->scopeForManager($user, $query);
 
-        $surveys = $query->with(['questions', 'responses'])->get();
+        $surveys = $query->with('questions')->withCount('responses')->get();
 
         $totalSurveys = $surveys->count();
         $activeSurveys = $surveys->filter(fn ($s) => $s->isOpen())->count();
 
-        $totalResponses = 0;
-        $allRatingScores = [];
-
-        foreach ($surveys as $survey) {
-            $totalResponses += $survey->responses->count();
-            $questionIds = $survey->questions->where('question_type', SurveyQuestion::TYPE_RATING_1_TO_5)->pluck('id');
-
-            if ($questionIds->isNotEmpty()) {
-                $scores = SurveyResponseDetail::whereIn('question_id', $questionIds)
-                    ->whereNotNull('numeric_score')
-                    ->whereBetween('numeric_score', [1, 5])
-                    ->pluck('numeric_score')
-                    ->all();
-
-                foreach ($scores as $sc) {
-                    $allRatingScores[] = $sc;
-                }
-            }
-        }
+        $totalResponses = (int) $surveys->sum('responses_count');
+        $questionIds = $surveys->flatMap(fn (SatisfactionSurvey $survey) => $survey->questions
+            ->where('question_type', SurveyQuestion::TYPE_RATING_1_TO_5)->pluck('id'));
+        $allRatingScores = SurveyResponseDetail::whereIn('question_id', $questionIds)
+            ->whereNotNull('numeric_score')
+            ->whereBetween('numeric_score', [1, 5])
+            ->pluck('numeric_score')->all();
 
         $totalValidRatings = count($allRatingScores);
         if ($totalValidRatings > 0) {

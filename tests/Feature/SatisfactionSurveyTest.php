@@ -12,9 +12,13 @@ use App\Models\SurveyQuestion;
 use App\Models\SurveyResponse;
 use App\Models\SurveyResponseDetail;
 use App\Models\User;
+use App\Services\SatisfactionSurveyService;
+use App\Services\SurveyAnalyticsService;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class SatisfactionSurveyTest extends TestCase
@@ -724,6 +728,114 @@ class SatisfactionSurveyTest extends TestCase
         $this->assertEquals(0.0, $response->json('data.kpis.overall_csat_percentage'));
         $this->assertEquals(0.0, $response->json('data.kpis.overall_average_rating'));
         $this->assertEquals(0, $response->json('data.kpis.total_responses'));
+    }
+
+    public function test_analytics_loads_all_question_details_in_one_query(): void
+    {
+        $survey = $this->createRegressionSurvey();
+        foreach (['RATING_1_TO_5', 'YES_NO', 'MULTIPLE_CHOICE', 'FREE_TEXT'] as $order => $type) {
+            SurveyQuestion::create([
+                'survey_id' => $survey->id, 'question_order' => $order + 1,
+                'question_text' => 'Câu hỏi '.$order, 'question_type' => $type, 'is_required' => false,
+            ]);
+        }
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $result = app(SurveyAnalyticsService::class)->getSurveyAnalytics($survey, $this->managerUser);
+            $queries = collect(DB::getQueryLog())->filter(fn (array $query): bool => str_contains($query['query'], 'survey_response_details'));
+            $this->assertCount(1, $queries);
+            $this->assertCount(4, $result['question_stats']);
+            $this->assertSame(0.0, $result['kpis']['overall_csat_percentage']);
+        } finally {
+            DB::disableQueryLog();
+        }
+    }
+
+    public function test_overview_loads_rating_details_once_across_surveys(): void
+    {
+        foreach (range(1, 3) as $order) {
+            $survey = $this->createRegressionSurvey();
+            SurveyQuestion::create([
+                'survey_id' => $survey->id, 'question_order' => 1,
+                'question_text' => 'Đánh giá', 'question_type' => 'RATING_1_TO_5', 'is_required' => true,
+            ]);
+        }
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $result = app(SurveyAnalyticsService::class)->getManagementOverviewKpis($this->managerUser);
+            $queries = collect(DB::getQueryLog())->filter(fn (array $query): bool => str_contains($query['query'], 'survey_response_details'));
+            $this->assertCount(1, $queries);
+            $this->assertGreaterThanOrEqual(3, $result['total_surveys']);
+        } finally {
+            DB::disableQueryLog();
+        }
+    }
+
+    public function test_update_rechecks_version_against_locked_row_instead_of_stale_model(): void
+    {
+        $survey = $this->createRegressionSurvey();
+        $stale = SatisfactionSurvey::findOrFail($survey->id);
+        $service = app(SatisfactionSurveyService::class);
+        $service->updateSurvey($survey, ['version' => 1, 'title' => 'Bản cập nhật đầu'], $this->managerUser);
+        try {
+            $service->updateSurvey($stale, ['version' => 1, 'title' => 'Bản cũ ghi đè'], $this->managerUser);
+            $this->fail('Stale model must not overwrite a newer survey.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+        $this->assertSame('Bản cập nhật đầu', $survey->fresh()->title);
+        $this->assertSame(2, $survey->fresh()->version);
+    }
+
+    public function test_toggle_advances_current_version_even_when_input_model_is_stale(): void
+    {
+        $survey = $this->createRegressionSurvey();
+        $stale = SatisfactionSurvey::findOrFail($survey->id);
+        $service = app(SatisfactionSurveyService::class);
+        $service->updateSurvey($survey, ['version' => 1, 'title' => 'Nội dung mới'], $this->managerUser);
+        $result = $service->toggleActive($stale, false, $this->managerUser);
+        $this->assertSame(3, $result->version);
+        $this->assertSame('Nội dung mới', $result->title);
+        $this->assertFalse($result->is_active);
+    }
+
+    private function createRegressionSurvey(): SatisfactionSurvey
+    {
+        return SatisfactionSurvey::create([
+            'survey_code' => 'REGRESSION-'.Str::random(10), 'title' => 'Khảo sát hồi quy',
+            'target_block_id' => $this->blockA->id, 'start_date' => today()->toDateString(),
+            'end_date' => today()->addDays(10)->toDateString(), 'is_active' => true,
+            'created_by' => $this->managerUser->id, 'version' => 1,
+        ]);
+    }
+
+    public function test_audit_failure_rolls_back_survey_edits_and_status_changes(): void
+    {
+        $survey = $this->createRegressionSurvey();
+        $service = app(SatisfactionSurveyService::class);
+        DB::listen(function (QueryExecuted $query): void {
+            if (str_starts_with(strtolower($query->sql), 'insert into') && str_contains($query->sql, 'audit_logs')) {
+                throw new \RuntimeException('QA audit failure');
+            }
+        });
+        foreach (['update', 'toggle'] as $action) {
+            try {
+                if ($action === 'update') {
+                    $service->updateSurvey($survey, ['version' => 1, 'title' => 'Không được lưu'], $this->managerUser);
+                } else {
+                    $service->toggleActive($survey, false, $this->managerUser);
+                }
+                $this->fail('Audit failure must abort the transaction.');
+            } catch (\RuntimeException $exception) {
+                $this->assertSame('QA audit failure', $exception->getMessage());
+            }
+            $this->assertSame(1, $survey->fresh()->version);
+            $this->assertTrue($survey->fresh()->is_active);
+            $this->assertSame('Khảo sát hồi quy', $survey->fresh()->title);
+            $this->assertSame(0, DB::table('audit_logs')->where('record_id', $survey->id)->count());
+        }
     }
 
     // 14. Phân quyền Block: Quản lý Block B không thể xem khảo sát Block A (403)

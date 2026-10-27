@@ -152,33 +152,34 @@ class SatisfactionSurveyService
      */
     public function updateSurvey(SatisfactionSurvey $survey, array $data, User $updater): SatisfactionSurvey
     {
-        abort_unless($this->accessService->isManager($updater) && $updater->hasPermission('SURVEY:UPDATE'), 403, 'Bạn không có quyền cập nhật khảo sát.');
+        return DB::transaction(function () use ($survey, $data, $updater) {
+            $survey = SatisfactionSurvey::query()->whereKey($survey->getKey())->lockForUpdate()->firstOrFail();
+            abort_unless($this->accessService->isManager($updater) && $updater->hasPermission('SURVEY:UPDATE'), 403, 'Bạn không có quyền cập nhật khảo sát.');
 
-        $assignedBlockId = $this->accessService->assignedBlock($updater);
-        if ($assignedBlockId && $survey->target_block_id && $survey->target_block_id !== $assignedBlockId) {
-            abort(403, 'Bạn không thể chỉnh sửa khảo sát thuộc tòa nhà khác.');
-        }
+            $assignedBlockId = $this->accessService->assignedBlock($updater);
+            if ($assignedBlockId && $survey->target_block_id && $survey->target_block_id !== $assignedBlockId) {
+                abort(403, 'Bạn không thể chỉnh sửa khảo sát thuộc tòa nhà khác.');
+            }
 
-        // 1. OCC Check
-        if (isset($data['version']) && (int) $data['version'] !== (int) $survey->version) {
-            abort(409, 'Xung đột phiên bản: Khảo sát này đã được cập nhật bởi một quản lý khác. Vui lòng tải lại dữ liệu mới nhất.');
-        }
+            // 1. OCC Check
+            if (isset($data['version']) && (int) $data['version'] !== (int) $survey->version) {
+                abort(409, 'Xung đột phiên bản: Khảo sát này đã được cập nhật bởi một quản lý khác. Vui lòng tải lại dữ liệu mới nhất.');
+            }
 
-        // 2. Lock question editing if responses already exist
-        $hasResponses = $survey->responses()->exists();
-        if ($hasResponses && isset($data['questions'])) {
-            abort(422, 'Không thể chỉnh sửa danh sách câu hỏi vì khảo sát đã có cư dân nộp phiếu đánh giá.');
-        }
+            // 2. Lock question editing if responses already exist
+            $hasResponses = $survey->responses()->exists();
+            if ($hasResponses && isset($data['questions'])) {
+                abort(422, 'Không thể chỉnh sửa danh sách câu hỏi vì khảo sát đã có cư dân nộp phiếu đánh giá.');
+            }
 
-        // 3. Date validation
-        $startDate = isset($data['start_date']) ? Carbon::parse($data['start_date'], 'Asia/Ho_Chi_Minh')->startOfDay() : Carbon::parse($survey->start_date)->startOfDay();
-        $endDate = isset($data['end_date']) ? Carbon::parse($data['end_date'], 'Asia/Ho_Chi_Minh')->endOfDay() : Carbon::parse($survey->end_date)->endOfDay();
+            // 3. Date validation
+            $startDate = isset($data['start_date']) ? Carbon::parse($data['start_date'], 'Asia/Ho_Chi_Minh')->startOfDay() : Carbon::parse($survey->start_date)->startOfDay();
+            $endDate = isset($data['end_date']) ? Carbon::parse($data['end_date'], 'Asia/Ho_Chi_Minh')->endOfDay() : Carbon::parse($survey->end_date)->endOfDay();
 
-        if ($endDate->lt($startDate)) {
-            abort(422, 'Ngày kết thúc không được trước ngày bắt đầu.');
-        }
+            if ($endDate->lt($startDate)) {
+                abort(422, 'Ngày kết thúc không được trước ngày bắt đầu.');
+            }
 
-        return DB::transaction(function () use ($survey, $data, $updater, $hasResponses) {
             $survey->update([
                 'title' => isset($data['title']) ? trim($data['title']) : $survey->title,
                 'description' => array_key_exists('description', $data) ? $data['description'] : $survey->description,
@@ -209,7 +210,7 @@ class SatisfactionSurveyService
             $this->audit($updater, 'SURVEY_UPDATED', $survey->id, "Khảo sát '{$survey->title}' được cập nhật lên phiên bản {$survey->version}.");
 
             return $survey->fresh(['targetBlock', 'questions']);
-        });
+        }, 3);
     }
 
     /**
@@ -217,17 +218,20 @@ class SatisfactionSurveyService
      */
     public function toggleActive(SatisfactionSurvey $survey, bool $isActive, User $updater): SatisfactionSurvey
     {
-        abort_unless($this->accessService->isManager($updater) && $updater->hasPermission('SURVEY:MANAGE'), 403, 'Bạn không có quyền thay đổi trạng thái kích hoạt khảo sát.');
+        return DB::transaction(function () use ($survey, $isActive, $updater) {
+            $survey = SatisfactionSurvey::query()->whereKey($survey->getKey())->lockForUpdate()->firstOrFail();
+            abort_unless($this->accessService->isManager($updater) && $updater->hasPermission('SURVEY:MANAGE'), 403, 'Bạn không có quyền thay đổi trạng thái kích hoạt khảo sát.');
 
-        $survey->update([
-            'is_active' => $isActive,
-            'version' => $survey->version + 1,
-        ]);
+            $survey->update([
+                'is_active' => $isActive,
+                'version' => $survey->version + 1,
+            ]);
 
-        $statusStr = $isActive ? 'KÍCH HOẠT' : 'TẠM DỪNG';
-        $this->audit($updater, 'SURVEY_STATUS_TOGGLED', $survey->id, "Khảo sát đã chuyển sang trạng thái {$statusStr}.");
+            $statusStr = $isActive ? 'KÍCH HOẠT' : 'TẠM DỪNG';
+            $this->audit($updater, 'SURVEY_STATUS_TOGGLED', $survey->id, "Khảo sát đã chuyển sang trạng thái {$statusStr}.");
 
-        return $survey;
+            return $survey;
+        }, 3);
     }
 
     protected function audit(User $user, string $action, string $targetId, string $description): void
