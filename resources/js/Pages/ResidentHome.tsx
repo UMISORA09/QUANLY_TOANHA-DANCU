@@ -39,6 +39,7 @@ import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
 import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
+import { ResidentSuggestionPanel } from '../Components/ResidentSuggestionPanel';
 import { ResidentPushNotificationToggle } from '../Components/ResidentPushNotificationToggle';
 import { ResidentParcelWidget } from '../Components/ResidentParcelWidget';
 
@@ -538,6 +539,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           <ResidentVisitorRegistrationPanel />
         ) : activeMenuId === 'tickets' ? (
           <ResidentTicketPanel onNavigateOverview={() => selectMenu('overview')} />
+        ) : activeMenuId === 'feedback' ? (
+          <ResidentSuggestionPanel />
         ) : activeMenuId === 'overview' ? (
           /* ================= VIEW 2: TỔNG QUAN CƯ DÂN ================= */
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
