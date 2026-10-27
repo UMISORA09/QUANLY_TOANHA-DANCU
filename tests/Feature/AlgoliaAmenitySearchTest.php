@@ -238,12 +238,43 @@ class AlgoliaAmenitySearchTest extends TestCase
         $this->withToken('invalid')->getJson('/api/v1/internal/amenity-search/process?inspect=schema')->assertUnauthorized();
     }
 
+    public function test_worker_database_failure_is_redacted_without_retrying_work(): void
+    {
+        config(['search.sync_secret' => str_repeat('e', 40)]);
+        $exception = new PDOException('Private hostname and password');
+        $exception->errorInfo = ['HY000', 2006, 'Private database details'];
+        $connection = DB::connection();
+        DB::partialMock()->shouldReceive('connection')->andReturn($connection);
+        DB::partialMock()->shouldReceive('table')->once()->with('jobs')->andThrow($exception);
+        Artisan::shouldReceive('call')->never();
+
+        $response = $this->withToken(str_repeat('e', 40))->getJson('/api/v1/internal/amenity-search/process')
+            ->assertStatus(503)->assertJsonPath('error_code', 'connection_lost')
+            ->assertJsonPath('database', 'unhealthy')->assertDontSee('Private');
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+    }
+
+    public function test_missing_worker_table_returns_schema_missing_instead_of_a_raw_sql_error(): void
+    {
+        config(['search.sync_secret' => str_repeat('e', 40)]);
+        $exception = new PDOException('Private SQL statement');
+        $exception->errorInfo = ['42S02', 1146, 'Private table name'];
+        $connection = DB::connection();
+        DB::partialMock()->shouldReceive('connection')->andReturn($connection);
+        DB::partialMock()->shouldReceive('table')->once()->with('jobs')->andThrow($exception);
+        Artisan::shouldReceive('call')->never();
+
+        $this->withToken(str_repeat('e', 40))->getJson('/api/v1/internal/amenity-search/process')
+            ->assertStatus(503)->assertJsonPath('error_code', 'schema_missing')->assertDontSee('Private');
+    }
+
     public function test_schema_inspection_requires_machine_secret_and_does_not_run_jobs(): void
     {
         config(['search.sync_secret' => str_repeat('d', 40)]);
         $this->withHeader('Authorization', '')->getJson('/api/v1/internal/amenity-search/process?inspect=schema')->assertUnauthorized();
         $this->withToken(str_repeat('d', 40))->getJson('/api/v1/internal/amenity-search/process?inspect=schema')
             ->assertOk()->assertJsonPath('tables.amenity_bookings', true)->assertJsonPath('tables.amenity_booking_payments', true)
+            ->assertJsonPath('tables.amenities', true)->assertJsonPath('tables.jobs', true)->assertJsonPath('tables.failed_jobs', true)
             ->assertJsonMissingPath('host')->assertJsonMissingPath('password');
         $this->assertSame(0, DB::table('jobs')->where('queue', 'amenity-search')->count());
     }
