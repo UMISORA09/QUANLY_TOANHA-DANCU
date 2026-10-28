@@ -167,14 +167,25 @@ class ResidentSurveyService
             ];
 
             if ($question->question_type === SurveyQuestion::TYPE_RATING_1_TO_5) {
+                if (! is_numeric($userAnswer) || (int) $userAnswer != $userAnswer) {
+                    abort(422, "Điểm đánh giá câu hỏi #{$question->question_order} phải là số nguyên từ 1 đến 5 sao.");
+                }
                 $score = (int) $userAnswer;
                 if ($score < 1 || $score > 5) {
                     abort(422, "Điểm đánh giá câu hỏi #{$question->question_order} phải nằm trong khoảng từ 1 đến 5 sao.");
                 }
                 $detail['numeric_score'] = $score;
             } elseif ($question->question_type === SurveyQuestion::TYPE_YES_NO) {
-                $ansStr = trim((string) $userAnswer);
-                $detail['selected_option'] = $ansStr;
+                $ansRaw = strtoupper(trim((string) $userAnswer));
+                $normalized = match ($ansRaw) {
+                    'YES', 'CO', 'CÓ', '1', 'TRUE' => 'YES',
+                    'NO', 'KHONG', 'KHÔNG', '0', 'FALSE' => 'NO',
+                    default => null,
+                };
+                if ($normalized === null) {
+                    abort(422, "Câu trả lời cho câu hỏi #{$question->question_order} phải là Có hoặc Không.");
+                }
+                $detail['selected_option'] = $normalized;
             } elseif ($question->question_type === SurveyQuestion::TYPE_MULTIPLE_CHOICE) {
                 $ansStr = trim((string) $userAnswer);
                 $options = is_array($question->options_json) ? $question->options_json : [];

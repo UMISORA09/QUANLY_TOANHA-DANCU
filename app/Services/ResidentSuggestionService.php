@@ -57,10 +57,12 @@ class ResidentSuggestionService
      */
     public function submit(User $user, array $data, array $files = []): array
     {
-        // 1. Idempotency control
+        // 1. Idempotency control (scoped to resident_user_id)
         $idempotencyKey = ! empty($data['idempotency_key']) ? trim((string) $data['idempotency_key']) : null;
         if ($idempotencyKey) {
-            $existing = Suggestion::where('idempotency_key', $idempotencyKey)->first();
+            $existing = Suggestion::where('resident_user_id', $user->id)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
             if ($existing) {
                 return [
                     'suggestion' => $existing,

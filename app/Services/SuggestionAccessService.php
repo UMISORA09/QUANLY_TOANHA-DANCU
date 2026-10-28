@@ -37,12 +37,18 @@ class SuggestionAccessService
     {
         abort_unless($this->isManager($user) && $user->hasPermission('SUGGESTION:VIEW'), 403, 'Bạn không có quyền xem hòm thư góp ý.');
 
-        $blockId = $this->assignedBlock($user);
-        if ($blockId) {
-            $query->whereHas('box', function (Builder $boxQuery) use ($blockId): void {
-                $boxQuery->whereNull('block_id')->orWhere('block_id', $blockId);
-            });
+        if ($user->isSuperAdmin()) {
+            return $query;
         }
+
+        $blockId = $this->assignedBlock($user);
+        $query->whereHas('box', function (Builder $boxQuery) use ($blockId): void {
+            if ($blockId) {
+                $boxQuery->whereNull('block_id')->orWhere('block_id', $blockId);
+            } else {
+                $boxQuery->whereNull('block_id');
+            }
+        });
 
         return $query;
     }
