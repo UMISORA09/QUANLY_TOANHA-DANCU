@@ -1,0 +1,16 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SMART CASSAVAS — Public documentation API",
+    "version": "1.0.0",
+    "description": "Read-only public documentation. Resident, payment and management APIs require separate authorization and are outside this specification. MCP JSON-RPC is documented at /docs."
+  },
+  "servers": [{"url": "https://quanly-toanha-dancu.vercel.app"}],
+  "paths": {
+    "/": {"get": {"summary": "SMART CASSAVAS homepage", "operationId": "readHomepage", "responses": {"200": {"$ref": "#/components/responses/Page"}, "406": {"description": "Neither HTML nor Markdown accepted"}}}},
+    "/{page}": {"get": {"summary": "Read a public SMART CASSAVAS guide", "operationId": "readGuide", "parameters": [{"name": "page", "in": "path", "required": true, "schema": {"type": "string", "enum": ["home", "about", "contact", "privacy", "docs"]}}], "responses": {"200": {"$ref": "#/components/responses/Page"}, "406": {"description": "Neither HTML nor Markdown accepted"}}}},
+    "/llms.txt": {"get": {"operationId": "readAgentInstructions", "responses": {"200": {"description": "Agent guidance and documentation links", "content": {"text/plain": {"schema": {"type": "string"}}}}}}},
+    "/sitemap.xml": {"get": {"operationId": "readSitemap", "responses": {"200": {"description": "Indexable public URLs", "content": {"application/xml": {"schema": {"type": "string"}}}}}}}
+  },
+  "components": {"responses": {"Page": {"description": "Public page selected using Accept quality values; HTML is the default", "headers": {"Vary": {"schema": {"type": "string", "const": "Accept"}}}, "content": {"text/html": {"schema": {"type": "string"}}, "text/markdown": {"schema": {"type": "string"}}}}}}
+}
