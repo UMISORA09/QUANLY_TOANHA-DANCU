@@ -7,10 +7,12 @@ use App\Services\Search\AmenitySearchMetrics;
 use App\Services\Search\AmenitySearchSyncState;
 use App\Services\Search\Drivers\AlgoliaDriver;
 use App\Services\Search\Drivers\SmartSearchDriver;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
@@ -39,6 +41,37 @@ class AmenitySearchQualityTest extends TestCase
     private function hit(int $version = 1): array
     {
         return ['objectID' => $this->amenityId, 'search_version' => $version, 'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at')];
+    }
+
+    public function test_reindex_queues_129_amenities_with_a_bounded_number_of_queries(): void
+    {
+        $template = (array) DB::table('amenities')->where('id', $this->amenityId)->first();
+        $ids = [$this->amenityId];
+        $rows = [];
+        for ($index = 0; $index < 128; $index++) {
+            $id = (string) Str::uuid();
+            $ids[] = $id;
+            $rows[] = [...$template, 'id' => $id, 'amenity_code' => 'QA-BULK-'.Str::random(14)];
+        }
+        DB::table('amenities')->insert($rows);
+        DB::table('amenity_search_states')->insertOrIgnore(array_map(fn (string $id): array => [
+            'amenity_id' => $id, 'desired_version' => 1, 'published_version' => 1,
+            'status' => 'failed', 'index_fingerprint' => AmenitySearchSyncState::fingerprint(),
+            'created_at' => now(), 'updated_at' => now(),
+        ], $ids));
+        DB::table('amenity_search_states')->whereIn('amenity_id', $ids)->update(['status' => 'failed']);
+        $beforeJobs = DB::table('jobs')->where('queue', 'amenity-search')->count();
+        $queryCount = 0;
+        DB::listen(function (QueryExecuted $query) use (&$queryCount): void {
+            $queryCount++;
+        });
+
+        $this->artisan('search:sync-amenities', ['--retry-failed' => true])->assertSuccessful();
+
+        $this->assertLessThanOrEqual(16, $queryCount);
+        $this->assertSame($beforeJobs + 129, DB::table('jobs')->where('queue', 'amenity-search')->count());
+        $this->assertSame(129, DB::table('amenity_search_states')->whereIn('amenity_id', $ids)->where('desired_version', 2)->where('published_version', 1)->count());
+        Http::assertNothingSent();
     }
 
     public function test_correction_is_applied_only_after_zero_results_and_uses_at_most_two_searches(): void
