@@ -326,7 +326,10 @@ Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(functi
 
     // Tiện ích
     Route::get('amenities', [ResidentAmenityBookingController::class, 'index']);
+    Route::get('amenities/search', [ResidentAmenityBookingController::class, 'search']);
+    Route::get('amenities/suggestions', [ResidentAmenityBookingController::class, 'suggestions']);
     Route::get('amenities/{id}/availability', [ResidentAmenityBookingController::class, 'availability']);
+    Route::get('amenities/{id}', [ResidentAmenityBookingController::class, 'amenity']);
     Route::post('amenity-bookings', [ResidentAmenityBookingController::class, 'store']);
     Route::get('amenity-notifications', [ResidentAmenityBookingController::class, 'notifications']);
     Route::post('amenity-notifications/{id}/read', [ResidentAmenityBookingController::class, 'readNotification']);

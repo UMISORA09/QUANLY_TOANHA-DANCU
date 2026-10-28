@@ -147,6 +147,13 @@ async function fixture(page: Page, options: { conflict?: boolean; unauthorized?:
       if (options.networkError) return route.abort('failed');
       return route.fulfill({ json: { apartments: [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test', block_name: 'Tòa A' }], amenities: options.amenities || [amenity], categories: [{ id: 'category-test', category_name: 'BBQ' }], today, timezone: 'Asia/Ho_Chi_Minh' } });
     }
+      if (url.pathname.endsWith('/amenities/search')) {
+        const query = (url.searchParams.get('q') || '').toLocaleLowerCase('vi');
+        const items = (options.amenities || [amenity]).filter((item) => item.amenity_name.toLocaleLowerCase('vi').includes(query));
+        const page = Number(url.searchParams.get('page') || 1);
+        return route.fulfill({ json: { items: items.slice((page - 1) * 15, page * 15), total: items.length, page, limit: 15, total_pages: Math.max(1, Math.ceil(items.length / 15)) } });
+      }
+      if (url.pathname.endsWith(`/amenities/${amenity.id}`)) return route.fulfill({ json: amenity });
     if (url.pathname.endsWith('/availability')) {
       const date = url.searchParams.get('date');
       if (options.slowFirstDate && date === today) await new Promise((resolve) => setTimeout(resolve, 500));
@@ -968,7 +975,7 @@ test('catalog lỗi tải nền giữ form, ghi chú và cho thử lại', async
   await chooseSlot(page);
   await page.getByLabel('Ghi chú', { exact: true }).fill('Giữ ghi chú');
   let fail = true;
-  await page.route('**/resident/amenities', (route) => fail ? route.fulfill({ status: 503, json: { message: 'Catalog tạm thời không khả dụng' } }) : route.fulfill({ json: { apartments: [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test' }], amenities: [amenity], categories: [], today, timezone: 'Asia/Ho_Chi_Minh' } }));
+  await page.route('**/resident/amenities?metadata_only=1', (route) => fail ? route.fulfill({ status: 503, json: { message: 'Catalog tạm thời không khả dụng' } }) : route.fulfill({ json: { apartments: [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test' }], amenities: [amenity], categories: [], today, timezone: 'Asia/Ho_Chi_Minh' } }));
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   const dialog = page.getByRole('dialog', { name: /Đăng ký tiện ích/ });
   await expect(dialog.getByRole('alert')).toContainText('Catalog tạm thời');
@@ -1000,12 +1007,52 @@ test('giờ slot thay đổi cùng mức phí yêu cầu chọn và xác nhận 
   expect(posts).toBe(1);
 });
 
+for (const width of [1366, 390]) {
+  test(`tìm kiếm server bỏ phản hồi cũ, chọn gợi ý bằng bàn phím và chặn hết phiên ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await fixture(page);
+    await expect(page.locator('.booking-amenity')).toHaveCount(1);
+    let releaseOld: (() => void) | undefined;
+    let oldReturned = false;
+    const latest = { ...amenity, amenity_name: 'Phòng Gym QA', amenity_code: 'GYM-QA' };
+    await page.route('**/resident/amenities/search?*', async (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get('apartment_id')).toBe('apartment-test');
+      const query = url.searchParams.get('q');
+      if (query === 'expired') return route.fulfill({ status: 401, json: { message: 'Unauthorized' } });
+      if (query === 'old') {
+        await new Promise<void>((resolve) => { releaseOld = resolve; });
+        await route.fulfill({ json: { items: [amenity], total: 1, page: 1, total_pages: 1, limit: 15 } });
+        oldReturned = true;
+        return;
+      }
+      return route.fulfill({ json: { items: [latest], total: 1, page: 1, total_pages: 1, limit: 15, is_corrected: true, applied_query: 'phong gym' } });
+    });
+    const input = page.getByRole('combobox', { name: 'Tìm tiện ích', exact: true });
+    await input.fill('old');
+    await expect.poll(() => Boolean(releaseOld)).toBe(true);
+    await input.fill('phong gim');
+    await expect(page.locator('.booking-amenity')).toContainText('Phòng Gym QA');
+    releaseOld!();
+    await expect.poll(() => oldReturned).toBe(true);
+    await expect(page.locator('.booking-amenity')).toContainText('Phòng Gym QA');
+    await expect(page.getByText('Kết quả cho “phong gym”.')).toBeVisible();
+    await input.press('ArrowDown'); await input.press('Enter');
+    await expect(input).toHaveValue('Phòng Gym QA');
+    await expect(page.getByRole('listbox', { name: 'Tiện ích gợi ý' })).not.toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await input.fill('expired');
+    await expect(page.getByRole('alert')).toContainText('Phiên đăng nhập đã hết hạn');
+    await expect(page.locator('.booking-amenity')).toHaveCount(0);
+  });
+}
+
 test('nội quy thay đổi trước xác nhận yêu cầu đọc lại, không gửi POST', async ({ page }) => {
   await fixture(page);
   await chooseSlot(page);
   let posts = 0;
   page.on('request', (request) => { if (request.method() === 'POST') posts += 1; });
-  await page.route('**/resident/amenities', (route) => route.fulfill({ json: { apartments: [{ id: 'apartment-test', block_id: 'block-test' }], amenities: [{ ...amenity, rules_and_regulations: 'Nội quy vừa cập nhật.' }], categories: [], today, timezone: 'Asia/Ho_Chi_Minh' } }));
+  await page.route(`**/resident/amenities/${amenity.id}?*`, (route) => route.fulfill({ json: { ...amenity, rules_and_regulations: 'Nội quy vừa cập nhật.' } }));
   await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'nội quy vừa thay đổi' })).toBeVisible();
   await expect(page.getByRole('checkbox')).not.toBeChecked();
@@ -1086,7 +1133,7 @@ test('thay đổi tiện ích khác cập nhật catalog nhưng không tải l�
   let catalogs = 0;
   let availability = 0;
   page.on('request', (request) => {
-    if (request.url().endsWith('/resident/amenities')) catalogs += 1;
+    if (new URL(request.url()).pathname.endsWith('/resident/amenities')) catalogs += 1;
     if (request.url().includes('/availability?')) availability += 1;
   });
   await fixture(page);

@@ -13,7 +13,26 @@ class ResidentAmenityBookingController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        return response()->json($this->bookings->catalog($request->user()))->header('Cache-Control', 'private, no-store');
+        $request->validate(['metadata_only' => 'nullable|boolean']);
+
+        return response()->json($this->bookings->catalog($request->user(), ! $request->boolean('metadata_only')))->header('Cache-Control', 'private, no-store');
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        $data = $request->validate(['q' => 'nullable|string|max:200', 'apartment_id' => 'nullable|uuid', 'category_id' => 'nullable|uuid', 'page' => 'nullable|integer|min:1|max:100000']);
+
+        return response()->json($this->bookings->search($request->user(), $data['q'] ?? '', $data['apartment_id'] ?? null, $data['category_id'] ?? null, (int) ($data['page'] ?? 1)))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function suggestions(Request $request): JsonResponse
+    {
+        $data = $request->validate(['q' => 'required|string|min:2|max:200', 'apartment_id' => 'nullable|uuid', 'category_id' => 'nullable|uuid']);
+        $result = $this->bookings->search($request->user(), $data['q'], $data['apartment_id'] ?? null, $data['category_id'] ?? null, 1, 5);
+
+        return response()->json(['suggestions' => array_map(fn (array $item): array => ['id' => $item['id'], 'label' => $item['amenity_name'], 'code' => $item['amenity_code']], $result['items'])])
+            ->header('Cache-Control', 'private, no-store');
     }
 
     public function notifications(Request $request): JsonResponse
@@ -35,6 +54,13 @@ class ResidentAmenityBookingController extends Controller
         $data = $request->validate(['date' => 'required|date_format:Y-m-d', 'apartment_id' => 'nullable|uuid']);
 
         return response()->json($this->bookings->availability($request->user(), $id, $data['date'], $data['apartment_id'] ?? null))->header('Cache-Control', 'private, no-store');
+    }
+
+    public function amenity(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate(['apartment_id' => 'nullable|uuid']);
+
+        return response()->json($this->bookings->amenityDetail($request->user(), $id, $data['apartment_id'] ?? null))->header('Cache-Control', 'private, no-store');
     }
 
     public function store(ResidentAmenityBookingRequest $request): JsonResponse
