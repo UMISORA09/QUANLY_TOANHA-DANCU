@@ -44,7 +44,7 @@ async function setup(page: Page, store: State, role: 'resident' | 'admin' = 'res
     if (path.endsWith('/tickets')) return route.fulfill({ json: { success: true, data: [], pagination: { current_page: 1, last_page: 1, total: 0, per_page: 15 }, current_page: 1, last_page: 1, total: 0 } });
     return route.fulfill({ json: { success: true, data: [], items: [], unread_count: 0, page: 1, total_pages: 1, user: { full_name: 'Ticket QA' }, apartments: [] } });
   });
-  await page.goto(`/${role === 'admin' ? 'admin' : 'cu-dan'}?tab=tickets&ticket_id=qa-ticket`);
+  await page.goto(`/${role === 'admin' ? 'admin' : 'cu-dan'}?tab=tickets&ticket_id=qa-ticket`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByLabel('Nội dung trao đổi', { exact: true })).toBeEnabled();
 }
 
