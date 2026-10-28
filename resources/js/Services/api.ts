@@ -2344,6 +2344,11 @@ class ApiService {
   async getTicketDiscussionHistory(id: string, cursor?: string, signal?: AbortSignal) {
     return this.request<TicketDiscussionPage<TicketHistoryItem>>(`/tickets/${id}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { signal, cache: 'no-store' });
   }
+  async getResidentAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<ResidentAnnouncementPage>(`/resident/announcements?${params}`, { signal, cache: 'no-store' }); }
+  async getResidentAnnouncement(id: string, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}`, { signal, cache: 'no-store' }); }
+  async readResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/read`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+  async acknowledgeResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/acknowledge`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+
   async getAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<AnnouncementPage>(`/admin/announcements?${params}`, { signal, cache: 'no-store' }); }
   async getAnnouncementOptions(signal?: AbortSignal) { return this.request<AnnouncementOptions>('/admin/announcements/options', { signal, cache: 'no-store' }); }
   async getAnnouncement(id: string, signal?: AbortSignal) { return this.request<Announcement>(`/admin/announcements/${id}`, { signal, cache: 'no-store' }); }
@@ -2362,13 +2367,13 @@ class ApiService {
     } catch (error) { void this.discardAnnouncementUpload(ticket.token).catch(() => {}); throw error; }
   }
   async discardAnnouncementUpload(token: string) { return this.request('/admin/announcements/uploads/discard', { method: 'POST', body: JSON.stringify({ token }) }); }
-  async announcementAttachment(id: string, attachmentId: string): Promise<Blob> {
-    const response = await fetch(`${API_BASE_URL}/admin/announcements/${id}/attachments/${attachmentId}`, { cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+  async announcementAttachment(id: string, attachmentId: string, audience: 'admin' | 'resident' = 'admin', signal?: AbortSignal): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/${audience}/announcements/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`, { signal, cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
     if (!response.ok) throw new Error('Không tải được tệp. Kiểm tra phiên đăng nhập và quyền xem bài.');
     if (response.headers.get('content-type')?.includes('application/json')) {
       const result: { download_url: string } = await response.json();
       if (!result.download_url.startsWith('https://')) throw new Error('Địa chỉ tải không hợp lệ.');
-      const download = await fetch(result.download_url, { credentials: 'omit', cache: 'no-store' });
+      const download = await fetch(result.download_url, { signal, credentials: 'omit', cache: 'no-store' });
       if (!download.ok) throw new Error('Không tải được tệp từ kho riêng tư.');
       return download.blob();
     }
@@ -2821,6 +2826,18 @@ export interface AnnouncementOptions {
 }
 
 export interface AnnouncementUpload { token: string; transport: 'local' | 's3'; url: string; headers: Record<string, string>; expires_at: number; }
+
+export interface ResidentAnnouncement {
+  id: string; title: string; summary_excerpt: string | null; category: string;
+  target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; block_name: string | null; floor_name: string | null;
+  is_pinned: boolean; is_urgent: boolean; requires_acknowledgement: boolean; version: number;
+  publish_at: string; expires_at: string | null; read_at: string | null; acknowledged_at: string | null;
+  content_html?: string; attachments?: AnnouncementAttachment[];
+}
+export interface ResidentAnnouncementPage {
+  data: ResidentAnnouncement[]; current_page: number; last_page: number; total: number;
+  unread_count: number; categories: Record<string, string>; timezone: string;
+}
 
 // ================= F12 SUGGESTION INTERFACES =================
 export interface SuggestionBoxItem {
