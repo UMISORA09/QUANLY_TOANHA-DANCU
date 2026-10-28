@@ -39,12 +39,18 @@ class SurveyAccessService
     {
         abort_unless($this->isManager($user) && $user->hasPermission('SURVEY:VIEW'), 403, 'Bạn không có quyền xem khảo sát.');
 
-        $assignedBlockId = $this->assignedBlock($user);
-        if ($assignedBlockId) {
-            $query->where(function (Builder $q) use ($assignedBlockId): void {
-                $q->whereNull('target_block_id')->orWhere('target_block_id', $assignedBlockId);
-            });
+        if ($user->isSuperAdmin()) {
+            return $query;
         }
+
+        $assignedBlockId = $this->assignedBlock($user);
+        $query->where(function (Builder $q) use ($assignedBlockId): void {
+            if ($assignedBlockId) {
+                $q->whereNull('target_block_id')->orWhere('target_block_id', $assignedBlockId);
+            } else {
+                $q->whereNull('target_block_id');
+            }
+        });
 
         return $query;
     }

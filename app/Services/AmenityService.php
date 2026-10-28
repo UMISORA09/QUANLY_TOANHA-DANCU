@@ -338,7 +338,7 @@ class AmenityService
 
         $updated = (array) $this->getAmenityById($id);
         $this->audit($id, 'UPDATE', (array) $existing, $updated);
-        AmenityUpdated::dispatch($id, $updated);
+        DB::afterCommit(fn () => AmenityUpdated::dispatch($id, $updated));
 
         return $updated;
     }
@@ -360,7 +360,7 @@ class AmenityService
                 ->exists(), 409, 'Không thể xóa tiện ích khi còn khoản thanh toán cần đối soát hoặc hoàn tiền.');
             $this->repository->softDelete($id);
             $this->audit($id, 'DELETE', (array) $existing, ['deleted_at' => now()->toIso8601String(), 'is_active' => false]);
-            AmenityDeleted::dispatch($id);
+            DB::afterCommit(fn () => AmenityDeleted::dispatch($id));
         }, 3);
     }
 

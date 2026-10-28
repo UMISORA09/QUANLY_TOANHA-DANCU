@@ -135,8 +135,9 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Kiểm tra mật khẩu chuẩn xác thực cryptographic hash hoặc fallback demo mật khẩu cho môi trường thử nghiệm
-        $isDemoFallbackPass = in_array($user->username, ['admin', 'manager', 'receptionist', 'security', 'resident.owner', 'resident.member', 'accountant', 'nguyenvanan', 'quanly', 'letan'], true)
+        // Kiểm tra mật khẩu chuẩn xác thực cryptographic hash hoặc fallback demo mật khẩu cho môi trường thử nghiệm (chỉ cho phép ở môi trường non-production)
+        $isDemoFallbackPass = ! app()->environment('production')
+            && in_array($user->username, ['admin', 'manager', 'receptionist', 'security', 'resident.owner', 'resident.member', 'accountant', 'nguyenvanan', 'quanly', 'letan'], true)
             && in_array($password, ['123567', '123456', 'Admin@123456', 'Manager@123456', 'Receptionist@123456', 'Security@123456', 'Resident@123456', 'Accountant@123456'], true);
 
         $isValidPassword = (! empty($user->password_hash) && Hash::check($password, $user->password_hash)) || $isDemoFallbackPass;

@@ -61,8 +61,8 @@ class AuthenticateBearer
 
             if ($session) {
                 $user = User::with('roles.permissions')->find($session->user_id);
-            } elseif ($mode !== 'strict') {
-                // 2. Fallback kiểm tra smart_token format (phục vụ tương thích ngược nếu chưa lưu session vào DB)
+            } elseif ($mode !== 'strict' && ! app()->environment('production')) {
+                // 2. Fallback kiểm tra smart_token format (chỉ phục vụ test/local, vô hiệu hóa hoàn toàn trên production)
                 // Cấu trúc token: smart_token_{uuid}_{random} hoặc kiểm tra token demo
                 if (str_starts_with($token, 'smart_token_')) {
                     // Kiểm tra xem có user_id gắn trong token không
