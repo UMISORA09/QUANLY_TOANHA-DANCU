@@ -16,20 +16,34 @@ class AmenitySearchSyncState
 
     public function queue(string $amenityId): void
     {
+        $this->queueMany([$amenityId]);
+    }
+
+    /** @param list<string> $amenityIds */
+    public function queueMany(array $amenityIds): void
+    {
+        if ($amenityIds === []) {
+            return;
+        }
         $connection = config('queue.connections.database.connection') ?: config('database.default');
         if ($connection !== DB::getDefaultConnection() || config('queue.connections.database.after_commit')) {
             throw new LogicException('Amenity search state and queue must be written inside the business transaction.');
         }
-        DB::transaction(function () use ($amenityId): void {
-            DB::table('amenities')->where('id', $amenityId)->lockForUpdate()->first();
-            $this->initialize($amenityId);
-            $state = DB::table('amenity_search_states')->where('amenity_id', $amenityId)->lockForUpdate()->first();
-            DB::table('amenity_search_states')->where('amenity_id', $amenityId)->update([
-                'desired_version' => $state->desired_version + 1, 'status' => 'pending',
-                'index_fingerprint' => self::fingerprint(),
-                'error_code' => null, 'task_id' => null, 'task_version' => null, 'updated_at' => now(),
+        DB::transaction(function () use ($amenityIds): void {
+            DB::table('amenities')->whereIn('id', $amenityIds)->orderBy('id')->lockForUpdate()->get(['id']);
+            $now = now();
+            $fingerprint = self::fingerprint();
+            DB::table('amenity_search_states')->insertOrIgnore(array_map(fn (string $id): array => [
+                'amenity_id' => $id, 'desired_version' => 0, 'published_version' => 0,
+                'index_fingerprint' => $fingerprint, 'status' => 'pending',
+                'created_at' => $now, 'updated_at' => $now,
+            ], $amenityIds));
+            DB::table('amenity_search_states')->whereIn('amenity_id', $amenityIds)->update([
+                'desired_version' => DB::raw('desired_version + 1'), 'status' => 'pending',
+                'index_fingerprint' => $fingerprint,
+                'error_code' => null, 'task_id' => null, 'task_version' => null, 'updated_at' => $now,
             ]);
-            Queue::connection('database')->push(new SyncAmenitySearchIndex($amenityId), '', 'amenity-search');
+            Queue::connection('database')->bulk(array_map(fn (string $id): SyncAmenitySearchIndex => new SyncAmenitySearchIndex($id), $amenityIds), '', 'amenity-search');
         }, 3);
     }
 

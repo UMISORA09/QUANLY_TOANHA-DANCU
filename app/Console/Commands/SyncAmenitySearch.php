@@ -38,9 +38,7 @@ class SyncAmenitySearch extends Command
             (new AlgoliaDriver(config('search.drivers.algolia')))->configure();
         }
         $rows->chunkById(100, function ($rows): void {
-            foreach ($rows as $row) {
-                app(AmenitySearchSyncState::class)->queue($row->id);
-            }
+            app(AmenitySearchSyncState::class)->queueMany($rows->pluck('id')->all());
         });
         $this->info('Queued on amenity-search. Run queue:work database --queue=amenity-search --stop-when-empty --max-jobs=100 --max-time=45.');
 
