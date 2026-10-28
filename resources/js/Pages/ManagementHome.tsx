@@ -73,6 +73,8 @@ const RevenueAnalyticsDashboard = lazy(() => import('./Admin/RevenueAnalyticsDas
 const FinancialReportManagement = lazy(() => import('./Admin/FinancialReportManagement').then(m => ({ default: m.FinancialReportManagement })));
 const RfidManagement = lazy(() => import('./Admin/RfidManagement').then(m => ({ default: m.RfidManagement })));
 const ManagementStaffSchedulePanel = lazy(() => import('../Components/ManagementStaffSchedulePanel'));
+const SuggestionManagementPanel = lazy(() => import('../Components/SuggestionManagementPanel').then(m => ({ default: m.SuggestionManagementPanel })));
+const SatisfactionSurveyManagementPanel = lazy(() => import('../Components/SatisfactionSurveyManagementPanel').then(m => ({ default: m.SatisfactionSurveyManagementPanel })));
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -308,6 +310,24 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.startsWith('/admin/pricing-configs')
     ) {
       return 'pricing_configs';
+    }
+    if (
+      path === '/quan-ly/suggestions' ||
+      path === '/quan-ly/hom-thu-gop-y' ||
+      path === '/admin/suggestions' ||
+      path.startsWith('/quan-ly/suggestions') ||
+      path.startsWith('/admin/suggestions')
+    ) {
+      return 'suggestions';
+    }
+    if (
+      path === '/quan-ly/surveys' ||
+      path === '/quan-ly/khao-sat' ||
+      path === '/admin/surveys' ||
+      path.startsWith('/quan-ly/surveys') ||
+      path.startsWith('/admin/surveys')
+    ) {
+      return 'surveys';
     }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
@@ -802,6 +822,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           {activeMenuId === 'news' ? (<div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 py-6"><AnnouncementManagement /></div>) : activeMenuId === 'tickets' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <TicketManagementPanel />
+            </div>
+          ) : activeMenuId === 'suggestions' || activeMenuId === 'gop_y' || activeMenuId === 'feedback' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <SuggestionManagementPanel />
+            </div>
+          ) : activeMenuId === 'surveys' || activeMenuId === 'khao_sat' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <SatisfactionSurveyManagementPanel />
             </div>
           ) : activeMenuId === 'cicd' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 transition-all duration-300 ease-in-out">
