@@ -44,7 +44,7 @@ async function setup(page: Page, store: State, role: 'resident' | 'admin' = 'res
     if (path.endsWith('/tickets')) return route.fulfill({ json: { success: true, data: [], pagination: { current_page: 1, last_page: 1, total: 0, per_page: 15 }, current_page: 1, last_page: 1, total: 0 } });
     return route.fulfill({ json: { success: true, data: [], items: [], unread_count: 0, page: 1, total_pages: 1, user: { full_name: 'Ticket QA' }, apartments: [] } });
   });
-  await page.goto(`/${role === 'admin' ? 'admin' : 'cu-dan'}?tab=tickets&ticket_id=qa-ticket`);
+  await page.goto(`/${role === 'admin' ? 'admin' : 'cu-dan'}?tab=tickets&ticket_id=qa-ticket`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByLabel('Nội dung trao đổi', { exact: true })).toBeEnabled();
 }
 
@@ -138,7 +138,10 @@ test('MOCKED: đóng Ticket khi đang nhập giữ nội dung nhưng khóa gửi
 });
 
 test('MOCKED: lỗi tải giữ dữ liệu và bản nháp, backoff 3 rồi 6 giây trước khi hồi phục', async ({ page }) => {
-  const store = state(); store.comments.push(comment(1)); await page.clock.install(); await setup(page, store);
+  const store = state(); store.comments.push(comment(1));
+  await page.clock.install({ time: new Date('2026-10-23T08:00:00Z') });
+  await setup(page, store);
+  await page.clock.pauseAt(new Date('2026-10-23T08:01:00Z'));
   await expect(page.getByText('Đang tải trao đổi…')).toHaveCount(0);
   const field = page.getByLabel('Nội dung trao đổi', { exact: true }); await field.fill('Bản nháp khi mất mạng');
   const first = store.reads; store.readStatus = 503;
