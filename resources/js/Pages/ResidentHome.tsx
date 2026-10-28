@@ -8,6 +8,7 @@ import {
   Users,
   User,
   MessageSquare,
+  ClipboardCheck,
   HelpCircle,
   PhoneCall,
   LogOut,
@@ -39,6 +40,8 @@ import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
 import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
+import { ResidentSuggestionPanel } from '../Components/ResidentSuggestionPanel';
+import { ResidentSatisfactionSurveyPanel } from '../Components/ResidentSatisfactionSurveyPanel';
 import { ResidentPushNotificationToggle } from '../Components/ResidentPushNotificationToggle';
 import { ResidentParcelWidget } from '../Components/ResidentParcelWidget';
 
@@ -90,6 +93,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
     }
     return residentType === 'TENANT' ? 'rentals' : 'overview';
   });
+  const [feedbackSubTab, setFeedbackSubTab] = useState<'suggestions' | 'surveys'>('suggestions');
 
   useEffect(() => {
     try {
@@ -538,6 +542,40 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           <ResidentVisitorRegistrationPanel />
         ) : activeMenuId === 'tickets' ? (
           <ResidentTicketPanel onNavigateOverview={() => selectMenu('overview')} />
+        ) : activeMenuId === 'feedback' || activeMenuId === 'surveys' ? (
+          <div className="max-w-6xl mx-auto space-y-6">
+            {/* Sub-tab navigation for Góp ý & Khảo sát */}
+            <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2">
+              <button
+                onClick={() => setFeedbackSubTab('suggestions')}
+                className={`flex items-center gap-2 py-3 px-4 font-semibold text-sm border-b-2 transition-all ${
+                  feedbackSubTab === 'suggestions'
+                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                Hòm thư Góp ý (F12)
+              </button>
+              <button
+                onClick={() => setFeedbackSubTab('surveys')}
+                className={`flex items-center gap-2 py-3 px-4 font-semibold text-sm border-b-2 transition-all ${
+                  feedbackSubTab === 'surveys'
+                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                Khảo sát Mức độ Hài lòng CSAT (F13)
+              </button>
+            </div>
+
+            {feedbackSubTab === 'suggestions' ? (
+              <ResidentSuggestionPanel />
+            ) : (
+              <ResidentSatisfactionSurveyPanel />
+            )}
+          </div>
         ) : activeMenuId === 'overview' ? (
           /* ================= VIEW 2: TỔNG QUAN CƯ DÂN ================= */
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">

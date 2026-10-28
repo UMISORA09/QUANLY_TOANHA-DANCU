@@ -52,6 +52,21 @@ class ManagerNotificationService
                         }
                     });
                 }
+                if ($access->manager($user) && $user->hasPermission('SUGGESTION:VIEW')) {
+                    $sources->orWhere(function (Builder $suggestions) use ($block): void {
+                        $suggestions->where('n.category', 'SUGGESTION');
+                        if ($block) {
+                            $suggestions->whereExists(function (Builder $q) use ($block): void {
+                                $q->selectRaw('1')->from('suggestions as s')
+                                    ->join('suggestion_boxes as sb', 'sb.id', '=', 's.box_id')
+                                    ->whereRaw("s.id = SUBSTRING_INDEX(SUBSTRING_INDEX(n.deep_link_url, 'suggestion_id=', -1), '&', 1)")
+                                    ->where(function ($sub) use ($block): void {
+                                        $sub->whereNull('sb.block_id')->orWhere('sb.block_id', $block);
+                                    });
+                            });
+                        }
+                    });
+                }
             });
     }
 }

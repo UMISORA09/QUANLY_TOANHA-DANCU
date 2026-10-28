@@ -41,6 +41,12 @@ for (const viewport of viewports) {
     await searchInput.fill('Phòng tập');
     await expect.poll(() => search).toBe('Phòng tập');
     await expect.poll(() => requestedSort).toBe('relevance');
+    await expect(page.getByRole('option', { name: /Phòng tập cộng đồng/ })).toBeVisible();
+    await searchInput.press('ArrowDown');
+    await searchInput.press('Enter');
+    await expect(searchInput).toHaveValue('Phòng tập cộng đồng');
+    await expect(page.getByRole('listbox', { name: 'Tiện ích gợi ý' })).not.toBeVisible();
+    await expect(page.getByRole('cell', { name: /Phòng tập cộng đồng/ }).first().locator('mark')).toContainText('Phòng tập cộng đồng');
     if (process.env.UI_AUDIT_PHASE === 'before') {
       await page.getByRole('button', { name: 'Tất cả danh mục', exact: true }).click();
       await page.getByRole('button', { name: 'Thể thao', exact: true }).click();

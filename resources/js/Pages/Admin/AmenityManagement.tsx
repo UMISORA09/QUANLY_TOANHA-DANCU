@@ -45,6 +45,8 @@ import { AmenityBookingsModal } from '../../Components/Admin/AmenityBookingsModa
 import { AmenityBookingWorklist } from '../../Components/Admin/AmenityBookingWorklist';
 import { AmenityClosureDialog } from '../../Components/Admin/AmenityClosureDialog';
 import { ConfirmDialog } from '../../Components/Admin/ConfirmDialog';
+import { AmenitySearchField, highlightAmenityText } from '../../Components/Common/AmenitySearchField';
+import { AmenitySearchMetricsPanel } from '../../Components/Admin/AmenitySearchMetricsPanel';
 
 export interface AmenityManagementProps {
   embedded?: boolean;
@@ -53,9 +55,7 @@ export interface AmenityManagementProps {
 /**
  * Hiển thị văn bản (bỏ kiểu highlight)
  */
-const renderHighlightedText = (text: string | null | undefined, _query?: string): React.ReactNode => {
-  return text ?? '';
-};
+const renderHighlightedText = (text: string | null | undefined, query = ''): React.ReactNode => highlightAmenityText(text, query);
 
 const getPageNumbers = (current: number, total: number): (number | string)[] => {
   if (total <= 7) {
@@ -137,7 +137,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
   // Filter & pagination states
   const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebounce(searchInput, 150);
+  const debouncedSearch = useDebounce(searchInput, 300);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -775,36 +775,21 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       {/* Main Container */}
       <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} space-y-4`}>
         <AmenityBookingWorklist opening={openingBooking} onOpen={(id, code) => { const url = new URL(window.location.href); url.searchParams.set('amenity_id', id); url.searchParams.set('booking_code', code); window.history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }} />
+        {currentUser && <AmenitySearchMetricsPanel />}
         {/* Filters Bar Card */}
         <div className="catalog-toolbar relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {/* Search Input, Clear button & Searching spinner */}
             <div className="lg:col-span-2 relative">
-              <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
+              <AmenitySearchField
                 placeholder="Tìm theo tên tiện ích hoặc mã tiện ích (VD: GYM, BƠI)..."
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={setSearchInput}
+                suggestions={amenities}
+                loading={isSearching || loading || searchInput !== debouncedSearch}
                 className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-2xl bg-white hover:bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all shadow-2xs"
               />
 
-              {/* Right Indicators: Spinner & Clear Button */}
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                {isSearching && (
-                  <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
-                )}
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={handleClearSearch}
-                    className="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer"
-                    title="Xóa từ khóa tìm kiếm"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
             </div>
 
             {/* Category Filter */}
