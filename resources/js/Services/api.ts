@@ -2807,6 +2807,7 @@ export default api;
 export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED' | 'SCHEDULED' | 'EXPIRED';
 export interface AnnouncementAttachment { id: string; file_name: string; mime_type: string; file_size_bytes: number; }
 export interface Announcement {
+  requires_acknowledgement: boolean;
   id: string; title: string; summary_excerpt: string | null; content_html: string; category: string;
   target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; target_block_id: string | null; target_floor_id: string | null;
   is_pinned: boolean; is_urgent: boolean; publish_at: string; expires_at: string | null; author_name?: string;
