@@ -1,5 +1,12 @@
 @import 'tailwindcss';
 
+.public-guide h1 { font-size: 2rem; font-weight: 800; line-height: 1.25; margin-bottom: 1.5rem; }
+.public-guide h2 { font-size: 1.25rem; font-weight: 700; margin: 1.75rem 0 .75rem; }
+.public-guide p { line-height: 1.8; margin: 1rem 0; }
+.public-guide a { color: #0369a1; text-decoration: underline; text-underline-offset: 3px; }
+.public-guide a:focus-visible { outline: 2px solid #0284c7; outline-offset: 4px; }
+.public-guide code { overflow-wrap: anywhere; }
+
 /* Catalog-only surfaces; other portals keep their existing theme. */
 .catalog-ui, .catalog-dialog {
     --feature-primary: #1e40af;
