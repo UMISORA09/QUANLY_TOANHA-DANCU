@@ -148,6 +148,25 @@ export interface AmenityListResponse {
   search_time_ms?: number;
   corrected_query?: string | null;
   is_fuzzy?: boolean;
+  engine?: string;
+  applied_query?: string;
+  is_corrected?: boolean;
+  fallback_reason?: string | null;
+}
+
+export interface AmenitySearchMetrics {
+  days: number;
+  requests: number;
+  estimated_algolia_calls: number;
+  zero_result_rate: number;
+  fallback_rate: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  engines: Array<{ engine: string; requests: number }>;
+  fallback_reasons: Array<{ fallback_reason: string; requests: number }>;
+  dirty_documents: number;
+  failed_documents: number;
+  last_synced_at: string | null;
 }
 
 export interface ResidentAmenityCatalog {
@@ -949,7 +968,7 @@ class ApiService {
     const trimmed = query.trim();
     if (!trimmed || trimmed.length < 2) return [];
 
-    const cacheKey = `${type}:${trimmed.toLowerCase()}`;
+    const cacheKey = `${this.getUser()?.id ?? 'anonymous'}:${type}:${trimmed.toLowerCase()}`;
     const cached = suggestionCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < SUGGESTION_TTL) {
       return cached.data;
@@ -1387,6 +1406,10 @@ class ApiService {
 
   async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
     return this.request('/resident/amenities', { signal, cache: 'no-store' });
+  }
+
+  async getAmenitySearchMetrics(signal?: AbortSignal): Promise<AmenitySearchMetrics> {
+    return this.request('/admin/amenity-search/metrics', { signal, cache: 'no-store' });
   }
 
   async getResidentAvailability(amenityId: string, date: string, apartmentId: string, signal?: AbortSignal): Promise<{ slots: ResidentAvailableSlot[] }> {

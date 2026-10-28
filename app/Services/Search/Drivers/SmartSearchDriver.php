@@ -90,6 +90,20 @@ class SmartSearchDriver implements SearchDriverInterface
      */
     protected static array $suggestMemoryCache = [];
 
+    /** @return list<array{objectID: string, type: string, input: string, synonyms: list<string>}> */
+    public static function indexSynonyms(): array
+    {
+        $records = [];
+        foreach ([...self::$synonyms, ...self::$phraseSynonyms] as $input => $synonyms) {
+            $alternatives = array_values(array_diff(array_unique($synonyms), [$input]));
+            if ($alternatives !== []) {
+                $records[] = ['objectID' => 'amenity-'.sha1($input), 'type' => 'oneWaySynonym', 'input' => $input, 'synonyms' => $alternatives];
+            }
+        }
+
+        return $records;
+    }
+
     /**
      * @param  array<string, mixed>  $config
      */
@@ -412,6 +426,9 @@ class SmartSearchDriver implements SearchDriverInterface
             if (! empty($filters['block_id'])) {
                 $baseQuery->where('amenities.block_id', $filters['block_id']);
             }
+            if (array_key_exists('allowed_block_ids', $filters)) {
+                $baseQuery->where(fn ($query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $filters['allowed_block_ids']));
+            }
             if (isset($filters['is_active']) && $filters['is_active'] !== 'all' && $filters['is_active'] !== null) {
                 $baseQuery->where('amenities.is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0);
             }
@@ -426,6 +443,7 @@ class SmartSearchDriver implements SearchDriverInterface
                     'created_at_asc' => $baseQuery->orderBy('amenities.created_at', 'asc'),
                     default => $baseQuery->orderBy('amenities.created_at', 'desc'),
                 };
+                $baseQuery->orderBy('amenities.id');
 
                 $total = $baseQuery->count();
                 $items = $baseQuery->skip(($page - 1) * $perPage)->take($perPage)->get()->toArray();
@@ -498,17 +516,17 @@ class SmartSearchDriver implements SearchDriverInterface
                         return $lenA <=> $lenB;
                     }
 
-                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '') ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'name_asc') {
-                    return strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? '');
+                    return strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? '') ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'name_desc') {
-                    return strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? '');
+                    return strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? '') ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'price_asc') {
-                    return ($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0);
+                    return (($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0)) ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'price_desc') {
-                    return ($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0);
+                    return (($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0)) ?: strcmp($a['id'], $b['id']);
                 } else {
-                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '') ?: strcmp($a['id'], $b['id']);
                 }
             });
 

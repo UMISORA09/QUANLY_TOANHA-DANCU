@@ -335,18 +335,19 @@ class AmenityController extends Controller
         ];
 
         $version = $this->getDataVersion();
-        $fingerprint = md5(json_encode($filters).'_v'.$version);
+        $fingerprint = md5(json_encode($filters).'_v'.$version.'_search2_'.config('search.default').'_'.$request->user()?->id);
         $etag = '"amenities-'.$fingerprint.'"';
 
         $clientEtag = $request->header('If-None-Match');
-        if ($clientEtag && trim($clientEtag) === $etag) {
+        $liveIndexSearch = config('search.default') === 'algolia' && trim((string) ($filters['search'] ?? '')) !== '';
+        if (! $liveIndexSearch && $clientEtag && trim($clientEtag) === $etag) {
             return response()->json(null, 304, [
                 'ETag' => $etag,
                 'Cache-Control' => 'private, no-cache, must-revalidate',
             ]);
         }
 
-        $result = app()->environment('testing')
+        $result = app()->environment('testing') || $liveIndexSearch
             ? $this->amenityService->getPaginatedAmenities($filters)
             : Cache::remember("amenities_page_{$fingerprint}", 600, function () use ($filters) {
                 return $this->amenityService->getPaginatedAmenities($filters);
