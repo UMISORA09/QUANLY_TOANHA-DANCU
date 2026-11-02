@@ -51,7 +51,7 @@ class ResidentSurveyService
             ->pluck('survey_id')
             ->all();
 
-        return $surveys->map(function (SatisfactionSurvey $survey) use ($submittedSurveyIds) {
+        return $surveys->filter(fn (SatisfactionSurvey $survey): bool => $survey->eligible_apartment_ids === null || array_intersect($apartmentIds, $survey->eligible_apartment_ids) !== [])->values()->map(function (SatisfactionSurvey $survey) use ($submittedSurveyIds) {
             $isSubmitted = in_array($survey->id, $submittedSurveyIds, true);
             $endDate = Carbon::parse($survey->end_date, 'Asia/Ho_Chi_Minh');
             $daysLeft = max(0, Carbon::now('Asia/Ho_Chi_Minh')->diffInDays($endDate, false));
@@ -119,94 +119,97 @@ class ResidentSurveyService
      */
     public function submitResponse(SatisfactionSurvey $survey, User $user, array $answers, ?string $idempotencyKey = null): SurveyResponse
     {
-        // 1. Check resident access eligibility
-        abort_unless($this->accessService->canResidentAccessSurvey($user, $survey), 403, 'Bạn không thuộc phạm vi đối tượng của cuộc khảo sát này.');
-
-        // 2. Check survey availability
-        if (! $survey->isOpen()) {
-            abort(422, 'Chiến dịch khảo sát này hiện không trong thời gian nhận phản hồi hoặc đã kết thúc.');
-        }
-
-        // 3. Resolve resident apartment
-        $apartment = $this->accessService->residentApartmentForSurvey($user, $survey);
-        if (! $apartment) {
-            abort(422, 'Không tìm thấy thông tin căn hộ hợp lệ để gửi khảo sát.');
-        }
-
-        // 4. Check for duplicate submission by this apartment
-        $existing = SurveyResponse::where('survey_id', $survey->id)
-            ->where('apartment_id', $apartment->id)
-            ->exists();
-
-        if ($existing) {
-            abort(409, 'Căn hộ của bạn đã nộp phiếu đánh giá cho khảo sát này. Mỗi căn hộ chỉ được gửi một lần.');
-        }
-
-        // 5. Validate answers against survey questions
-        $questions = $survey->questions()->get()->keyBy('id');
-        $validatedDetails = [];
-
-        foreach ($questions as $questionId => $question) {
-            $userAnswer = $answers[$questionId] ?? null;
-
-            // Check required
-            if ($question->is_required && ($userAnswer === null || (is_string($userAnswer) && trim($userAnswer) === ''))) {
-                abort(422, "Vui lòng trả lời câu hỏi bắt buộc: '{$question->question_text}'");
-            }
-
-            if ($userAnswer === null || (is_string($userAnswer) && trim($userAnswer) === '')) {
-                continue;
-            }
-
-            $detail = [
-                'id' => (string) Str::uuid(),
-                'question_id' => $question->id,
-                'numeric_score' => null,
-                'selected_option' => null,
-                'text_answer' => null,
-            ];
-
-            if ($question->question_type === SurveyQuestion::TYPE_RATING_1_TO_5) {
-                if (! is_numeric($userAnswer) || (int) $userAnswer != $userAnswer) {
-                    abort(422, "Điểm đánh giá câu hỏi #{$question->question_order} phải là số nguyên từ 1 đến 5 sao.");
-                }
-                $score = (int) $userAnswer;
-                if ($score < 1 || $score > 5) {
-                    abort(422, "Điểm đánh giá câu hỏi #{$question->question_order} phải nằm trong khoảng từ 1 đến 5 sao.");
-                }
-                $detail['numeric_score'] = $score;
-            } elseif ($question->question_type === SurveyQuestion::TYPE_YES_NO) {
-                $ansRaw = strtoupper(trim((string) $userAnswer));
-                $normalized = match ($ansRaw) {
-                    'YES', 'CO', 'CÓ', '1', 'TRUE' => 'YES',
-                    'NO', 'KHONG', 'KHÔNG', '0', 'FALSE' => 'NO',
-                    default => null,
-                };
-                if ($normalized === null) {
-                    abort(422, "Câu trả lời cho câu hỏi #{$question->question_order} phải là Có hoặc Không.");
-                }
-                $detail['selected_option'] = $normalized;
-            } elseif ($question->question_type === SurveyQuestion::TYPE_MULTIPLE_CHOICE) {
-                $ansStr = trim((string) $userAnswer);
-                $options = is_array($question->options_json) ? $question->options_json : [];
-                if (! empty($options) && ! in_array($ansStr, $options, true)) {
-                    abort(422, "Lựa chọn không hợp lệ cho câu hỏi: '{$question->question_text}'");
-                }
-                $detail['selected_option'] = $ansStr;
-            } elseif ($question->question_type === SurveyQuestion::TYPE_FREE_TEXT) {
-                $text = trim((string) $userAnswer);
-                if (mb_strlen($text) > 1000) {
-                    abort(422, 'Nội dung câu trả lời tự luận không được vượt quá 1000 ký tự.');
-                }
-                $detail['text_answer'] = $text;
-            }
-
-            $validatedDetails[] = $detail;
-        }
-
-        // 6. Atomically save response and details
         try {
-            return DB::transaction(function () use ($survey, $user, $apartment, $idempotencyKey, $validatedDetails) {
+            return DB::transaction(function () use ($survey, $user, $answers, $idempotencyKey): SurveyResponse {
+                $survey = SatisfactionSurvey::whereKey($survey->id)->lockForUpdate()->firstOrFail();
+                // 1. Check resident access eligibility
+                abort_unless($this->accessService->canResidentAccessSurvey($user, $survey), 403, 'Bạn không thuộc phạm vi đối tượng của cuộc khảo sát này.');
+
+                // 2. Check survey availability
+                if (! $survey->isOpen()) {
+                    abort(422, 'Chiến dịch khảo sát này hiện không trong thời gian nhận phản hồi hoặc đã kết thúc.');
+                }
+
+                // 3. Resolve resident apartment
+                $apartment = $this->accessService->residentApartmentForSurvey($user, $survey);
+                if (! $apartment) {
+                    abort(422, 'Không tìm thấy thông tin căn hộ hợp lệ để gửi khảo sát.');
+                }
+
+                // 4. Check for duplicate submission by this apartment
+                $existing = SurveyResponse::where('survey_id', $survey->id)
+                    ->where('apartment_id', $apartment->id)
+                    ->exists();
+
+                if ($existing) {
+                    abort(409, 'Căn hộ của bạn đã nộp phiếu đánh giá cho khảo sát này. Mỗi căn hộ chỉ được gửi một lần.');
+                }
+
+                // 5. Validate answers against survey questions
+                $questions = $survey->questions()->get()->keyBy('id');
+                $validatedDetails = [];
+
+                foreach ($questions as $questionId => $question) {
+                    $userAnswer = $answers[$questionId] ?? null;
+
+                    // Check required
+                    if ($question->is_required && ($userAnswer === null || (is_string($userAnswer) && trim($userAnswer) === ''))) {
+                        abort(422, "Vui lòng trả lời câu hỏi bắt buộc: '{$question->question_text}'");
+                    }
+
+                    if ($userAnswer === null || (is_string($userAnswer) && trim($userAnswer) === '')) {
+                        continue;
+                    }
+
+                    $detail = [
+                        'id' => (string) Str::uuid(),
+                        'question_id' => $question->id,
+                        'numeric_score' => null,
+                        'selected_option' => null,
+                        'text_answer' => null,
+                    ];
+
+                    if ($question->question_type === SurveyQuestion::TYPE_RATING_1_TO_5) {
+                        if (! (is_int($userAnswer) || (is_string($userAnswer) && preg_match('/^[1-5]$/D', $userAnswer)))) {
+                            abort(422, "Điểm đánh giá câu hỏi #{$question->question_order} phải là số nguyên từ 1 đến 5 sao.");
+                        }
+                        $score = (int) $userAnswer;
+                        if ($score < 1 || $score > 5) {
+                            abort(422, "Điểm đánh giá câu hỏi #{$question->question_order} phải nằm trong khoảng từ 1 đến 5 sao.");
+                        }
+                        $detail['numeric_score'] = $score;
+                    } elseif ($question->question_type === SurveyQuestion::TYPE_YES_NO) {
+                        abort_unless(is_string($userAnswer) || is_int($userAnswer), 422, 'Câu trả lời phải là Có hoặc Không.');
+                        $ansRaw = strtoupper(trim((string) $userAnswer));
+                        $normalized = match ($ansRaw) {
+                            'YES', 'CO', 'CÓ', '1', 'TRUE' => 'YES',
+                            'NO', 'KHONG', 'KHÔNG', '0', 'FALSE' => 'NO',
+                            default => null,
+                        };
+                        if ($normalized === null) {
+                            abort(422, "Câu trả lời cho câu hỏi #{$question->question_order} phải là Có hoặc Không.");
+                        }
+                        $detail['selected_option'] = $normalized;
+                    } elseif ($question->question_type === SurveyQuestion::TYPE_MULTIPLE_CHOICE) {
+                        abort_unless(is_string($userAnswer), 422, 'Lựa chọn không hợp lệ.');
+                        $ansStr = trim($userAnswer);
+                        $options = is_array($question->options_json) ? $question->options_json : [];
+                        if (! in_array($ansStr, $options, true)) {
+                            abort(422, "Lựa chọn không hợp lệ cho câu hỏi: '{$question->question_text}'");
+                        }
+                        $detail['selected_option'] = $ansStr;
+                    } elseif ($question->question_type === SurveyQuestion::TYPE_FREE_TEXT) {
+                        abort_unless(is_string($userAnswer), 422, 'Câu trả lời tự luận phải là văn bản.');
+                        $text = trim($userAnswer);
+                        if (mb_strlen($text) > 1000) {
+                            abort(422, 'Nội dung câu trả lời tự luận không được vượt quá 1000 ký tự.');
+                        }
+                        $detail['text_answer'] = $text;
+                    }
+
+                    $validatedDetails[] = $detail;
+                }
+
                 $response = SurveyResponse::create([
                     'id' => (string) Str::uuid(),
                     'survey_id' => $survey->id,
@@ -226,7 +229,7 @@ class ResidentSurveyService
             });
         } catch (QueryException $e) {
             // MySQL error 1062 = Duplicate entry (covers unique_survey_apartment race condition)
-            if ($e->getCode() === '23000' || str_contains($e->getMessage(), 'Duplicate entry')) {
+            if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
                 abort(409, 'Xung đột: Căn hộ này vừa gửi phiếu đánh giá thành công.');
             }
             throw $e;

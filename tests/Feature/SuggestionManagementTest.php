@@ -10,6 +10,8 @@ use App\Models\Role;
 use App\Models\Suggestion;
 use App\Models\SuggestionBox;
 use App\Models\User;
+use App\Services\ResidentSuggestionService;
+use App\Services\SuggestionNotificationService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -677,6 +679,56 @@ class SuggestionManagementTest extends TestCase
         $id2 = $res2->json('data.id');
 
         $this->assertSame($id1, $id2);
-        $this->assertSame(1, Suggestion::where('idempotency_key', $idempotencyKey)->count());
+        $this->assertSame(1, Suggestion::whereKey($id1)->count());
+        $this->assertNull(Suggestion::findOrFail($id1)->idempotency_key);
+    }
+
+    public function test_anonymous_retry_is_payload_bound_private_and_notifies_once(): void
+    {
+        $payload = ['box_id' => $this->blockABox->id, 'topic_category' => 'VE_SINH', 'title' => 'Anonymous retry test',
+            'content_text' => 'Anonymous content for secure retry.', 'is_anonymous' => true, 'idempotency_key' => (string) Str::uuid()];
+        $first = $this->withToken($this->residentToken)->postJson('/api/v1/resident/suggestions', $payload)->assertCreated();
+        $id = $first->json('data.id');
+        $this->assertNotEmpty($first->json('anonymous_token'));
+        $notificationCount = DB::table('user_in_app_notifications')->where('deep_link_url', 'like', '%'.$id.'%')->count();
+        $retry = $this->postJson('/api/v1/resident/suggestions', $payload)->assertCreated()->assertJsonPath('data.id', $id)->assertJsonPath('replayed', true);
+        $this->assertNull($retry->json('anonymous_token'));
+        $this->assertNull($retry->json('data.resident_user_id'));
+        $this->assertNull($retry->json('data.apartment_id'));
+        foreach (['submission_key_hash', 'payload_fingerprint', 'anonymous_access_token_hash', 'idempotency_key'] as $secret) {
+            $this->assertArrayNotHasKey($secret, $retry->json('data'));
+        }
+        $this->assertSame($notificationCount, DB::table('user_in_app_notifications')->where('deep_link_url', 'like', '%'.$id.'%')->count());
+        $this->postJson('/api/v1/resident/suggestions', [...$payload, 'title' => 'Different payload'])->assertConflict();
+        $this->withToken($this->otherResidentToken)->postJson('/api/v1/resident/suggestions', [...$payload, 'box_id' => $this->blockBBox->id])
+            ->assertCreated()->assertJsonPath('replayed', false);
+    }
+
+    public function test_unassigned_manager_cannot_read_private_suggestion_or_attachment_or_receive_notification(): void
+    {
+        $payload = ['box_id' => $this->blockABox->id, 'topic_category' => 'VE_SINH', 'title' => 'Private scope test', 'content_text' => 'Private building suggestion body.'];
+        DB::table('staff_profiles')->where('user_id', $this->managerUser->id)->update(['assigned_block_id' => null]);
+        $id = $this->withToken($this->residentToken)->postJson('/api/v1/resident/suggestions', $payload)->assertCreated()->json('data.id');
+        $this->withToken($this->managerToken)->getJson('/api/v1/management/suggestions/'.$id)->assertNotFound();
+        $this->assertSame(0, DB::table('user_in_app_notifications')->where('recipient_user_id', $this->managerUser->id)->where('deep_link_url', 'like', '%'.$id.'%')->count());
+        DB::table('staff_profiles')->where('user_id', $this->managerUser->id)->delete();
+        $this->getJson('/api/v1/management/suggestions')->assertForbidden();
+    }
+
+    public function test_notification_failure_rolls_back_suggestion_and_created_images(): void
+    {
+        $this->mock(SuggestionNotificationService::class)->shouldReceive('notifyManagersOnNewSuggestion')->once()->andThrow(new \RuntimeException('QA notification failure'));
+        $file = UploadedFile::fake()->image('incident.png');
+        try {
+            app(ResidentSuggestionService::class)->submit($this->residentUser, [
+                'box_id' => $this->blockABox->id, 'topic_category' => 'VE_SINH', 'title' => 'Rollback private image',
+                'content_text' => 'Rollback must remove only newly stored files.', 'idempotency_key' => (string) Str::uuid(),
+            ], [$file]);
+            $this->fail('Expected notification failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('QA notification failure', $exception->getMessage());
+        }
+        $this->assertFalse(Suggestion::where('title', 'Rollback private image')->exists());
+        $this->assertSame([], Storage::disk('local')->allFiles('suggestions'));
     }
 }

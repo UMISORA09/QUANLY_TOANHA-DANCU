@@ -201,24 +201,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setTimeout(() => {
           setSubmitSuccess(false);
           if (onSuccess) {
-            const role = (res.user?.roles?.[0]?.toLowerCase().includes('admin') ? 'admin' : (res.user?.roles?.[0] || selectedRole || 'resident')) as UserRole;
+            const role = res.user.roles[0] as UserRole;
             onSuccess(role, res.user?.email || res.user?.username || loginIdentifier, res.user);
           }
           onClose();
         }, 500);
       } catch (err: any) {
-        if (selectedRole || loginIdentifier.includes('letan') || loginIdentifier.includes('admin') || loginIdentifier.includes('quanly')) {
-          const fallbackRole = (selectedRole || (loginIdentifier.includes('letan') ? 'receptionist' : loginIdentifier.includes('admin') ? 'admin' : 'manager')) as UserRole;
-          setSubmitSuccess(true);
-          setTimeout(() => {
-            setSubmitSuccess(false);
-            if (onSuccess) {
-              onSuccess(fallbackRole, loginIdentifier);
-            }
-            onClose();
-          }, 500);
-          return;
-        }
         setErrorMessage(err.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản và mật khẩu.');
       } finally {
         setIsSubmitting(false);
@@ -226,17 +214,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    setTimeout(() => {
+    try {
+      const result = await api.register({ full_name: fullName, email, phone_number: phoneNumber,
+        password, apartment_number: apartmentNumber, resident_type: residentType });
+      setErrorMessage(result.message || 'Đăng ký đã tiếp nhận. Vui lòng đăng nhập bằng tài khoản được cấp.');
+      setMode('login');
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Không thể đăng ký. Vui lòng thử lại.');
+    } finally {
       setIsSubmitting(false);
-      setSubmitSuccess(true);
-      setTimeout(() => {
-        setSubmitSuccess(false);
-        if (onSuccess) {
-          onSuccess(selectedRole || 'resident', loginIdentifier || email || phoneNumber);
-        }
-        onClose();
-      }, 1200);
-    }, 700);
+    }
   };
 
   const handleForgotPassword = (e: React.FormEvent) => {

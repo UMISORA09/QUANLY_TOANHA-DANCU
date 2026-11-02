@@ -45,10 +45,14 @@ class Suggestion extends Model
 
     protected $table = 'suggestions';
 
+    protected $hidden = ['anonymous_access_token_hash', 'idempotency_key', 'submission_key_hash', 'payload_fingerprint'];
+
     protected $fillable = [
         'id',
         'box_id',
         'idempotency_key',
+        'submission_key_hash',
+        'payload_fingerprint',
         'resident_user_id',
         'apartment_id',
         'is_anonymous',

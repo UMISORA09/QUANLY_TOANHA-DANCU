@@ -237,7 +237,7 @@ class AmenityService
         $createdRecord = $this->repository->create($toCreate);
         $created = (array) $this->getAmenityById($createdRecord['id']);
         $this->audit($createdRecord['id'], 'INSERT', null, $created);
-        AmenityCreated::dispatch($created);
+        DB::afterCommit(fn () => AmenityCreated::dispatch($created));
 
         return $created;
     }

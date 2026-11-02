@@ -444,7 +444,8 @@ Route::get('/api/v1/auth/rental-listings', [AuthController::class, 'rentalListin
 Route::get('/api/auth/rental-listings', [AuthController::class, 'rentalListings']);
 Route::get('/api/v1/rentals/listings', [AuthController::class, 'rentalListings']);
 Route::get('/api/rentals/listings', [AuthController::class, 'rentalListings']);
-Route::get('/api/v1/auth/me', [AuthController::class, 'me']);
+Route::get('/api/v1/auth/me', [AuthController::class, 'me'])->middleware('auth.bearer:strict');
+Route::get('/api/auth/me', [AuthController::class, 'me'])->middleware('auth.bearer:strict');
 Route::post('/api/v1/auth/logout', [AuthController::class, 'logout']);
 
 // ==========================================

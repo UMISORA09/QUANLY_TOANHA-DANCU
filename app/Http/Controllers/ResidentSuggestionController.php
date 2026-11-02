@@ -64,7 +64,8 @@ class ResidentSuggestionController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Gửi ý kiến đóng góp thành công.',
+            'message' => $result['replayed'] ? 'Góp ý đã được tiếp nhận trước đó. Với góp ý ẩn danh, dùng mã tra cứu bạn đã lưu.' : 'Gửi ý kiến đóng góp thành công.',
+            'replayed' => $result['replayed'],
             'data' => $result['suggestion'],
             'anonymous_token' => $result['anonymous_token'],
         ], 201);
@@ -124,9 +125,7 @@ class ResidentSuggestionController extends Controller
                 $token = trim(substr($authHeader, 7));
                 $tokenHash = hash('sha256', $token);
                 $session = DB::table('user_sessions')
-                    ->where(function ($q) use ($token, $tokenHash): void {
-                        $q->where('refresh_token_hash', $tokenHash)->orWhere('refresh_token_hash', $token);
-                    })
+                    ->where('refresh_token_hash', $tokenHash)
                     ->where('is_revoked', 0)
                     ->where('expires_at', '>', now())
                     ->first();
@@ -136,7 +135,7 @@ class ResidentSuggestionController extends Controller
             }
         }
 
-        $anonToken = $request->query('anon_token', $request->header('X-Anonymous-Token'));
+        $anonToken = $request->header('X-Anonymous-Token');
 
         return $this->attachmentService->downloadAttachment(
             $suggestion,
