@@ -3,10 +3,13 @@
 namespace Tests;
 
 use App\Models\Role;
+use App\Models\User;
 use App\Services\QuocTinRealtimeService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -40,6 +43,18 @@ abstract class TestCase extends BaseTestCase
                 Role::firstOrCreate(['role_code' => $defRole['role_code']], $defRole);
             }
         }
+    }
+
+    protected function issueTestBearerToken(User $user): string
+    {
+        $token = Str::random(64);
+        DB::table('user_sessions')->insert([
+            'id' => (string) Str::uuid(), 'user_id' => $user->id,
+            'refresh_token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addDay(), 'is_revoked' => 0,
+        ]);
+
+        return $token;
     }
 
     protected function tearDown(): void

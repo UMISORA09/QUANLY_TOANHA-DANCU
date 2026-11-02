@@ -48,12 +48,14 @@ class AuthenticationHardeningTest extends TestCase
 
     public function test_demo_password_is_not_a_bypass_even_in_testing_and_locked_users_are_denied(): void
     {
-        $user = User::factory()->create(['username' => 'admin', 'password_hash' => Hash::make('RealPassword123!')]);
+        $user = User::where('username', 'admin')->first() ?? User::factory()->create(['username' => 'admin']);
+        $user->update(['password_hash' => Hash::make('RealPassword123!'), 'status' => 'ACTIVE']);
+        $sessionCount = DB::table('user_sessions')->where('user_id', $user->id)->count();
         $this->postJson('/api/v1/auth/login', ['identifier' => $user->email, 'password' => '123567'])->assertUnauthorized();
         $this->postJson('/api/v1/auth/login', ['identifier' => 'not-a-user', 'password' => '123567'])->assertUnauthorized();
         $user->update(['status' => 'INACTIVE']);
         $this->postJson('/api/v1/auth/login', ['identifier' => $user->email, 'password' => 'RealPassword123!'])->assertForbidden();
-        $this->assertSame(0, DB::table('user_sessions')->where('user_id', $user->id)->count());
+        $this->assertSame($sessionCount, DB::table('user_sessions')->where('user_id', $user->id)->count());
     }
 
     public function test_registration_otp_still_sends_email_and_verifies_without_exposing_code(): void

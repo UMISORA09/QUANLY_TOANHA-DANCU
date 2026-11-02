@@ -48,7 +48,7 @@ class InvoiceStatusManagementTest extends TestCase
             'status' => 'ACTIVE',
         ]);
 
-        $this->token = 'smart_token_'.$this->adminUser->id.'_invoice';
+        $this->token = $this->issueTestBearerToken($this->adminUser);
 
         $this->blockA = Block::create([
             'block_code' => 'T-A',
