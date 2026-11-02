@@ -504,7 +504,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                         {survey.responses_count ?? 0} phiếu
                       </div>
                       <div className="text-xs text-slate-400">
-                        Tỷ lệ: {survey.participation_rate_percent ?? 0}%
+                        Tỷ lệ: {survey.participation_rate_percent == null ? 'N/A' : `${survey.participation_rate_percent}%`}
                       </div>
                     </td>
                     <td className="py-3.5 px-4 text-right">
@@ -822,7 +822,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                   <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
                     {analyticsData.kpis.total_responses} <span className="text-xs text-slate-400 font-normal">/ {analyticsData.kpis.eligible_apartments_count}</span>
                   </div>
-                  <div className="text-xs text-slate-400 mt-0.5">Tỷ lệ: {analyticsData.kpis.participation_rate_percent}%</div>
+                  <div className="text-xs text-slate-400 mt-0.5">Tỷ lệ: {analyticsData.kpis.participation_rate_percent == null ? 'N/A' : `${analyticsData.kpis.participation_rate_percent}%`}</div>
                 </div>
 
                 <div className="bg-emerald-50/60 dark:bg-emerald-950/40 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800">
@@ -878,8 +878,8 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                     {qStat.question_type === 'RATING_1_TO_5' && (
                       <div className="space-y-3 pt-2">
                         <div className="flex flex-wrap gap-4 text-xs font-medium">
-                          <span className="text-emerald-600 font-bold">CSAT: {qStat.csat_percentage ?? 0}%</span>
-                          <span className="text-amber-600 font-bold">Điểm TB: {qStat.average_rating ?? 0}/5</span>
+                          <span className="text-emerald-600 font-bold">CSAT: {qStat.total_answers > 0 && qStat.data_status !== 'NO_DATA' ? `${qStat.csat_percentage ?? 0}%` : 'N/A'}</span>
+                          <span className="text-amber-600 font-bold">Điểm TB: {qStat.total_answers > 0 && qStat.data_status !== 'NO_DATA' ? `${qStat.average_rating ?? 0}/5` : 'N/A'}</span>
                           <span className="text-slate-500">Hài lòng: {qStat.satisfied_count}</span>
                           <span className="text-slate-500">Trung lập: {qStat.neutral_count}</span>
                           <span className="text-slate-500">Không hài lòng: {qStat.dissatisfied_count}</span>

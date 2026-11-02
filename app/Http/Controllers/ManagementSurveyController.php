@@ -72,7 +72,7 @@ class ManagementSurveyController extends Controller
             'survey_code' => ['nullable', 'string', 'max:60'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'target_block_id' => ['nullable', 'string', 'uuid'],
+            'target_block_id' => ['nullable', 'uuid', 'exists:blocks,id'],
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date' => ['required', 'date_format:Y-m-d'],
             'is_active' => ['nullable', 'boolean'],
@@ -104,10 +104,7 @@ class ManagementSurveyController extends Controller
 
         $survey = SatisfactionSurvey::with(['targetBlock', 'questions'])->findOrFail($id);
 
-        $assignedBlockId = $this->accessService->assignedBlock($user);
-        if ($assignedBlockId && $survey->target_block_id && $survey->target_block_id !== $assignedBlockId) {
-            abort(403, 'Bạn không có quyền xem khảo sát của tòa nhà khác.');
-        }
+        abort_unless($this->accessService->canViewBlock($user, $survey->target_block_id), 403);
 
         $survey->setAttribute('computed_status', $survey->computed_status);
 
@@ -131,7 +128,7 @@ class ManagementSurveyController extends Controller
             'version' => ['required', 'integer'],
             'title' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'target_block_id' => ['nullable', 'string'],
+            'target_block_id' => ['nullable', 'uuid', 'exists:blocks,id'],
             'start_date' => ['sometimes', 'date_format:Y-m-d'],
             'end_date' => ['sometimes', 'date_format:Y-m-d'],
             'is_active' => ['sometimes', 'boolean'],
@@ -184,10 +181,7 @@ class ManagementSurveyController extends Controller
 
         $survey = SatisfactionSurvey::with(['targetBlock'])->findOrFail($id);
 
-        $assignedBlockId = $this->accessService->assignedBlock($user);
-        if ($assignedBlockId && $survey->target_block_id && $survey->target_block_id !== $assignedBlockId) {
-            abort(403, 'Bạn không có quyền xem phân tích của tòa nhà khác.');
-        }
+        abort_unless($this->accessService->canViewBlock($user, $survey->target_block_id), 403);
 
         $analytics = $this->analyticsService->getSurveyAnalytics($survey, $user);
 

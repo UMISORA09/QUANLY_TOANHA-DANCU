@@ -125,7 +125,7 @@ class ManagementSuggestionController extends Controller
             'suggestion_id' => 'required|uuid|exists:suggestions,id',
         ]);
 
-        $suggestion = Suggestion::findOrFail($data['suggestion_id']);
+        $suggestion = $this->service->detail($request->user(), $data['suggestion_id']);
 
         $result = $this->aiSentimentService->analyzeSuggestion($suggestion);
 

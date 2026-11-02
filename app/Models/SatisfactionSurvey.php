@@ -23,6 +23,8 @@ class SatisfactionSurvey extends Model
 
     protected $table = 'satisfaction_surveys';
 
+    protected $hidden = ['eligible_apartment_ids'];
+
     protected $fillable = [
         'id',
         'survey_code',
@@ -34,6 +36,7 @@ class SatisfactionSurvey extends Model
         'is_active',
         'created_by',
         'version',
+        'eligible_apartment_ids',
     ];
 
     protected $casts = [
@@ -41,6 +44,7 @@ class SatisfactionSurvey extends Model
         'start_date' => 'date:Y-m-d',
         'end_date' => 'date:Y-m-d',
         'version' => 'integer',
+        'eligible_apartment_ids' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

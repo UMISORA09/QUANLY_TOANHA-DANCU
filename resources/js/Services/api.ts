@@ -636,12 +636,11 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ username: identifier, identifier, password }),
     });
-    if (res.access_token) {
-      this.setToken(res.access_token);
+    if (!res.access_token || !res.user?.id || !Array.isArray(res.user.roles) || res.user.roles.length === 0) {
+      throw new Error('Phản hồi đăng nhập không có phiên hoặc quyền hợp lệ.');
     }
-    if (res.user) {
-      this.setUser(res.user);
-    }
+    this.setToken(res.access_token);
+    this.setUser(res.user);
     amenityCache.clearAll();
     return res;
   }
@@ -2246,10 +2245,11 @@ class ApiService {
   async readManagerNotification(id: string) { return this.request<{ unread_count: number }>(`/manager/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', cache: 'no-store' }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
 
-  async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
-    if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
+  async ticketImage(path: string, signal?: AbortSignal, anonymousToken?: string): Promise<Blob> {
+    if (!/^\/api\/v1\/(resident\/tickets|suggestions)\/[a-zA-Z0-9-]+\/attachments\/[a-zA-Z0-9-]+(?:\/content)?$/.test(path)) throw new Error('Đường dẫn ảnh không hợp lệ.');
     const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
-    const response = await fetch(url, { signal, headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    const response = await fetch(url, { signal, cache: 'no-store', headers: anonymousToken
+      ? { 'X-Anonymous-Token': anonymousToken } : { Authorization: `Bearer ${this.getToken() || ''}` } });
     if (!response.ok) throw new Error('Không tải được ảnh sự cố.');
     return response.blob();
   }
@@ -2395,7 +2395,7 @@ class ApiService {
     return this.request('/resident/suggestion-boxes');
   }
 
-  async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string }> {
+  async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string; replayed?: boolean }> {
     return this.request('/resident/suggestions', {
       method: 'POST',
       body: formData,
@@ -3016,7 +3016,7 @@ export interface SatisfactionSurveyItem {
   questions_count?: number;
   responses_count?: number;
   eligible_count?: number;
-  participation_rate_percent?: number;
+  participation_rate_percent?: number | null;
   questions?: SurveyQuestionItem[];
 }
 
@@ -3051,6 +3051,7 @@ export interface QuestionAnalyticsItem {
   total_answers: number;
   average_rating?: number;
   csat_percentage?: number;
+  data_status?: 'AVAILABLE' | 'NO_DATA';
   satisfied_count?: number;
   neutral_count?: number;
   dissatisfied_count?: number;
@@ -3081,7 +3082,7 @@ export interface SurveyAnalyticsData {
   kpis: {
     total_responses: number;
     eligible_apartments_count: number;
-    participation_rate_percent: number;
+    participation_rate_percent: number | null;
     overall_average_rating: number;
     overall_csat_percentage: number;
     total_valid_ratings: number;

@@ -23,11 +23,30 @@ class SuggestionAccessService
         }
 
         $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
-        if (! $profile) {
-            return null;
-        }
+        abort_unless($profile, 403, 'Chưa có hồ sơ nhân viên. Vui lòng liên hệ Admin.');
 
         return $profile->assigned_block_id;
+    }
+
+    public function canViewBlock(User $user, ?string $blockId): bool
+    {
+        if (! $this->isManager($user) || ! $user->hasPermission('SUGGESTION:VIEW')) {
+            return false;
+        }
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+        $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
+
+        // Unassigned managers may read common content, but never private building content.
+        return $profile !== null && ($blockId === null || ($profile->assigned_block_id !== null && $profile->assigned_block_id === $blockId));
+    }
+
+    public function assertCanManageBlock(User $user, ?string $blockId): void
+    {
+        abort_unless($this->isManager($user), 403);
+        abort_unless($user->isSuperAdmin() || ($blockId !== null && $this->assignedBlock($user) === $blockId), 403,
+            'Bạn chỉ được quản trị nội dung thuộc tòa nhà được phân công.');
     }
 
     /**
@@ -37,12 +56,18 @@ class SuggestionAccessService
     {
         abort_unless($this->isManager($user) && $user->hasPermission('SUGGESTION:VIEW'), 403, 'Bạn không có quyền xem hòm thư góp ý.');
 
-        $blockId = $this->assignedBlock($user);
-        if ($blockId) {
-            $query->whereHas('box', function (Builder $boxQuery) use ($blockId): void {
-                $boxQuery->whereNull('block_id')->orWhere('block_id', $blockId);
-            });
+        if ($user->isSuperAdmin()) {
+            return $query;
         }
+
+        $blockId = $this->assignedBlock($user);
+        $query->whereHas('box', function (Builder $boxQuery) use ($blockId): void {
+            if ($blockId) {
+                $boxQuery->whereNull('block_id')->orWhere('block_id', $blockId);
+            } else {
+                $boxQuery->whereNull('block_id');
+            }
+        });
 
         return $query;
     }
