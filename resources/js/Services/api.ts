@@ -2246,7 +2246,7 @@ class ApiService {
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
 
   async ticketImage(path: string, signal?: AbortSignal, anonymousToken?: string): Promise<Blob> {
-    if (!/^\/api\/v1\/(resident\/tickets|suggestions)\/[a-zA-Z0-9-]+\/attachments\/[a-zA-Z0-9-]+$/.test(path)) throw new Error('Đường dẫn ảnh không hợp lệ.');
+    if (!/^\/api\/v1\/(resident\/tickets|suggestions)\/[a-zA-Z0-9-]+\/attachments\/[a-zA-Z0-9-]+(?:\/content)?$/.test(path)) throw new Error('Đường dẫn ảnh không hợp lệ.');
     const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
     const response = await fetch(url, { signal, cache: 'no-store', headers: anonymousToken
       ? { 'X-Anonymous-Token': anonymousToken } : { Authorization: `Bearer ${this.getToken() || ''}` } });

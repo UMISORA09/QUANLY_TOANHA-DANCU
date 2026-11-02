@@ -6,6 +6,7 @@ const origin = 'http://127.0.0.1:5178';
 test.beforeAll(async () => {
   server = await createServer({ configFile: false, root: process.cwd(),
     cacheDir: 'storage/framework/testing/vite-auth-modal', plugins: [react()],
+    optimizeDeps: { noDiscovery: true, include: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client', 'lucide-react', 'lucide', 'morphicons/react'] },
     server: { host: '127.0.0.1', port: 5178, strictPort: true } });
   await server.listen();
 });
