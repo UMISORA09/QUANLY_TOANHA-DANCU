@@ -31,6 +31,7 @@ class AmenityTicketDatabaseIndexTest extends TestCase
         $migration = $this->migration();
         $migration->down();
         $original = Schema::getIndexes('amenity_blackouts');
+        $attachmentIndexes = Schema::getIndexes('ticket_attachments');
         $this->assertFalse(Schema::hasIndex('amenity_blackouts', 'idx_blackouts_amenity_date'));
         try {
             DB::statement('ALTER TABLE amenity_blackouts ADD UNIQUE INDEX existing_blackout_lookup (amenity_id DESC, blackout_date DESC, id)');
@@ -39,11 +40,11 @@ class AmenityTicketDatabaseIndexTest extends TestCase
             $migration->up();
             $this->assertFalse(Schema::hasIndex('amenity_blackouts', 'idx_blackouts_amenity_date'));
             $this->assertFalse(Schema::hasIndex('ticket_history', 'idx_ticket_history_ticket_created'));
-            $this->assertTrue(Schema::hasIndex('ticket_attachments', 'idx_ticket_attachments_ticket'));
+            $this->assertTrue(collect(Schema::getIndexes('ticket_attachments'))->contains(fn (array $index): bool => $index['type'] === 'btree' && ($index['columns'][0] ?? null) === 'ticket_id'));
             $this->migration()->down();
             $this->assertTrue(Schema::hasIndex('amenity_blackouts', 'existing_blackout_lookup'));
             $this->assertTrue(Schema::hasIndex('ticket_history', 'existing_history_lookup'));
-            $this->assertFalse(Schema::hasIndex('ticket_attachments', 'idx_ticket_attachments_ticket'));
+            $this->assertEquals($attachmentIndexes, Schema::getIndexes('ticket_attachments'));
         } finally {
             DB::statement('ALTER TABLE amenity_blackouts DROP INDEX existing_blackout_lookup');
             DB::statement('ALTER TABLE ticket_history DROP INDEX existing_history_lookup');
