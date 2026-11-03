@@ -845,7 +845,8 @@ class SatisfactionSurveyTest extends TestCase
 
     public function test_production_seeder_only_grants_permissions_without_creating_demo_surveys(): void
     {
-        $this->assertSame(0, SatisfactionSurvey::count());
+        $surveysBefore = SatisfactionSurvey::orderBy('id')->get()->toArray();
+        $questionsBefore = SurveyQuestion::orderBy('id')->get()->toArray();
         $this->app->instance('env', 'production');
 
         try {
@@ -854,8 +855,8 @@ class SatisfactionSurveyTest extends TestCase
             $grantCount = DB::table('role_permissions')->count();
             $this->artisan('db:seed', ['--class' => SatisfactionSurveySeeder::class, '--force' => true, '--no-interaction' => true])->assertSuccessful();
 
-            $this->assertSame(0, SatisfactionSurvey::count());
-            $this->assertSame(0, SurveyQuestion::count());
+            $this->assertSame($surveysBefore, SatisfactionSurvey::orderBy('id')->get()->toArray());
+            $this->assertSame($questionsBefore, SurveyQuestion::orderBy('id')->get()->toArray());
             $this->assertSame(5, Permission::where('module', 'SURVEY')->count());
             $this->assertSame($permissionCount, DB::table('permissions')->count());
             $this->assertSame($grantCount, DB::table('role_permissions')->count());
