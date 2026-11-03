@@ -84,6 +84,20 @@ class Suggestion extends Model
         ];
     }
 
+    /** @return array<int, array<string, mixed>> */
+    public function getAttachedFilesAttribute(?string $value): array
+    {
+        $files = $this->fromJson($value) ?? [];
+        if ($this->is_anonymous) {
+            $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+            foreach ($files as $position => &$file) {
+                $file['file_name'] = 'attachment-'.($position + 1).'.'.($extensions[$file['mime_type'] ?? ''] ?? 'bin');
+            }
+        }
+
+        return $files;
+    }
+
     public function box(): BelongsTo
     {
         return $this->belongsTo(SuggestionBox::class, 'box_id');

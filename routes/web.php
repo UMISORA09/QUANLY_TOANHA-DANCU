@@ -867,7 +867,7 @@ Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities']
 Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/admin/amenity-search/metrics', [SearchController::class, 'metrics'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
-Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
+Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge'])->middleware('auth.bearer:strict');
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
 Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
@@ -885,9 +885,9 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::get('amenity-booking-worklist', [AmenityController::class, 'bookingWorklist'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::get('amenities/{id}/closure-impact', [AmenityController::class, 'closureImpact'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE|AMENITY:CONFIG_SLOT']);
     Route::post('amenity-booking-notifications/{id}/read', [AmenityController::class, 'readBookingNotification'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
-    Route::get('amenities', [AmenityController::class, 'getAmenities']);
+    Route::get('amenities', [AmenityController::class, 'getAmenities'])->middleware('auth.bearer:strict');
     Route::post('amenities', [AmenityController::class, 'createAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CREATE']);
-    Route::get('amenities/{id}', [AmenityController::class, 'getAmenity']);
+    Route::get('amenities/{id}', [AmenityController::class, 'getAmenity'])->middleware('auth.bearer:strict');
     Route::put('amenities/{id}', [AmenityController::class, 'updateAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::patch('amenities/{id}/status', [AmenityController::class, 'toggleAmenityStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::delete('amenities/{id}', [AmenityController::class, 'deleteAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:DELETE']);
@@ -898,14 +898,14 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::post('amenities/{amenityId}/bookings/{bookingId}/payment/reject', [AmenityBookingPaymentController::class, 'reject'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
 
     // Khung giờ hoạt động (Time Slots)
-    Route::get('amenities/{amenityId}/time-slots', [AmenityController::class, 'getTimeSlots']);
+    Route::get('amenities/{amenityId}/time-slots', [AmenityController::class, 'getTimeSlots'])->middleware('auth.bearer:strict');
     Route::post('amenities/{amenityId}/time-slots', [AmenityController::class, 'createTimeSlot'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
     Route::put('amenities/{amenityId}/time-slots/{slotId}', [AmenityController::class, 'updateTimeSlot'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
     Route::patch('amenities/{amenityId}/time-slots/{slotId}/status', [AmenityController::class, 'toggleTimeSlotStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
     Route::delete('amenities/{amenityId}/time-slots/{slotId}', [AmenityController::class, 'deleteTimeSlot'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
 
     // Ngày đóng cửa bảo trì (Blackouts)
-    Route::get('amenities/{amenityId}/blackouts', [AmenityController::class, 'getBlackouts']);
+    Route::get('amenities/{amenityId}/blackouts', [AmenityController::class, 'getBlackouts'])->middleware('auth.bearer:strict');
     Route::post('amenities/{amenityId}/blackouts', [AmenityController::class, 'createBlackout'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
     Route::put('amenities/{amenityId}/blackouts/{blackoutId}', [AmenityController::class, 'updateBlackout'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);
     Route::delete('amenities/{amenityId}/blackouts/{blackoutId}', [AmenityController::class, 'deleteBlackout'])->middleware(['auth.bearer:strict', 'permission:AMENITY:CONFIG_SLOT']);

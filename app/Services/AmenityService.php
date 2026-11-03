@@ -7,6 +7,7 @@ use App\Events\AmenityCreated;
 use App\Events\AmenityDeleted;
 use App\Events\AmenityUpdated;
 use App\Repositories\Contracts\AmenityRepositoryInterface;
+use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -14,6 +15,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 /**
@@ -106,6 +108,60 @@ class AmenityService
         return $this->searchManager->suggest('amenities', $query, $limit);
     }
 
+    /** @return array<string, mixed> */
+    public function scopedFilters(Request $request): array
+    {
+        $request->validate([
+            'q' => 'nullable|string|max:200', 'query' => 'nullable|string|max:200', 'search' => 'nullable|string|max:200',
+            'category_id' => 'nullable|uuid', 'block_id' => 'nullable|uuid', 'apartment_id' => 'nullable|uuid',
+            'page' => 'nullable|integer|min:1', 'limit' => 'nullable|integer|min:1|max:100',
+            'per_page' => 'nullable|integer|min:1|max:100', 'sort' => 'nullable|string|max:40',
+            'is_active' => 'nullable|in:all,true,false,1,0',
+        ]);
+        $filters = array_filter($request->only(['category_id', 'block_id', 'is_active']), fn ($value) => $value !== null && $value !== '');
+        $user = $request->user();
+        abort_unless($user, 401);
+        if ($user->isSuperAdmin() || $user->hasRole('ADMIN')) {
+            return $filters;
+        }
+        if ($user->hasRole(['BUILDING_MANAGER', 'RECEPTIONIST', 'SECURITY_GUARD', 'TECHNICIAN', 'TECHNICAL_STAFF', 'DEVELOPER'])) {
+            abort_unless($user->hasPermission('AMENITY:VIEW'), 403);
+            $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
+            abort_unless($profile, 403, 'Chưa có hồ sơ nhân viên và phạm vi tòa nhà.');
+            $allowedBlocks = $profile->assigned_block_id === null ? null : [$profile->assigned_block_id];
+        } else {
+            $apartments = app(DatabaseResidentAmenityBookingRepository::class)->apartments($user->id);
+            abort_if($apartments->isEmpty(), 403, 'Bạn chưa có hồ sơ cư trú còn hiệu lực.');
+            $id = $request->query('apartment_id');
+            $apartment = $id !== null ? $apartments->firstWhere('id', $id) : ($apartments->count() === 1 ? $apartments->first() : null);
+            if (! $apartment) {
+                throw ValidationException::withMessages(['apartment_id' => 'Vui lòng chọn căn hộ bạn đang cư trú.']);
+            }
+            $allowedBlocks = [$apartment->block_id];
+            $filters['is_active'] = true;
+        }
+        if ($allowedBlocks !== null) {
+            abort_if(isset($filters['block_id']) && ! in_array($filters['block_id'], $allowedBlocks, true), 403);
+            unset($filters['block_id']);
+            $filters['allowed_block_ids'] = $allowedBlocks;
+        }
+
+        return $filters;
+    }
+
+    public function assertCanViewAmenity(Request $request, string $id): void
+    {
+        $filters = $this->scopedFilters($request);
+        $query = DB::table('amenities')->where('id', $id)->whereNull('deleted_at');
+        if (array_key_exists('allowed_block_ids', $filters)) {
+            $query->where(fn (Builder $q) => $q->whereNull('block_id')->orWhereIn('block_id', $filters['allowed_block_ids']));
+        }
+        if (isset($filters['is_active']) && $filters['is_active'] !== 'all') {
+            $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0);
+        }
+        abort_unless($query->exists(), 404, 'Không tìm thấy tiện ích được phép xem.');
+    }
+
     /**
      * Lấy danh sách tiện ích có phân trang và bộ lọc tìm kiếm đa chiều
      *
@@ -126,12 +182,13 @@ class AmenityService
         $isFuzzy = false;
         $correctedQuery = null;
 
-        if (! empty($search) && trim((string) $search) !== '') {
+        if ((! empty($search) && trim((string) $search) !== '') || array_key_exists('allowed_block_ids', $filters)) {
             // Sử dụng Smart Search Engine (MySQL Full-Text / Meilisearch / Elasticsearch)
             $searchResult = $this->searchManager->search('amenities', (string) $search, [
                 'category_id' => $categoryId,
                 'block_id' => $blockId,
                 'is_active' => $isActive,
+                ...(array_key_exists('allowed_block_ids', $filters) ? ['allowed_block_ids' => $filters['allowed_block_ids']] : []),
             ], [
                 'page' => $page,
                 'per_page' => $limit,
