@@ -29,9 +29,8 @@ class SearchController extends Controller
      */
     public function searchAmenities(Request $request): JsonResponse
     {
-        $request->validate(['q' => 'nullable|string|max:200', 'category_id' => 'nullable|uuid', 'block_id' => 'nullable|uuid']);
         // 1. Kiểm tra RBAC: Người dùng phải có quyền AMENITY:VIEW nếu có định danh
-        $user = RbacService::resolveUser($request);
+        $user = $request->user();
         if ($user && ! RbacService::hasPermission($user, 'AMENITY:VIEW')) {
             return response()->json([
                 'message' => 'Bạn không có quyền xem tiện ích (AMENITY:VIEW)',
@@ -42,9 +41,7 @@ class SearchController extends Controller
         $rawQuery = (string) ($request->query('q') ?? $request->query('query') ?? $request->query('search') ?? '');
         $page = max((int) $request->query('page', 1), 1);
         $limit = max(min((int) ($request->query('limit') ?? $request->query('per_page') ?? 10), 100), 1);
-        $categoryId = $request->query('category_id');
-        $blockId = $request->query('block_id');
-        $isActive = $request->query('is_active');
+        $filtersArray = $this->amenityService->scopedFilters($request);
         $sort = (string) $request->query('sort', 'relevance');
 
         // Chuẩn hóa truy vấn và sửa lỗi gõ tiếng Việt
@@ -52,15 +49,9 @@ class SearchController extends Controller
         $normalizedQuery = $norm['normalized'] !== '' ? $norm['normalized'] : 'empty';
 
         // Xây dựng Cache key: amenity_search:{normalized_query}:{filters}:{page}
-        $filtersArray = array_filter([
-            'category_id' => $categoryId ?: null,
-            'block_id' => $blockId ?: null,
-            'is_active' => $isActive !== null ? $isActive : null,
-        ], fn ($v) => $v !== null && $v !== '');
-
         $filterString = ! empty($filtersArray) ? md5(json_encode($filtersArray)) : 'none';
         $driverName = (string) config('search.default', 'smart');
-        $context = hash('sha256', json_encode([2, $rawQuery, $limit, $sort, $driverName, config('search.drivers.algolia.amenities_index'), $user?->id]));
+        $context = hash('sha256', json_encode([3, $rawQuery, $limit, $sort, $driverName, config('search.drivers.algolia.amenities_index'), $user?->id]));
         $cacheKey = "amenity_search:{$normalizedQuery}:{$filterString}:{$page}:{$context}";
 
         $startTime = microtime(true);
@@ -125,23 +116,33 @@ class SearchController extends Controller
      */
     public function suggestions(Request $request): JsonResponse
     {
+        $request->validate(['q' => 'nullable|string|max:200', 'limit' => 'nullable|integer|min:1|max:20', 'type' => 'nullable|in:amenities']);
         $query = (string) $request->query('q', '');
         $type = (string) $request->query('type', 'amenities');
         abort_unless($type === 'amenities', 422, 'Only amenities suggestions are supported here.');
-        $limit = max(min((int) $request->query('limit', 5), 20), 1);
-
+        $limit = (int) $request->query('limit', 5);
+        $filters = $this->amenityService->scopedFilters($request);
         $startTime = microtime(true);
-        $suggestions = $this->searchManager->suggest($type, $query, $limit);
-        $elapsedMs = (microtime(true) - $startTime) * 1000;
+        $suggestions = [];
+        if (mb_strlen(trim($query)) >= 2) {
+            $result = $this->searchManager->search('amenities', $query, $filters, [
+                'page' => 1, 'per_page' => $limit, 'cache_context' => $request->user()->id, 'request_kind' => 'manager_suggestions',
+            ]);
+            $suggestions = array_map(static function (array|object $item): array {
+                $item = (object) $item;
+
+                return [
+                    'id' => $item->id, 'label' => $item->amenity_name, 'code' => $item->amenity_code,
+                    'category' => $item->category_name ?? null, 'block' => $item->block_name ?? null,
+                    'type' => 'amenity', 'score' => $item->relevance_score ?? 1,
+                ];
+            }, $result->items);
+        }
 
         return response()->json([
             'suggestions' => $suggestions,
-            'meta' => [
-                'query' => $query,
-                'count' => count($suggestions),
-                'search_time_ms' => round($elapsedMs, 2),
-            ],
-        ]);
+            'meta' => ['query' => $query, 'count' => count($suggestions), 'search_time_ms' => round((microtime(true) - $startTime) * 1000, 2)],
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     /**
