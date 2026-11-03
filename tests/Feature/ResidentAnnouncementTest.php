@@ -18,21 +18,34 @@ class ResidentAnnouncementTest extends TestCase
     use DatabaseTransactions;
     use ResidentAmenityBookingFixtures;
 
+    private string $articlePrefix;
+
+    private int $backgroundUnreadCount;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->createBookingFixture();
         Storage::fake('local');
+        $this->articlePrefix = 'QA-'.Str::random(12);
+        $this->backgroundUnreadCount = $this->getJson('/api/v1/resident/announcements')->assertOk()->json('unread_count');
     }
 
     private function url(string $suffix = ''): string
     {
+        if ($suffix === '' || str_starts_with($suffix, '?')) {
+            parse_str(ltrim($suffix, '?'), $query);
+            $query['search'] = $this->articlePrefix.(isset($query['search']) ? ' '.$query['search'] : '');
+            $suffix = '?'.http_build_query($query);
+        }
+
         return '/api/v1/resident/announcements'.$suffix;
     }
 
     private function article(array $values = []): string
     {
         $id = (string) Str::uuid();
+        $values['title'] = $this->articlePrefix.' '.($values['title'] ?? 'Cư dân');
         DB::table('announcements')->insert([...[
             'id' => $id, 'title' => 'QA cư dân '.Str::random(8), 'content_html' => '<h2>Lịch bảo trì</h2><p>Thông tin cư dân.</p>',
             'summary_excerpt' => 'Thông tin QA', 'category' => 'MAINTENANCE', 'target_scope' => 'BLOCK', 'target_block_id' => $this->blockId,
@@ -80,7 +93,7 @@ class ResidentAnnouncementTest extends TestCase
         Resident::factory()->create(['user_id' => $this->residentUser->id, 'apartment_id' => $sameFloorApartment]);
         $data = $this->getJson($this->url())->assertOk()->assertHeader('Cache-Control', 'no-store, private')->json();
         $this->assertEqualsCanonicalizing([$all, $block, $ownFloor], array_column($data['data'], 'id'));
-        $this->assertSame(3, $data['unread_count']);
+        $this->assertSame($this->backgroundUnreadCount + 3, $data['unread_count']);
         $this->getJson($this->url('/'.$outside))->assertNotFound();
         $this->getJson($this->url('/'.$foreign))->assertNotFound();
         $this->postJson($this->url('/'.$foreign.'/read'), ['version' => 1])->assertNotFound();
@@ -90,7 +103,7 @@ class ResidentAnnouncementTest extends TestCase
         $newApartment = (string) Str::uuid();
         DB::table('apartments')->insert(['id' => $newApartment, 'block_id' => $this->blockId, 'floor_id' => $otherFloor, 'apartment_number' => 'QA-202', 'gross_floor_area_sqm' => 80, 'net_usable_area_sqm' => 70]);
         Resident::factory()->create(['user_id' => $this->residentUser->id, 'apartment_id' => $newApartment]);
-        $this->getJson($this->url())->assertOk()->assertJsonPath('total', 4)->assertJsonPath('unread_count', 3);
+        $this->getJson($this->url())->assertOk()->assertJsonPath('total', 4)->assertJsonPath('unread_count', $this->backgroundUnreadCount + 3);
     }
 
     public function test_only_currently_published_articles_are_visible_at_time_boundaries(): void
@@ -126,7 +139,7 @@ class ResidentAnnouncementTest extends TestCase
         $this->assertDatabaseHas('announcements', ['id' => $id, 'version' => 1]);
         DB::table('announcements')->where('id', $id)->update(['version' => 2]);
         $this->getJson($this->url('/'.$id))->assertOk()->assertJsonPath('read_at', $read['read_at'])->assertJsonPath('acknowledged_at', $ack['acknowledged_at']);
-        $this->getJson($this->url('?filter=unread'))->assertOk()->assertJsonPath('total', 0)->assertJsonPath('unread_count', 0);
+        $this->getJson($this->url('?filter=unread'))->assertOk()->assertJsonPath('total', 0)->assertJsonPath('unread_count', $this->backgroundUnreadCount);
         $this->getJson($this->url('?filter=acknowledgement'))->assertOk()->assertJsonPath('total', 0);
     }
 
@@ -160,7 +173,7 @@ class ResidentAnnouncementTest extends TestCase
         $this->getJson($this->url('?page=3'))->assertOk()->assertJsonCount(2, 'data');
         $this->getJson($this->url('?filter=acknowledgement'))->assertOk()->assertJsonPath('total', 16);
         $this->getJson($this->url('?search=QA%20nhóm%2030'))->assertOk()->assertJsonPath('total', 1);
-        $this->getJson($this->url('?category=GENERAL'))->assertOk()->assertJsonPath('total', 0)->assertJsonPath('unread_count', 32);
+        $this->getJson($this->url('?category=GENERAL'))->assertOk()->assertJsonPath('total', 0)->assertJsonPath('unread_count', $this->backgroundUnreadCount + 32);
         $this->getJson($this->url('?page=-1'))->assertUnprocessable();
         $this->getJson($this->url('?filter=invalid'))->assertUnprocessable();
     }
