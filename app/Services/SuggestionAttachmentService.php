@@ -23,7 +23,7 @@ class SuggestionAttachmentService
      * @param  array<int, UploadedFile>  $files
      * @return array<int, array<string, mixed>>
      */
-    public function storeAttachments(string $suggestionId, array $files): array
+    public function storeAttachments(string $suggestionId, array $files, bool $anonymous = false): array
     {
         if (count($files) > 5) {
             throw ValidationException::withMessages([
@@ -90,7 +90,7 @@ class SuggestionAttachmentService
 
                 $stored[] = [
                     'id' => $fileId,
-                    'file_name' => pathinfo($file->getClientOriginalName(), PATHINFO_BASENAME),
+                    'file_name' => $anonymous ? 'attachment-'.(count($stored) + 1).'.'.$extension : pathinfo($file->getClientOriginalName(), PATHINFO_BASENAME),
                     'storage_disk' => $disk,
                     'storage_path' => $storagePath,
                     'mime_type' => $mime,
