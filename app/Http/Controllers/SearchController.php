@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\AmenityService;
 use App\Services\RbacService;
 use App\Services\Search\AiVectorSearchService;
@@ -11,6 +12,7 @@ use App\Services\Search\SearchManager;
 use App\Services\Search\VietnameseNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SearchController extends Controller
 {
@@ -148,16 +150,27 @@ class SearchController extends Controller
      */
     public function aiKnowledge(Request $request): JsonResponse
     {
-        $query = (string) $request->query('q', '');
-        $buildingId = $request->query('building_id');
-        $categories = $request->has('categories') ? explode(',', (string) $request->query('categories')) : [];
-        $limit = max(min((int) $request->query('limit', 5), 20), 1);
-
-        // Security check: Cư dân chỉ được phép tìm kiếm tài liệu thuộc tòa nhà của họ hoặc tài liệu chung
+        $data = $request->validate([
+            'q' => 'nullable|string|max:500', 'building_id' => 'nullable|uuid',
+            'categories' => 'nullable|string|max:500', 'limit' => 'nullable|integer|min:1|max:20',
+        ]);
+        $query = (string) ($data['q'] ?? '');
+        $buildingId = $data['building_id'] ?? null;
+        $categories = array_values(array_filter(array_map('trim', explode(',', $data['categories'] ?? ''))));
+        $limit = (int) ($data['limit'] ?? 5);
         $user = $request->user();
-        if ($user && ! empty($user->building_id) && empty($buildingId)) {
-            $buildingId = $user->building_id;
+        $allowedBlockIds = null;
+        if (! $user->isSuperAdmin() && ! $user->hasRole('ADMIN')) {
+            if ($user->hasRole('BUILDING_MANAGER')) {
+                $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
+                abort_unless($profile, 403, 'Chưa có hồ sơ nhân viên và phạm vi tòa nhà.');
+                $allowedBlockIds = $profile->assigned_block_id === null ? null : [$profile->assigned_block_id];
+            } else {
+                $allowedBlockIds = app(DatabaseResidentAmenityBookingRepository::class)->apartments($user->id)->pluck('block_id')->unique()->values()->all();
+                abort_if($allowedBlockIds === [], 403, 'Bạn chưa có hồ sơ cư trú còn hiệu lực.');
+            }
         }
+        abort_if($buildingId !== null && $allowedBlockIds !== null && ! in_array($buildingId, $allowedBlockIds, true), 403);
 
         $startTime = microtime(true);
         $results = $this->aiVectorSearchService->hybridSearch(
@@ -165,7 +178,8 @@ class SearchController extends Controller
             null,
             $buildingId,
             $categories,
-            $limit
+            $limit,
+            $allowedBlockIds
         );
         $elapsedMs = (microtime(true) - $startTime) * 1000;
 
@@ -177,6 +191,6 @@ class SearchController extends Controller
                 'building_id' => $buildingId,
                 'search_time_ms' => round($elapsedMs, 2),
             ],
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 }

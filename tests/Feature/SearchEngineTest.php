@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Services\Search\Drivers\SmartSearchDriver;
+use App\Services\Search\VietnameseDictionaryService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -99,7 +100,8 @@ class SearchEngineTest extends TestCase
 
         $keyword = explode(' ', $firstAmenity->amenity_name)[0] ?? 'GYM';
 
-        // Warm up
+        // Exclude dictionary initialization while keeping the measured search uncached.
+        VietnameseDictionaryService::load();
         $this->getJson('/api/v1/admin/amenities?limit=1');
 
         $startTime = microtime(true);

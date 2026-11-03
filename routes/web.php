@@ -867,7 +867,7 @@ Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities']
 Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/admin/amenity-search/metrics', [SearchController::class, 'metrics'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
-Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
+Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge'])->middleware('auth.bearer:strict');
 
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
 Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
