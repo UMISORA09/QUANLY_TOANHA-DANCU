@@ -12,6 +12,10 @@ class ElasticsearchDriver implements SearchDriverInterface
 
     public function search(string $index, string $query, array $filters = [], array $options = []): SearchResult
     {
+        if (array_key_exists('allowed_block_ids', $filters)) {
+            return (new SmartSearchDriver($this->config))->search($index, $query, $filters, $options);
+        }
+
         $startTime = microtime(true);
         $hosts = $this->config['hosts'] ?? ['http://127.0.0.1:9200'];
         $host = rtrim($hosts[0] ?? 'http://127.0.0.1:9200', '/');
