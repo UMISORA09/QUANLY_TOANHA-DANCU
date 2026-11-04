@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AnnouncementService;
 use App\Services\ResidentAnnouncementService;
+use App\Services\Search\AnnouncementSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,9 +26,6 @@ class ResidentAnnouncementController extends Controller
         $user = $request->user();
         $query = $this->announcements->withReceipt($this->announcements->query($user), $user);
         $unread = (clone $query)->whereNull('receipt.read_at')->count();
-        if (! empty($data['search'])) {
-            $query->where('announcement.title', 'like', '%'.$data['search'].'%');
-        }
         if (! empty($data['category'])) {
             $query->where('announcement.category', $data['category']);
         }
@@ -36,6 +34,9 @@ class ResidentAnnouncementController extends Controller
         }
         if (($data['filter'] ?? '') === 'acknowledgement') {
             $query->where('announcement.requires_acknowledgement', 1)->whereNull('receipt.acknowledged_at');
+        }
+        if (! empty($data['search'])) {
+            app(AnnouncementSearch::class)->filter($query, $data['search'], 'announcement');
         }
         $page = $query->orderByDesc('announcement.is_pinned')->orderByDesc('announcement.publish_at')->orderByDesc('announcement.id')->paginate(15);
         $page->through(fn (object $row) => $this->announcements->serialize($row));
