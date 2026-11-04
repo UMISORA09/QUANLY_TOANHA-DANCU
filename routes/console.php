@@ -4,6 +4,7 @@ use App\Services\AmenityBookingPaymentService;
 use App\Services\Freshness\FreshnessService;
 use App\Services\Search\BookingCodeSearch;
 use App\Services\Search\TicketSearch;
+use App\Services\Search\AnnouncementSearch;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -32,3 +33,7 @@ Schedule::command('queue:work database --queue=booking-code-search --stop-when-e
 Schedule::command('queue:work database --queue=ticket-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
     ->everyMinute()->name('ticket-search-sync')->withoutOverlapping()
     ->when(fn (): bool => TicketSearch::enabled());
+
+Schedule::command('queue:work database --queue=announcement-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('announcement-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => AnnouncementSearch::enabled());

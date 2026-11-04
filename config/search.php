@@ -38,6 +38,7 @@ return [
         ],
 
         'elasticsearch' => [
+            'announcements_index' => env('ELASTICSEARCH_ANNOUNCEMENTS_INDEX', 'cassavas_announcements_v1'),
             'tickets_index' => env('ELASTICSEARCH_TICKETS_INDEX', 'cassavas_tickets_v1'),
             'booking_codes_index' => env('ELASTICSEARCH_BOOKING_CODES_INDEX', 'cassavas_booking_codes_v1'),
             'amenities_index' => env('ALGOLIA_AMENITIES_INDEX', ''),
