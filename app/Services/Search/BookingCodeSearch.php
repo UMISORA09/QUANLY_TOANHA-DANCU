@@ -5,6 +5,7 @@ namespace App\Services\Search;
 use App\Jobs\SyncBookingCodeIndex;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use LogicException;
 
 class BookingCodeSearch
@@ -16,7 +17,13 @@ class BookingCodeSearch
 
     public function queue(string $id): void
     {
-        if (! self::enabled()) {
+        $this->queueMany([$id]);
+    }
+
+    /** @param list<string> $ids */
+    public function queueMany(array $ids): void
+    {
+        if ($ids === [] || ! self::enabled()) {
             return;
         }
 
@@ -25,7 +32,7 @@ class BookingCodeSearch
             throw new LogicException('Booking code search jobs must be written in the business transaction.');
         }
 
-        SyncBookingCodeIndex::dispatch($id)->onConnection('database')->onQueue('booking-code-search')->beforeCommit();
+        Queue::connection('database')->bulk(array_map(fn (string $id): SyncBookingCodeIndex => new SyncBookingCodeIndex($id), $ids), '', 'booking-code-search');
     }
 
     public function configure(): void
