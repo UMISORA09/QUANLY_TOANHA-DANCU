@@ -157,7 +157,6 @@ export interface AmenityListResponse {
 export interface AmenitySearchMetrics {
   days: number;
   requests: number;
-  estimated_algolia_calls: number;
   zero_result_rate: number;
   fallback_rate: number;
   p50_ms: number | null;

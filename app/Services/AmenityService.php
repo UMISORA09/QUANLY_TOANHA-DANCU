@@ -8,6 +8,7 @@ use App\Events\AmenityDeleted;
 use App\Events\AmenityUpdated;
 use App\Repositories\Contracts\AmenityRepositoryInterface;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\Search\AmenitySearchSyncState;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -295,6 +296,7 @@ class AmenityService
         $createdRecord = $this->repository->create($toCreate);
         $created = (array) $this->getAmenityById($createdRecord['id']);
         $this->audit($createdRecord['id'], 'INSERT', null, $created);
+        $this->queueSearchSync($createdRecord['id']);
         DB::afterCommit(fn () => AmenityCreated::dispatch($created));
 
         return $created;
@@ -396,6 +398,7 @@ class AmenityService
 
         $updated = (array) $this->getAmenityById($id);
         $this->audit($id, 'UPDATE', (array) $existing, $updated);
+        $this->queueSearchSync($id);
         DB::afterCommit(fn () => AmenityUpdated::dispatch($id, $updated));
 
         return $updated;
@@ -418,6 +421,7 @@ class AmenityService
                 ->exists(), 409, 'Không thể xóa tiện ích khi còn khoản thanh toán cần đối soát hoặc hoàn tiền.');
             $this->repository->softDelete($id);
             $this->audit($id, 'DELETE', (array) $existing, ['deleted_at' => now()->toIso8601String(), 'is_active' => false]);
+            $this->queueSearchSync($id);
             DB::afterCommit(fn () => AmenityDeleted::dispatch($id));
         }, 3);
     }
@@ -468,5 +472,12 @@ class AmenityService
     public function getAmenityBookings(string $amenityId): array
     {
         return $this->repository->getAmenityBookingsWithDetails($amenityId);
+    }
+
+    private function queueSearchSync(string $id): void
+    {
+        if (config('search.default') === 'elasticsearch') {
+            app(AmenitySearchSyncState::class)->queue($id);
+        }
     }
 }

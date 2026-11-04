@@ -337,7 +337,7 @@ class AmenityController extends Controller
         $etag = '"amenities-'.$fingerprint.'"';
 
         $clientEtag = $request->header('If-None-Match');
-        $liveIndexSearch = config('search.default') === 'algolia' && trim((string) ($filters['search'] ?? '')) !== '';
+        $liveIndexSearch = config('search.default') === 'elasticsearch' && trim((string) ($filters['search'] ?? '')) !== '';
         if (! $liveIndexSearch && $clientEtag && trim($clientEtag) === $etag) {
             return response()->json(null, 304, [
                 'ETag' => $etag,

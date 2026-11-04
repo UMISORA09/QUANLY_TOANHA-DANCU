@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   synchronize:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'workflow_dispatch' || vars.AMENITY_ELASTICSEARCH_SYNC_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

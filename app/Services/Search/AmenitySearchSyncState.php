@@ -11,7 +11,7 @@ class AmenitySearchSyncState
 {
     public static function fingerprint(): string
     {
-        return hash('sha256', config('search.drivers.algolia.app_id').':'.config('search.drivers.algolia.amenities_index'));
+        return hash('sha256', json_encode(['elasticsearch', config('search.drivers.elasticsearch.hosts.0'), config('search.drivers.elasticsearch.amenities_index')], JSON_THROW_ON_ERROR));
     }
 
     public function queue(string $amenityId): void

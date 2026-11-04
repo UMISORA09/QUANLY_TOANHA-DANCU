@@ -22,7 +22,7 @@ class SearchEngineTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['search.default' => 'smart', 'search.drivers.algolia.sync_enabled' => false]);
+        config(['search.default' => 'smart']);
 
         $this->createBookingFixture();
         $this->withToken($this->adminToken);
@@ -649,18 +649,17 @@ class SearchEngineTest extends TestCase
         $this->getJson('/api/v1/search/suggestions?q=Gym')->assertForbidden();
     }
 
-    public function test_shared_autocomplete_sends_scope_and_limit_to_algolia(): void
+    public function test_shared_autocomplete_sends_scope_and_limit_to_elasticsearch(): void
     {
         $this->authorizeResidentSearch();
-        config(['search.default' => 'algolia', 'search.drivers.algolia' => ['app_id' => 'TESTAPP', 'key' => 'qa-key', 'amenities_index' => 'amenities_test', 'sync_enabled' => true]]);
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.amenities_index' => 'amenities_test']);
         foreach (DB::table('amenities')->pluck('id') as $id) {
             DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], ['desired_version' => 1, 'published_version' => 1,
                 'status' => 'synced', 'created_at' => now(), 'updated_at' => now(), 'index_fingerprint' => AmenitySearchSyncState::fingerprint()]);
         }
-        Http::fake(['*/query' => Http::response(['hits' => [['objectID' => $this->amenityId, 'search_version' => 1,
-            'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at')]], 'nbHits' => 1])]);
+        Http::fake(['*/_search' => Http::response(['hits' => ['hits' => [['_id' => $this->amenityId]], 'total' => ['value' => 1]]])]);
         $this->getJson('/api/v1/search/suggestions?q=BBQ&limit=1')->assertOk()->assertJsonPath('suggestions.0.id', $this->amenityId);
-        Http::assertSent(fn ($request): bool => $request['hitsPerPage'] === 1 && in_array(['block_id:'.$this->blockId, 'block_id:__shared__'], $request['facetFilters'], true));
+        Http::assertSent(fn ($request): bool => $request['size'] === 1 && in_array(['terms' => ['block_id' => [$this->blockId, '__shared__']]], $request['query']['bool']['filter'], true));
     }
 
     public function test_fuzzy_matching_without_spell_correction_is_reported(): void
