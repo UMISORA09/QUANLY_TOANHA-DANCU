@@ -92,6 +92,51 @@ class ElasticsearchIndex
         return $ids;
     }
 
+    /**
+     * @param  callable(): array<string, int>  $readScope
+     * @param  list<string>  $fields
+     * @return list<string>|null
+     */
+    public function matchingRevisions(callable $readScope, string $keyword, array $fields): ?array
+    {
+        $revisions = $readScope();
+        if ($revisions === []) {
+            return [];
+        }
+        if (count($revisions) > 10000) {
+            return null;
+        }
+
+        try {
+            $response = $this->search([
+                'size' => count($revisions), 'track_total_hits' => true, '_source' => false,
+                'query' => ['bool' => ['filter' => [
+                    ['terms' => ['revision' => array_map(fn (string $id, int $version): string => $id.':'.$version, array_keys($revisions), array_values($revisions))]],
+                    ['term' => ['is_deleted' => false]],
+                ]]],
+                'post_filter' => ['multi_match' => ['query' => $keyword, 'fields' => $fields, 'fuzziness' => 'AUTO']],
+                'aggs' => ['current_scope' => ['filter' => ['match_all' => (object) []]]],
+            ]);
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        $hits = $response->json('hits.hits');
+        if (! $response->successful() || $response->json('timed_out') || $response->json('_shards.failed')
+            || $response->json('aggregations.current_scope.doc_count') !== count($revisions)
+            || ! is_array($hits) || $response->json('hits.total.value') !== count($hits)) {
+            return null;
+        }
+
+        $ids = array_column($hits, '_id');
+        $current = $readScope();
+        if (count($ids) !== count($hits) || array_diff($ids, array_keys($revisions)) !== [] || $revisions != $current) {
+            return null;
+        }
+
+        return $ids;
+    }
+
     public function write(string $id, array $document, ?int $version = null): void
     {
         $parameters = $version === null ? '' : '&version_type=external_gte&version='.$version;
