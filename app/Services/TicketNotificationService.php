@@ -55,7 +55,7 @@ class TicketNotificationService
         if (in_array($action, ['created', 'reopen'], true) || ($action === 'cancel' && ! $ticket->coordinator_user_id && ! $ticket->current_technician_user_id)) {
             foreach (User::where('status', 'ACTIVE')->whereHas('roles', fn ($q) => $q->whereIn('role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'BUILDING_MANAGER']))->get() as $user) {
                 $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
-                if ($user->isSuperAdmin() || ($profile && ($profile->assigned_block_id === null || $profile->assigned_block_id === $block) && $user->hasPermission('TICKET:VIEW') && $user->hasPermission('TICKET:UPDATE'))) {
+                if ($user->isSuperAdmin() || ($profile && ($block !== null && $profile->assigned_block_id === $block) && $user->hasPermission('TICKET:VIEW') && $user->hasPermission('TICKET:UPDATE'))) {
                     $ids[] = $user->id;
                 }
             }
@@ -84,7 +84,7 @@ class TicketNotificationService
             $resident = $id === $ticket->creator_user_id;
             if (! $resident && ! $user->isSuperAdmin()) {
                 $profile = DB::table('staff_profiles')->where('user_id', $id)->first();
-                if (! $profile || ($profile->assigned_block_id !== null && $profile->assigned_block_id !== $block) || ! $user->hasPermission('TICKET:VIEW')) {
+                if (! $profile || ($profile->assigned_block_id === null && app(TicketAccessService::class)->manager($user)) || ($profile->assigned_block_id !== null && $profile->assigned_block_id !== $block) || ! $user->hasPermission('TICKET:VIEW')) {
                     continue;
                 }
             }

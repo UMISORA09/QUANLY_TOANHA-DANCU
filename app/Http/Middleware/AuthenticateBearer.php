@@ -36,13 +36,7 @@ class AuthenticateBearer
             ], 401);
         }
 
-        $tokenHash = hash('sha256', $token);
-        $session = DB::table('user_sessions')
-            ->where('refresh_token_hash', $tokenHash)
-            ->where('is_revoked', 0)
-            ->where('expires_at', '>', now())
-            ->first();
-        $user = $session ? User::with('roles.permissions')->find($session->user_id) : null;
+        $user = self::resolveSessionUser($token);
 
         if (! $user) {
             return response()->json([
@@ -65,5 +59,16 @@ class AuthenticateBearer
         $request->setUserResolver(fn () => $user);
 
         return $next($request);
+    }
+
+    public static function resolveSessionUser(string $token): ?User
+    {
+        $session = DB::table('user_sessions')
+            ->where('refresh_token_hash', hash('sha256', $token))
+            ->where('is_revoked', 0)
+            ->where('expires_at', '>', now())
+            ->first();
+
+        return $session ? User::with('roles.permissions')->find($session->user_id) : null;
     }
 }

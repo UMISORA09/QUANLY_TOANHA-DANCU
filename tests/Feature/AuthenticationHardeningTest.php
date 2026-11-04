@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Mail\OtpVerificationMail;
 use App\Models\User;
+use App\Services\RbacService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -27,6 +29,33 @@ class AuthenticationHardeningTest extends TestCase
                 $this->withToken($token)->getJson($uri)->assertUnauthorized();
             }
         }
+    }
+
+    public function test_untrusted_identity_cannot_access_visitor_routes_or_shared_resolver(): void
+    {
+        $user = User::factory()->create();
+        Route::get('/qa/shared-auth', fn (Request $request) => response()->json([
+            'id' => RbacService::resolveUser($request)?->id,
+        ]));
+
+        $this->withHeaders(['X-User-Id' => $user->id, 'X-User-Email' => $user->email]);
+        foreach (['smart_token_admin_demo', 'smart_token_'.$user->id.'_fake'] as $token) {
+            $this->withToken($token)->getJson('/qa/shared-auth?user_id='.$user->id)->assertJsonPath('id', null);
+            $this->getJson('/api/v1/resident/visitors')->assertUnauthorized();
+            $this->postJson('/api/v1/resident/visitors', ['user_id' => $user->id])->assertUnauthorized();
+            $this->getJson('/api/v1/reception/visitors')->assertUnauthorized();
+        }
+
+        $token = Str::random(64);
+        DB::table('user_sessions')->insert([
+            'id' => Str::uuid(), 'user_id' => $user->id,
+            'refresh_token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addHour(), 'is_revoked' => 0,
+        ]);
+        $this->withToken($token)->getJson('/qa/shared-auth')->assertJsonPath('id', $user->id);
+        DB::table('user_sessions')->where('user_id', $user->id)->update(['expires_at' => now()->subMinute()]);
+        $this->getJson('/qa/shared-auth')->assertJsonPath('id', null);
+        $this->getJson('/api/v1/resident/visitors')->assertUnauthorized();
     }
 
     public function test_real_session_is_required_after_revocation_expiry_and_logout(): void

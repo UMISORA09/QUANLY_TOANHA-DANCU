@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ResidentAmenityBookingService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -31,7 +33,7 @@ class AmenityBookingNotificationTest extends TestCase
         DB::table('staff_profiles')->insert(['id' => (string) Str::uuid(), 'user_id' => $manager->id, 'department_id' => $department, 'employee_code' => Str::random(12), 'job_title' => 'Manager', 'hire_date' => today(), 'assigned_block_id' => $this->blockId]);
         $roleId = (string) Str::uuid();
         DB::table('roles')->insert(['id' => $roleId, 'role_code' => 'TEST_'.Str::random(8), 'role_name' => 'Amenity manager']);
-        $permissionId = DB::table('permissions')->where('permission_code', 'AMENITY:UPDATE')->value('id');
+        $permissionId = Permission::firstOrCreate(['permission_code' => 'AMENITY:UPDATE'], ['module' => 'AMENITY', 'permission_name' => 'Cập nhật tiện ích'])->id;
         DB::table('role_permissions')->insert(['id' => (string) Str::uuid(), 'role_id' => $roleId, 'permission_id' => $permissionId]);
         foreach ([$manager, $this->secondUser] as $user) {
             DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'role_id' => $roleId, 'user_id' => $user->id]);
@@ -47,6 +49,11 @@ class AmenityBookingNotificationTest extends TestCase
         $this->assertStringContainsString($this->amenityId, $row->deep_link_url);
         $this->assertStringContainsString('Test BBQ', $row->title);
         $this->assertStringContainsString('TEST-101', $row->body_message);
+        DB::table('staff_profiles')->where('user_id', $manager->id)->update(['assigned_block_id' => null]);
+        app(ResidentAmenityBookingService::class)->notifyManagers($this->amenityId, 'UNASSIGNED-QA', 'QA', 'QA');
+        $this->assertDatabaseMissing('user_in_app_notifications', [
+            'recipient_user_id' => $manager->id, 'title' => 'QA', 'body_message' => 'QA',
+        ]);
         $count = $rows->count();
         $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertConflict();
         $this->assertSame($count, DB::table('user_in_app_notifications')->where('deep_link_url', 'like', '%'.$booking['booking_code'].'%')->count());
