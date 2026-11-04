@@ -2324,6 +2324,14 @@ class ApiService {
     });
   }
 
+  async getTicketRating(id: string, signal?: AbortSignal) {
+    return this.request<TicketRatingResponse>(`/tickets/${id}/rating`, { signal, cache: 'no-store' });
+  }
+
+  async rateResidentTicket(id: string, payload: { version: number; rating_stars: number; review_comment: string }) {
+    return this.request<TicketRatingResponse>(`/resident/tickets/${id}/rating`, { method: 'POST', body: JSON.stringify(payload), cache: 'no-store' });
+  }
+
   async confirmResidentTicket(id: string, version: number, note?: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
       method: 'POST',
@@ -3137,4 +3145,10 @@ export interface ManagementSurveyListResponse {
     per_page: number;
     total: number;
   };
+}
+
+export interface TicketRatingResponse {
+  data: { id: string; ticket_id: string; rating_stars: number; review_comment: string | null; created_at: string } | null;
+  can_rate: boolean;
+  ticket_version: number;
 }

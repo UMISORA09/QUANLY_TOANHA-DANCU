@@ -43,6 +43,9 @@ class TicketWorkflowConcurrencyTest extends TestCase
             $commentIds = DB::table('ticket_comments')->whereIn('ticket_id', $ticketIds)->pluck('id');
             DB::table('audit_logs')->whereIn('record_id', $commentIds)->delete();
             DB::table('ticket_comments')->whereIn('ticket_id', $ticketIds)->delete();
+            $ratingIds = DB::table('ticket_ratings')->whereIn('ticket_id', $ticketIds)->pluck('id');
+            DB::table('audit_logs')->whereIn('record_id', $ratingIds)->delete();
+            DB::table('ticket_ratings')->whereIn('ticket_id', $ticketIds)->delete();
             DB::table('audit_logs')->whereIn('record_id', $ticketIds)->delete();
             DB::table('ticket_history')->whereIn('ticket_id', $ticketIds)->delete();
             DB::table('tickets')->whereIn('id', $ticketIds)->delete();
@@ -219,5 +222,47 @@ class TicketWorkflowConcurrencyTest extends TestCase
         $this->assertContains($statuses, [[200, 201], [200, 404]]);
         $this->assertSame($statuses === [200, 201] ? 1 : 0, DB::table('ticket_comments')->where('ticket_id', $this->ticketId)->count());
         $this->assertSame($this->residentUser->id, Ticket::findOrFail($this->ticketId)->current_technician_user_id);
+    }
+
+    public function test_duplicate_ratings_concurrently_create_one_rating_and_audit(): void
+    {
+        $this->createTicket('CLOSED');
+        $path = '/api/v1/resident/tickets/'.$this->ticketId.'/rating';
+        $data = ['version' => 1, 'rating_stars' => 5, 'review_comment' => 'Xử lý tốt'];
+        $results = $this->race([[$path, $this->residentToken, $data, 'POST'], [$path, $this->residentToken, $data, 'POST']], 'tickets', $this->ticketId);
+        $statuses = $results;
+        sort($statuses);
+        $this->assertSame([200, 201], $statuses);
+        $rating = DB::table('ticket_ratings')->where('ticket_id', $this->ticketId)->sole();
+        $this->assertSame(1, DB::table('ticket_ratings')->where('ticket_id', $this->ticketId)->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('record_id', $rating->id)->count());
+        $this->assertSame(1, Ticket::findOrFail($this->ticketId)->version);
+    }
+
+    public function test_conflicting_ratings_concurrently_only_accept_one_payload(): void
+    {
+        $this->createTicket('CLOSED');
+        $path = '/api/v1/resident/tickets/'.$this->ticketId.'/rating';
+        $results = $this->race([[$path, $this->residentToken, ['version' => 1, 'rating_stars' => 5], 'POST'], [$path, $this->residentToken, ['version' => 1, 'rating_stars' => 1], 'POST']], 'tickets', $this->ticketId);
+        $statuses = $results;
+        sort($statuses);
+        $this->assertSame([201, 409], $statuses);
+        $this->assertSame(1, DB::table('ticket_ratings')->where('ticket_id', $this->ticketId)->count());
+    }
+
+    public function test_rating_and_archive_are_serialized_without_partial_data(): void
+    {
+        $this->createTicket('CLOSED');
+        $results = $this->race([
+            ['/api/v1/resident/tickets/'.$this->ticketId.'/rating', $this->residentToken, ['version' => 1, 'rating_stars' => 4], 'POST'],
+            ['/api/v1/admin/tickets/'.$this->ticketId, $this->adminToken, ['version' => 1, 'reason' => 'Lưu trữ sau nghiệm thu'], 'DELETE'],
+        ], 'tickets', $this->ticketId, [200, 201, 404]);
+        $this->assertContains($results, [[200, 201], [200, 404]]);
+        $this->assertSoftDeleted('tickets', ['id' => $this->ticketId]);
+        $rating = DB::table('ticket_ratings')->where('ticket_id', $this->ticketId)->first();
+        $this->assertSame($results === [200, 201], $rating !== null);
+        if ($rating) {
+            $this->assertSame(1, DB::table('audit_logs')->where('record_id', $rating->id)->count());
+        }
     }
 }
