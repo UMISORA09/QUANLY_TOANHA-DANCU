@@ -5,8 +5,8 @@ namespace App\Services;
 use App\Models\Suggestion;
 use App\Models\SuggestionBox;
 use App\Models\User;
+use App\Services\Search\SuggestionSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -90,11 +90,7 @@ class ManagementSuggestionService
         }
 
         if (! empty($filters['search'])) {
-            $keyword = '%'.trim((string) $filters['search']).'%';
-            $query->where(function (Builder $q) use ($keyword): void {
-                $q->where('title', 'like', $keyword)
-                    ->orWhere('content_text', 'like', $keyword);
-            });
+            app(SuggestionSearch::class)->filter($query, trim((string) $filters['search']));
         }
 
         $perPage = max(5, min(50, (int) ($filters['per_page'] ?? 15)));
