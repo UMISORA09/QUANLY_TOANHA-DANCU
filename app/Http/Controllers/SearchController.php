@@ -51,7 +51,7 @@ class SearchController extends Controller
         // Xây dựng Cache key: amenity_search:{normalized_query}:{filters}:{page}
         $filterString = ! empty($filtersArray) ? md5(json_encode($filtersArray)) : 'none';
         $driverName = (string) config('search.default', 'smart');
-        $context = hash('sha256', json_encode([3, $rawQuery, $limit, $sort, $driverName, config('search.drivers.algolia.amenities_index'), $user?->id]));
+        $context = hash('sha256', json_encode([3, $rawQuery, $limit, $sort, $driverName, config('search.drivers.elasticsearch.amenities_index'), $user?->id]));
         $cacheKey = "amenity_search:{$normalizedQuery}:{$filterString}:{$page}:{$context}";
 
         $startTime = microtime(true);
@@ -86,14 +86,13 @@ class SearchController extends Controller
                 'applied_query' => $searchResult->extra['applied_query'] ?? $searchResult->extra['corrected_query'] ?? $rawQuery,
                 'is_corrected' => $searchResult->extra['is_corrected'] ?? (($searchResult->extra['corrected_query'] ?? $rawQuery) !== $rawQuery),
                 'fallback_reason' => $searchResult->extra['fallback_reason'] ?? null,
-                'algolia_calls' => $searchResult->extra['algolia_calls'] ?? 0,
                 'page' => $page, 'per_page' => $limit, 'total_pages' => $searchResult->getTotalPages(),
                 'total' => $total,
                 'engine' => $searchResult->engine,
                 'search_time_ms' => round($elapsedMs, 2),
             ];
         };
-        $responsePayload = $driverName === 'algolia' ? $load() : SearchCacheService::remember($cacheKey, 60, $load);
+        $responsePayload = $driverName === 'elasticsearch' ? $load() : SearchCacheService::remember($cacheKey, 60, $load);
 
         // Nếu lấy từ Cache, cập nhật search_time_ms phản ánh thời gian thực (< 1ms)
         $totalElapsed = (microtime(true) - $startTime) * 1000;

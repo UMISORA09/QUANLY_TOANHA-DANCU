@@ -19,7 +19,7 @@ class AmenitySearchMetrics
                 'request_kind' => $kind, 'engine' => $result['engine'] ?? 'smart',
                 'fallback_reason' => $result['fallback_reason'] ?? null,
                 'result_count' => (int) ($result['total'] ?? 0), 'duration_ms' => max(0, $duration),
-                'algolia_calls' => (int) ($result['algolia_calls'] ?? 0), 'created_at' => now(),
+                'created_at' => now(),
             ]);
         } catch (Throwable) {
             // Optional telemetry must not prevent an otherwise successful search.
@@ -34,10 +34,10 @@ class AmenitySearchMetrics
         $latency = DB::query()->fromSub($ranked, 'ranked')->selectRaw(
             'MIN(CASE WHEN row_position >= CEIL(sample_count * 0.50) THEN duration_ms END) AS p50_ms, MIN(CASE WHEN row_position >= CEIL(sample_count * 0.95) THEN duration_ms END) AS p95_ms'
         )->first();
-        $totals = (clone $metrics)->selectRaw('COUNT(*) AS requests, COALESCE(SUM(algolia_calls), 0) AS algolia_calls, COALESCE(SUM(result_count = 0), 0) AS zero_results, COALESCE(SUM(fallback_reason IS NOT NULL), 0) AS fallbacks')->first();
+        $totals = (clone $metrics)->selectRaw('COUNT(*) AS requests, COALESCE(SUM(result_count = 0), 0) AS zero_results, COALESCE(SUM(fallback_reason IS NOT NULL), 0) AS fallbacks')->first();
 
         return [
-            'days' => 7, 'requests' => (int) $totals->requests, 'estimated_algolia_calls' => (int) $totals->algolia_calls,
+            'days' => 7, 'requests' => (int) $totals->requests,
             'zero_result_rate' => $totals->requests ? round($totals->zero_results / $totals->requests, 4) : 0,
             'fallback_rate' => $totals->requests ? round($totals->fallbacks / $totals->requests, 4) : 0,
             'p50_ms' => $latency->p50_ms === null ? null : round((float) $latency->p50_ms, 2),

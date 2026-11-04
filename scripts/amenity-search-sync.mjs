@@ -6,7 +6,7 @@ const databaseErrors = new Set([
   'database_inspection_failed',
 ]);
 const requiredTables = ['amenities', 'amenity_bookings', 'amenity_booking_payments', 'jobs', 'failed_jobs'];
-const failureCodes = ['algolia_task_pending', 'algolia_write_failed', 'algolia_task_status_failed', 'worker_failed'];
+const failureCodes = ['worker_failed'];
 
 async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET') {
   let response;

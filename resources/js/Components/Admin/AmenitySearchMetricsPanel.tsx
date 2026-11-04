@@ -35,7 +35,6 @@ export function AmenitySearchMetricsPanel() {
         <div><dt>Đồng bộ gần nhất</dt><dd>{metrics.last_synced_at ? new Date(metrics.last_synced_at.replace(' ', 'T')).toLocaleString('vi-VN') : 'Chưa có'}</dd></div>
         {metrics.engines.map((item) => <div key={item.engine}><dt>{item.engine}</dt><dd>{item.requests} lượt</dd></div>)}
       </dl>
-      <p><small>{metrics.estimated_algolia_calls} lần gọi Algolia do ứng dụng ghi nhận; không thay thế số liệu quota trên Algolia.</small></p>
     </>}
     <button type="button" disabled={loading} onClick={load}>Tải lại số liệu</button>
   </details>;

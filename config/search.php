@@ -18,13 +18,6 @@ return [
     |--------------------------------------------------------------------------
     */
     'drivers' => [
-        'algolia' => [
-            'app_id' => env('ALGOLIA_APP_ID', ''),
-            'key' => env('ALGOLIA_API_KEY', ''),
-            'amenities_index' => env('ALGOLIA_AMENITIES_INDEX', ''),
-            'sync_enabled' => env('ALGOLIA_SYNC_ENABLED', false),
-            'allow_flush' => false,
-        ],
         'smart' => [
             'min_token_length' => 2,
             'fuzzy_enabled' => true,
@@ -45,6 +38,7 @@ return [
         ],
 
         'elasticsearch' => [
+            'amenities_index' => env('ELASTICSEARCH_AMENITIES_INDEX', 'cassavas_amenities_v1'),
             'hosts' => explode(',', env('ELASTICSEARCH_HOSTS', 'http://127.0.0.1:9200')),
             'username' => env('ELASTICSEARCH_USER', null),
             'password' => env('ELASTICSEARCH_PASS', null),
