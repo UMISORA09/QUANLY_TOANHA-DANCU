@@ -6,6 +6,7 @@ use App\Jobs\SyncTicketSearchIndex;
 use App\Models\Ticket;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use LogicException;
 
 class TicketSearch
@@ -17,7 +18,13 @@ class TicketSearch
 
     public function queue(string $id): void
     {
-        if (! self::enabled()) {
+        $this->queueMany([$id]);
+    }
+
+    /** @param list<string> $ids */
+    public function queueMany(array $ids): void
+    {
+        if ($ids === [] || ! self::enabled()) {
             return;
         }
 
@@ -26,7 +33,7 @@ class TicketSearch
             throw new LogicException('Ticket search jobs must be written in the business transaction.');
         }
 
-        SyncTicketSearchIndex::dispatch($id)->onConnection('database')->onQueue('ticket-search')->beforeCommit();
+        Queue::connection('database')->bulk(array_map(fn (string $id): SyncTicketSearchIndex => new SyncTicketSearchIndex($id), $ids), '', 'ticket-search');
     }
 
     public function configure(): void
