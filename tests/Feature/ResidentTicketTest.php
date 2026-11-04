@@ -157,6 +157,13 @@ class ResidentTicketTest extends TestCase
         return $user;
     }
 
+    public function test_manager_without_assigned_block_cannot_list_tickets(): void
+    {
+        $manager = $this->ticketStaff('BUILDING_MANAGER');
+        $this->withToken($this->createSessionToken($manager))
+            ->getJson('/api/v1/admin/tickets')->assertForbidden();
+    }
+
     public function test_ticket_management_roles_scope_creation_version_and_archive(): void
     {
         $admin = $this->ticketStaff('SUPER_ADMIN', profile: false);
@@ -202,10 +209,12 @@ class ResidentTicketTest extends TestCase
     {
         $block = DB::table('apartments')->where('id', $this->apartmentId)->value('block_id');
         $manager = $this->ticketStaff('BUILDING_MANAGER', $block);
+        $unassignedManager = $this->ticketStaff('BUILDING_MANAGER');
         $technician = $this->ticketStaff('TECHNICIAN', $block);
         $otherTech = $this->ticketStaff('TECHNICIAN', $block);
         $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
         $id = $this->postJson('/api/v1/resident/tickets', ['title' => 'Kiểm tra luồng sửa chữa', 'description' => 'Vòi nước bị rò rỉ cần sửa.', 'location' => 'Phòng bếp', 'category_id' => $this->categoryId])->assertCreated()->json('data.id');
+        $this->assertDatabaseMissing('user_in_app_notifications', ['recipient_user_id' => $unassignedManager->id, 'category' => 'TICKET']);
         $notification = DB::table('user_in_app_notifications')->where('recipient_user_id', $manager->id)->where('category', 'TICKET')->first();
         $this->assertNotNull($notification);
         $this->postJson('/api/v1/ticket-notifications/'.$notification->id.'/read')->assertNotFound();

@@ -368,7 +368,7 @@ Route::patch('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class
 Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController::class, 'cancel']);
 Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
 
-Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
+Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice'])->middleware(['auth.bearer:strict', 'throttle:10,1']);
 
 // F12: Hòm thư Góp ý & Phân tích Cảm xúc
 Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {

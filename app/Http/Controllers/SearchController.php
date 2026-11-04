@@ -165,6 +165,7 @@ class SearchController extends Controller
             if ($user->hasRole('BUILDING_MANAGER')) {
                 $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
                 abort_unless($profile, 403, 'Chưa có hồ sơ nhân viên và phạm vi tòa nhà.');
+                abort_if($user->hasRole('BUILDING_MANAGER') && $profile->assigned_block_id === null, 403, 'Chưa được phân công tòa nhà.');
                 $allowedBlockIds = $profile->assigned_block_id === null ? null : [$profile->assigned_block_id];
             } else {
                 $allowedBlockIds = app(DatabaseResidentAmenityBookingRepository::class)->apartments($user->id)->pluck('block_id')->unique()->values()->all();

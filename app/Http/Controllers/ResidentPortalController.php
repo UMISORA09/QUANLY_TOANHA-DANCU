@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\RbacService;
 use App\Services\ResidentVisitorService;
@@ -333,19 +332,10 @@ class ResidentPortalController extends Controller
             'expected_arrival_time' => 'required|date',
             'vehicle_license_plate' => 'nullable|string|max:50',
             'apartment_id' => 'nullable|string',
-            'user_id' => 'nullable|string',
         ]);
 
-        $user = $request->user() ?? RbacService::resolveUser($request);
-        if (! $user) {
-            $userId = $validated['user_id'] ?? null;
-            if ($userId) {
-                $user = User::find($userId) ?? DB::table('users')->where('id', $userId)->first();
-            }
-            if (! $user) {
-                $user = DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
-            }
-        }
+        $user = RbacService::resolveUser($request);
+        abort_unless($user, 401);
 
         $result = app(ResidentVisitorService::class)->createVisitor($user, $validated);
 
@@ -358,29 +348,18 @@ class ResidentPortalController extends Controller
     }
 
     /**
-     * Thanh toán trực tuyến hóa đơn (Mô phỏng VietQR/VNPAY).
+     * Chặn thanh toán giả cho tới khi hóa đơn có đối soát giao dịch thực tế.
      */
     public function payInvoice(Request $request, string $id): JsonResponse
     {
-        $invoice = DB::table('invoices')->where('id', $id)->first();
-        if (! $invoice) {
-            return response()->json(['detail' => 'Hóa đơn không tồn tại!'], 404);
-        }
-
-        $now = Carbon::now();
-        DB::table('invoices')->where('id', $id)->update([
-            'status' => 'PAID',
-            'paid_amount' => $invoice->total_amount,
-            'remaining_balance' => 0.00,
-            'updated_at' => $now,
-        ]);
-
-        $updated = DB::table('invoices')->where('id', $id)->first();
+        $user = $request->user();
+        abort_unless($user, 401);
+        $invoice = DB::table('invoices')->where('id', $id)->where('resident_user_id', $user->id)->whereNull('deleted_at')->first();
+        abort_unless($invoice, 404);
 
         return response()->json([
-            'success' => true,
-            'message' => 'Thanh toán hóa đơn thành công!',
-            'invoice' => $updated,
-        ]);
+            'success' => false,
+            'message' => 'Thanh toán hóa đơn trực tuyến chưa có đối soát giao dịch. Vui lòng liên hệ ban quản lý; hóa đơn chưa được ghi nhận đã thanh toán.',
+        ], 409);
     }
 }

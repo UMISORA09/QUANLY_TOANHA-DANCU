@@ -128,6 +128,7 @@ class AmenityService
             abort_unless($user->hasPermission('AMENITY:VIEW'), 403);
             $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
             abort_unless($profile, 403, 'Chưa có hồ sơ nhân viên và phạm vi tòa nhà.');
+            abort_if($user->hasRole('BUILDING_MANAGER') && $profile->assigned_block_id === null, 403, 'Chưa được phân công tòa nhà.');
             $allowedBlocks = $profile->assigned_block_id === null ? null : [$profile->assigned_block_id];
         } else {
             $apartments = app(DatabaseResidentAmenityBookingRepository::class)->apartments($user->id);

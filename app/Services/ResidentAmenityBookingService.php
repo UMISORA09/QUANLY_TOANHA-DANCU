@@ -289,7 +289,7 @@ class ResidentAmenityBookingService
             }
             $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
 
-            return $user->hasRole('BUILDING_MANAGER') && $profile && ($profile->assigned_block_id === null || ($amenityId !== '' && $profile->assigned_block_id === $blockId));
+            return $user->hasRole('BUILDING_MANAGER') && $profile && $amenityId !== '' && $profile->assigned_block_id !== null && $profile->assigned_block_id === $blockId;
         })->pluck('id');
         $rows = $recipients->map(fn (string $id): array => [
             'id' => (string) Str::uuid(), 'recipient_user_id' => $id,

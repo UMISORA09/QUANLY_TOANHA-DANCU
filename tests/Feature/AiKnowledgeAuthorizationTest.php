@@ -104,7 +104,7 @@ class AiKnowledgeAuthorizationTest extends TestCase
         $this->assertEqualsCanonicalizing([$this->documentIds['common'], $this->documentIds['own']], array_column($this->getJson($this->url())->assertOk()->json('data'), 'document_id'));
         $this->getJson($this->url(['building_id' => $this->foreignBlockId]))->assertForbidden();
         DB::table('staff_profiles')->where('user_id', $manager->id)->update(['assigned_block_id' => null]);
-        $this->getJson($this->url())->assertOk()->assertJsonCount(3, 'data');
+        $this->getJson($this->url())->assertForbidden();
         $this->withToken($this->adminToken)->getJson($this->url())->assertOk()->assertJsonCount(3, 'data');
     }
 
