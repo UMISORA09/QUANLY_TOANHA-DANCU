@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\Search\BookingCodeSearch;
 use App\Services\Search\SearchCacheService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -155,6 +156,7 @@ class ResidentAmenityBookingService
                 'resident_notes' => $data['resident_notes'] ?? null, 'created_at' => now(), 'updated_at' => now(),
             ]);
             $this->payments->initialize((array) DB::table('amenity_bookings')->where('id', $id)->first());
+            app(BookingCodeSearch::class)->queue($id);
             $booking = $this->detail($user, $id, true);
             $this->audit($user, $id, 'INSERT', null, $booking, $request);
             $this->notifyManagers($amenity->id, $booking['booking_code'], 'Đăng ký tiện ích mới · '.$amenity->amenity_name,

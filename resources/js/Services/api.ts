@@ -1297,6 +1297,11 @@ class ApiService {
   }
 
   // ================= BOOKINGS =================
+  async getAmenityBookingCodeMatches(amenityId: string, query: string, signal: AbortSignal): Promise<{ ids: string[] }> {
+    const params = new URLSearchParams({ q: query });
+    return this.request<{ ids: string[] }>(`/admin/amenities/${amenityId}/booking-code-matches?${params}`, { signal, cache: 'no-store' });
+  }
+
   async getAmenityBookings(amenityId: string, forceRefresh: boolean = false, signal?: AbortSignal): Promise<AmenityBooking[]> {
     const key = `amenity:${amenityId}:bookings`;
     const lookup = amenityCache.get<AmenityBooking[]>(key);

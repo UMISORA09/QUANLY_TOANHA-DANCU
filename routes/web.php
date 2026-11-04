@@ -790,6 +790,7 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::patch('amenities/{id}/status', [AmenityController::class, 'toggleAmenityStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::delete('amenities/{id}', [AmenityController::class, 'deleteAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:DELETE']);
     Route::get('amenities/{id}/bookings', [AmenityController::class, 'getAmenityBookings'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::get('amenities/{id}/booking-code-matches', [AmenityController::class, 'bookingCodeMatches'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::patch('amenities/{amenityId}/bookings/{bookingId}/status', [AmenityController::class, 'updateBookingStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::post('amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::post('amenities/{amenityId}/bookings/{bookingId}/payment/confirm', [AmenityBookingPaymentController::class, 'confirm'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
