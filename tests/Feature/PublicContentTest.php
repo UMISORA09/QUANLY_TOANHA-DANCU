@@ -77,7 +77,7 @@ class PublicContentTest extends TestCase
         }
         $response = $this->get('/sitemap.xml')->assertOk()->assertHeader('Content-Type', 'application/xml; charset=utf-8');
         $xml = simplexml_load_string($response->getContent());
-        $this->assertCount(5, $xml->url);
+        $this->assertCount(count(PublicContent::PAGES), $xml->url);
         foreach ($xml->url as $url) {
             $this->assertContains(basename((string) $url->loc), PublicContent::PAGES);
             $this->assertSame('2026-10-27', (string) $url->lastmod);
@@ -93,6 +93,24 @@ class PublicContentTest extends TestCase
         $this->assertSame('/api/index.php', $routes[0]['dest']);
         $this->assertSame('filesystem', $routes[1]['handle']);
         $this->get('/index.html')->assertRedirect('/home');
+    }
+
+    public function test_versioned_guide_documents_errors_and_throttles(): void
+    {
+        config(['public_content.rate_limit_store' => 'array']);
+        $this->getJson('/api/v1/public/guides/home')->assertOk()
+            ->assertHeader('RateLimit-Policy', '"public-guide";q=60;w=60')
+            ->assertJsonPath('page', 'home')
+            ->assertJsonPath('markdown', app(PublicContent::class)->markdown('home'));
+        $this->getJson('/api/v1/public/guides/unknown')->assertNotFound()
+            ->assertJsonPath('code', 'guide_not_found');
+
+        for ($attempt = 0; $attempt < 58; $attempt++) {
+            $this->getJson('/api/v1/public/guides/home')->assertOk();
+        }
+
+        $this->getJson('/api/v1/public/guides/home')->assertTooManyRequests()
+            ->assertHeader('Retry-After')->assertJsonPath('code', 'rate_limit_exceeded');
     }
 
     public function test_private_spa_shell_has_no_public_index_content(): void
