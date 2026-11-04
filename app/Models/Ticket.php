@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Search\TicketSearch;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -38,6 +39,12 @@ class Ticket extends Model
         'actual_repair_cost',
         'invoice_id',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(fn (Ticket $ticket) => app(TicketSearch::class)->queue($ticket->id));
+        static::deleted(fn (Ticket $ticket) => app(TicketSearch::class)->queue($ticket->id));
+    }
 
     protected function casts(): array
     {

@@ -3,7 +3,6 @@
 namespace App\Services\Search;
 
 use App\Services\Search\Contracts\SearchDriverInterface;
-use App\Services\Search\Drivers\AlgoliaDriver;
 use App\Services\Search\Drivers\ElasticsearchDriver;
 use App\Services\Search\Drivers\MeilisearchDriver;
 use App\Services\Search\Drivers\SmartSearchDriver;
@@ -34,7 +33,6 @@ class SearchManager
 
         return match ($name) {
             'smart', 'database', 'ponytail' => new SmartSearchDriver($config),
-            'algolia' => new AlgoliaDriver($config),
             'meilisearch' => new MeilisearchDriver($config),
             'elasticsearch' => new ElasticsearchDriver($config),
             default => throw new InvalidArgumentException("Search driver [{$name}] is not supported."),

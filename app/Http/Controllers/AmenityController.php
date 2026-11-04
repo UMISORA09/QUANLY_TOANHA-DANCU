@@ -7,6 +7,7 @@ use App\Services\AmenityBookingPaymentService;
 use App\Services\AmenityConflictException;
 use App\Services\AmenityService;
 use App\Services\ResidentAmenityBookingService;
+use App\Services\Search\BookingCodeSearch;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -337,7 +338,7 @@ class AmenityController extends Controller
         $etag = '"amenities-'.$fingerprint.'"';
 
         $clientEtag = $request->header('If-None-Match');
-        $liveIndexSearch = config('search.default') === 'algolia' && trim((string) ($filters['search'] ?? '')) !== '';
+        $liveIndexSearch = config('search.default') === 'elasticsearch' && trim((string) ($filters['search'] ?? '')) !== '';
         if (! $liveIndexSearch && $clientEtag && trim($clientEtag) === $etag) {
             return response()->json(null, 304, [
                 'ETag' => $etag,
@@ -512,6 +513,14 @@ class AmenityController extends Controller
         $bookings = $this->amenityService->getAmenityBookings($id);
 
         return response()->json($bookings);
+    }
+
+    public function bookingCodeMatches(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate(['q' => ['required', 'string', 'max:64', 'regex:/^BK-[A-Z0-9-]+$/iD']]);
+
+        return response()->json(['ids' => app(BookingCodeSearch::class)->matches($request->user(), $id, $data['q'])])
+            ->header('Cache-Control', 'private, no-store');
     }
 
     /**

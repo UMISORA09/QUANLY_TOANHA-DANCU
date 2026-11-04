@@ -15,7 +15,7 @@ class AmenitySearchSyncController extends Controller
     {
         $secret = (string) config('search.sync_secret', '');
         abort_unless(strlen($secret) >= 32 && hash_equals($secret, (string) $request->bearerToken()), 401);
-        abort_unless(config('search.drivers.algolia.sync_enabled'), 503);
+        abort_unless(config('search.default') === 'elasticsearch', 503);
 
         try {
             return $this->synchronize($request)->header('Cache-Control', 'private, no-store');
@@ -65,14 +65,13 @@ class AmenitySearchSyncController extends Controller
             $exitCode = Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'amenity-search', '--once' => true, '--tries' => 5, '--timeout' => 45]);
         }
 
-        $failures = DB::table('failed_jobs')->where('queue', 'amenity-search')->pluck('exception')->map(fn (string $exception): string => match (true) {
-            str_contains($exception, 'is not published yet') => 'algolia_task_pending',
-            str_contains($exception, 'Algolia index write failed') => 'algolia_write_failed',
-            str_contains($exception, 'Algolia task status request failed') => 'algolia_task_status_failed',
-            default => 'worker_failed',
-        })->countBy()->all();
+        $failures = DB::table('failed_jobs')->where('queue', 'amenity-search')->count();
 
-        return response()->json(['pending' => DB::table('jobs')->where('queue', 'amenity-search')->count(), 'failed' => array_sum($failures), 'failure_codes' => $failures], $exitCode === 0 ? 200 : 503);
+        return response()->json([
+            'pending' => DB::table('jobs')->where('queue', 'amenity-search')->count(),
+            'failed' => $failures,
+            'failure_codes' => $failures > 0 ? ['worker_failed' => $failures] : [],
+        ], $exitCode === 0 ? 200 : 503);
     }
 
     private function databaseProvider(): string

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SyncTicketSearchIndex;
 use App\Models\Block;
 use App\Models\Floor;
 use App\Models\Resident;
@@ -10,12 +11,14 @@ use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\TicketCategory;
 use App\Models\User;
+use App\Services\Search\TicketSearch;
 use App\Services\TicketNotificationService;
 use Database\Seeders\TicketPermissionsSeeder;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -301,6 +304,57 @@ class ResidentTicketTest extends TestCase
         ], ['Accept' => 'application/json'])->assertServerError();
         $this->assertSame(0, Ticket::where('creator_user_id', $this->residentUser->id)->count());
         $this->assertSame(['tickets/existing.png'], Storage::disk('local')->allFiles());
+    }
+
+    public function test_docker_ticket_search_scopes_results_and_falls_back_until_revision_is_published(): void
+    {
+        $host = getenv('TEST_ELASTICSEARCH_URL');
+        if (! $host) {
+            $this->markTestSkipped('Set TEST_ELASTICSEARCH_URL to a disposable Elasticsearch instance.');
+        }
+        $this->assertStringEndsWith('_test', DB::getDatabaseName());
+        $index = 'cassavas_ticket_test_'.strtolower(Str::random(12));
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.hosts' => [$host], 'search.drivers.elasticsearch.tickets_index' => $index]);
+        $url = '/api/v1/resident/tickets';
+        $resident = ['Authorization' => 'Bearer '.$this->residentToken];
+        $other = ['Authorization' => 'Bearer '.$this->otherToken];
+        $search = app(TicketSearch::class);
+
+        try {
+            $ticketId = $this->postJson($url, [
+                'title' => 'Máy bơm Zafiro', 'description' => 'Thông tin riêng của yêu cầu kỹ thuật thử nghiệm.', 'location' => 'Phong ky thuat',
+                'category_id' => $this->categoryId, 'apartment_id' => $this->apartmentId,
+            ], $resident)->assertCreated()->json('data.id');
+            $this->assertDatabaseHas('jobs', ['queue' => 'ticket-search']);
+            $job = new SyncTicketSearchIndex($ticketId);
+            $job->handle($search);
+            $this->getJson($url.'?search=zafro', $resident)->assertOk()->assertJsonPath('pagination.total', 1)->assertJsonPath('data.0.id', $ticketId);
+            $this->getJson($url.'?search=zafro', $other)->assertOk()->assertJsonPath('pagination.total', 0);
+            $blockId = DB::table('apartments')->where('id', $this->apartmentId)->value('block_id');
+            $manager = $this->ticketStaff('BUILDING_MANAGER', $blockId);
+            $this->getJson('/api/v1/admin/tickets?search=zafro', ['Authorization' => 'Bearer '.$this->createSessionToken($manager)])
+                ->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $ticketId);
+
+            $document = Http::get(rtrim($host, '/').'/'.$index.'/_doc/'.$ticketId)->throw()->json('_source');
+            $this->assertArrayNotHasKey('description', $document);
+            $this->assertArrayNotHasKey('creator_user_id', $document);
+
+            $ticket = Ticket::findOrFail($ticketId);
+            $ticket->update(['title' => 'Máy bơm Olivaro', 'version' => 2]);
+            $this->getJson($url.'?search=Olivaro', $resident)->assertOk()->assertJsonPath('pagination.total', 1);
+            $this->getJson($url.'?search=zafro', $resident)->assertOk()->assertJsonPath('pagination.total', 0);
+            $job->handle($search);
+            $this->getJson($url.'?search=olivro', $resident)->assertOk()->assertJsonPath('pagination.total', 1);
+
+            $ticket->delete();
+            $job->handle($search);
+            $search->publish($ticket->replicate()->forceFill(['id' => $ticketId, 'deleted_at' => null]));
+            $document = Http::get(rtrim($host, '/').'/'.$index.'/_doc/'.$ticketId)->throw()->json('_source');
+            $this->assertTrue($document['is_deleted']);
+            $this->getJson($url.'?search=olivro', $resident)->assertOk()->assertJsonPath('pagination.total', 0);
+        } finally {
+            Http::delete(rtrim($host, '/').'/'.$index);
+        }
     }
 
     public function test_resident_can_create_ticket_successfully(): void

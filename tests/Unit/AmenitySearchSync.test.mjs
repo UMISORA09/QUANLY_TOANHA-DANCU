@@ -118,12 +118,12 @@ test('rejects invalid queue counts and exposes only known failure codes', async 
   for (const response of [
     { pending: -1, failed: 0 },
     { pending: '0', failed: 0 },
-    { pending: 0, failed: 1, failure_codes: { algolia_write_failed: 1, [secret]: 1 } },
+    { pending: 0, failed: 1, failure_codes: { worker_failed: 1, [secret]: 1 } },
   ]) {
     fixture({ worker: () => json(response) });
     await assert.rejects(runAmenitySearchSync(options), error => {
       assert.ok(!error.message.includes(secret));
-      assert.match(error.message, /invalid_response|failed_jobs \(algolia_write_failed\)/);
+      assert.match(error.message, /invalid_response|failed_jobs \(worker_failed\)/);
       return true;
     });
     mock.restoreAll();

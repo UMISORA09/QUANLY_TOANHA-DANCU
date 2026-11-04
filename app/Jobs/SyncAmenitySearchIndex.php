@@ -2,13 +2,11 @@
 
 namespace App\Jobs;
 
-use App\Services\Search\AlgoliaTaskPendingException;
 use App\Services\Search\AmenitySearchSyncState;
-use App\Services\Search\Drivers\AlgoliaDriver;
+use App\Services\Search\Drivers\ElasticsearchDriver;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 use Throwable;
 
 class SyncAmenitySearchIndex implements ShouldQueue
@@ -19,50 +17,27 @@ class SyncAmenitySearchIndex implements ShouldQueue
 
     public int $backoff = 30;
 
-    public function __construct(public string $amenityId, public ?int $taskId = null, public ?int $version = null, public int $pollAttempt = 0) {}
+    public function __construct(public string $amenityId) {}
 
     public function handle(): void
     {
         $states = app(AmenitySearchSyncState::class);
-        $driver = new AlgoliaDriver(config('search.drivers.algolia', []));
-        $version = $this->version ?? null;
-        if (($this->taskId ?? null) !== null && $version !== null
-            && DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)
-                ->where(fn ($query) => $query->where('published_version', '>=', $version)->orWhere('desired_version', '>', $version))->exists()) {
+        $snapshot = $states->snapshot($this->amenityId);
+        if ($snapshot === null) {
             return;
         }
+
+        $version = $snapshot['version'];
         try {
-            if (($this->taskId ?? null) === null || $version === null) {
-                $snapshot = $states->snapshot($this->amenityId);
-                if ($snapshot === null) {
-                    return;
-                }
-                $version = $snapshot['version'];
-                $this->taskId = $snapshot['task_id'] ?? $driver->submitVersionedDocument($this->amenityId, $snapshot['document'], $version);
-                $this->version = $version;
-                DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)->where('desired_version', $version)->update([
-                    'task_id' => $this->taskId, 'task_version' => $version, 'status' => 'publishing', 'error_code' => null,
-                ]);
-            }
-            $driver->waitForTask('amenities', $this->taskId, 3);
+            (new ElasticsearchDriver(config('search.drivers.elasticsearch')))
+                ->publish($this->amenityId, $snapshot['document'], $version);
             $states->acknowledge($this->amenityId, $version);
-        } catch (AlgoliaTaskPendingException $exception) {
-            if (($this->pollAttempt ?? 0) >= 9) {
-                $this->recordFailure($version, 'publication_timeout');
-                throw new RuntimeException('Algolia publication exceeded the bounded retry window.');
-            }
-            self::dispatch($this->amenityId, $exception->taskId, $version, ($this->pollAttempt ?? 0) + 1)
-                ->onConnection('database')->onQueue('amenity-search')->delay(30);
         } catch (Throwable $exception) {
-            $this->recordFailure($version, 'sync_failed');
+            DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)->where('desired_version', $version)
+                ->whereColumn('published_version', '<', 'desired_version')
+                ->update(['status' => 'failed', 'error_code' => 'sync_failed', 'updated_at' => now()]);
+
             throw $exception;
         }
-    }
-
-    private function recordFailure(?int $version, string $code): void
-    {
-        DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)->where('desired_version', $version)
-            ->whereColumn('published_version', '<', 'desired_version')
-            ->update(['status' => 'failed', 'error_code' => $code, 'updated_at' => now()]);
     }
 }
