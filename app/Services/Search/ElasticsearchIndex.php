@@ -28,7 +28,7 @@ class ElasticsearchIndex
 
         $created = $this->client()->put('/'.$this->name, [
             'settings' => [
-                'number_of_replicas' => 0,
+                ...(! app()->isProduction() ? ['number_of_replicas' => 0] : []),
                 'analysis' => ['analyzer' => ['cassavas_text' => [
                     'type' => 'custom', 'tokenizer' => 'standard', 'filter' => ['lowercase', 'asciifolding'],
                 ]]],

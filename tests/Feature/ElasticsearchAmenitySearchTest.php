@@ -101,6 +101,21 @@ class ElasticsearchAmenitySearchTest extends TestCase
         $this->assertSame($before, DB::table('jobs')->where('queue', 'amenity-search')->count());
     }
 
+    public function test_production_index_creation_lets_elastic_cloud_manage_replicas(): void
+    {
+        $this->app->instance('env', 'production');
+        Http::fakeSequence('https://elastic.example/cassavas_test')
+            ->pushStatus(404)
+            ->push(['acknowledged' => true]);
+
+        $index = new ElasticsearchIndex(['hosts' => ['https://elastic.example'], 'api_key' => 'test-key'], 'cassavas_test');
+        $index->configure(['title' => ['type' => 'text', 'analyzer' => 'cassavas_text']]);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
+            && ! array_key_exists('number_of_replicas', $request['settings'])
+            && $request['mappings']['properties']['title']['analyzer'] === 'cassavas_text');
+    }
+
     public function test_ticket_backfill_batch_is_written_in_the_business_transaction(): void
     {
         $jobs = DB::table('jobs')->where('queue', 'ticket-search');
