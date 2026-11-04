@@ -5,9 +5,9 @@ namespace App\Services;
 use App\Models\SatisfactionSurvey;
 use App\Models\SurveyQuestion;
 use App\Models\User;
+use App\Services\Search\SurveySearch;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -24,15 +24,6 @@ class SatisfactionSurveyService
     {
         $query = SatisfactionSurvey::query()->with(['targetBlock', 'questions']);
         $this->accessService->scopeForManager($user, $query);
-
-        // Search
-        if (! empty($filters['search'])) {
-            $search = trim($filters['search']);
-            $query->where(function (Builder $q) use ($search): void {
-                $q->where('title', 'like', "%{$search}%")
-                    ->orWhere('survey_code', 'like', "%{$search}%");
-            });
-        }
 
         // Filter by block
         if (! empty($filters['target_block_id'])) {
@@ -55,6 +46,10 @@ class SatisfactionSurveyService
                 ->where('end_date', '<', $today);
         } elseif ($status === 'DISABLED') {
             $query->where('is_active', 0);
+        }
+
+        if (! empty($filters['search'])) {
+            app(SurveySearch::class)->filter($query, trim((string) $filters['search']));
         }
 
         $paginator = $query->withCount(['responses', 'questions'])

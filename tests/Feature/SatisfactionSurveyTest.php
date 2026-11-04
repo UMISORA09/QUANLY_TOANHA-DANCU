@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SyncSurveySearchIndex;
 use App\Models\Apartment;
 use App\Models\Block;
 use App\Models\Floor;
@@ -14,11 +15,13 @@ use App\Models\SurveyResponseDetail;
 use App\Models\User;
 use App\Services\ResidentSurveyService;
 use App\Services\SatisfactionSurveyService;
+use App\Services\Search\SurveySearch;
 use App\Services\SurveyAnalyticsService;
 use Database\Seeders\SatisfactionSurveySeeder;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -205,6 +208,47 @@ class SatisfactionSurveyTest extends TestCase
     }
 
     // 1. Manager tạo khảo sát thành công với cả 4 loại câu hỏi
+    public function test_docker_survey_search_keeps_manager_scope_and_sql_schedule_filters(): void
+    {
+        $host = getenv('TEST_ELASTICSEARCH_URL');
+        if (! $host) {
+            $this->markTestSkipped('Set TEST_ELASTICSEARCH_URL to a disposable Elasticsearch instance.');
+        }
+        $this->assertStringEndsWith('_test', DB::getDatabaseName());
+        $index = 'cassavas_survey_test_'.strtolower(Str::random(12));
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.hosts' => [$host], 'search.drivers.elasticsearch.surveys_index' => $index]);
+        $search = app(SurveySearch::class);
+        $manager = ['Authorization' => 'Bearer '.$this->managerToken];
+        $other = ['Authorization' => 'Bearer '.$this->otherBlockManagerToken];
+        $url = '/api/v1/management/surveys';
+
+        try {
+            $survey = SatisfactionSurvey::create([
+                'survey_code' => 'QA-'.Str::upper(Str::random(12)), 'title' => 'Khảo sát Zafiro',
+                'description' => 'Mô tả chỉ được lưu ở MySQL.', 'target_block_id' => $this->blockA->id,
+                'start_date' => today(), 'end_date' => today()->addDay(), 'is_active' => true,
+                'created_by' => $this->managerUser->id, 'version' => 1,
+            ]);
+            $this->assertDatabaseHas('jobs', ['queue' => 'survey-search']);
+            $this->getJson($url.'?search=Zafiro', $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+            $job = new SyncSurveySearchIndex($survey->id);
+            $job->handle($search);
+            $this->getJson($url.'?search=zafro&status=ACTIVE', $manager)->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $survey->id);
+            $this->getJson($url.'?search='.$survey->survey_code, $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+            $this->getJson($url.'?search=zafro', $other)->assertOk()->assertJsonPath('meta.total', 0);
+
+            $source = Http::get(rtrim($host, '/').'/'.$index.'/_doc/'.$survey->id)->throw()->json('_source');
+            $this->assertSame(['revision', 'is_deleted', 'title', 'survey_code'], array_keys($source));
+            $survey->update(['title' => 'Khảo sát Olivaro', 'is_active' => false, 'version' => 2]);
+            $this->getJson($url.'?search=Olivaro', $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+            $job->handle($search);
+            $this->getJson($url.'?search=olivro&status=ACTIVE', $manager)->assertOk()->assertJsonPath('meta.total', 0);
+            $this->getJson($url.'?search=olivro&status=DISABLED', $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+        } finally {
+            Http::delete(rtrim($host, '/').'/'.$index);
+        }
+    }
+
     public function test_01_manager_can_create_survey_with_all_question_types(): void
     {
         $payload = [

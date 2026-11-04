@@ -45,6 +45,7 @@ return [
         ],
 
         'elasticsearch' => [
+            'surveys_index' => env('ELASTICSEARCH_SURVEYS_INDEX', 'cassavas_surveys_v1'),
             'hosts' => explode(',', env('ELASTICSEARCH_HOSTS', 'http://127.0.0.1:9200')),
             'username' => env('ELASTICSEARCH_USER', null),
             'password' => env('ELASTICSEARCH_PASS', null),

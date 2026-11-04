@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Search\SurveySearch;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -38,6 +39,15 @@ class SatisfactionSurvey extends Model
         'version',
         'eligible_apartment_ids',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (SatisfactionSurvey $survey): void {
+            if ($survey->wasRecentlyCreated || $survey->wasChanged('version')) {
+                app(SurveySearch::class)->queue($survey->id);
+            }
+        });
+    }
 
     protected $casts = [
         'is_active' => 'boolean',
