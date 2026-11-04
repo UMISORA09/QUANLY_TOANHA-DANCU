@@ -8,6 +8,7 @@ use App\Services\AmenityService;
 use App\Services\Search\AmenitySearchSyncState;
 use App\Services\Search\Drivers\ElasticsearchDriver;
 use App\Services\Search\ElasticsearchIndex;
+use App\Services\Search\TicketSearch;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -98,6 +99,21 @@ class ElasticsearchAmenitySearchTest extends TestCase
             DB::rollBack();
         }
         $this->assertSame($before, DB::table('jobs')->where('queue', 'amenity-search')->count());
+    }
+
+    public function test_ticket_backfill_batch_is_written_in_the_business_transaction(): void
+    {
+        $jobs = DB::table('jobs')->where('queue', 'ticket-search');
+        $before = $jobs->count();
+        DB::beginTransaction();
+        try {
+            app(TicketSearch::class)->queueMany([(string) Str::uuid(), (string) Str::uuid()]);
+            $this->assertSame($before + 2, $jobs->count());
+        } finally {
+            DB::rollBack();
+        }
+
+        $this->assertSame($before, $jobs->count());
     }
 
     public function test_public_search_and_suggestions_require_a_real_session(): void

@@ -30,9 +30,7 @@ class SyncSuggestionSearch extends Command
             $search->configure();
         }
         $suggestions->chunkById(100, function ($rows) use ($search): void {
-            foreach ($rows as $row) {
-                $search->queue($row->id);
-            }
+            $search->queueMany($rows->pluck('id')->all());
         });
 
         return self::SUCCESS;

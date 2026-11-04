@@ -30,9 +30,7 @@ class SyncTicketSearch extends Command
             $search->configure();
         }
         $tickets->chunkById(100, function ($rows) use ($search): void {
-            foreach ($rows as $ticket) {
-                $search->queue($ticket->id);
-            }
+            $search->queueMany($rows->pluck('id')->all());
         });
 
         return self::SUCCESS;

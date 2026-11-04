@@ -5,6 +5,7 @@ namespace App\Services\Search;
 use App\Jobs\SyncSuggestionSearchIndex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use LogicException;
 
 class SuggestionSearch
@@ -16,7 +17,13 @@ class SuggestionSearch
 
     public function queue(string $id): void
     {
-        if (! self::enabled()) {
+        $this->queueMany([$id]);
+    }
+
+    /** @param list<string> $ids */
+    public function queueMany(array $ids): void
+    {
+        if ($ids === [] || ! self::enabled()) {
             return;
         }
 
@@ -25,7 +32,7 @@ class SuggestionSearch
             throw new LogicException('Suggestion search jobs must be written in the business transaction.');
         }
 
-        SyncSuggestionSearchIndex::dispatch($id)->onConnection('database')->onQueue('suggestion-search')->beforeCommit();
+        Queue::connection('database')->bulk(array_map(fn (string $id): SyncSuggestionSearchIndex => new SyncSuggestionSearchIndex($id), $ids), '', 'suggestion-search');
     }
 
     public function configure(): void
