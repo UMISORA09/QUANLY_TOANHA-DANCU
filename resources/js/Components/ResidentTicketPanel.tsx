@@ -1,3 +1,4 @@
+import { TicketRating } from './TicketRating';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TicketImage } from './TicketImage';
 import { TicketDiscussion } from './TicketDiscussion';
@@ -1530,6 +1531,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
             )}
           </div>
 
+          {detailTicket.status === 'CLOSED' && <TicketRating key={detailTicket.id} ticketId={detailTicket.id} version={detailTicket.version} />}
           <TicketDiscussion key={detailTicket.id} ticketId={detailTicket.id} active={!isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId && !previewImage} />
         </div>
       )}

@@ -861,4 +861,86 @@ class ResidentTicketTest extends TestCase
             Cache::forget('auth_bearer_user_id:'.hash('sha256', $this->residentToken));
         }
     }
+
+    private function ratingTicket(string $status = 'CLOSED'): Ticket
+    {
+        return Ticket::create([
+            'ticket_number' => 'RATE-'.Str::random(12), 'creator_user_id' => $this->residentUser->id,
+            'apartment_id' => $this->apartmentId, 'category_id' => $this->categoryId,
+            'title' => 'Sự cố cần đánh giá', 'description' => 'Kiểm tra đánh giá sau nghiệm thu.',
+            'location' => 'Phòng khách', 'priority' => 'MEDIUM', 'status' => $status, 'version' => 1,
+        ]);
+    }
+
+    public function test_ticket_rating_is_recorded_once_without_changing_workflow(): void
+    {
+        $ticket = $this->ratingTicket();
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $this->getJson('/api/v1/tickets/'.$ticket->id.'/rating')->assertOk()->assertJsonPath('can_rate', true);
+        $path = '/api/v1/resident/tickets/'.$ticket->id.'/rating';
+        $data = ['version' => 1, 'rating_stars' => 5, 'review_comment' => 'Sửa chữa tốt', 'resident_user_id' => $this->otherResidentUser->id];
+        $first = $this->postJson($path, $data)->assertCreated()->assertJsonPath('can_rate', false);
+        $this->postJson($path, $data)->assertOk()->assertJsonPath('data.id', $first->json('data.id'));
+        $this->assertSame(1, DB::table('ticket_ratings')->where('ticket_id', $ticket->id)->count());
+        $this->assertDatabaseHas('ticket_ratings', ['ticket_id' => $ticket->id, 'resident_user_id' => $this->residentUser->id, 'rating_stars' => 5]);
+        $this->assertSame(1, DB::table('audit_logs')->where('record_id', $first->json('data.id'))->count());
+        $this->assertSame(1, $ticket->fresh()->version);
+        $this->assertSame('CLOSED', $ticket->fresh()->status);
+        $this->postJson($path, ['version' => 1, 'rating_stars' => 2])->assertConflict();
+        $this->assertSame(0, DB::table('ticket_history')->where('ticket_id', $ticket->id)->count());
+        $admin = $this->ticketStaff('SUPER_ADMIN', profile: false);
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($admin));
+        $this->getJson('/api/v1/tickets/'.$ticket->id.'/rating')->assertOk()->assertJsonPath('data.rating_stars', 5)->assertJsonPath('can_rate', false);
+        $this->postJson($path, $data)->assertForbidden();
+    }
+
+    public function test_ticket_rating_requires_completed_ticket_and_current_version(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        foreach (['NEW', 'RECEIVED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'] as $status) {
+            $ticket = $this->ratingTicket($status);
+            $this->postJson('/api/v1/resident/tickets/'.$ticket->id.'/rating', ['version' => 1, 'rating_stars' => 4])->assertConflict();
+            $this->assertDatabaseMissing('ticket_ratings', ['ticket_id' => $ticket->id]);
+        }
+        $ticket = $this->ratingTicket();
+        $this->postJson('/api/v1/resident/tickets/'.$ticket->id.'/rating', ['version' => 2, 'rating_stars' => 4])->assertConflict();
+        $this->assertDatabaseMissing('ticket_ratings', ['ticket_id' => $ticket->id]);
+    }
+
+    public function test_ticket_rating_checks_identity_residency_and_validation(): void
+    {
+        $ticket = $this->ratingTicket();
+        $path = '/api/v1/resident/tickets/'.$ticket->id.'/rating';
+        $this->getJson('/api/v1/tickets/'.$ticket->id.'/rating')->assertUnauthorized();
+        $this->postJson($path, ['version' => 1, 'rating_stars' => 5])->assertUnauthorized();
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        foreach ([0, 6, 1.5, 'invalid'] as $stars) {
+            $this->postJson($path, ['version' => 1, 'rating_stars' => $stars])->assertUnprocessable()->assertJsonValidationErrors('rating_stars');
+        }
+        $this->postJson($path, ['version' => 1, 'rating_stars' => 5, 'review_comment' => str_repeat('a', 1001)])->assertUnprocessable();
+        $this->withHeader('Authorization', 'Bearer '.$this->otherToken);
+        $this->postJson($path, ['version' => 1, 'rating_stars' => 5])->assertForbidden();
+        Resident::where('user_id', $this->otherResidentUser->id)->update(['apartment_id' => $this->apartmentId]);
+        $this->postJson($path, ['version' => 1, 'rating_stars' => 5])->assertForbidden();
+        Resident::where('user_id', $this->residentUser->id)->update(['is_active' => false]);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $this->getJson('/api/v1/tickets/'.$ticket->id.'/rating')->assertOk()->assertJsonPath('can_rate', false);
+        $this->postJson($path, ['version' => 1, 'rating_stars' => 5])->assertForbidden();
+        $ticket->delete();
+        $this->getJson('/api/v1/tickets/'.$ticket->id.'/rating')->assertNotFound();
+        $this->assertDatabaseMissing('ticket_ratings', ['ticket_id' => $ticket->id]);
+    }
+
+    public function test_ticket_rating_rolls_back_if_audit_fails(): void
+    {
+        $ticket = $this->ratingTicket();
+        DB::listen(function ($query): void {
+            if (str_starts_with(strtolower($query->sql), 'insert') && str_contains($query->sql, 'audit_logs')) {
+                throw new \RuntimeException('QA audit failure');
+            }
+        });
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
+            ->postJson('/api/v1/resident/tickets/'.$ticket->id.'/rating', ['version' => 1, 'rating_stars' => 5])->assertServerError();
+        $this->assertDatabaseMissing('ticket_ratings', ['ticket_id' => $ticket->id]);
+    }
 }

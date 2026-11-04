@@ -47,6 +47,7 @@ use App\Http\Controllers\StaffScheduleController;
 use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\TicketDiscussionController;
 use App\Http\Controllers\TicketManagementController;
+use App\Http\Controllers\TicketRatingController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -1000,3 +1001,6 @@ Route::fallback([PublicContentController::class, 'missing']);
 Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:30,1');
 
 Route::post('/api/v1/internal/amenity-search/reindex', AmenitySearchSyncController::class)->middleware('throttle:6,1');
+
+Route::get('/api/v1/tickets/{id}/rating', [TicketRatingController::class, 'show'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/resident/tickets/{id}/rating', [TicketRatingController::class, 'store'])->middleware(['auth.bearer:strict', 'throttle:30,1']);
