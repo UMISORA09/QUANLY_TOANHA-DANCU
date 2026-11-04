@@ -38,7 +38,7 @@ async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET'
   return data;
 }
 
-export async function runAmenitySearchSync({ baseUrl, secret, reindex = false }) {
+export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, allQueues = false }) {
   let url;
   try {
     url = new URL(baseUrl);
@@ -57,20 +57,23 @@ export async function runAmenitySearchSync({ baseUrl, secret, reindex = false })
   if (health.status !== 'healthy' || health.database !== 'healthy') {
     throw new Error('Health preflight: database_unhealthy');
   }
-  const schema = await requestJson(baseUrl, '/api/v1/internal/amenity-search/process?inspect=schema', secret, 'Schema preflight', 25_000);
-  if (requiredTables.some(table => schema.tables?.[table] !== true)) {
+  const scope = allQueues ? 'scope=all' : '';
+  const workerPath = '/api/v1/internal/amenity-search/process';
+  const schema = await requestJson(baseUrl, workerPath + '?inspect=schema' + (scope ? '&' + scope : ''), secret, 'Schema preflight', 25_000);
+  const tables = allQueues ? [...requiredTables, 'amenity_search_states', 'tickets', 'announcements', 'suggestions', 'satisfaction_surveys'] : requiredTables;
+  if (tables.some(table => schema.tables?.[table] !== true)) {
     throw new Error('Schema preflight: schema_missing');
   }
 
   if (reindex) {
-    await requestJson(baseUrl, '/api/v1/internal/amenity-search/reindex', secret, 'Reindex', 65_000, 'POST');
+    await requestJson(baseUrl, '/api/v1/internal/amenity-search/reindex' + (scope ? '?' + scope : ''), secret, 'Reindex', 65_000, 'POST');
   }
 
   let pending = 0;
   for (let batch = 0; batch < 45; batch++) {
     // A lost response may already have processed a job; only the next scheduled run resumes work.
     const settled = await Promise.allSettled(Array.from({ length: 3 }, () =>
-      requestJson(baseUrl, '/api/v1/internal/amenity-search/process', secret, 'Worker', 55_000)));
+      requestJson(baseUrl, workerPath + (scope ? '?' + scope : ''), secret, 'Worker', 55_000)));
     const rejected = settled.find(result => result.status === 'rejected');
     if (rejected) {
       throw rejected.reason;
@@ -102,6 +105,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       baseUrl: process.env.BASE_URL,
       secret: process.env.SYNC_SECRET,
       reindex: process.env.REINDEX === 'true',
+      allQueues: process.env.ALL_SEARCH_QUEUES === 'true',
     })));
   } catch (error) {
     console.error(`::error::${error.message}`);
