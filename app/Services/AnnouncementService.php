@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Services\Search\AnnouncementSearch;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -151,6 +152,7 @@ class AnnouncementService
                     DB::table('announcements')->insert([...$values, 'requires_acknowledgement' => (bool) ($data['requires_acknowledgement'] ?? false), 'id' => $id, 'author_user_id' => $user->id, 'status' => 'DRAFT', 'version' => 1, 'created_at' => now()]);
                 }
                 $this->files($id, $data, $created, $user);
+                app(AnnouncementSearch::class)->queue($id);
                 $this->audit($user, $id, $id === ($data['id'] ?? null) ? 'INSERT' : 'UPDATE', 'Lưu nội dung bảng tin');
 
                 return $id;
@@ -295,6 +297,7 @@ class AnnouncementService
                 $values['deleted_at'] = now();
             }
             DB::table('announcements')->where('id', $id)->update($values);
+            app(AnnouncementSearch::class)->queue($id);
             $this->audit($user, $id, 'UPDATE', $action.': '.($data['reason'] ?? 'Đăng bảng tin'));
         });
     }

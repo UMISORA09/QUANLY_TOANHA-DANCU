@@ -2,6 +2,7 @@
 
 use App\Services\AmenityBookingPaymentService;
 use App\Services\Freshness\FreshnessService;
+use App\Services\Search\AnnouncementSearch;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -22,3 +23,7 @@ Schedule::command('queue:work database --queue=amenity-search --stop-when-empty 
     ->when(fn (): bool => (bool) config('search.drivers.algolia.sync_enabled'));
 
 Schedule::command('announcements:cleanup-uploads')->hourly()->withoutOverlapping();
+
+Schedule::command('queue:work database --queue=announcement-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('announcement-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => AnnouncementSearch::enabled());
