@@ -845,7 +845,8 @@ class SatisfactionSurveyTest extends TestCase
 
     public function test_production_seeder_only_grants_permissions_without_creating_demo_surveys(): void
     {
-        $this->assertSame(0, SatisfactionSurvey::count());
+        $surveysBefore = SatisfactionSurvey::orderBy('id')->get()->toArray();
+        $questionsBefore = SurveyQuestion::orderBy('id')->get()->toArray();
         $this->app->instance('env', 'production');
 
         try {
@@ -854,8 +855,8 @@ class SatisfactionSurveyTest extends TestCase
             $grantCount = DB::table('role_permissions')->count();
             $this->artisan('db:seed', ['--class' => SatisfactionSurveySeeder::class, '--force' => true, '--no-interaction' => true])->assertSuccessful();
 
-            $this->assertSame(0, SatisfactionSurvey::count());
-            $this->assertSame(0, SurveyQuestion::count());
+            $this->assertSame($surveysBefore, SatisfactionSurvey::orderBy('id')->get()->toArray());
+            $this->assertSame($questionsBefore, SurveyQuestion::orderBy('id')->get()->toArray());
             $this->assertSame(5, Permission::where('module', 'SURVEY')->count());
             $this->assertSame($permissionCount, DB::table('permissions')->count());
             $this->assertSame($grantCount, DB::table('role_permissions')->count());
@@ -927,5 +928,28 @@ class SatisfactionSurveyTest extends TestCase
         $result = app(SurveyAnalyticsService::class)->getSurveyAnalytics($survey, $this->managerUser);
         $this->assertSame(0, $result['kpis']['eligible_apartments_count']);
         $this->assertNull($result['kpis']['participation_rate_percent']);
+    }
+
+    public function test_overall_csat_counts_answers_across_questions_instead_of_averaging_people(): void
+    {
+        $survey = $this->createRegressionSurvey();
+        $questions = [];
+        foreach ([1, 2] as $order) {
+            $questions[] = SurveyQuestion::create(['survey_id' => $survey->id, 'question_order' => $order,
+                'question_text' => 'Đánh giá '.$order, 'question_type' => SurveyQuestion::TYPE_RATING_1_TO_5, 'is_required' => false]);
+        }
+        $otherApartment = Apartment::create(['block_id' => $this->blockA->id, 'floor_id' => $this->aptA->floor_id,
+            'apartment_number' => 'CSAT-'.Str::random(8), 'gross_floor_area_sqm' => 80, 'net_usable_area_sqm' => 70]);
+        foreach ([[$this->aptA->id, $this->residentUser->id, [5, 1]], [$otherApartment->id, $this->otherBlockResidentUser->id, [5]]] as [$apartment, $user, $scores]) {
+            $response = SurveyResponse::create(['survey_id' => $survey->id, 'apartment_id' => $apartment, 'resident_user_id' => $user, 'submitted_at' => now()]);
+            foreach ($scores as $index => $score) {
+                SurveyResponseDetail::create(['response_id' => $response->id, 'question_id' => $questions[$index]->id, 'numeric_score' => $score]);
+            }
+        }
+        $result = $this->withToken($this->managerToken)->getJson('/api/v1/management/surveys/'.$survey->id.'/analytics')->assertOk();
+        $result->assertJsonPath('data.kpis.total_responses', 2)->assertJsonPath('data.kpis.total_valid_ratings', 3)
+            ->assertJsonPath('data.kpis.satisfied_ratings_count', 2);
+        $this->assertEquals(66.67, $result->json('data.kpis.overall_csat_percentage'));
+        $this->assertEquals(3.67, $result->json('data.kpis.overall_average_rating'));
     }
 }
