@@ -6,6 +6,7 @@ use App\Services\Search\BookingCodeSearch;
 use App\Services\Search\TicketSearch;
 use App\Services\Search\AnnouncementSearch;
 use App\Services\Search\SuggestionSearch;
+use App\Services\Search\SurveySearch;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -42,3 +43,7 @@ Schedule::command('queue:work database --queue=announcement-search --stop-when-e
 Schedule::command('queue:work database --queue=suggestion-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
     ->everyMinute()->name('suggestion-search-sync')->withoutOverlapping()
     ->when(fn (): bool => SuggestionSearch::enabled());
+
+Schedule::command('queue:work database --queue=survey-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('survey-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => SurveySearch::enabled());

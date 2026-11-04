@@ -38,6 +38,7 @@ return [
         ],
 
         'elasticsearch' => [
+            'surveys_index' => env('ELASTICSEARCH_SURVEYS_INDEX', 'cassavas_surveys_v1'),
             'suggestions_index' => env('ELASTICSEARCH_SUGGESTIONS_INDEX', 'cassavas_suggestions_v1'),
             'announcements_index' => env('ELASTICSEARCH_ANNOUNCEMENTS_INDEX', 'cassavas_announcements_v1'),
             'tickets_index' => env('ELASTICSEARCH_TICKETS_INDEX', 'cassavas_tickets_v1'),
