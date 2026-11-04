@@ -1,5 +1,7 @@
 <?php
 
+$driver = env('SEARCH_DRIVER', 'smart');
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -9,7 +11,7 @@ return [
     | Supported drivers: "smart", "database", "meilisearch", "elasticsearch"
     |
     */
-    'default' => env('SEARCH_DRIVER', 'smart'),
+    'default' => $driver === 'algolia' ? 'smart' : $driver,
     'sync_secret' => env('AMENITY_SEARCH_SYNC_SECRET', ''),
 
     /*
