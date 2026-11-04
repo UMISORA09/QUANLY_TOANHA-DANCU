@@ -97,7 +97,7 @@ class ElasticsearchIndex
      * @param  list<string>  $fields
      * @return list<string>|null
      */
-    public function matchingRevisions(callable $readScope, string $keyword, array $fields): ?array
+    public function matchingRevisions(callable $readScope, string $keyword, array $fields, bool $requireAllTerms = false): ?array
     {
         $revisions = $readScope();
         if ($revisions === []) {
@@ -114,7 +114,7 @@ class ElasticsearchIndex
                     ['terms' => ['revision' => array_map(fn (string $id, int $version): string => $id.':'.$version, array_keys($revisions), array_values($revisions))]],
                     ['term' => ['is_deleted' => false]],
                 ]]],
-                'post_filter' => ['multi_match' => ['query' => $keyword, 'fields' => $fields, 'fuzziness' => 'AUTO']],
+                'post_filter' => ['multi_match' => ['query' => $keyword, 'fields' => $fields, 'fuzziness' => 'AUTO', 'operator' => $requireAllTerms ? 'and' : 'or']],
                 'aggs' => ['current_scope' => ['filter' => ['match_all' => (object) []]]],
             ]);
         } catch (ConnectionException) {
