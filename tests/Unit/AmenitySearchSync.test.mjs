@@ -17,7 +17,7 @@ function fixture({ health, schema, worker, reindex } = {}) {
     if (parsed.pathname === '/health') {
       return health ? health() : json({ status: 'healthy', database: 'healthy' });
     }
-    if (parsed.search === '?inspect=schema') {
+    if (parsed.searchParams.get('inspect') === 'schema') {
       return schema ? schema() : json({ tables });
     }
     if (parsed.pathname.endsWith('/reindex')) {
@@ -37,6 +37,15 @@ test('checks readiness before processing, authenticates only internal APIs and n
   assert.equal(calls[1].init.headers.Authorization, `Bearer ${secret}`);
   assert.ok(calls.every(call => call.init.method === 'GET' && call.init.redirect === 'error'));
   assert.equal(calls.filter(call => call.url.endsWith('/process')).length, 3);
+});
+
+test('checks all search tables and sends the same queue scope to reindex and workers', async () => {
+  const calls = fixture({ schema: () => json({ tables: { ...tables, amenity_search_states: true, tickets: true,
+    announcements: true, suggestions: true, satisfaction_surveys: true } }) });
+  await runAmenitySearchSync({ ...options, allQueues: true, reindex: true });
+  assert.equal(new URL(calls[1].url).searchParams.get('inspect'), 'schema');
+  assert.ok(calls.slice(1).every(call => new URL(call.url).searchParams.get('scope') === 'all'));
+  assert.equal(calls[2].init.method, 'POST');
 });
 
 test('HTTP failures, invalid JSON and unhealthy databases stop before any worker or reindex', async () => {

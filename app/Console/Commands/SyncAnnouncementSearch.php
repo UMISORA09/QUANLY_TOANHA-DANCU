@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class SyncAnnouncementSearch extends Command
 {
-    protected $signature = 'search:sync-announcements {--dry-run}';
+    protected $signature = 'search:sync-announcements {--dry-run} {--queue-only : Skip creating the remote index in this process}';
 
     protected $description = 'Queue Elasticsearch synchronization for current and archived announcements';
 
@@ -26,7 +26,9 @@ class SyncAnnouncementSearch extends Command
             return self::FAILURE;
         }
 
-        $search->configure();
+        if (! $this->option('queue-only')) {
+            $search->configure();
+        }
         $announcements->chunkById(100, function ($rows) use ($search): void {
             foreach ($rows as $row) {
                 $search->queue($row->id);

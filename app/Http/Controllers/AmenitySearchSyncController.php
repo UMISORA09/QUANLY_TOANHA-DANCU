@@ -11,6 +11,15 @@ use PDOException;
 
 class AmenitySearchSyncController extends Controller
 {
+    private const SEARCH_COMMANDS = [
+        'amenity-search' => 'search:sync-amenities',
+        'booking-code-search' => 'search:sync-booking-codes',
+        'ticket-search' => 'search:sync-tickets',
+        'announcement-search' => 'search:sync-announcements',
+        'suggestion-search' => 'search:sync-suggestions',
+        'survey-search' => 'search:sync-surveys',
+    ];
+
     public function __invoke(Request $request): JsonResponse
     {
         $secret = (string) config('search.sync_secret', '');
@@ -37,38 +46,44 @@ class AmenitySearchSyncController extends Controller
 
     private function synchronize(Request $request): JsonResponse
     {
+        $all = $request->query('scope') === 'all';
+        $commands = $all ? self::SEARCH_COMMANDS : ['amenity-search' => self::SEARCH_COMMANDS['amenity-search']];
+        $queues = array_keys($commands);
+
         if ($request->isMethod('get') && $request->query('inspect') === 'schema') {
             return response()->json([
                 'database_provider' => $this->databaseProvider(),
-                'tables' => collect(['amenity_bookings', 'amenity_booking_payments', 'amenities', 'jobs', 'failed_jobs'])
+                'tables' => collect(['amenity_bookings', 'amenity_booking_payments', 'amenities', 'jobs', 'failed_jobs', ...($all ? ['amenity_search_states', 'tickets', 'announcements', 'suggestions', 'satisfaction_surveys'] : [])])
                     ->mapWithKeys(fn (string $table): array => [$table => Schema::hasTable($table)])->all(),
             ]);
         }
 
         if ($request->isMethod('post')) {
-            abort_if(DB::table('jobs')->where('queue', 'amenity-search')->exists(), 409, 'Synchronization is already queued.');
-            DB::transaction(function (): void {
+            abort_if(DB::table('jobs')->whereIn('queue', $queues)->exists(), 409, 'Synchronization is already queued.');
+            DB::transaction(function () use ($commands, $queues): void {
                 DB::table('amenities')->orderBy('id')->lockForUpdate()->first();
-                abort_if(DB::table('jobs')->where('queue', 'amenity-search')->exists(), 409, 'Synchronization is already queued.');
-                $failedIds = DB::table('failed_jobs')->where('connection', 'database')->where('queue', 'amenity-search')->pluck('uuid')->all();
+                abort_if(DB::table('jobs')->whereIn('queue', $queues)->exists(), 409, 'Synchronization is already queued.');
+                $failedIds = DB::table('failed_jobs')->where('connection', 'database')->whereIn('queue', $queues)->pluck('uuid')->all();
                 if ($failedIds !== []) {
                     abort_unless(Artisan::call('queue:retry', ['id' => $failedIds]) === 0, 503);
                 }
-                abort_unless(Artisan::call('search:sync-amenities') === 0, 503);
+                foreach ($commands as $command) {
+                    abort_unless(Artisan::call($command, $command === 'search:sync-amenities' ? [] : ['--queue-only' => true]) === 0, 503);
+                }
             });
 
-            return response()->json(['pending' => DB::table('jobs')->where('queue', 'amenity-search')->count()], 202);
+            return response()->json(['pending' => DB::table('jobs')->whereIn('queue', $queues)->count()], 202);
         }
 
         $exitCode = 0;
-        if (DB::table('jobs')->where('queue', 'amenity-search')->exists()) {
-            $exitCode = Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'amenity-search', '--once' => true, '--tries' => 5, '--timeout' => 45]);
+        if (DB::table('jobs')->whereIn('queue', $queues)->exists()) {
+            $exitCode = Artisan::call('queue:work', ['connection' => 'database', '--queue' => implode(',', $queues), '--once' => true, '--tries' => 5, '--timeout' => 45]);
         }
 
-        $failures = DB::table('failed_jobs')->where('queue', 'amenity-search')->count();
+        $failures = DB::table('failed_jobs')->whereIn('queue', $queues)->count();
 
         return response()->json([
-            'pending' => DB::table('jobs')->where('queue', 'amenity-search')->count(),
+            'pending' => DB::table('jobs')->whereIn('queue', $queues)->count(),
             'failed' => $failures,
             'failure_codes' => $failures > 0 ? ['worker_failed' => $failures] : [],
         ], $exitCode === 0 ? 200 : 503);

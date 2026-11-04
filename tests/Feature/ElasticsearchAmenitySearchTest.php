@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\SyncAmenitySearchIndex;
+use App\Jobs\SyncTicketSearchIndex;
 use App\Services\AmenityService;
 use App\Services\Search\AmenitySearchSyncState;
 use App\Services\Search\Drivers\ElasticsearchDriver;
@@ -113,6 +114,20 @@ class ElasticsearchAmenitySearchTest extends TestCase
         $this->withHeader('Authorization', '')->getJson('/api/v1/internal/amenity-search/process')->assertUnauthorized();
         $this->withToken('wrong')->getJson('/api/v1/internal/amenity-search/process')->assertUnauthorized();
         $this->withToken(str_repeat('a', 40))->getJson('/api/v1/internal/amenity-search/process')->assertOk();
+    }
+
+    public function test_production_worker_can_process_all_search_queues_without_touching_other_jobs(): void
+    {
+        $secret = str_repeat('w', 40);
+        config(['search.sync_secret' => $secret]);
+        app('queue')->connection('database')->push(new SyncTicketSearchIndex((string) Str::uuid()), '', 'ticket-search');
+        $this->withToken($secret)->getJson('/api/v1/internal/amenity-search/process?inspect=schema&scope=all')
+            ->assertOk()->assertJsonPath('tables.tickets', true)->assertJsonPath('tables.satisfaction_surveys', true);
+        Artisan::shouldReceive('call')->once()->with('queue:work', [
+            'connection' => 'database', '--queue' => 'amenity-search,booking-code-search,ticket-search,announcement-search,suggestion-search,survey-search',
+            '--once' => true, '--tries' => 5, '--timeout' => 45,
+        ])->andReturn(0);
+        $this->getJson('/api/v1/internal/amenity-search/process?scope=all')->assertOk()->assertJsonPath('pending', 1);
     }
 
     public function test_protected_reindex_queues_existing_rows_once(): void

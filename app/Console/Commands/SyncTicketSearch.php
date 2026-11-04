@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 
 class SyncTicketSearch extends Command
 {
-    protected $signature = 'search:sync-tickets {--dry-run}';
+    protected $signature = 'search:sync-tickets {--dry-run} {--queue-only : Skip creating the remote index in this process}';
 
     protected $description = 'Queue Elasticsearch synchronization for current and archived tickets';
 
@@ -26,7 +26,9 @@ class SyncTicketSearch extends Command
             return self::FAILURE;
         }
 
-        $search->configure();
+        if (! $this->option('queue-only')) {
+            $search->configure();
+        }
         $tickets->chunkById(100, function ($rows) use ($search): void {
             foreach ($rows as $ticket) {
                 $search->queue($ticket->id);
