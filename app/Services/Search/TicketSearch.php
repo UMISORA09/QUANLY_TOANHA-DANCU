@@ -75,6 +75,7 @@ class TicketSearch
         }
 
         $readScope = fn () => (clone $scope)->limit(10001)->pluck('version', 'id')->all();
+
         return $this->index()->matchingRevisions($readScope, $keyword, ['ticket_number^3', 'title^2', 'location']);
     }
 
