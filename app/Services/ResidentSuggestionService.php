@@ -18,7 +18,6 @@ class ResidentSuggestionService
     public function __construct(
         public SuggestionAccessService $access,
         public SuggestionAttachmentService $attachments,
-        public AiSentimentService $aiSentiment,
         public SuggestionNotificationService $notifications
     ) {}
 
@@ -57,125 +56,81 @@ class ResidentSuggestionService
      */
     public function submit(User $user, array $data, array $files = []): array
     {
-        // 1. Idempotency control
-        $idempotencyKey = ! empty($data['idempotency_key']) ? trim((string) $data['idempotency_key']) : null;
-        if ($idempotencyKey) {
-            $existing = Suggestion::where('idempotency_key', $idempotencyKey)->first();
-            if ($existing) {
-                return [
-                    'suggestion' => $existing,
-                    'anonymous_token' => null,
-                ];
-            }
-        }
-
-        // 2. Validate box
-        $box = SuggestionBox::findOrFail($data['box_id']);
-        if (! $box->is_open) {
-            throw ValidationException::withMessages([
-                'box_id' => ['Hòm thư góp ý này hiện đang tạm đóng tiếp nhận.'],
-            ]);
-        }
-
-        // 3. Validate resident permission for box
-        if (! $this->access->canResidentSubmitToBox($user, $box)) {
-            throw ValidationException::withMessages([
-                'box_id' => ['Bạn không thuộc khối/tòa nhà được phân quyền gửi góp ý vào hòm thư này.'],
-            ]);
-        }
-
-        $isAnonymous = ! empty($data['is_anonymous']);
-        $anonymousRawToken = null;
-        $anonymousTokenHash = null;
-        $residentUserId = null;
-        $apartmentId = null;
-
-        if ($isAnonymous) {
-            // High entropy random token for anonymous lookup
-            $anonymousRawToken = 'SC-'.Str::upper(Str::random(8)).'-'.Str::upper(Str::random(8));
-            $anonymousTokenHash = hash('sha256', $anonymousRawToken);
-        } else {
-            $residentUserId = $user->id;
-            $apartments = $this->access->residentApartments($user);
-            if (! empty($data['apartment_id'])) {
-                $chosen = $apartments->firstWhere('id', $data['apartment_id']);
-                if (! $chosen) {
-                    throw ValidationException::withMessages([
-                        'apartment_id' => ['Căn hộ được chọn không hợp lệ với tài khoản cư dân của bạn.'],
-                    ]);
+        $submissionKey = trim((string) ($data['idempotency_key'] ?? ''));
+        $submissionHash = $submissionKey === '' ? null : hash_hmac('sha256', $user->id.':'.$submissionKey, config('app.key'));
+        $anonymous = (bool) ($data['is_anonymous'] ?? false);
+        $fileFingerprints = array_map(fn (UploadedFile $file): array => [
+            'name' => $file->getClientOriginalName(), 'sha256' => hash_file('sha256', $file->getRealPath()),
+        ], $files);
+        $fingerprint = hash('sha256', json_encode([
+            'box' => $data['box_id'], 'anonymous' => $anonymous,
+            'apartment' => $anonymous ? null : ($data['apartment_id'] ?? null),
+            'topic' => $data['topic_category'], 'title' => trim($data['title']),
+            'content' => trim($data['content_text']), 'files' => $fileFingerprints,
+        ], JSON_THROW_ON_ERROR));
+        $storedFiles = [];
+        $rawToken = null;
+        $replayed = false;
+        try {
+            $suggestion = DB::transaction(function () use ($user, $data, $files, $submissionHash, $fingerprint, $anonymous, &$storedFiles, &$rawToken, &$replayed): Suggestion {
+                // Serialize submissions for this authenticated account without recording its identity on anonymous rows.
+                DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+                $box = SuggestionBox::whereKey($data['box_id'])->lockForUpdate()->firstOrFail();
+                if (! $this->access->canResidentSubmitToBox($user, $box)) {
+                    throw ValidationException::withMessages(['box_id' => ['Bạn không thuộc phạm vi hòm thư này.']]);
                 }
-                $apartmentId = $chosen->id;
-            } else {
-                $apartmentId = $apartments->first()?->id;
-            }
+                if ($submissionHash !== null) {
+                    $existing = Suggestion::where('submission_key_hash', $submissionHash)->first();
+                    if ($existing) {
+                        abort_unless(hash_equals($existing->payload_fingerprint, $fingerprint), 409, 'Mã gửi đã được dùng với nội dung khác.');
+                        $replayed = true;
+
+                        return $existing;
+                    }
+                }
+                if (! $box->is_open) {
+                    throw ValidationException::withMessages(['box_id' => ['Hòm thư đã đóng tiếp nhận.']]);
+                }
+                $apartmentId = null;
+                if (! $anonymous) {
+                    $apartments = $this->access->residentApartments($user);
+                    $apartment = empty($data['apartment_id']) ? $apartments->first() : $apartments->firstWhere('id', $data['apartment_id']);
+                    if (! $apartment || ($box->block_id !== null && $apartment->block_id !== $box->block_id)) {
+                        throw ValidationException::withMessages(['apartment_id' => ['Căn hộ không thuộc phạm vi hòm thư.']]);
+                    }
+                    $apartmentId = $apartment->id;
+                }
+                $id = (string) Str::uuid();
+                $rawToken = $anonymous ? 'SC-'.Str::random(40) : null;
+                $storedFiles = $this->attachments->storeAttachments($id, $files, $anonymous);
+                $suggestion = Suggestion::create([
+                    'id' => $id, 'box_id' => $box->id, 'submission_key_hash' => $submissionHash,
+                    'payload_fingerprint' => $fingerprint, 'idempotency_key' => null,
+                    'resident_user_id' => $anonymous ? null : $user->id, 'apartment_id' => $apartmentId,
+                    'is_anonymous' => $anonymous, 'anonymous_access_token_hash' => $rawToken ? hash('sha256', $rawToken) : null,
+                    'topic_category' => $data['topic_category'], 'title' => trim($data['title']),
+                    'content_text' => trim($data['content_text']), 'attached_files' => $storedFiles,
+                    'status' => Suggestion::STATUS_RECEIVED, 'version' => 1,
+                    'ai_sentiment' => Suggestion::SENTIMENT_NOT_ANALYZED,
+                ]);
+                DB::table('audit_logs')->insert([
+                    'id' => (string) Str::uuid(), 'table_name' => 'suggestions', 'record_id' => $id,
+                    'action' => 'INSERT', 'performed_by_user_id' => $anonymous ? null : $user->id,
+                    'new_data' => json_encode(['id' => $id, 'box_id' => $box->id, 'is_anonymous' => $anonymous, 'status' => $suggestion->status], JSON_THROW_ON_ERROR),
+                    'created_at' => now(),
+                ]);
+                $this->notifications->notifyManagersOnNewSuggestion($suggestion);
+
+                return $suggestion;
+            });
+        } catch (\Throwable $exception) {
+            $this->attachments->deleteAttachments($storedFiles);
+            throw $exception;
         }
-
-        $suggestion = DB::transaction(function () use (
-            $box,
-            $idempotencyKey,
-            $residentUserId,
-            $apartmentId,
-            $isAnonymous,
-            $anonymousTokenHash,
-            $data,
-            $files,
-            $user
-        ): Suggestion {
-            $suggestionId = (string) Str::uuid();
-
-            // Store files if present
-            $attachedFiles = ! empty($files)
-                ? $this->attachments->storeAttachments($suggestionId, $files)
-                : [];
-
-            $suggestion = Suggestion::create([
-                'id' => $suggestionId,
-                'box_id' => $box->id,
-                'idempotency_key' => $idempotencyKey,
-                'resident_user_id' => $residentUserId,
-                'apartment_id' => $apartmentId,
-                'is_anonymous' => $isAnonymous,
-                'anonymous_access_token_hash' => $anonymousTokenHash,
-                'topic_category' => $data['topic_category'],
-                'title' => trim((string) $data['title']),
-                'content_text' => trim((string) $data['content_text']),
-                'attached_files' => $attachedFiles,
-                'status' => Suggestion::STATUS_RECEIVED,
-                'version' => 1,
-                'ai_sentiment' => Suggestion::SENTIMENT_NOT_ANALYZED,
-                'ai_sentiment_score' => null,
-            ]);
-
-            // Audit log: strictly omit user identity if anonymous
-            DB::table('audit_logs')->insert([
-                'id' => (string) Str::uuid(),
-                'table_name' => 'suggestions',
-                'record_id' => $suggestion->id,
-                'action' => 'INSERT',
-                'performed_by_user_id' => $isAnonymous ? null : $user->id,
-                'new_data' => json_encode([
-                    'id' => $suggestion->id,
-                    'box_id' => $box->id,
-                    'is_anonymous' => $isAnonymous,
-                    'topic_category' => $suggestion->topic_category,
-                    'title' => $suggestion->title,
-                    'status' => $suggestion->status,
-                ], JSON_THROW_ON_ERROR),
-                'created_at' => now(),
-            ]);
-
-            return $suggestion;
-        });
-
-        // Trigger AI sentiment (gracefully fails/blocks if no AI provider configured)
-        $this->aiSentiment->analyzeSuggestion($suggestion);
-
-        // Notify managers
-        $this->notifications->notifyManagersOnNewSuggestion($suggestion);
 
         return [
             'suggestion' => $suggestion->fresh(['box:id,box_name,block_id', 'apartment:id,apartment_number']),
-            'anonymous_token' => $anonymousRawToken,
+            'anonymous_token' => $rawToken, 'replayed' => $replayed,
         ];
     }
 

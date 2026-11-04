@@ -325,28 +325,27 @@ class AmenityController extends Controller
     public function getAmenities(Request $request): JsonResponse
     {
         $filters = [
+            ...$this->amenityService->scopedFilters($request),
             'search' => $request->query('search'),
-            'category_id' => $request->query('category_id'),
-            'block_id' => $request->query('block_id'),
-            'is_active' => $request->query('is_active'),
             'sort' => $request->query('sort', 'created_at_desc'),
             'page' => $request->query('page', 1),
             'limit' => $request->query('limit', 10),
         ];
 
         $version = $this->getDataVersion();
-        $fingerprint = md5(json_encode($filters).'_v'.$version);
+        $fingerprint = md5(json_encode($filters).'_v'.$version.'_search3_'.config('search.default').'_'.$request->user()?->id);
         $etag = '"amenities-'.$fingerprint.'"';
 
         $clientEtag = $request->header('If-None-Match');
-        if ($clientEtag && trim($clientEtag) === $etag) {
+        $liveIndexSearch = config('search.default') === 'algolia' && trim((string) ($filters['search'] ?? '')) !== '';
+        if (! $liveIndexSearch && $clientEtag && trim($clientEtag) === $etag) {
             return response()->json(null, 304, [
                 'ETag' => $etag,
                 'Cache-Control' => 'private, no-cache, must-revalidate',
             ]);
         }
 
-        $result = app()->environment('testing')
+        $result = app()->environment('testing') || $liveIndexSearch
             ? $this->amenityService->getPaginatedAmenities($filters)
             : Cache::remember("amenities_page_{$fingerprint}", 600, function () use ($filters) {
                 return $this->amenityService->getPaginatedAmenities($filters);
@@ -361,8 +360,9 @@ class AmenityController extends Controller
     /**
      * Lấy chi tiết một tiện ích
      */
-    public function getAmenity(string $id): JsonResponse
+    public function getAmenity(Request $request, string $id): JsonResponse
     {
+        $this->amenityService->assertCanViewAmenity($request, $id);
         $version = $this->getDataVersion();
         $amenity = Cache::remember("amenity_detail_{$id}_v{$version}", 600, function () use ($id) {
             return $this->amenityService->getAmenityById($id);
@@ -517,8 +517,9 @@ class AmenityController extends Controller
     /**
      * Lấy danh sách khung giờ của tiện ích
      */
-    public function getTimeSlots(string $amenityId): JsonResponse
+    public function getTimeSlots(Request $request, string $amenityId): JsonResponse
     {
+        $this->amenityService->assertCanViewAmenity($request, $amenityId);
         $version = $this->getDataVersion();
         $res = Cache::remember("amenity_slots_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
             $slots = DB::table('amenity_time_slots')
@@ -712,8 +713,9 @@ class AmenityController extends Controller
     /**
      * Lấy danh sách ngày/giờ đóng cửa bảo trì (Blackouts)
      */
-    public function getBlackouts(string $amenityId): JsonResponse
+    public function getBlackouts(Request $request, string $amenityId): JsonResponse
     {
+        $this->amenityService->assertCanViewAmenity($request, $amenityId);
         $version = $this->getDataVersion();
         $res = Cache::remember("amenity_blackouts_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
             $blackouts = DB::table('amenity_blackouts')

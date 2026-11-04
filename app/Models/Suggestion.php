@@ -45,10 +45,14 @@ class Suggestion extends Model
 
     protected $table = 'suggestions';
 
+    protected $hidden = ['anonymous_access_token_hash', 'idempotency_key', 'submission_key_hash', 'payload_fingerprint'];
+
     protected $fillable = [
         'id',
         'box_id',
         'idempotency_key',
+        'submission_key_hash',
+        'payload_fingerprint',
         'resident_user_id',
         'apartment_id',
         'is_anonymous',
@@ -78,6 +82,20 @@ class Suggestion extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function getAttachedFilesAttribute(?string $value): array
+    {
+        $files = $this->fromJson($value) ?? [];
+        if ($this->is_anonymous) {
+            $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+            foreach ($files as $position => &$file) {
+                $file['file_name'] = 'attachment-'.($position + 1).'.'.($extensions[$file['mime_type'] ?? ''] ?? 'bin');
+            }
+        }
+
+        return $files;
     }
 
     public function box(): BelongsTo

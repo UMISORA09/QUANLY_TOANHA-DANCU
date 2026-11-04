@@ -40,10 +40,7 @@ class SuggestionNotificationService
         $accessService = app(SuggestionAccessService::class);
 
         foreach ($managers as $manager) {
-            $assignedBlock = $accessService->assignedBlock($manager);
-
-            // Block scope isolation check
-            if ($assignedBlock && $boxBlockId && $assignedBlock !== $boxBlockId) {
+            if (! $accessService->canViewBlock($manager, $boxBlockId)) {
                 continue;
             }
 

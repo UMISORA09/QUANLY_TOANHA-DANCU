@@ -148,6 +148,25 @@ export interface AmenityListResponse {
   search_time_ms?: number;
   corrected_query?: string | null;
   is_fuzzy?: boolean;
+  engine?: string;
+  applied_query?: string;
+  is_corrected?: boolean;
+  fallback_reason?: string | null;
+}
+
+export interface AmenitySearchMetrics {
+  days: number;
+  requests: number;
+  estimated_algolia_calls: number;
+  zero_result_rate: number;
+  fallback_rate: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  engines: Array<{ engine: string; requests: number }>;
+  fallback_reasons: Array<{ fallback_reason: string; requests: number }>;
+  dirty_documents: number;
+  failed_documents: number;
+  last_synced_at: string | null;
 }
 
 export interface ResidentAmenityCatalog {
@@ -617,12 +636,11 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ username: identifier, identifier, password }),
     });
-    if (res.access_token) {
-      this.setToken(res.access_token);
+    if (!res.access_token || !res.user?.id || !Array.isArray(res.user.roles) || res.user.roles.length === 0) {
+      throw new Error('Phản hồi đăng nhập không có phiên hoặc quyền hợp lệ.');
     }
-    if (res.user) {
-      this.setUser(res.user);
-    }
+    this.setToken(res.access_token);
+    this.setUser(res.user);
     amenityCache.clearAll();
     return res;
   }
@@ -949,7 +967,7 @@ class ApiService {
     const trimmed = query.trim();
     if (!trimmed || trimmed.length < 2) return [];
 
-    const cacheKey = `${type}:${trimmed.toLowerCase()}`;
+    const cacheKey = `${this.getUser()?.id ?? 'anonymous'}:${type}:${trimmed.toLowerCase()}`;
     const cached = suggestionCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < SUGGESTION_TTL) {
       return cached.data;
@@ -1385,8 +1403,22 @@ class ApiService {
     return this.request<any>(`/resident/overview${query}`);
   }
 
-  async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
-    return this.request('/resident/amenities', { signal, cache: 'no-store' });
+  async getResidentAmenities(signal?: AbortSignal, metadataOnly = false): Promise<ResidentAmenityCatalog> {
+    return this.request(`/resident/amenities${metadataOnly ? '?metadata_only=1' : ''}`, { signal, cache: 'no-store' });
+  }
+
+  async searchResidentAmenities(params: { q: string; apartment_id: string; category_id: string; page: number }, signal?: AbortSignal): Promise<AmenityListResponse> {
+    const query = new URLSearchParams({ q: params.q, apartment_id: params.apartment_id, page: String(params.page) });
+    if (params.category_id) query.set('category_id', params.category_id);
+    return this.request(`/resident/amenities/search?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentAmenity(id: string, apartmentId: string, signal?: AbortSignal): Promise<Amenity> {
+    return this.request(`/resident/amenities/${id}?apartment_id=${encodeURIComponent(apartmentId)}`, { signal, cache: 'no-store' });
+  }
+
+  async getAmenitySearchMetrics(signal?: AbortSignal): Promise<AmenitySearchMetrics> {
+    return this.request('/admin/amenity-search/metrics', { signal, cache: 'no-store' });
   }
 
   async getResidentAvailability(amenityId: string, date: string, apartmentId: string, signal?: AbortSignal): Promise<{ slots: ResidentAvailableSlot[] }> {
@@ -2213,10 +2245,11 @@ class ApiService {
   async readManagerNotification(id: string) { return this.request<{ unread_count: number }>(`/manager/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', cache: 'no-store' }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
 
-  async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
-    if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
+  async ticketImage(path: string, signal?: AbortSignal, anonymousToken?: string): Promise<Blob> {
+    if (!/^\/api\/v1\/(resident\/tickets|suggestions)\/[a-zA-Z0-9-]+\/attachments\/[a-zA-Z0-9-]+(?:\/content)?$/.test(path)) throw new Error('Đường dẫn ảnh không hợp lệ.');
     const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
-    const response = await fetch(url, { signal, headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    const response = await fetch(url, { signal, cache: 'no-store', headers: anonymousToken
+      ? { 'X-Anonymous-Token': anonymousToken } : { Authorization: `Bearer ${this.getToken() || ''}` } });
     if (!response.ok) throw new Error('Không tải được ảnh sự cố.');
     return response.blob();
   }
@@ -2321,6 +2354,11 @@ class ApiService {
   async getTicketDiscussionHistory(id: string, cursor?: string, signal?: AbortSignal) {
     return this.request<TicketDiscussionPage<TicketHistoryItem>>(`/tickets/${id}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { signal, cache: 'no-store' });
   }
+  async getResidentAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<ResidentAnnouncementPage>(`/resident/announcements?${params}`, { signal, cache: 'no-store' }); }
+  async getResidentAnnouncement(id: string, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}`, { signal, cache: 'no-store' }); }
+  async readResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/read`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+  async acknowledgeResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/acknowledge`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+
   async getAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<AnnouncementPage>(`/admin/announcements?${params}`, { signal, cache: 'no-store' }); }
   async getAnnouncementOptions(signal?: AbortSignal) { return this.request<AnnouncementOptions>('/admin/announcements/options', { signal, cache: 'no-store' }); }
   async getAnnouncement(id: string, signal?: AbortSignal) { return this.request<Announcement>(`/admin/announcements/${id}`, { signal, cache: 'no-store' }); }
@@ -2339,13 +2377,13 @@ class ApiService {
     } catch (error) { void this.discardAnnouncementUpload(ticket.token).catch(() => {}); throw error; }
   }
   async discardAnnouncementUpload(token: string) { return this.request('/admin/announcements/uploads/discard', { method: 'POST', body: JSON.stringify({ token }) }); }
-  async announcementAttachment(id: string, attachmentId: string): Promise<Blob> {
-    const response = await fetch(`${API_BASE_URL}/admin/announcements/${id}/attachments/${attachmentId}`, { cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+  async announcementAttachment(id: string, attachmentId: string, audience: 'admin' | 'resident' = 'admin', signal?: AbortSignal): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/${audience}/announcements/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`, { signal, cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
     if (!response.ok) throw new Error('Không tải được tệp. Kiểm tra phiên đăng nhập và quyền xem bài.');
     if (response.headers.get('content-type')?.includes('application/json')) {
       const result: { download_url: string } = await response.json();
       if (!result.download_url.startsWith('https://')) throw new Error('Địa chỉ tải không hợp lệ.');
-      const download = await fetch(result.download_url, { credentials: 'omit', cache: 'no-store' });
+      const download = await fetch(result.download_url, { signal, credentials: 'omit', cache: 'no-store' });
       if (!download.ok) throw new Error('Không tải được tệp từ kho riêng tư.');
       return download.blob();
     }
@@ -2357,7 +2395,7 @@ class ApiService {
     return this.request('/resident/suggestion-boxes');
   }
 
-  async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string }> {
+  async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string; replayed?: boolean }> {
     return this.request('/resident/suggestions', {
       method: 'POST',
       body: formData,
@@ -2799,6 +2837,18 @@ export interface AnnouncementOptions {
 
 export interface AnnouncementUpload { token: string; transport: 'local' | 's3'; url: string; headers: Record<string, string>; expires_at: number; }
 
+export interface ResidentAnnouncement {
+  id: string; title: string; summary_excerpt: string | null; category: string;
+  target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; block_name: string | null; floor_name: string | null;
+  is_pinned: boolean; is_urgent: boolean; requires_acknowledgement: boolean; version: number;
+  publish_at: string; expires_at: string | null; read_at: string | null; acknowledged_at: string | null;
+  content_html?: string; attachments?: AnnouncementAttachment[];
+}
+export interface ResidentAnnouncementPage {
+  data: ResidentAnnouncement[]; current_page: number; last_page: number; total: number;
+  unread_count: number; categories: Record<string, string>; timezone: string;
+}
+
 // ================= F12 SUGGESTION INTERFACES =================
 export interface SuggestionBoxItem {
   id: string;
@@ -2966,7 +3016,7 @@ export interface SatisfactionSurveyItem {
   questions_count?: number;
   responses_count?: number;
   eligible_count?: number;
-  participation_rate_percent?: number;
+  participation_rate_percent?: number | null;
   questions?: SurveyQuestionItem[];
 }
 
@@ -3001,6 +3051,7 @@ export interface QuestionAnalyticsItem {
   total_answers: number;
   average_rating?: number;
   csat_percentage?: number;
+  data_status?: 'AVAILABLE' | 'NO_DATA';
   satisfied_count?: number;
   neutral_count?: number;
   dissatisfied_count?: number;
@@ -3031,7 +3082,7 @@ export interface SurveyAnalyticsData {
   kpis: {
     total_responses: number;
     eligible_apartments_count: number;
-    participation_rate_percent: number;
+    participation_rate_percent: number | null;
     overall_average_rating: number;
     overall_csat_percentage: number;
     total_valid_ratings: number;

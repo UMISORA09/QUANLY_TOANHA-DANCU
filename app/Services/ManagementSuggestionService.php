@@ -332,6 +332,8 @@ class ManagementSuggestionService
     {
         abort_unless($user->hasPermission('SUGGESTION:MANAGE'), 403, 'Bạn không có quyền quản lý hòm thư góp ý.');
 
+        $this->access->assertCanManageBlock($user, $data['block_id'] ?? null);
+
         $box = SuggestionBox::create([
             'id' => (string) Str::uuid(),
             'box_name' => trim((string) $data['box_name']),

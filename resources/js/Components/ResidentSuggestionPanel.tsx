@@ -1,3 +1,4 @@
+import { TicketImage } from './TicketImage';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
@@ -99,9 +100,12 @@ export const ResidentSuggestionPanel: React.FC = () => {
 
   // Anonymous Lookup State
   const [lookupTokenInput, setLookupTokenInput] = useState<string>('');
+  const submissionKey = React.useRef<string | null>(null);
   const [isLookingUp, setIsLookingUp] = useState<boolean>(false);
   const [lookupResult, setLookupResult] = useState<AnonymousSuggestionDetail | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
+
+  useEffect(() => { submissionKey.current = null; }, [selectedBoxId, topicCategory, title, contentText, isAnonymous, selectedFiles]);
 
   // Load Suggestion Boxes on Mount
   useEffect(() => {
@@ -228,15 +232,21 @@ export const ResidentSuggestionPanel: React.FC = () => {
       formData.append('content_text', contentText.trim());
       formData.append('is_anonymous', isAnonymous ? '1' : '0');
       // Idempotency key to avoid double submission
-      formData.append('idempotency_key', `resident-sug-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
+      submissionKey.current ??= crypto.randomUUID();
+      formData.append('idempotency_key', submissionKey.current);
 
       selectedFiles.forEach((file) => {
         formData.append('attached_files[]', file);
       });
 
       const response = await api.submitResidentSuggestion(formData);
+      if (response.replayed && isAnonymous && !response.anonymous_token) {
+        setFormErrors({ submit: response.message });
+        return;
+      }
 
       if (response?.success) {
+        submissionKey.current = null;
         // Reset form
         setTitle('');
         setContentText('');
@@ -749,19 +759,9 @@ export const ResidentSuggestionPanel: React.FC = () => {
                     <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Ảnh đính kèm</h4>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {lookupResult.attached_files.map((file) => (
-                        <a
-                          key={file.id}
-                          href={`${file.url}?anon_token=${encodeURIComponent(lookupTokenInput.trim())}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-xl overflow-hidden border border-neutral-200 aspect-video block bg-neutral-100 hover:opacity-90 transition-opacity"
-                        >
-                          <img
-                            src={`${file.url}?anon_token=${encodeURIComponent(lookupTokenInput.trim())}`}
-                            alt={file.file_name}
-                            className="w-full h-full object-cover"
-                          />
-                        </a>
+                        <TicketImage key={file.id} url={file.url} name={file.file_name}
+                          anonymousToken={lookupTokenInput.trim()}
+                          onPreview={(url) => window.open(url, '_blank', 'noopener,noreferrer')} />
                       ))}
                     </div>
                   </div>

@@ -10,6 +10,8 @@ use App\Models\Role;
 use App\Models\Suggestion;
 use App\Models\SuggestionBox;
 use App\Models\User;
+use App\Services\ResidentSuggestionService;
+use App\Services\SuggestionNotificationService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -677,6 +679,123 @@ class SuggestionManagementTest extends TestCase
         $id2 = $res2->json('data.id');
 
         $this->assertSame($id1, $id2);
-        $this->assertSame(1, Suggestion::where('idempotency_key', $idempotencyKey)->count());
+        $this->assertSame(1, Suggestion::whereKey($id1)->count());
+        $this->assertNull(Suggestion::findOrFail($id1)->idempotency_key);
+    }
+
+    public function test_anonymous_retry_is_payload_bound_private_and_notifies_once(): void
+    {
+        $payload = ['box_id' => $this->blockABox->id, 'topic_category' => 'VE_SINH', 'title' => 'Anonymous retry test',
+            'content_text' => 'Anonymous content for secure retry.', 'is_anonymous' => true, 'idempotency_key' => (string) Str::uuid()];
+        $first = $this->withToken($this->residentToken)->postJson('/api/v1/resident/suggestions', $payload)->assertCreated();
+        $id = $first->json('data.id');
+        $this->assertNotEmpty($first->json('anonymous_token'));
+        $notificationCount = DB::table('user_in_app_notifications')->where('deep_link_url', 'like', '%'.$id.'%')->count();
+        $retry = $this->postJson('/api/v1/resident/suggestions', $payload)->assertCreated()->assertJsonPath('data.id', $id)->assertJsonPath('replayed', true);
+        $this->assertNull($retry->json('anonymous_token'));
+        $this->assertNull($retry->json('data.resident_user_id'));
+        $this->assertNull($retry->json('data.apartment_id'));
+        foreach (['submission_key_hash', 'payload_fingerprint', 'anonymous_access_token_hash', 'idempotency_key'] as $secret) {
+            $this->assertArrayNotHasKey($secret, $retry->json('data'));
+        }
+        $this->assertSame($notificationCount, DB::table('user_in_app_notifications')->where('deep_link_url', 'like', '%'.$id.'%')->count());
+        $this->postJson('/api/v1/resident/suggestions', [...$payload, 'title' => 'Different payload'])->assertConflict();
+        $this->withToken($this->otherResidentToken)->postJson('/api/v1/resident/suggestions', [...$payload, 'box_id' => $this->blockBBox->id])
+            ->assertCreated()->assertJsonPath('replayed', false);
+    }
+
+    public function test_unassigned_manager_cannot_read_private_suggestion_or_attachment_or_receive_notification(): void
+    {
+        $payload = ['box_id' => $this->blockABox->id, 'topic_category' => 'VE_SINH', 'title' => 'Private scope test', 'content_text' => 'Private building suggestion body.'];
+        DB::table('staff_profiles')->where('user_id', $this->managerUser->id)->update(['assigned_block_id' => null]);
+        $id = $this->withToken($this->residentToken)->postJson('/api/v1/resident/suggestions', $payload)->assertCreated()->json('data.id');
+        $this->withToken($this->managerToken)->getJson('/api/v1/management/suggestions/'.$id)->assertNotFound();
+        $this->assertSame(0, DB::table('user_in_app_notifications')->where('recipient_user_id', $this->managerUser->id)->where('deep_link_url', 'like', '%'.$id.'%')->count());
+        DB::table('staff_profiles')->where('user_id', $this->managerUser->id)->delete();
+        $this->getJson('/api/v1/management/suggestions')->assertForbidden();
+    }
+
+    public function test_notification_failure_rolls_back_suggestion_and_created_images(): void
+    {
+        $this->mock(SuggestionNotificationService::class)->shouldReceive('notifyManagersOnNewSuggestion')->once()->andThrow(new \RuntimeException('QA notification failure'));
+        $file = UploadedFile::fake()->image('incident.png');
+        try {
+            app(ResidentSuggestionService::class)->submit($this->residentUser, [
+                'box_id' => $this->blockABox->id, 'topic_category' => 'VE_SINH', 'title' => 'Rollback private image',
+                'content_text' => 'Rollback must remove only newly stored files.', 'idempotency_key' => (string) Str::uuid(),
+            ], [$file]);
+            $this->fail('Expected notification failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('QA notification failure', $exception->getMessage());
+        }
+        $this->assertFalse(Suggestion::where('title', 'Rollback private image')->exists());
+        $this->assertSame([], Storage::disk('local')->allFiles('suggestions'));
+    }
+
+    public function test_submitting_and_retrying_never_contacts_the_ai_provider(): void
+    {
+        config(['services.gemini.key' => 'qa-provider-key']);
+        Http::fake(['*' => Http::response(['error' => 'QA provider unavailable'], 503)]);
+        $payload = ['box_id' => $this->generalBox->id, 'topic_category' => 'KHAC',
+            'title' => 'Góp ý không chờ AI', 'content_text' => 'Góp ý phải được tiếp nhận ngay cả khi AI không khả dụng.',
+            'idempotency_key' => (string) Str::uuid()];
+        $first = $this->withToken($this->residentToken)->postJson('/api/v1/resident/suggestions', $payload)
+            ->assertCreated()->assertJsonPath('data.ai_sentiment', 'NOT_ANALYZED')->json('data.id');
+        $this->postJson('/api/v1/resident/suggestions', $payload)->assertCreated()->assertJsonPath('data.id', $first)->assertJsonPath('replayed', true);
+        Http::assertNothingSent();
+    }
+
+    public function test_anonymous_images_do_not_store_original_file_names(): void
+    {
+        Http::fake();
+        $name = 'resident-phone-0901234567.png';
+        $response = $this->withToken($this->residentToken)->post('/api/v1/resident/suggestions', [
+            'box_id' => $this->generalBox->id, 'topic_category' => 'VE_SINH', 'title' => 'Ảnh góp ý ẩn danh',
+            'content_text' => 'Ảnh minh chứng không được tiết lộ tên tệp gốc.', 'is_anonymous' => true,
+            'attached_files' => [UploadedFile::fake()->image($name)],
+        ])->assertCreated()->assertJsonPath('data.attached_files.0.file_name', 'attachment-1.png');
+        $raw = DB::table('suggestions')->where('id', $response->json('data.id'))->value('attached_files');
+        $this->assertStringNotContainsString($name, $raw);
+    }
+
+    public function test_legacy_anonymous_file_names_are_hidden_in_lookup_management_and_download(): void
+    {
+        Http::fake();
+        $name = 'private-resident-contact.png';
+        $response = $this->withToken($this->residentToken)->post('/api/v1/resident/suggestions', [
+            'box_id' => $this->generalBox->id, 'topic_category' => 'KHAC', 'title' => 'Ảnh có tên tệp cũ',
+            'content_text' => 'Giữ tệp và quyền truy cập nhưng không lộ tên ảnh gốc.',
+            'attached_files' => [UploadedFile::fake()->image($name)],
+        ])->assertCreated()->assertJsonPath('data.attached_files.0.file_name', $name);
+        $id = $response->json('data.id');
+        $token = 'SC-'.Str::random(40);
+        DB::table('suggestions')->where('id', $id)->update(['is_anonymous' => true, 'resident_user_id' => null,
+            'apartment_id' => null, 'anonymous_access_token_hash' => hash('sha256', $token)]);
+        $this->withToken($this->managerToken)->getJson('/api/v1/management/suggestions/'.$id)
+            ->assertOk()->assertJsonPath('data.attached_files.0.file_name', 'attachment-1.png');
+        $this->postJson('/api/v1/resident/suggestions/anonymous-lookup', ['token' => $token])
+            ->assertOk()->assertJsonPath('data.attached_files.0.file_name', 'attachment-1.png');
+        $download = $this->withHeaders(['Authorization' => '', 'X-Anonymous-Token' => $token])
+            ->get($response->json('data.attached_files.0.url'))->assertOk();
+        $this->assertStringNotContainsString($name, (string) $download->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('attachment-1.png', (string) $download->headers->get('Content-Disposition'));
+    }
+
+    public function test_ai_analysis_is_only_run_on_an_authorized_management_request(): void
+    {
+        config(['services.gemini.key' => 'qa-provider-key']);
+        Http::fake(['*' => Http::response(['candidates' => [['content' => ['parts' => [['text' => json_encode(['sentiment' => 'POSITIVE', 'score' => 0.8])]]]]]])]);
+        $id = $this->withToken($this->residentToken)->postJson('/api/v1/resident/suggestions', [
+            'box_id' => $this->blockABox->id, 'topic_category' => 'KHAC',
+            'title' => 'Góp ý cần phân tích thủ công', 'content_text' => 'Cảm ơn nhân viên đã hỗ trợ cư dân rất tận tình.',
+        ])->assertCreated()->assertJsonPath('data.ai_sentiment', 'NOT_ANALYZED')->json('data.id');
+        Http::assertNothingSent();
+        $url = '/api/v1/suggestions/ai-sentiment-analyze';
+        $this->postJson($url, ['suggestion_id' => $id])->assertForbidden();
+        $this->withToken($this->otherBlockManagerToken)->postJson($url, ['suggestion_id' => $id])->assertNotFound();
+        Http::assertNothingSent();
+        $this->withToken($this->managerToken)->postJson($url, ['suggestion_id' => $id])
+            ->assertOk()->assertJsonPath('status', 'SUCCESS')->assertJsonPath('data.ai_sentiment', 'POSITIVE');
+        Http::assertSentCount(1);
     }
 }

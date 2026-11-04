@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Apartment;
 use App\Models\SatisfactionSurvey;
 use App\Models\SurveyQuestion;
 use App\Models\User;
@@ -64,16 +63,12 @@ class SatisfactionSurveyService
 
         // Append computed fields
         $paginator->getCollection()->transform(function (SatisfactionSurvey $survey) {
-            $eligibleCountQuery = Apartment::query()->whereNull('deleted_at');
-            if ($survey->target_block_id) {
-                $eligibleCountQuery->where('block_id', $survey->target_block_id);
-            }
-            $eligibleCount = max(1, $eligibleCountQuery->count());
+            $eligibleCount = count($survey->eligible_apartment_ids ?? $this->accessService->eligibleApartmentIds($survey->target_block_id));
             $responsesCount = $survey->responses_count ?? 0;
 
             $survey->setAttribute('computed_status', $survey->computed_status);
             $survey->setAttribute('eligible_count', $eligibleCount);
-            $survey->setAttribute('participation_rate_percent', round(($responsesCount / $eligibleCount) * 100, 2));
+            $survey->setAttribute('participation_rate_percent', $eligibleCount > 0 ? round(($responsesCount / $eligibleCount) * 100, 2) : null);
 
             return $survey;
         });
@@ -88,10 +83,7 @@ class SatisfactionSurveyService
     {
         abort_unless($this->accessService->isManager($creator) && $creator->hasPermission('SURVEY:CREATE'), 403, 'Bạn không có quyền tạo khảo sát.');
 
-        $assignedBlockId = $this->accessService->assignedBlock($creator);
-        if ($assignedBlockId && ! empty($data['target_block_id']) && $data['target_block_id'] !== $assignedBlockId) {
-            abort(403, 'Bạn chỉ được tạo khảo sát thuộc tòa nhà bạn đang quản lý.');
-        }
+        $this->accessService->assertCanManageBlock($creator, $data['target_block_id'] ?? null);
 
         // Date validation in Asia/Ho_Chi_Minh
         $startDate = Carbon::parse($data['start_date'], 'Asia/Ho_Chi_Minh')->startOfDay();
@@ -126,6 +118,7 @@ class SatisfactionSurveyService
                 'is_active' => (bool) ($data['is_active'] ?? true),
                 'created_by' => $creator->id,
                 'version' => 1,
+                'eligible_apartment_ids' => $this->accessService->eligibleApartmentIds($data['target_block_id'] ?? null),
             ]);
 
             $order = 1;
@@ -156,9 +149,10 @@ class SatisfactionSurveyService
             $survey = SatisfactionSurvey::query()->whereKey($survey->getKey())->lockForUpdate()->firstOrFail();
             abort_unless($this->accessService->isManager($updater) && $updater->hasPermission('SURVEY:UPDATE'), 403, 'Bạn không có quyền cập nhật khảo sát.');
 
-            $assignedBlockId = $this->accessService->assignedBlock($updater);
-            if ($assignedBlockId && $survey->target_block_id && $survey->target_block_id !== $assignedBlockId) {
-                abort(403, 'Bạn không thể chỉnh sửa khảo sát thuộc tòa nhà khác.');
+            $this->accessService->assertCanManageBlock($updater, $survey->target_block_id);
+            $this->accessService->assertCanManageBlock($updater, $data['target_block_id'] ?? $survey->target_block_id);
+            if (array_key_exists('target_block_id', $data) && $data['target_block_id'] === null) {
+                $this->accessService->assertCanManageBlock($updater, null);
             }
 
             // 1. OCC Check
@@ -178,6 +172,11 @@ class SatisfactionSurveyService
 
             if ($endDate->lt($startDate)) {
                 abort(422, 'Ngày kết thúc không được trước ngày bắt đầu.');
+            }
+
+            if (array_key_exists('target_block_id', $data) && $data['target_block_id'] !== $survey->target_block_id) {
+                abort_if($hasResponses, 422, 'Không được đổi phạm vi sau khi có phản hồi.');
+                $survey->eligible_apartment_ids = $this->accessService->eligibleApartmentIds($data['target_block_id']);
             }
 
             $survey->update([
@@ -221,6 +220,8 @@ class SatisfactionSurveyService
         return DB::transaction(function () use ($survey, $isActive, $updater) {
             $survey = SatisfactionSurvey::query()->whereKey($survey->getKey())->lockForUpdate()->firstOrFail();
             abort_unless($this->accessService->isManager($updater) && $updater->hasPermission('SURVEY:MANAGE'), 403, 'Bạn không có quyền thay đổi trạng thái kích hoạt khảo sát.');
+
+            $this->accessService->assertCanManageBlock($updater, $survey->target_block_id);
 
             $survey->update([
                 'is_active' => $isActive,
