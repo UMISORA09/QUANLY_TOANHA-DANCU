@@ -38,7 +38,10 @@ async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET'
   return data;
 }
 
-export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, allQueues = false }) {
+export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, retryFailedOnly = false, allQueues = false }) {
+  if (reindex && retryFailedOnly) {
+    throw new Error('Choose either reindex or retry failed jobs');
+  }
   let url;
   try {
     url = new URL(baseUrl);
@@ -65,8 +68,9 @@ export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, a
     throw new Error('Schema preflight: schema_missing');
   }
 
-  if (reindex) {
-    await requestJson(baseUrl, '/api/v1/internal/amenity-search/reindex' + (scope ? '?' + scope : ''), secret, 'Reindex', 65_000, 'POST');
+  if (reindex || retryFailedOnly) {
+    const parameters = [scope, retryFailedOnly ? 'retry_failed_only=1' : ''].filter(Boolean).join('&');
+    await requestJson(baseUrl, '/api/v1/internal/amenity-search/reindex' + (parameters ? '?' + parameters : ''), secret, retryFailedOnly ? 'Retry failed jobs' : 'Reindex', 65_000, 'POST');
   }
 
   let pending = 0;
@@ -85,7 +89,7 @@ export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, a
     }
     if (results.some(result => result.failed > 0)) {
       const codes = failureCodes.filter(code => results.some(result => Number.isSafeInteger(result.failure_codes?.[code]) && result.failure_codes[code] > 0));
-      throw new Error(`Worker: failed_jobs (${codes.join(',') || 'worker_failed'})`);
+      throw new Error(`Worker: failed_jobs (${codes.join(',') || 'worker_failed'}), pending=${Math.max(...results.map(result => result.pending))}, failed=${Math.max(...results.map(result => result.failed))}`);
     }
     pending = Math.max(...results.map(result => result.pending));
     if (pending === 0) {
@@ -105,6 +109,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       baseUrl: process.env.BASE_URL,
       secret: process.env.SYNC_SECRET,
       reindex: process.env.REINDEX === 'true',
+      retryFailedOnly: process.env.RETRY_FAILED_ONLY === 'true',
       allQueues: process.env.ALL_SEARCH_QUEUES === 'true',
     })));
   } catch (error) {

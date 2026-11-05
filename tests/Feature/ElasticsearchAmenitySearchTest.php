@@ -193,6 +193,26 @@ class ElasticsearchAmenitySearchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_retry_only_preserves_pending_work_without_creating_another_backfill(): void
+    {
+        config(['search.sync_secret' => str_repeat('c', 40)]);
+        app(AmenitySearchSyncState::class)->queue($this->amenityId);
+        $payload = DB::table('jobs')->where('queue', 'amenity-search')->value('payload');
+        $pending = DB::table('jobs')->where('queue', 'amenity-search')->count();
+        $failedId = (string) Str::uuid();
+        foreach (['amenity-search' => $failedId, 'unrelated-queue' => (string) Str::uuid()] as $queue => $uuid) {
+            DB::table('failed_jobs')->insert(['uuid' => $uuid, 'connection' => 'database', 'queue' => $queue, 'payload' => $payload, 'exception' => 'Private failure', 'failed_at' => now()]);
+        }
+
+        $path = '/api/v1/internal/amenity-search/reindex?retry_failed_only=1';
+        $this->withToken('invalid')->postJson($path)->assertUnauthorized();
+        $this->withToken(str_repeat('c', 40))->postJson($path)->assertStatus(202)->assertJsonPath('pending', $pending + 1);
+        $this->postJson($path)->assertStatus(202)->assertJsonPath('pending', $pending + 1);
+        $this->assertDatabaseMissing('failed_jobs', ['uuid' => $failedId]);
+        $this->assertDatabaseHas('failed_jobs', ['queue' => 'unrelated-queue']);
+        Http::assertNothingSent();
+    }
+
     public function test_schema_inspection_classifies_connection_errors_without_exposing_credentials(): void
     {
         config(['search.sync_secret' => str_repeat('d', 40)]);
