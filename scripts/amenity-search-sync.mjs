@@ -6,7 +6,8 @@ const databaseErrors = new Set([
   'database_inspection_failed',
 ]);
 const requiredTables = ['amenities', 'amenity_bookings', 'amenity_booking_payments', 'jobs', 'failed_jobs'];
-const failureCodes = ['worker_failed'];
+const failureCodes = ['worker_failed', 'max_attempts_exceeded', 'elasticsearch_connection_failed',
+  ...[400, 401, 403, 404, 429, 500, 502, 503, 504].map(status => `elasticsearch_http_${status}`)];
 
 async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET') {
   let response;

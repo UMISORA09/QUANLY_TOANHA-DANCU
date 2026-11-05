@@ -193,6 +193,32 @@ class ElasticsearchAmenitySearchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_worker_failure_diagnostics_are_scoped_and_never_return_raw_exceptions(): void
+    {
+        config(['search.sync_secret' => str_repeat('c', 40)]);
+        foreach ([
+            ['database', 'amenity-search', 'MaxAttemptsExceededException: private-value'],
+            ['database', 'amenity-search', 'ConnectionException: private-value'],
+            ['database', 'amenity-search', 'RequestException: HTTP request returned status code 403: private-value'],
+            ['database', 'amenity-search', 'RuntimeException: private-value'],
+            ['database', 'other-queue', 'RuntimeException: private-value'],
+            ['redis', 'amenity-search', 'RuntimeException: private-value'],
+        ] as [$connection, $queue, $exception]) {
+            DB::table('failed_jobs')->insert(['uuid' => (string) Str::uuid(), 'connection' => $connection,
+                'queue' => $queue, 'payload' => '{}', 'exception' => $exception, 'failed_at' => now()]);
+        }
+
+        Artisan::shouldReceive('call')->never();
+        $this->withToken('invalid')->getJson('/api/v1/internal/amenity-search/process')->assertUnauthorized();
+        $this->withToken(str_repeat('c', 40))->getJson('/api/v1/internal/amenity-search/process')
+            ->assertOk()->assertJsonPath('failed', 4)
+            ->assertJsonPath('failure_codes.max_attempts_exceeded', 1)
+            ->assertJsonPath('failure_codes.elasticsearch_connection_failed', 1)
+            ->assertJsonPath('failure_codes.elasticsearch_http_403', 1)
+            ->assertJsonPath('failure_codes.worker_failed', 1)
+            ->assertDontSee('private-value')->assertDontSee('RequestException');
+    }
+
     public function test_retry_only_preserves_pending_work_without_creating_another_backfill(): void
     {
         config(['search.sync_secret' => str_repeat('c', 40)]);
