@@ -13,7 +13,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await server?.close(); });
 test.use({ screenshot: 'off', video: 'off', trace: 'off' });
 test.beforeEach(async ({ page }) => {
-  await page.route('**/qa/auth-modal', route => route.fulfill({ contentType: 'text/html',
+  await page.route('**/qa/auth-modal*', route => route.fulfill({ contentType: 'text/html',
     body: `<div id="root"></div><script type="module">
       import RefreshRuntime from '/@react-refresh';
       RefreshRuntime.injectIntoGlobalHook(window);
@@ -51,4 +51,11 @@ test('successful login uses server role rather than the selected demo role', asy
   await page.locator('button[type="submit"]').first().click();
   await expect(page.getByTestId('authenticated-role')).toHaveText('resident');
   await expect(page.getByTitle('Đóng', { exact: true })).toHaveCount(0);
+});
+
+test('development login keeps the demo selector and role shortcut', async ({ page }) => {
+  await page.goto(`${origin}/qa/auth-modal?view=login&role=admin`);
+  await expect(page.getByText('Tài khoản dùng thử nhanh:')).toBeVisible();
+  await expect(page.locator('input[type="text"]').first()).not.toHaveValue('');
+  await expect(page.locator('input[type="password"]').first()).not.toHaveValue('');
 });
