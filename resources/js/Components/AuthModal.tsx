@@ -136,7 +136,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   useEffect(() => {
     setMode(initialMode);
     setErrorMessage(null);
-    if (initialRole && ROLE_DEMOS[initialRole]) {
+    if (import.meta.env.DEV && initialRole && ROLE_DEMOS[initialRole]) {
       setSelectedRole(initialRole);
       setLoginIdentifier(ROLE_DEMOS[initialRole].email);
       setPassword('123567');
@@ -159,6 +159,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   const handleSelectRole = (roleKey: UserRole) => {
+    if (!import.meta.env.DEV) return;
     setSelectedRole(roleKey);
     const demo = ROLE_DEMOS[roleKey];
     setLoginIdentifier(demo.email);
@@ -323,7 +324,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {mode === 'login' && !isForgotPwOpen && (
           <div className="mt-6">
             {/* Quick Access Role Header */}
-            <div className="pt-4 border-t border-neutral-200/80">
+            {import.meta.env.DEV && <div className="pt-4 border-t border-neutral-200/80">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] font-bold tracking-wider text-neutral-800 uppercase">
                   TRUY CẬP NHANH
@@ -386,10 +387,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <p className="text-[11px] text-neutral-400 mt-2.5 font-normal">
                 Chọn một vai trò để vào thẳng khu vực làm việc.
               </p>
-            </div>
+            </div>}
 
             {/* Divider */}
-            <div className="border-t border-neutral-200/80 my-5" />
+            {import.meta.env.DEV && <div className="border-t border-neutral-200/80 my-5" />}
 
             {/* Login Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -403,7 +404,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     value={loginIdentifier}
                     onChange={(e) => setLoginIdentifier(e.target.value)}
-                    placeholder="admin@cassavas.vn hoặc 0900000001"
+                    placeholder="Nhập email hoặc số điện thoại"
                     className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                   />
                 </div>
@@ -414,9 +415,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <label className="block text-xs font-semibold text-neutral-900">
                     Mật khẩu
                   </label>
-                  <span className="text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded font-mono">
+                  {import.meta.env.DEV && <span className="text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded font-mono">
                     MK mẫu: 123567
-                  </span>
+                  </span>}
                 </div>
                 <div className="relative">
                   <input
@@ -424,7 +425,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Nhập 123567"
+                    placeholder="Nhập mật khẩu"
                     className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                   />
                   <button
