@@ -84,8 +84,13 @@ class AmenitySearchSyncController extends Controller
             $exitCode = Artisan::call('queue:work', ['connection' => 'database', '--queue' => implode(',', $queues), '--once' => true, '--tries' => 5, '--timeout' => 45]);
         }
 
+        $failureOrigins = [];
         $failureCodes = DB::table('failed_jobs')->where('connection', 'database')->whereIn('queue', $queues)
-            ->pluck('exception')->countBy(function (string $exception): string {
+            ->pluck('exception')->countBy(function (string $exception) use (&$failureOrigins): string {
+                if (preg_match('~\A([A-Za-z_\\\\][A-Za-z0-9_\\\\]{0,199}):~', $exception, $type)
+                    && preg_match('~ in /[^\r\n]+/([A-Za-z0-9_.-]{1,100}\.php):([1-9][0-9]{0,5})~', $exception, $source)) {
+                    $failureOrigins[class_basename($type[1]).'@'.$source[1].':'.$source[2]] = true;
+                }
                 if (str_contains($exception, 'MaxAttemptsExceededException')) {
                     return 'max_attempts_exceeded';
                 }
@@ -103,6 +108,7 @@ class AmenitySearchSyncController extends Controller
             'pending' => DB::table('jobs')->whereIn('queue', $queues)->count(),
             'failed' => array_sum($failureCodes),
             'failure_codes' => $failureCodes,
+            'failure_origins' => array_slice(array_keys($failureOrigins), 0, 3),
         ], $exitCode === 0 ? 200 : 503);
     }
 

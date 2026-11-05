@@ -200,7 +200,7 @@ class ElasticsearchAmenitySearchTest extends TestCase
             ['database', 'amenity-search', 'MaxAttemptsExceededException: private-value'],
             ['database', 'amenity-search', 'ConnectionException: private-value'],
             ['database', 'amenity-search', 'RequestException: HTTP request returned status code 403: private-value'],
-            ['database', 'amenity-search', 'RuntimeException: private-value'],
+            ['database', 'amenity-search', 'App\\Exceptions\\RuntimeException: private-value in /private/path/Worker.php:42'],
             ['database', 'other-queue', 'RuntimeException: private-value'],
             ['redis', 'amenity-search', 'RuntimeException: private-value'],
         ] as [$connection, $queue, $exception]) {
@@ -216,7 +216,8 @@ class ElasticsearchAmenitySearchTest extends TestCase
             ->assertJsonPath('failure_codes.elasticsearch_connection_failed', 1)
             ->assertJsonPath('failure_codes.elasticsearch_http_403', 1)
             ->assertJsonPath('failure_codes.worker_failed', 1)
-            ->assertDontSee('private-value')->assertDontSee('RequestException');
+            ->assertJsonPath('failure_origins.0', 'RuntimeException@Worker.php:42')
+            ->assertDontSee('private-value')->assertDontSee('/private/path')->assertDontSee('RequestException');
     }
 
     public function test_retry_only_preserves_pending_work_without_creating_another_backfill(): void
