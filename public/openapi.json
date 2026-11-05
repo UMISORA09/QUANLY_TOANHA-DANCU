@@ -3,14 +3,288 @@
   "info": {
     "title": "SMART CASSAVAS — Public documentation API",
     "version": "1.0.0",
-    "description": "Read-only public documentation. Resident, payment and management APIs require separate authorization and are outside this specification. MCP JSON-RPC is documented at /docs."
+    "description": "Read-only public documentation. Resident, payment and management APIs require separate authorization and are outside this specification. MCP JSON-RPC is documented at /docs. The JSON guide API is versioned in the path. Breaking changes use a new major path. Scheduled retirement is announced in /docs and through the Sunset header."
   },
-  "servers": [{"url": "https://quanly-toanha-dancu.vercel.app"}],
+  "servers": [
+    {
+      "url": "https://quanly-toanha-dancu.vercel.app"
+    }
+  ],
   "paths": {
-    "/": {"get": {"summary": "SMART CASSAVAS homepage", "operationId": "readHomepage", "responses": {"200": {"$ref": "#/components/responses/Page"}, "406": {"description": "Neither HTML nor Markdown accepted"}}}},
-    "/{page}": {"get": {"summary": "Read a public SMART CASSAVAS guide", "operationId": "readGuide", "parameters": [{"name": "page", "in": "path", "required": true, "schema": {"type": "string", "enum": ["home", "about", "contact", "privacy", "docs"]}}], "responses": {"200": {"$ref": "#/components/responses/Page"}, "406": {"description": "Neither HTML nor Markdown accepted"}}}},
-    "/llms.txt": {"get": {"operationId": "readAgentInstructions", "responses": {"200": {"description": "Agent guidance and documentation links", "content": {"text/plain": {"schema": {"type": "string"}}}}}}},
-    "/sitemap.xml": {"get": {"operationId": "readSitemap", "responses": {"200": {"description": "Indexable public URLs", "content": {"application/xml": {"schema": {"type": "string"}}}}}}}
+    "/": {
+      "get": {
+        "summary": "SMART CASSAVAS homepage",
+        "operationId": "readHomepage",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Page"
+          },
+          "406": {
+            "description": "Neither HTML nor Markdown is acceptable.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{page}": {
+      "get": {
+        "summary": "Read a public SMART CASSAVAS guide",
+        "operationId": "readGuide",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "path",
+            "required": true,
+            "description": "Public guide slug.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "home",
+                "about",
+                "contact",
+                "privacy",
+                "docs",
+                "mcp"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Page"
+          },
+          "406": {
+            "description": "Neither HTML nor Markdown is acceptable.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "operationId": "readAgentInstructions",
+        "responses": {
+          "200": {
+            "description": "Agent guidance and documentation links",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read instructions for AI agents"
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "operationId": "readSitemap",
+        "responses": {
+          "200": {
+            "description": "Indexable public URLs",
+            "content": {
+              "application/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List indexable public pages"
+      }
+    },
+    "/api/v1/public/guides/{page}": {
+      "get": {
+        "summary": "Read a SMART CASSAVAS public guide as JSON",
+        "description": "Returns public Markdown for the requested guide. No credentials are required.",
+        "operationId": "readPublicGuideJson",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "path",
+            "required": true,
+            "description": "Public guide slug.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "home",
+                "about",
+                "contact",
+                "privacy",
+                "docs",
+                "mcp"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public guide",
+            "headers": {
+              "RateLimit-Policy": {
+                "description": "Quota and window in seconds.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "RateLimit": {
+                "description": "Remaining quota and seconds until reset.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Guide"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown guide",
+            "headers": {
+              "RateLimit-Policy": {
+                "description": "Quota and window in seconds.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "RateLimit": {
+                "description": "Remaining quota and seconds until reset.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request quota exceeded",
+            "headers": {
+              "RateLimit-Policy": {
+                "description": "Quota and window in seconds.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "RateLimit": {
+                "description": "Remaining quota and seconds until reset.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Seconds until another request may be sent.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   },
-  "components": {"responses": {"Page": {"description": "Public page selected using Accept quality values; HTML is the default", "headers": {"Vary": {"schema": {"type": "string", "const": "Accept"}}}, "content": {"text/html": {"schema": {"type": "string"}}, "text/markdown": {"schema": {"type": "string"}}}}}}
+  "components": {
+    "responses": {
+      "Page": {
+        "description": "Public page selected using Accept quality values; HTML is the default",
+        "headers": {
+          "Vary": {
+            "schema": {
+              "type": "string",
+              "const": "Accept"
+            }
+          }
+        },
+        "content": {
+          "text/html": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "text/markdown": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Guide": {
+        "type": "object",
+        "required": [
+          "page",
+          "markdown"
+        ],
+        "properties": {
+          "page": {
+            "type": "string",
+            "enum": [
+              "home",
+              "about",
+              "contact",
+              "privacy",
+              "docs",
+              "mcp"
+            ]
+          },
+          "markdown": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "guide_not_found",
+              "rate_limit_exceeded"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
 }

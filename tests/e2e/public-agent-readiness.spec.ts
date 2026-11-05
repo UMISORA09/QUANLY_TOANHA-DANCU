@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.use({ screenshot: 'off', video: 'off', trace: 'off' });
 
 test('public endpoints negotiate content and expose valid discovery files over HTTP', async ({ request }) => {
-  for (const path of ['/', '/home', '/about', '/contact', '/privacy', '/docs']) {
+  for (const path of ['/', '/home', '/about', '/contact', '/privacy', '/docs', '/mcp']) {
     const markdown = await request.get(path, { headers: { Accept: 'text/markdown' } });
     expect(markdown.status(), path).toBe(200);
     expect(markdown.headers()['content-type']).toContain('text/markdown');
@@ -25,6 +25,10 @@ test('public endpoints negotiate content and expose valid discovery files over H
   }
   const spec = await (await request.get('/openapi.json')).json();
   expect(spec.openapi).toBe('3.1.0');
+  const guide = await request.get('/api/v1/public/guides/home');
+  expect(guide.status()).toBe(200);
+  expect(guide.headers()['ratelimit']).toBeTruthy();
+  expect((await guide.json()).page).toBe('home');
   const discovery = await (await request.get('/.well-known/mcp')).json();
   expect(discovery.transport).toBe('streamable-http');
   const result = await request.post('/mcp/public', {
@@ -32,7 +36,7 @@ test('public endpoints negotiate content and expose valid discovery files over H
     data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read-public-guide', arguments: { page: 'docs' } } },
   });
   expect(result.status()).toBe(200);
-  expect((await result.json()).result.content[0].text).toContain('# Tài liệu SMART CASSAVAS');
+  expect((await result.json()).result.content[0].text).toContain('# Tài liệu API SMART CASSAVAS');
 });
 
 test('homepage remains useful with JavaScript disabled', async ({ browser, baseURL }) => {
@@ -42,8 +46,8 @@ test('homepage remains useful with JavaScript disabled', async ({ browser, baseU
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('SMART CASSAVAS — Nền tảng quản lý tòa nhà');
     await expect(page.getByRole('main')).toContainText('đăng ký sử dụng tiện ích');
-    await page.getByRole('link', { name: 'Tài liệu SMART CASSAVAS' }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Tài liệu SMART CASSAVAS');
+    await page.getByRole('link', { name: 'Tài liệu API SMART CASSAVAS', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Tài liệu API SMART CASSAVAS');
   } finally {
     await context.close();
   }
@@ -54,7 +58,7 @@ test('React homepage preserves its interface and links to real public pages', as
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Mọi vai trò');
   await expect(page.locator('footer a[href="/privacy"]')).toHaveText('Bảo mật');
   await page.locator('footer a[href="/docs"]').click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Tài liệu SMART CASSAVAS');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Tài liệu API SMART CASSAVAS');
 });
 
 for (const width of [390, 1280]) {

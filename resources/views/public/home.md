@@ -15,3 +15,5 @@ Ban quản lý quản trị tiện ích, xử lý đăng ký và đối soát th
 [Đăng nhập](/login) bằng tài khoản được cấp để sử dụng chức năng phù hợp. Không cung cấp mật khẩu, mã OTP hay thông tin ngân hàng cho trợ lý AI. Tài liệu công khai chỉ giới thiệu hệ thống, không cung cấp dữ liệu cư dân hoặc quyền thực hiện giao dịch.
 
 [Giới thiệu](/about) · [Liên hệ](/contact) · [Quyền riêng tư](/privacy) · [Tài liệu SMART CASSAVAS](/docs)
+
+[Tài liệu API SMART CASSAVAS](/docs) · [SMART CASSAVAS MCP](/mcp) · [GitHub dự án](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU)

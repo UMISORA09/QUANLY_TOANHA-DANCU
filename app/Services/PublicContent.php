@@ -8,7 +8,7 @@ use Symfony\Component\HttpFoundation\AcceptHeader;
 
 class PublicContent
 {
-    public const PAGES = ['home', 'about', 'contact', 'privacy', 'docs'];
+    public const PAGES = ['home', 'about', 'contact', 'privacy', 'docs', 'mcp'];
 
     public function markdown(string $page): string
     {
