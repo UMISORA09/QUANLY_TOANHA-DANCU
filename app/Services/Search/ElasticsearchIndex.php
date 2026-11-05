@@ -157,7 +157,7 @@ class ElasticsearchIndex
     private function client(): PendingRequest
     {
         $host = rtrim($this->config['hosts'][0] ?? 'http://127.0.0.1:9200', '/');
-        $apiKey = $this->config['api_key'] ?? null;
+        $apiKey = trim((string) ($this->config['api_key'] ?? ''));
         if (app()->isProduction() && (parse_url($host, PHP_URL_SCHEME) !== 'https'
             || (! $apiKey && (empty($this->config['username']) || empty($this->config['password']))))) {
             throw new ConnectionException('Elasticsearch requires HTTPS and authentication in production.');

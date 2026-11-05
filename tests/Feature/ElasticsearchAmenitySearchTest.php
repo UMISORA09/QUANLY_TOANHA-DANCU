@@ -116,6 +116,25 @@ class ElasticsearchAmenitySearchTest extends TestCase
             && $request['mappings']['properties']['title']['analyzer'] === 'cassavas_text');
     }
 
+    public function test_production_requests_trim_surrounding_whitespace_from_copied_api_keys(): void
+    {
+        $this->app->instance('env', 'production');
+        Http::fake(['https://elastic.example/*' => Http::response(['hits' => ['hits' => []]])]);
+        $index = new ElasticsearchIndex(['hosts' => ['https://elastic.example'], 'api_key' => "\r\n test-key\t\r\n"], 'cassavas_test');
+
+        $this->assertTrue($index->search(['query' => ['match_all' => (object) []]])->successful());
+        Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'ApiKey test-key'));
+    }
+
+    public function test_api_keys_with_embedded_header_injection_are_still_rejected(): void
+    {
+        Http::fake();
+        $index = new ElasticsearchIndex(['hosts' => ['https://elastic.example'], 'api_key' => "test-key\r\nInjected: value"], 'cassavas_test');
+        $this->expectException(\InvalidArgumentException::class);
+
+        $index->search(['query' => ['match_all' => (object) []]]);
+    }
+
     public function test_ticket_backfill_batch_is_written_in_the_business_transaction(): void
     {
         $jobs = DB::table('jobs')->where('queue', 'ticket-search');
@@ -191,6 +210,19 @@ class ElasticsearchAmenitySearchTest extends TestCase
         $this->assertDatabaseMissing('failed_jobs', ['uuid' => $failedId]);
         $this->assertDatabaseHas('failed_jobs', ['queue' => 'unrelated-queue']);
         Http::assertNothingSent();
+    }
+
+    public function test_http_worker_processes_a_real_search_job_and_acknowledges_its_version(): void
+    {
+        config(['search.sync_secret' => str_repeat('c', 40)]);
+        Http::fakeSequence()->pushStatus(404)->push(['acknowledged' => true])->push(['result' => 'created']);
+        app(AmenitySearchSyncState::class)->queue($this->amenityId);
+
+        $this->withToken(str_repeat('c', 40))->getJson('/api/v1/internal/amenity-search/process')
+            ->assertOk()->assertJsonPath('pending', 0)->assertJsonPath('failed', 0);
+        $state = DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)->first();
+        $this->assertSame((int) $state->desired_version, (int) $state->published_version);
+        $this->assertSame('synced', $state->status);
     }
 
     public function test_worker_failure_diagnostics_are_scoped_and_never_return_raw_exceptions(): void
