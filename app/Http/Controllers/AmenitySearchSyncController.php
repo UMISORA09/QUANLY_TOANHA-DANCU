@@ -59,13 +59,17 @@ class AmenitySearchSyncController extends Controller
         }
 
         if ($request->isMethod('post')) {
-            abort_if(DB::table('jobs')->whereIn('queue', $queues)->exists(), 409, 'Synchronization is already queued.');
-            DB::transaction(function () use ($commands, $queues): void {
+            $retryOnly = $request->boolean('retry_failed_only');
+            abort_if(! $retryOnly && DB::table('jobs')->whereIn('queue', $queues)->exists(), 409, 'Synchronization is already queued.');
+            DB::transaction(function () use ($commands, $queues, $retryOnly): void {
                 DB::table('amenities')->orderBy('id')->lockForUpdate()->first();
-                abort_if(DB::table('jobs')->whereIn('queue', $queues)->exists(), 409, 'Synchronization is already queued.');
+                abort_if(! $retryOnly && DB::table('jobs')->whereIn('queue', $queues)->exists(), 409, 'Synchronization is already queued.');
                 $failedIds = DB::table('failed_jobs')->where('connection', 'database')->whereIn('queue', $queues)->pluck('uuid')->all();
                 if ($failedIds !== []) {
                     abort_unless(Artisan::call('queue:retry', ['id' => $failedIds]) === 0, 503);
+                }
+                if ($retryOnly) {
+                    return;
                 }
                 foreach ($commands as $command) {
                     abort_unless(Artisan::call($command, $command === 'search:sync-amenities' ? [] : ['--queue-only' => true]) === 0, 503);

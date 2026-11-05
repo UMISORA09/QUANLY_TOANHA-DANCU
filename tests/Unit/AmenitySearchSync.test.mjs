@@ -39,6 +39,27 @@ test('checks readiness before processing, authenticates only internal APIs and n
   assert.equal(calls.filter(call => call.url.endsWith('/process')).length, 3);
 });
 
+test('retries failed jobs only when explicitly requested, once, without starting another backfill', async () => {
+  const calls = fixture();
+  await runAmenitySearchSync({ ...options, retryFailedOnly: true });
+  const writes = calls.filter(call => call.init.method === 'POST');
+  assert.equal(writes.length, 1);
+  assert.equal(new URL(writes[0].url).searchParams.get('retry_failed_only'), '1');
+  assert.equal(calls[2], writes[0]);
+});
+
+test('rejects conflicting recovery modes before making requests', async () => {
+  const calls = fixture();
+  await assert.rejects(runAmenitySearchSync({ ...options, reindex: true, retryFailedOnly: true }), /Choose either/);
+  assert.equal(calls.length, 0);
+});
+
+test('does not retry failed-job recovery after a lost response', async () => {
+  const calls = fixture({ reindex: () => { throw new Error(secret); } });
+  await assert.rejects(runAmenitySearchSync({ ...options, retryFailedOnly: true }), /Retry failed jobs: network_error_or_timeout/);
+  assert.equal(calls.length, 3);
+});
+
 test('checks all search tables and sends the same queue scope to reindex and workers', async () => {
   const calls = fixture({ schema: () => json({ tables: { ...tables, amenity_search_states: true, tickets: true,
     announcements: true, suggestions: true, satisfaction_surveys: true } }) });

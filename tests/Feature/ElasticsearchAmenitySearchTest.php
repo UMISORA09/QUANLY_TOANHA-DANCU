@@ -101,6 +101,21 @@ class ElasticsearchAmenitySearchTest extends TestCase
         $this->assertSame($before, DB::table('jobs')->where('queue', 'amenity-search')->count());
     }
 
+    public function test_production_index_creation_lets_elastic_cloud_manage_replicas(): void
+    {
+        $this->app->instance('env', 'production');
+        Http::fakeSequence('https://elastic.example/cassavas_test')
+            ->pushStatus(404)
+            ->push(['acknowledged' => true]);
+
+        $index = new ElasticsearchIndex(['hosts' => ['https://elastic.example'], 'api_key' => 'test-key'], 'cassavas_test');
+        $index->configure(['title' => ['type' => 'text', 'analyzer' => 'cassavas_text']]);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
+            && ! array_key_exists('number_of_replicas', $request['settings'])
+            && $request['mappings']['properties']['title']['analyzer'] === 'cassavas_text');
+    }
+
     public function test_ticket_backfill_batch_is_written_in_the_business_transaction(): void
     {
         $jobs = DB::table('jobs')->where('queue', 'ticket-search');
@@ -173,6 +188,26 @@ class ElasticsearchAmenitySearchTest extends TestCase
             ->assertOk()->assertJsonPath('failure_codes.worker_failed', 1)->assertDontSee('private-value-must-not-leak');
         $expected = DB::table('amenities')->count() + 1;
         $this->postJson('/api/v1/internal/amenity-search/reindex')->assertStatus(202)->assertJsonPath('pending', $expected);
+        $this->assertDatabaseMissing('failed_jobs', ['uuid' => $failedId]);
+        $this->assertDatabaseHas('failed_jobs', ['queue' => 'unrelated-queue']);
+        Http::assertNothingSent();
+    }
+
+    public function test_retry_only_preserves_pending_work_without_creating_another_backfill(): void
+    {
+        config(['search.sync_secret' => str_repeat('c', 40)]);
+        app(AmenitySearchSyncState::class)->queue($this->amenityId);
+        $payload = DB::table('jobs')->where('queue', 'amenity-search')->value('payload');
+        $pending = DB::table('jobs')->where('queue', 'amenity-search')->count();
+        $failedId = (string) Str::uuid();
+        foreach (['amenity-search' => $failedId, 'unrelated-queue' => (string) Str::uuid()] as $queue => $uuid) {
+            DB::table('failed_jobs')->insert(['uuid' => $uuid, 'connection' => 'database', 'queue' => $queue, 'payload' => $payload, 'exception' => 'Private failure', 'failed_at' => now()]);
+        }
+
+        $path = '/api/v1/internal/amenity-search/reindex?retry_failed_only=1';
+        $this->withToken('invalid')->postJson($path)->assertUnauthorized();
+        $this->withToken(str_repeat('c', 40))->postJson($path)->assertStatus(202)->assertJsonPath('pending', $pending + 1);
+        $this->postJson($path)->assertStatus(202)->assertJsonPath('pending', $pending + 1);
         $this->assertDatabaseMissing('failed_jobs', ['uuid' => $failedId]);
         $this->assertDatabaseHas('failed_jobs', ['queue' => 'unrelated-queue']);
         Http::assertNothingSent();
