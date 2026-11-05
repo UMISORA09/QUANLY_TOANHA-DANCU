@@ -78,7 +78,7 @@ jobs:
           ls -lh public/build/assets/
 
       - name: Upload Frontend Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build-artifacts
           path: public/build/
@@ -194,7 +194,7 @@ jobs:
         run: php -d memory_limit=1024M vendor/bin/phpunit --colors=always --log-junit phpunit-report.xml
 
       - name: Upload PHPUnit Results Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: phpunit-test-results
@@ -311,7 +311,7 @@ jobs:
         run: npm run test:e2e
 
       - name: Upload Playwright Test Report Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
