@@ -85,7 +85,7 @@ jobs:
       - name: Execute Automated Rollback Script via SSH
         id: ssh-rollback
         if: steps.server-eval.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           ROLLBACK_ENV: ${{ github.event.inputs.environment }}
           TARGET_VERSION: ${{ github.event.inputs.target_version }}
