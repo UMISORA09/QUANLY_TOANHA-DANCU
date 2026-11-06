@@ -204,6 +204,30 @@ test('a lost reindex response is not retried and no workers are dispatched', asy
   assert.equal(calls.length, 3);
 });
 
+test('defers slow batches before the Actions deadline without losing or retrying queued work', async () => {
+  let now = 0;
+  const pauses = [];
+  mock.method(Date, 'now', () => now);
+  const originalTimeout = globalThis.setTimeout;
+  mock.method(globalThis, 'setTimeout', (callback, milliseconds) => {
+    pauses.push(milliseconds);
+    now += milliseconds;
+    return originalTimeout(callback, 0);
+  });
+  let dispatched = 0;
+  const calls = fixture({ worker: () => {
+    if (dispatched++ % 3 === 0) {
+      now += 55_000;
+    }
+    return json({ pending: 124, failed: 0 });
+  } });
+  assert.deepEqual(await runAmenitySearchSync(options), { status: 'deferred', pending: 124, failed: 0 });
+  assert.equal(dispatched, 33);
+  assert.equal(pauses.length, 10);
+  assert.ok(now < 12 * 60_000);
+  assert.equal(calls.filter(call => call.init.method !== 'GET').length, 0);
+});
+
 test('rejects invalid URL and secret configuration without any requests', async () => {
   const calls = fixture();
   for (const baseUrl of ['bad', 'http://production.example', 'https://user:password@production.example', 'https://production.example/path', 'https://production.example?secret=value']) {
