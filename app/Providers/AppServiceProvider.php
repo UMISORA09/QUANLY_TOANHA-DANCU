@@ -34,7 +34,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Model::preventLazyLoading(! $this->app->isProduction());
+        Model::preventLazyLoading(! $this->app->isProduction() && ! $this->app->runningInConsole());
 
         Event::listen(AmenityCreated::class, [InvalidateAmenityCacheListener::class, 'handle']);
         Event::listen(AmenityUpdated::class, [InvalidateAmenityCacheListener::class, 'handle']);
