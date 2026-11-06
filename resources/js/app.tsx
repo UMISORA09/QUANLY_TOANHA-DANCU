@@ -636,11 +636,18 @@ const App: React.FC = () => {
   );
 };
 
+// Đảm bảo React 18 createRoot là Singleton trên window, chống duplicate mount khi Vite HMR re-evaluate module
 const rootElement = document.getElementById('app');
 
 if (rootElement) {
-  const root = createRoot(rootElement);
-  root.render(
+  const globalObj = window as unknown as { __smartcassavas_react_root__?: ReturnType<typeof createRoot> };
+
+  if (!globalObj.__smartcassavas_react_root__) {
+    rootElement.innerHTML = '';
+    globalObj.__smartcassavas_react_root__ = createRoot(rootElement);
+  }
+
+  globalObj.__smartcassavas_react_root__.render(
     <React.StrictMode>
       <App />
     </React.StrictMode>
