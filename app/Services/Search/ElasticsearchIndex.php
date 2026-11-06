@@ -2,6 +2,7 @@
 
 namespace App\Services\Search;
 
+use App\Services\Concerns\HasPerformanceCache;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -10,6 +11,8 @@ use LogicException;
 
 class ElasticsearchIndex
 {
+    use HasPerformanceCache;
+
     public function __construct(private array $config, private string $name)
     {
         if (! preg_match('/^[a-z0-9][a-z0-9_-]*$/D', $name)) {
@@ -107,30 +110,38 @@ class ElasticsearchIndex
             return null;
         }
 
-        try {
-            $response = $this->search([
-                'size' => count($revisions), 'track_total_hits' => true, '_source' => false,
-                'query' => ['bool' => ['filter' => [
-                    ['terms' => ['revision' => array_map(fn (string $id, int $version): string => $id.':'.$version, array_keys($revisions), array_values($revisions))]],
-                    ['term' => ['is_deleted' => false]],
-                ]]],
-                'post_filter' => ['multi_match' => ['query' => $keyword, 'fields' => $fields, 'fuzziness' => 'AUTO', 'operator' => $requireAllTerms ? 'and' : 'or']],
-                'aggs' => ['current_scope' => ['filter' => ['match_all' => (object) []]]],
-            ]);
-        } catch (ConnectionException) {
-            return null;
-        }
+        ksort($revisions);
+        $ids = $this->rememberSearchResult('scoped_revisions', [
+            'index' => $this->name, 'host' => $this->config['hosts'][0] ?? null,
+            'revisions' => $revisions, 'keyword' => $keyword, 'fields' => $fields, 'all_terms' => $requireAllTerms,
+        ], function () use ($revisions, $keyword, $fields, $requireAllTerms): ?array {
+            try {
+                $response = $this->search([
+                    'size' => count($revisions), 'track_total_hits' => true, '_source' => false,
+                    'query' => ['bool' => ['filter' => [
+                        ['terms' => ['revision' => array_map(fn (string $id, int $version): string => $id.':'.$version, array_keys($revisions), array_values($revisions))]],
+                        ['term' => ['is_deleted' => false]],
+                    ]]],
+                    'post_filter' => ['multi_match' => ['query' => $keyword, 'fields' => $fields, 'fuzziness' => 'AUTO', 'operator' => $requireAllTerms ? 'and' : 'or']],
+                    'aggs' => ['current_scope' => ['filter' => ['match_all' => (object) []]]],
+                ]);
+            } catch (ConnectionException) {
+                return null;
+            }
 
-        $hits = $response->json('hits.hits');
-        if (! $response->successful() || $response->json('timed_out') || $response->json('_shards.failed')
-            || $response->json('aggregations.current_scope.doc_count') !== count($revisions)
-            || ! is_array($hits) || $response->json('hits.total.value') !== count($hits)) {
-            return null;
-        }
+            $hits = $response->json('hits.hits');
+            if (! $response->successful() || $response->json('timed_out') || $response->json('_shards.failed')
+                || $response->json('aggregations.current_scope.doc_count') !== count($revisions)
+                || ! is_array($hits) || $response->json('hits.total.value') !== count($hits)) {
+                return null;
+            }
+            $ids = array_column($hits, '_id');
 
-        $ids = array_column($hits, '_id');
-        $current = $readScope();
-        if (count($ids) !== count($hits) || array_diff($ids, array_keys($revisions)) !== [] || $revisions != $current) {
+            return count($ids) === count($hits) && array_diff($ids, array_keys($revisions)) === [] ? $ids : null;
+        }, 60);
+
+        // Cache hits must still honor changes to access, filters and data during this request.
+        if ($ids === null || $revisions != $readScope()) {
             return null;
         }
 

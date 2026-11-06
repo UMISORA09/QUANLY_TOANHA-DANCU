@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Ticket extends Model
@@ -91,5 +92,15 @@ class Ticket extends Model
     public function history(): HasMany
     {
         return $this->hasMany(TicketHistory::class, 'ticket_id')->orderBy('created_at', 'asc');
+    }
+
+    public function rating(): HasOne
+    {
+        return $this->hasOne(TicketRating::class, 'ticket_id');
+    }
+
+    public function ratings(): HasMany
+    {
+        return $this->hasMany(TicketRating::class, 'ticket_id');
     }
 }

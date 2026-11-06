@@ -551,6 +551,8 @@ class ApiService {
     window.dispatchEvent(new Event('AUTH_SESSION_CHANGED'));
   }
 
+  private inflightGetRequests = new Map<string, Promise<{ data: any; etag: string | null; notModified: boolean }>>();
+
   /**
    * Enhanced HTTP Request with ETag support & automatic header propagation
    */
@@ -561,6 +563,13 @@ class ApiService {
   ): Promise<{ data: T | null; etag: string | null; notModified: boolean }> {
     const url = `${API_BASE_URL}${endpoint}`;
     const token = this.getToken();
+
+    const isGet = !options.method || options.method.toUpperCase() === 'GET';
+    const dedupeKey = isGet && !etag && !options.signal && !options.headers && options.cache !== 'no-store' ? `GET:${url}:${token || ''}` : null;
+
+    if (dedupeKey && this.inflightGetRequests.has(dedupeKey)) {
+      return this.inflightGetRequests.get(dedupeKey)! as Promise<{ data: T | null; etag: string | null; notModified: boolean }>;
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -580,39 +589,51 @@ class ApiService {
       headers['If-None-Match'] = etag;
     }
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+    const executeFetch = async (): Promise<{ data: T | null; etag: string | null; notModified: boolean }> => {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers,
+        });
 
-      if (response.status === 304) {
-        return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        if (response.status === 304) {
+          return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        }
+
+        if (response.status === 204) {
+          return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
+        }
+
+        const newEtag = response.headers.get('ETag');
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
+          const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+          error.status = response.status;
+          error.data = data;
+          error.errors = data?.errors;
+          throw error;
+        }
+
+        return { data: data as T, etag: newEtag, notModified: false };
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return { data: null, etag: null, notModified: true };
+        }
+        throw err;
       }
+    };
 
-      if (response.status === 204) {
-        return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
-      }
+    const fetchPromise = executeFetch();
 
-      const newEtag = response.headers.get('ETag');
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
-        const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-        error.status = response.status;
-        error.data = data;
-        error.errors = data?.errors;
-        throw error;
-      }
-
-      return { data: data as T, etag: newEtag, notModified: false };
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        return { data: null, etag: null, notModified: true };
-      }
-      throw err;
+    if (dedupeKey) {
+      this.inflightGetRequests.set(dedupeKey, fetchPromise);
+      const clearInflight = () => { this.inflightGetRequests.delete(dedupeKey); };
+      void fetchPromise.then(clearInflight, clearInflight);
     }
+
+    return fetchPromise;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -2470,7 +2491,7 @@ class ApiService {
   }
 
   async getResidentSurveyDetails(id: string): Promise<{ status: string; data: ResidentSurveyDetailResponse }> {
-    return this.request(`/resident/surveys/${id}`);
+    return this.request(`/resident/surveys/${id}`, { cache: 'no-store' });
   }
 
   async submitResidentSurvey(id: string, answers: Record<string, any>, idempotencyKey?: string): Promise<{ status: string; message: string; data: { response_id: string; submitted_at: string } }> {

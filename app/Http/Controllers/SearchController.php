@@ -12,6 +12,7 @@ use App\Services\Search\SearchManager;
 use App\Services\Search\VietnameseNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SearchController extends Controller
@@ -92,7 +93,9 @@ class SearchController extends Controller
                 'search_time_ms' => round($elapsedMs, 2),
             ];
         };
-        $responsePayload = $driverName === 'elasticsearch' ? $load() : SearchCacheService::remember($cacheKey, 60, $load);
+        $isHit = Cache::has($cacheKey);
+        $request->attributes->set('x_cache_status', $isHit ? 'HIT' : 'MISS');
+        $responsePayload = SearchCacheService::remember($cacheKey, 300, $load);
 
         // Nếu lấy từ Cache, cập nhật search_time_ms phản ánh thời gian thực (< 1ms)
         $totalElapsed = (microtime(true) - $startTime) * 1000;

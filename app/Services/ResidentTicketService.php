@@ -81,6 +81,7 @@ class ResidentTicketService
                 'apartment:id,apartment_number,block_id',
                 'apartment.block:id,block_name,block_code',
                 'attachments',
+                'rating',
             ]);
 
         // 1. Lọc theo trạng thái
