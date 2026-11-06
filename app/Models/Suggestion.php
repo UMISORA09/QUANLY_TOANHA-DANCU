@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Search\SuggestionSearch;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -71,6 +72,15 @@ class Suggestion extends Model
         'ai_sentiment_score',
     ];
 
+    protected static function booted(): void
+    {
+        static::saved(function (Suggestion $suggestion): void {
+            if (! $suggestion->is_anonymous && ($suggestion->wasRecentlyCreated || $suggestion->wasChanged('version'))) {
+                app(SuggestionSearch::class)->queue($suggestion->id);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -82,6 +92,20 @@ class Suggestion extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function getAttachedFilesAttribute(?string $value): array
+    {
+        $files = $this->fromJson($value) ?? [];
+        if ($this->is_anonymous) {
+            $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+            foreach ($files as $position => &$file) {
+                $file['file_name'] = 'attachment-'.($position + 1).'.'.($extensions[$file['mime_type'] ?? ''] ?? 'bin');
+            }
+        }
+
+        return $files;
     }
 
     public function box(): BelongsTo

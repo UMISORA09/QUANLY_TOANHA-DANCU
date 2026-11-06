@@ -392,12 +392,14 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>CSAT Score</span>
+            <span>CSAT theo câu trả lời</span>
             <TrendingUp className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
             {kpis.total_valid_ratings > 0 ? `${kpis.overall_csat_percentage}%` : 'N/A'}
           </div>
+          <p className="text-xs text-slate-500">Tỷ lệ câu trả lời chấm 4–5 sao trên tổng câu trả lời 1–5 sao.</p>
+          <p className="text-xs text-slate-500">{kpis.total_valid_ratings} câu trả lời chấm điểm</p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
@@ -830,7 +832,8 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                   <div className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400 mt-1">
                     {analyticsData.kpis.total_valid_ratings > 0 ? `${analyticsData.kpis.overall_csat_percentage}%` : 'N/A'}
                   </div>
-                  <div className="text-xs text-emerald-600/80 mt-0.5">Đánh giá 4★ & 5★</div>
+                  <div className="text-xs text-emerald-600/80 mt-0.5">{analyticsData.kpis.total_valid_ratings > 0 ? `${analyticsData.kpis.satisfied_ratings_count}/${analyticsData.kpis.total_valid_ratings} câu trả lời chấm 4–5 sao` : 'Chưa có câu trả lời chấm điểm.'}</div>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">Tính theo câu trả lời, không theo người tham gia.</p>
                 </div>
 
                 <div className="bg-amber-50/60 dark:bg-amber-950/40 p-4 rounded-xl border border-amber-100 dark:border-amber-800">

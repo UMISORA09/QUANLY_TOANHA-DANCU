@@ -38,6 +38,28 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   const [syncing, setSyncing] = useState(false);
   const bookingRequest = useRef<AbortController | null>(null);
   const [search, setSearch] = useState('');
+  const [codeMatches, setCodeMatches] = useState<{ amenityId: string; term: string; ids: Set<string> } | null>(null);
+  const amenityId = amenity?.id;
+  const searchTerm = search.trim().toLowerCase();
+
+  useEffect(() => {
+    if (!isOpen || !amenityId || !/^bk-[a-z0-9-]+$/i.test(searchTerm)) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void api.getAmenityBookingCodeMatches(amenityId, searchTerm, controller.signal)
+        .then(({ ids }) => {
+          if (!controller.signal.aborted) setCodeMatches({ amenityId, term: searchTerm, ids: new Set(ids) });
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setCodeMatches(null);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isOpen, amenityId, searchTerm, bookings]);
+
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [startDateFilter, setStartDateFilter] = useState('');
@@ -167,10 +189,11 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
     return bookings.filter((b) => {
       const matchStatus =
         statusFilter === 'ALL' || b.status?.toUpperCase() === statusFilter;
-      const term = search.toLowerCase().trim();
+      const term = searchTerm;
       const matchSearch =
         !term ||
         b.booking_code.toLowerCase().includes(term) ||
+        (codeMatches?.amenityId === amenityId && codeMatches?.term === term && codeMatches.ids.has(b.id)) ||
         b.resident_name.toLowerCase().includes(term) ||
         (b.apartment_number && b.apartment_number.toLowerCase().includes(term)) ||
         (b.resident_phone && b.resident_phone.includes(term));
@@ -179,7 +202,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
       const matchEndDate = !endDateFilter || b.booking_date <= endDateFilter;
       return matchStatus && matchSearch && matchPayment && matchStartDate && matchEndDate;
     });
-  }, [bookings, search, statusFilter, paymentFilter, startDateFilter, endDateFilter]);
+  }, [bookings, searchTerm, amenityId, codeMatches, statusFilter, paymentFilter, startDateFilter, endDateFilter]);
 
   const stats = useMemo(() => {
     const total = bookings.length;

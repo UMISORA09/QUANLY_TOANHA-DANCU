@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SaveAnnouncementRequest;
 use App\Services\AnnouncementService;
 use App\Services\AnnouncementUploadService;
+use App\Services\Search\AnnouncementSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,9 +34,6 @@ class AnnouncementManagementController extends Controller
         if (! empty($data['block_id'])) {
             $query->where('target_block_id', $data['block_id']);
         }
-        if (! empty($data['search'])) {
-            $query->where('title', 'like', '%'.$data['search'].'%');
-        }
         $status = $data['status'] ?? null;
         if (in_array($status, ['DRAFT', 'UNPUBLISHED'], true)) {
             $query->where('announcements.status', $status);
@@ -47,6 +45,9 @@ class AnnouncementManagementController extends Controller
             } else {
                 $query->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->where('publish_at', $status === 'SCHEDULED' ? '>' : '<=', now());
             }
+        }
+        if (! empty($data['search'])) {
+            app(AnnouncementSearch::class)->filter($query, $data['search'], 'announcements');
         }
         $page = $query->leftJoin('users as author', 'author.id', '=', 'announcements.author_user_id')->select('announcements.*', 'author.full_name as author_name')->orderByDesc('announcements.created_at')->orderByDesc('announcements.id')->paginate(15);
         $page->through(fn (object $row) => $this->announcements->serialize($request->user(), $row, false));

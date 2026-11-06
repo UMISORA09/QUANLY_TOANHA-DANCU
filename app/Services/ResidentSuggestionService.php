@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Suggestion;
 use App\Models\SuggestionBox;
 use App\Models\User;
+use App\Services\Search\SuggestionSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
@@ -18,7 +19,6 @@ class ResidentSuggestionService
     public function __construct(
         public SuggestionAccessService $access,
         public SuggestionAttachmentService $attachments,
-        public AiSentimentService $aiSentiment,
         public SuggestionNotificationService $notifications
     ) {}
 
@@ -103,7 +103,7 @@ class ResidentSuggestionService
                 }
                 $id = (string) Str::uuid();
                 $rawToken = $anonymous ? 'SC-'.Str::random(40) : null;
-                $storedFiles = $this->attachments->storeAttachments($id, $files);
+                $storedFiles = $this->attachments->storeAttachments($id, $files, $anonymous);
                 $suggestion = Suggestion::create([
                     'id' => $id, 'box_id' => $box->id, 'submission_key_hash' => $submissionHash,
                     'payload_fingerprint' => $fingerprint, 'idempotency_key' => null,
@@ -127,9 +127,6 @@ class ResidentSuggestionService
         } catch (\Throwable $exception) {
             $this->attachments->deleteAttachments($storedFiles);
             throw $exception;
-        }
-        if (! $replayed) {
-            DB::afterCommit(fn () => $this->aiSentiment->analyzeSuggestion($suggestion));
         }
 
         return [
@@ -162,11 +159,7 @@ class ResidentSuggestionService
         }
 
         if (! empty($filters['search'])) {
-            $keyword = '%'.trim((string) $filters['search']).'%';
-            $query->where(function (Builder $q) use ($keyword): void {
-                $q->where('title', 'like', $keyword)
-                    ->orWhere('content_text', 'like', $keyword);
-            });
+            app(SuggestionSearch::class)->filter($query, trim((string) $filters['search']));
         }
 
         $perPage = max(5, min(50, (int) ($filters['per_page'] ?? 10)));

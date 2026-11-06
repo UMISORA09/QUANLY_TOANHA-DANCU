@@ -7,6 +7,7 @@ use App\Models\TicketCategory;
 use App\Models\TicketHistory;
 use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\Search\TicketSearch;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -105,12 +106,7 @@ class ResidentTicketService
         // 4. Tìm kiếm từ khóa (Mã ticket, tiêu đề, vị trí)
         if (! empty($filters['search'])) {
             $keyword = trim((string) $filters['search']);
-            $query->where(function ($q) use ($keyword) {
-                $q->where('ticket_number', 'like', "%{$keyword}%")
-                    ->orWhere('title', 'like', "%{$keyword}%")
-                    ->orWhere('location', 'like', "%{$keyword}%")
-                    ->orWhere('description', 'like', "%{$keyword}%");
-            });
+            app(TicketSearch::class)->filter($query, $keyword, includeDescription: true);
         }
 
         $perPage = min(max((int) ($filters['per_page'] ?? 15), 5), 50);

@@ -200,8 +200,9 @@ class SmartSearchDriver implements SearchDriverInterface
      *     candidate_queries?: array<int, string>
      * }  $normQuery  Truy vấn đã chuẩn hóa
      */
-    public function computeRelevanceScore(object $item, array $normQuery): float
+    public function computeRelevanceScore(object $item, array $normQuery, ?bool &$usedFuzzy = null): float
     {
+        $usedFuzzy = false;
         $normalized = $normQuery['normalized'];
         $unaccented = $normQuery['unaccented'];
         $tokens = $normQuery['unaccented_tokens'];
@@ -364,6 +365,8 @@ class SmartSearchDriver implements SearchDriverInterface
 
         // Nếu TẤT CẢ các từ tìm kiếm đều khớp trên Tên tiện ích (ví dụ "ku nghi duon" -> "khu nghi duong")
         if ($nameMinScore >= 0.70) {
+            $usedFuzzy = $nameMinScore < 1.0;
+
             return round(0.78 + ($nameAvgScore * 0.08) + $brevityBonus, 2);
         }
 
@@ -377,6 +380,8 @@ class SmartSearchDriver implements SearchDriverInterface
             if ($matchedCountOnName >= 2) {
                 $ratio = $matchedCountOnName / count($tokensToEvaluate);
                 if ($ratio >= 0.65) {
+                    $usedFuzzy = true;
+
                     return round(0.50 + ($ratio * 0.15), 2);
                 }
             }
@@ -460,9 +465,12 @@ class SmartSearchDriver implements SearchDriverInterface
             $candidates = $baseQuery->get();
 
             $scored = [];
+            $isFuzzy = (bool) $correction['is_corrected'];
             foreach ($candidates as $item) {
-                $score = $this->computeRelevanceScore($item, $normQuery);
+                $usedFuzzy = false;
+                $score = $this->computeRelevanceScore($item, $normQuery, $usedFuzzy);
                 if ($score >= 0.45) {
+                    $isFuzzy = $isFuzzy || $usedFuzzy;
                     $itemArray = (array) $item;
                     $itemArray['relevance_score'] = $score;
                     $scored[] = $itemArray;
@@ -541,7 +549,7 @@ class SmartSearchDriver implements SearchDriverInterface
                 $perPage,
                 $elapsedMs,
                 'smart',
-                $correction['is_corrected'] || true,
+                $isFuzzy,
                 [
                     'query' => $trimmed,
                     'normalized_query' => $normQuery['normalized'],

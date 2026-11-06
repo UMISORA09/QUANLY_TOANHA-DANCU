@@ -1,4 +1,6 @@
 import { TicketImage } from './TicketImage';
+import { TicketDialog } from './TicketDialog';
+import { CustomSelect } from './Common/CustomSelect';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
@@ -400,20 +402,15 @@ export const ResidentSuggestionPanel: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Hòm thư nhận */}
               <div>
-                <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-2">
-                  Hòm thư tiếp nhận <span className="text-rose-500">*</span>
-                </label>
-                <select
+                <CustomSelect
+                  label="Hòm thư tiếp nhận"
                   value={selectedBoxId}
-                  onChange={(e) => setSelectedBoxId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 bg-white text-sm text-neutral-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
-                >
-                  {boxes.map((box) => (
-                    <option key={box.id} value={box.id}>
-                      {box.box_name} {box.block ? `(${box.block.block_name})` : '(Toàn khu)'}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedBoxId}
+                  options={boxes.map((box) => ({ value: box.id, label: `${box.box_name} ${box.block ? `(${box.block.block_name})` : '(Toàn khu)'}` }))}
+                  required
+                  overlay
+                  buttonClassName="min-h-11 text-sm"
+                />
                 {formErrors.box_id && <p className="mt-1.5 text-xs text-rose-600">{formErrors.box_id}</p>}
                 {boxes.find((b) => b.id === selectedBoxId)?.description && (
                   <p className="mt-1.5 text-xs text-neutral-500 italic">
@@ -424,30 +421,26 @@ export const ResidentSuggestionPanel: React.FC = () => {
 
               {/* Chủ đề */}
               <div>
-                <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-2">
-                  Chủ đề góp ý <span className="text-rose-500">*</span>
-                </label>
-                <select
+                <CustomSelect
+                  label="Chủ đề góp ý"
                   value={topicCategory}
-                  onChange={(e) => setTopicCategory(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 bg-white text-sm text-neutral-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors"
-                >
-                  {TOPIC_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setTopicCategory}
+                  options={TOPIC_OPTIONS.map(({ value, label }) => ({ value, label }))}
+                  required
+                  overlay
+                  buttonClassName="min-h-11 text-sm"
+                />
                 {formErrors.topic_category && <p className="mt-1.5 text-xs text-rose-600">{formErrors.topic_category}</p>}
               </div>
             </div>
 
             {/* Tiêu đề */}
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-2">
+              <label htmlFor="suggestion-title" className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-2">
                 Tiêu đề góp ý <span className="text-rose-500">*</span>
               </label>
               <input
+                id="suggestion-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -467,10 +460,11 @@ export const ResidentSuggestionPanel: React.FC = () => {
 
             {/* Nội dung */}
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-2">
+              <label htmlFor="suggestion-content" className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-2">
                 Nội dung chi tiết <span className="text-rose-500">*</span>
               </label>
               <textarea
+                id="suggestion-content"
                 rows={5}
                 value={contentText}
                 onChange={(e) => setContentText(e.target.value)}
@@ -702,6 +696,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
                 </div>
                 <input
                   type="text"
+                  aria-label="Mã tra cứu góp ý ẩn danh"
                   value={lookupTokenInput}
                   onChange={(e) => setLookupTokenInput(e.target.value)}
                   placeholder="Nhập mã tra cứu (VD: SC-A8F9B2C1-D3E4F5G6)..."
@@ -899,9 +894,13 @@ export const ResidentSuggestionPanel: React.FC = () => {
       )}
 
       {/* POPUP: CẤP MÃ BẢO MẬT GÓP Ý ẨN DANH */}
-      {showAnonTokenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-neutral-100">
+      <TicketDialog
+        open={showAnonTokenModal}
+        title="Gửi Góp Ý Ẩn Danh Thành Công!"
+        onClose={() => setShowAnonTokenModal(false)}
+        busy
+      >
+          <div className="space-y-6">
             <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-inner">
               <Shield className="w-8 h-8" />
             </div>
@@ -959,8 +958,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </TicketDialog>
     </div>
   );
 };

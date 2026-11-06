@@ -214,10 +214,10 @@ class TicketDiscussionTest extends TestCase
         $this->getJson($this->url().'?since=invalid')->assertUnprocessable();
     }
 
-    public function test_global_manager_and_read_only_technician_permissions_are_enforced(): void
+    public function test_unassigned_manager_and_read_only_technician_permissions_are_enforced(): void
     {
         $manager = $this->employee('BUILDING_MANAGER');
-        $this->withHeader('Authorization', 'Bearer '.$this->sessionToken($manager))->postJson($this->url(), $this->payload(true))->assertCreated();
+        $this->withHeader('Authorization', 'Bearer '.$this->sessionToken($manager))->postJson($this->url(), $this->payload(true))->assertForbidden();
         $tech = $this->employee('TECHNICIAN', $this->blockId);
         $this->ticket->update(['current_technician_user_id' => $tech->id]);
         $role = Role::where('role_code', 'TECHNICIAN')->firstOrFail();

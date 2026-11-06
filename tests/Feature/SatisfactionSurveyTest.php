@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SyncSurveySearchIndex;
 use App\Models\Apartment;
 use App\Models\Block;
 use App\Models\Floor;
@@ -14,11 +15,13 @@ use App\Models\SurveyResponseDetail;
 use App\Models\User;
 use App\Services\ResidentSurveyService;
 use App\Services\SatisfactionSurveyService;
+use App\Services\Search\SurveySearch;
 use App\Services\SurveyAnalyticsService;
 use Database\Seeders\SatisfactionSurveySeeder;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -205,6 +208,47 @@ class SatisfactionSurveyTest extends TestCase
     }
 
     // 1. Manager tạo khảo sát thành công với cả 4 loại câu hỏi
+    public function test_docker_survey_search_keeps_manager_scope_and_sql_schedule_filters(): void
+    {
+        $host = getenv('TEST_ELASTICSEARCH_URL');
+        if (! $host) {
+            $this->markTestSkipped('Set TEST_ELASTICSEARCH_URL to a disposable Elasticsearch instance.');
+        }
+        $this->assertStringEndsWith('_test', DB::getDatabaseName());
+        $index = 'cassavas_survey_test_'.strtolower(Str::random(12));
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.hosts' => [$host], 'search.drivers.elasticsearch.surveys_index' => $index]);
+        $search = app(SurveySearch::class);
+        $manager = ['Authorization' => 'Bearer '.$this->managerToken];
+        $other = ['Authorization' => 'Bearer '.$this->otherBlockManagerToken];
+        $url = '/api/v1/management/surveys';
+
+        try {
+            $survey = SatisfactionSurvey::create([
+                'survey_code' => 'QA-'.Str::upper(Str::random(12)), 'title' => 'Khảo sát Zafiro',
+                'description' => 'Mô tả chỉ được lưu ở MySQL.', 'target_block_id' => $this->blockA->id,
+                'start_date' => today(), 'end_date' => today()->addDay(), 'is_active' => true,
+                'created_by' => $this->managerUser->id, 'version' => 1,
+            ]);
+            $this->assertDatabaseHas('jobs', ['queue' => 'survey-search']);
+            $this->getJson($url.'?search=Zafiro', $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+            $job = new SyncSurveySearchIndex($survey->id);
+            $job->handle($search);
+            $this->getJson($url.'?search=zafro&status=ACTIVE', $manager)->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $survey->id);
+            $this->getJson($url.'?search='.$survey->survey_code, $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+            $this->getJson($url.'?search=zafro', $other)->assertOk()->assertJsonPath('meta.total', 0);
+
+            $source = Http::get(rtrim($host, '/').'/'.$index.'/_doc/'.$survey->id)->throw()->json('_source');
+            $this->assertSame(['revision', 'is_deleted', 'title', 'survey_code'], array_keys($source));
+            $survey->update(['title' => 'Khảo sát Olivaro', 'is_active' => false, 'version' => 2]);
+            $this->getJson($url.'?search=Olivaro', $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+            $job->handle($search);
+            $this->getJson($url.'?search=olivro&status=ACTIVE', $manager)->assertOk()->assertJsonPath('meta.total', 0);
+            $this->getJson($url.'?search=olivro&status=DISABLED', $manager)->assertOk()->assertJsonPath('data.0.id', $survey->id);
+        } finally {
+            Http::delete(rtrim($host, '/').'/'.$index);
+        }
+    }
+
     public function test_01_manager_can_create_survey_with_all_question_types(): void
     {
         $payload = [
@@ -845,7 +889,8 @@ class SatisfactionSurveyTest extends TestCase
 
     public function test_production_seeder_only_grants_permissions_without_creating_demo_surveys(): void
     {
-        $this->assertSame(0, SatisfactionSurvey::count());
+        $surveysBefore = SatisfactionSurvey::orderBy('id')->get()->toArray();
+        $questionsBefore = SurveyQuestion::orderBy('id')->get()->toArray();
         $this->app->instance('env', 'production');
 
         try {
@@ -854,8 +899,8 @@ class SatisfactionSurveyTest extends TestCase
             $grantCount = DB::table('role_permissions')->count();
             $this->artisan('db:seed', ['--class' => SatisfactionSurveySeeder::class, '--force' => true, '--no-interaction' => true])->assertSuccessful();
 
-            $this->assertSame(0, SatisfactionSurvey::count());
-            $this->assertSame(0, SurveyQuestion::count());
+            $this->assertSame($surveysBefore, SatisfactionSurvey::orderBy('id')->get()->toArray());
+            $this->assertSame($questionsBefore, SurveyQuestion::orderBy('id')->get()->toArray());
             $this->assertSame(5, Permission::where('module', 'SURVEY')->count());
             $this->assertSame($permissionCount, DB::table('permissions')->count());
             $this->assertSame($grantCount, DB::table('role_permissions')->count());
@@ -927,5 +972,28 @@ class SatisfactionSurveyTest extends TestCase
         $result = app(SurveyAnalyticsService::class)->getSurveyAnalytics($survey, $this->managerUser);
         $this->assertSame(0, $result['kpis']['eligible_apartments_count']);
         $this->assertNull($result['kpis']['participation_rate_percent']);
+    }
+
+    public function test_overall_csat_counts_answers_across_questions_instead_of_averaging_people(): void
+    {
+        $survey = $this->createRegressionSurvey();
+        $questions = [];
+        foreach ([1, 2] as $order) {
+            $questions[] = SurveyQuestion::create(['survey_id' => $survey->id, 'question_order' => $order,
+                'question_text' => 'Đánh giá '.$order, 'question_type' => SurveyQuestion::TYPE_RATING_1_TO_5, 'is_required' => false]);
+        }
+        $otherApartment = Apartment::create(['block_id' => $this->blockA->id, 'floor_id' => $this->aptA->floor_id,
+            'apartment_number' => 'CSAT-'.Str::random(8), 'gross_floor_area_sqm' => 80, 'net_usable_area_sqm' => 70]);
+        foreach ([[$this->aptA->id, $this->residentUser->id, [5, 1]], [$otherApartment->id, $this->otherBlockResidentUser->id, [5]]] as [$apartment, $user, $scores]) {
+            $response = SurveyResponse::create(['survey_id' => $survey->id, 'apartment_id' => $apartment, 'resident_user_id' => $user, 'submitted_at' => now()]);
+            foreach ($scores as $index => $score) {
+                SurveyResponseDetail::create(['response_id' => $response->id, 'question_id' => $questions[$index]->id, 'numeric_score' => $score]);
+            }
+        }
+        $result = $this->withToken($this->managerToken)->getJson('/api/v1/management/surveys/'.$survey->id.'/analytics')->assertOk();
+        $result->assertJsonPath('data.kpis.total_responses', 2)->assertJsonPath('data.kpis.total_valid_ratings', 3)
+            ->assertJsonPath('data.kpis.satisfied_ratings_count', 2);
+        $this->assertEquals(66.67, $result->json('data.kpis.overall_csat_percentage'));
+        $this->assertEquals(3.67, $result->json('data.kpis.overall_average_rating'));
     }
 }

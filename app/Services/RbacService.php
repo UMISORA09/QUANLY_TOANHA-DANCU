@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Middleware\AuthenticateBearer;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -13,70 +14,15 @@ use Illuminate\Validation\ValidationException;
 
 class RbacService
 {
-    /**
-     * Xác định người dùng từ Request (Hỗ trợ Laravel Auth, X-User-Id, Bearer token, session token)
-     */
     public static function resolveUser(Request $request): ?object
     {
-        if ($user = $request->user()) {
-            return $user;
+        $user = $request->user() ?? Auth::user();
+        $token = trim((string) $request->bearerToken());
+        if (! $user && $token !== '') {
+            $user = AuthenticateBearer::resolveSessionUser($token);
         }
 
-        if (Auth::check()) {
-            return Auth::user();
-        }
-
-        $userId = $request->header('X-User-Id') ?? $request->query('user_id');
-        if ($userId) {
-            return User::find($userId) ?? DB::table('users')->where('id', $userId)->first();
-        }
-
-        $userEmail = $request->header('X-User-Email');
-        if ($userEmail) {
-            return User::where('email', $userEmail)->first() ?? DB::table('users')->where('email', $userEmail)->first();
-        }
-
-        // Kiểm tra Bearer token nếu có mapping
-        $authHeader = $request->header('Authorization');
-        if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
-            $token = substr($authHeader, 7);
-            if (str_contains($token, 'admin')) {
-                return User::where('username', 'admin')->first() ?? DB::table('users')->where('username', 'admin')->first();
-            }
-
-            if (str_contains($token, 'manager')) {
-                return User::where('username', 'manager')->first() ?? DB::table('users')->where('username', 'manager')->first();
-            }
-
-            if (str_contains($token, 'reception')) {
-                return User::where('username', 'receptionist')->first() ?? User::where('username', 'letan')->first() ?? DB::table('users')->where('username', 'receptionist')->first();
-            }
-
-            if (str_contains($token, 'resident')) {
-                return User::where('email', 'nguyenvanan@cassavas.vn')->first() ?? User::where('username', 'resident.owner')->first() ?? DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
-            }
-
-            $tokenHash = hash('sha256', $token);
-            $session = DB::table('user_sessions')
-                ->where(function ($q) use ($token, $tokenHash) {
-                    $q->where('refresh_token_hash', $tokenHash)
-                        ->orWhere('refresh_token_hash', $token);
-                })
-                ->where('is_revoked', 0)
-                ->first();
-            if ($session) {
-                return User::find($session->user_id) ?? DB::table('users')->where('id', $session->user_id)->first();
-            }
-
-            if (str_starts_with($token, 'smart_token_')) {
-                $parts = explode('_', $token);
-                if (isset($parts[2]) && strlen($parts[2]) === 36) {
-                    return User::find($parts[2]) ?? DB::table('users')->where('id', $parts[2])->first();
-                }
-            }
-        }
-
-        return null;
+        return $user?->status === 'ACTIVE' ? $user : null;
     }
 
     /**

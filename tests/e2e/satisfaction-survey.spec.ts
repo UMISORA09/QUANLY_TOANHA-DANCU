@@ -1,5 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 
+test.use({ screenshot: 'off', video: 'off', trace: 'off' });
+
 test.describe('F13: Khảo sát và Thống kê Mức độ Hài lòng Cư dân (CSAT)', () => {
   test('E2E MOCKED: Manager tạo khảo sát, xem phân tích CSAT và Resident tham gia đánh giá', async ({ page }) => {
     // 1. Mock local session for Manager
@@ -165,6 +167,26 @@ test.describe('F13: Khảo sát và Thống kê Mức độ Hài lòng Cư dân 
     await expect(page.getByTestId('analytics-modal')).toBeVisible();
     await expect(page.getByTestId('analytics-modal').getByText('60%', { exact: true })).toBeVisible();
     await expect(page.getByTestId('analytics-modal').getByText('3.6 / 5', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('analytics-modal').getByText('Tính theo câu trả lời, không theo người tham gia.', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('analytics-modal').getByText('3/5 câu trả lời chấm 4–5 sao', { exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId('analytics-modal').getByText('3/5 câu trả lời chấm 4–5 sao', { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByTestId('close-analytics-modal').click();
+    await expect(page.getByTestId('analytics-modal')).not.toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.route('**/api/v1/management/surveys/*/analytics', route => route.fulfill({ json: {
+      status: 'success', data: { survey: surveys[0], kpis: {
+        total_responses: 0, eligible_apartments_count: 200, participation_rate_percent: 0,
+        overall_average_rating: 0, overall_csat_percentage: 0, total_valid_ratings: 0,
+        satisfied_ratings_count: 0, neutral_ratings_count: 0, dissatisfied_ratings_count: 0, data_status: 'NO_DATA',
+      }, question_stats: [] },
+    } }));
+    await page.getByRole('button', { name: 'Phân tích CSAT' }).click();
+    const csatCard = page.getByTestId('analytics-modal').getByText('Chỉ số CSAT', { exact: true }).locator('..');
+    await expect(csatCard.getByText('N/A', { exact: true })).toBeVisible();
+    await expect(csatCard.getByText('Chưa có câu trả lời chấm điểm.', { exact: true })).toBeVisible();
+    await expect(csatCard).not.toContainText('0/0');
     await page.getByTestId('close-analytics-modal').click();
     await expect(page.getByTestId('analytics-modal')).not.toBeVisible();
 

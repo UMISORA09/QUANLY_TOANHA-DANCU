@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Jobs\SyncAmenitySearchIndex;
-use App\Services\Search\AlgoliaTaskPendingException;
 use App\Services\Search\AmenitySearchSyncState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -20,7 +19,7 @@ class AmenitySearchSyncStateTest extends TestCase
         parent::setUp();
         $this->assertStringEndsWith('_test', DB::connection()->getDatabaseName());
         $this->amenityId = (string) Str::uuid();
-        config(['search.drivers.algolia' => ['app_id' => 'TESTAPP', 'key' => 'qa-key', 'amenities_index' => 'amenities_test', 'sync_enabled' => true]]);
+        config(['search.drivers.elasticsearch.amenities_index' => 'amenities_test']);
         Http::preventStrayRequests();
     }
 
@@ -36,13 +35,13 @@ class AmenitySearchSyncStateTest extends TestCase
         Http::fake(function ($request) {
             $this->assertSame(0, DB::transactionLevel(), 'Network calls must not retain row locks.');
 
-            return Http::response($request->method() === 'POST' ? ['taskID' => 42] : ['status' => 'published']);
+            return Http::response();
         });
         (new SyncAmenitySearchIndex($this->amenityId))->handle();
         (new SyncAmenitySearchIndex($this->amenityId))->handle();
         Http::assertSentCount(2);
-        Http::assertSent(fn ($request) => $request->method() === 'POST'
-            && $request['is_deleted'] === true && $request['search_version'] === ['_operation' => 'IncrementSet', 'value' => 1]);
+        Http::assertSent(fn ($request) => $request->method() === 'PUT'
+            && $request['is_deleted'] === true && str_contains($request->url(), 'version_type=external_gte&version=1'));
         $this->assertDatabaseHas('amenity_search_states', ['amenity_id' => $this->amenityId, 'published_version' => 1, 'status' => 'synced']);
     }
 
@@ -69,55 +68,6 @@ class AmenitySearchSyncStateTest extends TestCase
         $states->acknowledge($this->amenityId, 2);
         $states->acknowledge($this->amenityId, 1);
         $this->assertDatabaseHas('amenity_search_states', ['amenity_id' => $this->amenityId, 'published_version' => 2, 'status' => 'synced']);
-    }
-
-    public function test_lost_task_status_response_resumes_the_persisted_task_without_another_write(): void
-    {
-        $published = false;
-        Http::fake(function ($request) use (&$published) {
-            if ($request->method() === 'POST') {
-                return Http::response(['taskID' => 42]);
-            }
-            if (! $published) {
-                throw new \RuntimeException('QA network interruption');
-            }
-
-            return Http::response(['status' => 'published']);
-        });
-        try {
-            (new SyncAmenitySearchIndex($this->amenityId))->handle();
-            $this->fail('The worker must report the network interruption.');
-        } catch (\RuntimeException $exception) {
-            $this->assertSame('QA network interruption', $exception->getMessage());
-        }
-        $published = true;
-        (new SyncAmenitySearchIndex($this->amenityId))->handle();
-        $this->assertCount(1, Http::recorded(fn ($request) => $request->method() === 'POST'));
-        $this->assertDatabaseHas('amenity_search_states', ['amenity_id' => $this->amenityId, 'status' => 'synced']);
-    }
-
-    public function test_publication_polling_has_a_finite_retry_limit(): void
-    {
-        app(AmenitySearchSyncState::class)->queue($this->amenityId);
-        Http::fake(fn () => throw new AlgoliaTaskPendingException(42));
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('bounded retry window');
-        try {
-            (new SyncAmenitySearchIndex($this->amenityId, 42, 1, 9))->handle();
-        } finally {
-            $this->assertDatabaseHas('amenity_search_states', ['amenity_id' => $this->amenityId, 'status' => 'failed', 'error_code' => 'publication_timeout']);
-        }
-    }
-
-    public function test_obsolete_publication_checks_do_not_make_remote_calls(): void
-    {
-        $states = app(AmenitySearchSyncState::class);
-        $states->queue($this->amenityId);
-        $states->queue($this->amenityId);
-        Http::fake();
-        (new SyncAmenitySearchIndex($this->amenityId, 42, 1))->handle();
-        Http::assertNothingSent();
-        $this->assertDatabaseHas('amenity_search_states', ['amenity_id' => $this->amenityId, 'desired_version' => 2, 'published_version' => 0]);
     }
 
     public function test_configuration_rejects_a_queue_that_defers_the_atomic_insert(): void
