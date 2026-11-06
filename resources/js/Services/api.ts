@@ -157,7 +157,6 @@ export interface AmenityListResponse {
 export interface AmenitySearchMetrics {
   days: number;
   requests: number;
-  estimated_algolia_calls: number;
   zero_result_rate: number;
   fallback_rate: number;
   p50_ms: number | null;
@@ -1314,6 +1313,11 @@ class ApiService {
   }
 
   // ================= BOOKINGS =================
+  async getAmenityBookingCodeMatches(amenityId: string, query: string, signal: AbortSignal): Promise<{ ids: string[] }> {
+    const params = new URLSearchParams({ q: query });
+    return this.request<{ ids: string[] }>(`/admin/amenities/${amenityId}/booking-code-matches?${params}`, { signal, cache: 'no-store' });
+  }
+
   async getAmenityBookings(amenityId: string, forceRefresh: boolean = false, signal?: AbortSignal): Promise<AmenityBooking[]> {
     const key = `amenity:${amenityId}:bookings`;
     const lookup = amenityCache.get<AmenityBooking[]>(key);
@@ -2324,6 +2328,14 @@ class ApiService {
     });
   }
 
+  async getTicketRating(id: string, signal?: AbortSignal) {
+    return this.request<TicketRatingResponse>(`/tickets/${id}/rating`, { signal, cache: 'no-store' });
+  }
+
+  async rateResidentTicket(id: string, payload: { version: number; rating_stars: number; review_comment: string }) {
+    return this.request<TicketRatingResponse>(`/resident/tickets/${id}/rating`, { method: 'POST', body: JSON.stringify(payload), cache: 'no-store' });
+  }
+
   async confirmResidentTicket(id: string, version: number, note?: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
       method: 'POST',
@@ -3137,4 +3149,10 @@ export interface ManagementSurveyListResponse {
     per_page: number;
     total: number;
   };
+}
+
+export interface TicketRatingResponse {
+  data: { id: string; ticket_id: string; rating_stars: number; review_comment: string | null; created_at: string } | null;
+  can_rate: boolean;
+  ticket_version: number;
 }

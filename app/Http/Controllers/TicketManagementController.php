@@ -8,6 +8,7 @@ use App\Models\TicketCategory;
 use App\Models\User;
 use App\Services\ManagerNotificationService;
 use App\Services\ResidentTicketService;
+use App\Services\Search\TicketSearch;
 use App\Services\TicketConflictException;
 use App\Services\TicketManagementService;
 use App\Services\TicketWorkflowService;
@@ -34,7 +35,7 @@ class TicketManagementController extends Controller
             $query->whereHas('apartment', fn ($q) => $q->where('block_id', $data['block_id']));
         }
         if (! empty($data['search'])) {
-            $query->where(fn ($q) => $q->where('title', 'like', '%'.$data['search'].'%')->orWhere('ticket_number', 'like', '%'.$data['search'].'%')->orWhere('location', 'like', '%'.$data['search'].'%'));
+            app(TicketSearch::class)->filter($query, trim($data['search']));
         }
         $page = $query->orderByDesc('created_at')->orderBy('id')->paginate(15);
         $page->getCollection()->each(fn (Ticket $ticket) => $ticket->setAttribute('actions', $this->tickets->access->actions($request->user(), $ticket)));

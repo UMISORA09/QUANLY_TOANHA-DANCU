@@ -47,6 +47,7 @@ use App\Http\Controllers\StaffScheduleController;
 use App\Http\Controllers\TemporaryRegistrationController;
 use App\Http\Controllers\TicketDiscussionController;
 use App\Http\Controllers\TicketManagementController;
+use App\Http\Controllers\TicketRatingController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -61,9 +62,10 @@ Route::get('/', [PublicContentController::class, 'show'])->name('public.root');
 Route::get('/home', [PublicContentController::class, 'show'])->name('public.home');
 Route::redirect('/index.html', '/home', 308);
 Route::get('/{page}', [PublicContentController::class, 'show'])
-    ->where('page', 'about|contact|privacy|docs')->name('public.page');
+    ->where('page', 'about|contact|privacy|docs|mcp')->name('public.page');
 Route::get('/{page}.md', [PublicContentController::class, 'markdown'])
-    ->where('page', 'home|about|contact|privacy|docs');
+    ->where('page', 'home|about|contact|privacy|docs|mcp');
+Route::get('/api/v1/public/guides/{page}', [PublicContentController::class, 'guide']);
 Route::get('/sitemap.xml', [PublicContentController::class, 'sitemap']);
 Route::get('/.well-known/mcp', [PublicContentController::class, 'mcpDiscovery']);
 
@@ -367,7 +369,7 @@ Route::patch('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class
 Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController::class, 'cancel']);
 Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
 
-Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice']);
+Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice'])->middleware(['auth.bearer:strict', 'throttle:10,1']);
 
 // F12: Hòm thư Góp ý & Phân tích Cảm xúc
 Route::prefix('api/v1/resident')->middleware('auth.bearer:strict')->group(function () {
@@ -892,6 +894,7 @@ Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     Route::patch('amenities/{id}/status', [AmenityController::class, 'toggleAmenityStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::delete('amenities/{id}', [AmenityController::class, 'deleteAmenity'])->middleware(['auth.bearer:strict', 'permission:AMENITY:DELETE']);
     Route::get('amenities/{id}/bookings', [AmenityController::class, 'getAmenityBookings'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
+    Route::get('amenities/{id}/booking-code-matches', [AmenityController::class, 'bookingCodeMatches'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::patch('amenities/{amenityId}/bookings/{bookingId}/status', [AmenityController::class, 'updateBookingStatus'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::post('amenities/{amenityId}/bookings/{bookingId}/cancel', [AmenityController::class, 'cancelBooking'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
     Route::post('amenities/{amenityId}/bookings/{bookingId}/payment/confirm', [AmenityBookingPaymentController::class, 'confirm'])->middleware(['auth.bearer:strict', 'permission:AMENITY:UPDATE']);
@@ -1000,3 +1003,6 @@ Route::fallback([PublicContentController::class, 'missing']);
 Route::get('/api/v1/internal/amenity-search/process', AmenitySearchSyncController::class)->middleware('throttle:30,1');
 
 Route::post('/api/v1/internal/amenity-search/reindex', AmenitySearchSyncController::class)->middleware('throttle:6,1');
+
+Route::get('/api/v1/tickets/{id}/rating', [TicketRatingController::class, 'show'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/resident/tickets/{id}/rating', [TicketRatingController::class, 'store'])->middleware(['auth.bearer:strict', 'throttle:30,1']);

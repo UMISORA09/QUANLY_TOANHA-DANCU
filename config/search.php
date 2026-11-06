@@ -1,5 +1,7 @@
 <?php
 
+$driver = env('SEARCH_DRIVER', 'smart');
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -9,7 +11,7 @@ return [
     | Supported drivers: "smart", "database", "meilisearch", "elasticsearch"
     |
     */
-    'default' => env('SEARCH_DRIVER', 'smart'),
+    'default' => $driver === 'algolia' ? 'smart' : $driver,
     'sync_secret' => env('AMENITY_SEARCH_SYNC_SECRET', ''),
 
     /*
@@ -18,13 +20,6 @@ return [
     |--------------------------------------------------------------------------
     */
     'drivers' => [
-        'algolia' => [
-            'app_id' => env('ALGOLIA_APP_ID', ''),
-            'key' => env('ALGOLIA_API_KEY', ''),
-            'amenities_index' => env('ALGOLIA_AMENITIES_INDEX', ''),
-            'sync_enabled' => env('ALGOLIA_SYNC_ENABLED', false),
-            'allow_flush' => false,
-        ],
         'smart' => [
             'min_token_length' => 2,
             'fuzzy_enabled' => true,
@@ -45,8 +40,14 @@ return [
         ],
 
         'elasticsearch' => [
+            'surveys_index' => env('ELASTICSEARCH_SURVEYS_INDEX', 'cassavas_surveys_v1'),
+            'suggestions_index' => env('ELASTICSEARCH_SUGGESTIONS_INDEX', 'cassavas_suggestions_v1'),
             'announcements_index' => env('ELASTICSEARCH_ANNOUNCEMENTS_INDEX', 'cassavas_announcements_v1'),
+            'tickets_index' => env('ELASTICSEARCH_TICKETS_INDEX', 'cassavas_tickets_v1'),
+            'booking_codes_index' => env('ELASTICSEARCH_BOOKING_CODES_INDEX', 'cassavas_booking_codes_v1'),
+            'amenities_index' => env('ELASTICSEARCH_AMENITIES_INDEX', 'cassavas_amenities_v1'),
             'hosts' => explode(',', env('ELASTICSEARCH_HOSTS', 'http://127.0.0.1:9200')),
+            'api_key' => env('ELASTICSEARCH_API_KEY'),
             'username' => env('ELASTICSEARCH_USER', null),
             'password' => env('ELASTICSEARCH_PASS', null),
         ],

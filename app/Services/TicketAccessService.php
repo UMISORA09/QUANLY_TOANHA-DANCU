@@ -27,6 +27,8 @@ class TicketAccessService
         $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
         abort_unless($profile, 403, 'Chưa có hồ sơ nhân viên và phạm vi tòa nhà. Vui lòng liên hệ Admin.');
 
+        abort_if($this->manager($user) && $profile->assigned_block_id === null, 403, 'Chưa được phân công tòa nhà.');
+
         return $profile->assigned_block_id;
     }
 

@@ -3,14 +3,14 @@
 namespace App\Console\Commands;
 
 use App\Services\Search\AmenitySearchSyncState;
-use App\Services\Search\Drivers\AlgoliaDriver;
+use App\Services\Search\Drivers\ElasticsearchDriver;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
 class SyncAmenitySearch extends Command
 {
-    protected $signature = 'search:sync-amenities {--configure : Configure the dedicated Algolia index} {--dry-run : Count rows without writing or sending data} {--retry-failed : Queue only documents whose last synchronization failed}';
+    protected $signature = 'search:sync-amenities {--configure : Configure the dedicated Elasticsearch index} {--dry-run : Count rows without writing or sending data} {--retry-failed : Queue only documents whose last synchronization failed}';
 
     protected $description = 'Queue idempotent synchronization of all amenities, including soft deletions';
 
@@ -25,8 +25,8 @@ class SyncAmenitySearch extends Command
 
             return self::SUCCESS;
         }
-        if (! config('search.drivers.algolia.sync_enabled')) {
-            $this->error('Enable ALGOLIA_SYNC_ENABLED after configuring a dedicated index.');
+        if (config('search.default') !== 'elasticsearch') {
+            $this->error('Set SEARCH_DRIVER=elasticsearch before synchronizing amenities.');
 
             return self::FAILURE;
         }
@@ -35,7 +35,7 @@ class SyncAmenitySearch extends Command
             throw new LogicException('Amenity search queue must use the business database connection for atomic writes.');
         }
         if ($this->option('configure')) {
-            (new AlgoliaDriver(config('search.drivers.algolia')))->configure();
+            (new ElasticsearchDriver(config('search.drivers.elasticsearch')))->configure();
         }
         $rows->chunkById(100, function ($rows): void {
             app(AmenitySearchSyncState::class)->queueMany($rows->pluck('id')->all());

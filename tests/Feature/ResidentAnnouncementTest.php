@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SyncAnnouncementSearchIndex;
 use App\Models\Resident;
+use App\Services\Search\AnnouncementSearch;
+use Database\Seeders\AnnouncementPermissionsSeeder;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -41,6 +45,53 @@ class ResidentAnnouncementTest extends TestCase
         ], ...$values]);
 
         return $id;
+    }
+
+    public function test_docker_announcement_search_preserves_resident_visibility_and_freshness(): void
+    {
+        $host = getenv('TEST_ELASTICSEARCH_URL');
+        if (! $host) {
+            $this->markTestSkipped('Set TEST_ELASTICSEARCH_URL to a disposable Elasticsearch instance.');
+        }
+        $this->assertStringEndsWith('_test', DB::getDatabaseName());
+        $index = 'cassavas_announcement_test_'.strtolower(Str::random(12));
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.hosts' => [$host], 'search.drivers.elasticsearch.announcements_index' => $index]);
+        (new AnnouncementPermissionsSeeder)->run();
+        $admin = ['Authorization' => 'Bearer '.$this->adminToken];
+        $resident = ['Authorization' => 'Bearer '.$this->residentToken];
+        $adminUrl = '/api/v1/admin/announcements';
+        $residentUrl = '/api/v1/resident/announcements';
+        $search = app(AnnouncementSearch::class);
+        $id = (string) Str::uuid();
+
+        try {
+            $this->postJson($adminUrl, [
+                'id' => $id, 'title' => 'Thông báo Zafiro', 'content_html' => '<p>Nội dung chỉ được lưu ở MySQL.</p>',
+                'category' => 'MAINTENANCE', 'target_scope' => 'BLOCK', 'target_block_id' => $this->blockId,
+                'is_pinned' => false, 'is_urgent' => false,
+            ], $admin)->assertCreated();
+            $this->assertDatabaseHas('jobs', ['queue' => 'announcement-search']);
+            $job = new SyncAnnouncementSearchIndex($id);
+            $job->handle($search);
+            $this->getJson($adminUrl.'?search=zafro', $admin)->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $id);
+            $this->getJson($residentUrl.'?search=zafro', $resident)->assertOk()->assertJsonPath('total', 0);
+
+            $this->postJson($adminUrl.'/'.$id.'/publish', ['version' => 1], $admin)->assertOk();
+            $this->getJson($residentUrl.'?search=Zafiro', $resident)->assertOk()->assertJsonPath('total', 1);
+            $job->handle($search);
+            $this->getJson($residentUrl.'?search=zafro', $resident)->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $id);
+            $source = Http::get(rtrim($host, '/').'/'.$index.'/_doc/'.$id)->throw()->json('_source');
+            $this->assertSame(['revision', 'is_deleted', 'title'], array_keys($source));
+
+            $this->postJson($adminUrl.'/'.$id.'/unpublish', ['version' => 2, 'reason' => 'Gỡ bài viết kiểm thử'], $admin)->assertOk();
+            $this->getJson($residentUrl.'?search=zafro', $resident)->assertOk()->assertJsonPath('total', 0);
+            $this->deleteJson($adminUrl.'/'.$id, ['version' => 3, 'reason' => 'Lưu trữ bài kiểm thử'], $admin)->assertOk();
+            $job->handle($search);
+            $this->assertTrue(Http::get(rtrim($host, '/').'/'.$index.'/_doc/'.$id)->throw()->json('_source.is_deleted'));
+            $this->getJson($adminUrl.'?search=zafro', $admin)->assertOk()->assertJsonPath('total', 0);
+        } finally {
+            Http::delete(rtrim($host, '/').'/'.$index);
+        }
     }
 
     public function test_strict_sessions_active_account_and_valid_residency_are_required(): void

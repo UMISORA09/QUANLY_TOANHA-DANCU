@@ -19,7 +19,7 @@ class ResidentAmenitySearchTest extends TestCase
     {
         parent::setUp();
         $this->createBookingFixture();
-        config(['search.default' => 'smart', 'search.drivers.algolia.sync_enabled' => false]);
+        config(['search.default' => 'smart']);
         Http::preventStrayRequests();
     }
 
@@ -90,15 +90,15 @@ class ResidentAmenitySearchTest extends TestCase
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
     }
 
-    public function test_algolia_receives_scope_before_pagination_and_rechecks_mysql(): void
+    public function test_elasticsearch_receives_scope_before_pagination_and_rechecks_mysql(): void
     {
-        config(['search.default' => 'algolia', 'search.drivers.algolia' => ['app_id' => 'TESTAPP', 'key' => 'qa-key', 'amenities_index' => 'amenities_test', 'sync_enabled' => true]]);
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.amenities_index' => 'amenities_test']);
         foreach (DB::table('amenities')->pluck('id') as $id) {
             DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], ['desired_version' => 1, 'published_version' => 1, 'status' => 'synced', 'created_at' => now(), 'updated_at' => now(), 'index_fingerprint' => AmenitySearchSyncState::fingerprint()]);
         }
-        Http::fake(['*/query' => Http::response(['hits' => [['objectID' => $this->amenityId, 'search_version' => 1, 'updated_at' => DB::table('amenities')->where('id', $this->amenityId)->value('updated_at')]], 'nbHits' => 1])]);
-        $this->getJson($this->url('search', ['q' => 'BBQ']))->assertOk()->assertJsonPath('engine', 'algolia');
-        Http::assertSent(fn ($request) => $request['hitsPerPage'] === 15 && in_array(['block_id:'.$this->blockId, 'block_id:__shared__'], $request['facetFilters'], true));
+        Http::fake(['*/_search' => Http::response(['hits' => ['hits' => [['_id' => $this->amenityId]], 'total' => ['value' => 1]]])]);
+        $this->getJson($this->url('search', ['q' => 'BBQ']))->assertOk()->assertJsonPath('engine', 'elasticsearch');
+        Http::assertSent(fn ($request) => $request['size'] === 15 && in_array(['terms' => ['block_id' => [$this->blockId, '__shared__']]], $request['query']['bool']['filter'], true));
     }
 
     public function test_another_account_cannot_reuse_an_authorized_search_or_private_detail(): void

@@ -1,3 +1,4 @@
+import { TicketRating } from './TicketRating';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, ManagedTicket, TicketOptions } from '../Services/api';
 import { CustomSelect } from './Common/CustomSelect';
@@ -433,6 +434,7 @@ export function TicketManagementPanel() {
             ))}
           </div>
 
+          {selected.status === 'CLOSED' && <TicketRating key={selected.id} ticketId={selected.id} version={selected.version} />}
           <TicketDiscussion key={selected.id} ticketId={selected.id} />
         </div>
       )}

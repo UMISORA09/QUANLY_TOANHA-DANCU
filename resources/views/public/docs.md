@@ -1,4 +1,4 @@
-# Tài liệu SMART CASSAVAS
+# Tài liệu API SMART CASSAVAS
 
 SMART CASSAVAS là nền tảng quản lý tòa nhà dành cho cư dân và nhân viên vận hành. Tài liệu công khai phục vụ việc tìm hiểu sản phẩm và kết nối trợ lý với nội dung giới thiệu; không cấp quyền đọc hồ sơ cư dân hay thực hiện giao dịch.
 
@@ -8,11 +8,17 @@ Gửi `Accept: text/markdown` đến `/` hoặc `/home`, `/about`, `/contact`, `
 
 [Hướng dẫn cho AI](/llms.txt), [sitemap](/sitemap.xml) và [OpenAPI công khai](/openapi.json) mô tả các điểm truy cập có thể đọc mà không đăng nhập. Sitemap không liệt kê các cổng tài khoản hay API riêng tư.
 
+## API công khai v1
+
+Gọi `GET /api/v1/public/guides/home` để nhận JSON chứa tên trang và Markdown. [OpenAPI](/openapi.json) mô tả phản hồi và mã lỗi. Mỗi địa chỉ IP có 60 lượt gọi trong 60 giây. Đọc `RateLimit` để biết số lượt còn lại và chờ theo `Retry-After` khi nhận HTTP 429.
+
+Thay đổi không tương thích sẽ dùng đường dẫn phiên bản mới. Khi ngừng hỗ trợ một phiên bản, dự án sẽ công bố lịch tại trang này và báo thời điểm ngừng phục vụ qua header `Sunset`.
+
 ## Kết nối MCP
 
 MCP chỉ đọc nội dung công khai tại `/mcp/public`, dùng Streamable HTTP với giao thức `2025-11-25` của Laravel MCP 0.9.5. Client gửi `initialize`, tiếp theo `notifications/initialized`, rồi `tools/list` hoặc `tools/call`. POST dùng `Content-Type: application/json` và `Accept: application/json, text/event-stream`. Sau khởi tạo, gửi `MCP-Protocol-Version: 2025-11-25`. GET không mở luồng SSE thường trực và trả 405 theo transport đã chọn.
 
-Công cụ `read-public-guide` nhận `page` thuộc `home`, `about`, `contact`, `privacy`, `docs`; kết quả là văn bản công khai. Không nhận URL tùy ý, đường dẫn file hoặc ID cư dân. `/.well-known/mcp` là tài liệu khám phá riêng của website, không phải tuyên bố đăng ký hay xác minh bởi MCP Registry. Server không cung cấp công cụ đặt chỗ, thanh toán hoặc quản trị.
+Công cụ `read-public-guide` nhận `page` thuộc `home`, `about`, `contact`, `privacy`, `docs`, `mcp`; kết quả là văn bản công khai. Không nhận URL tùy ý, đường dẫn file hoặc ID cư dân. `/.well-known/mcp` là tài liệu khám phá riêng của website, không phải tuyên bố đăng ký hay xác minh bởi MCP Registry. Server không cung cấp công cụ đặt chỗ, thanh toán hoặc quản trị.
 
 ## Xác thực API nghiệp vụ
 

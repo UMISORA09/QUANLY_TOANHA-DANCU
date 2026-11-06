@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SyncSuggestionSearchIndex;
 use App\Models\Apartment;
 use App\Models\Block;
 use App\Models\Floor;
@@ -11,6 +12,7 @@ use App\Models\Suggestion;
 use App\Models\SuggestionBox;
 use App\Models\User;
 use App\Services\ResidentSuggestionService;
+use App\Services\Search\SuggestionSearch;
 use App\Services\SuggestionNotificationService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
@@ -232,6 +234,49 @@ class SuggestionManagementTest extends TestCase
     }
 
     // 1. Gửi góp ý hợp lệ (cư dân có danh tính)
+    public function test_docker_suggestion_search_uses_titles_without_indexing_anonymous_records(): void
+    {
+        $host = getenv('TEST_ELASTICSEARCH_URL');
+        if (! $host) {
+            $this->markTestSkipped('Set TEST_ELASTICSEARCH_URL to a disposable Elasticsearch instance.');
+        }
+        $this->assertStringEndsWith('_test', DB::getDatabaseName());
+        $index = 'cassavas_suggestion_test_'.strtolower(Str::random(12));
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.hosts' => [$host], 'search.drivers.elasticsearch.suggestions_index' => $index]);
+        $search = app(SuggestionSearch::class);
+        $source = [
+            'box_id' => $this->blockABox->id, 'resident_user_id' => $this->residentUser->id, 'apartment_id' => $this->aptA->id,
+            'is_anonymous' => false, 'title' => 'Góp ý Zafiro', 'content_text' => 'Đoạn nội dung chỉ lưu ở MySQL.',
+            'topic_category' => 'TIEN_ICH', 'status' => 'RECEIVED', 'version' => 1,
+        ];
+        $managerUrl = '/api/v1/management/suggestions';
+        $residentUrl = '/api/v1/resident/suggestions/my-suggestions';
+
+        try {
+            $identified = Suggestion::create($source);
+            $anonymous = Suggestion::create([...$source, 'is_anonymous' => true, 'resident_user_id' => null, 'apartment_id' => null, 'title' => 'Góp ý ẩn danh Basilico']);
+            $this->assertSame(1, DB::table('jobs')->where('queue', 'suggestion-search')->count());
+            $this->withToken($this->residentToken)->getJson($residentUrl.'?search=Zafiro')->assertOk()->assertJsonPath('data.0.id', $identified->id);
+            $job = new SyncSuggestionSearchIndex($identified->id);
+            $job->handle($search);
+            (new SyncSuggestionSearchIndex($anonymous->id))->handle($search);
+            $this->withToken($this->residentToken)->getJson($residentUrl.'?search=zafro')->assertOk()->assertJsonPath('data.0.id', $identified->id);
+            $this->withToken($this->managerToken)->getJson($managerUrl.'?search=zafro')->assertOk()->assertJsonPath('data.0.id', $identified->id);
+            $this->withToken($this->otherBlockManagerToken)->getJson($managerUrl.'?search=zafro')->assertOk()->assertJsonPath('pagination.total', 0);
+            $this->withToken($this->managerToken)->getJson($managerUrl.'?search=Basilico')->assertOk()->assertJsonPath('data.0.id', $anonymous->id);
+
+            $path = rtrim($host, '/').'/'.$index.'/_doc/';
+            $this->assertSame(['revision', 'is_deleted', 'title'], array_keys(Http::get($path.$identified->id)->throw()->json('_source')));
+            $this->assertTrue(Http::get($path.$anonymous->id)->notFound());
+            $identified->update(['title' => 'Góp ý Olivaro', 'version' => 2]);
+            $this->withToken($this->residentToken)->getJson($residentUrl.'?search=Olivaro')->assertOk()->assertJsonPath('data.0.id', $identified->id);
+            $job->handle($search);
+            $this->getJson($residentUrl.'?search=olivro')->assertOk()->assertJsonPath('data.0.id', $identified->id);
+        } finally {
+            Http::delete(rtrim($host, '/').'/'.$index);
+        }
+    }
+
     public function test_01_resident_submits_valid_suggestion_with_identity(): void
     {
         $response = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)

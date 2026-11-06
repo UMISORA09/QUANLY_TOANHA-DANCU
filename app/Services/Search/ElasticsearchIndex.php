@@ -28,7 +28,7 @@ class ElasticsearchIndex
 
         $created = $this->client()->put('/'.$this->name, [
             'settings' => [
-                'number_of_replicas' => 0,
+                ...(! app()->isProduction() ? ['number_of_replicas' => 0] : []),
                 'analysis' => ['analyzer' => ['cassavas_text' => [
                     'type' => 'custom', 'tokenizer' => 'standard', 'filter' => ['lowercase', 'asciifolding'],
                 ]]],
@@ -97,7 +97,7 @@ class ElasticsearchIndex
      * @param  list<string>  $fields
      * @return list<string>|null
      */
-    public function matchingRevisions(callable $readScope, string $keyword, array $fields): ?array
+    public function matchingRevisions(callable $readScope, string $keyword, array $fields, bool $requireAllTerms = false): ?array
     {
         $revisions = $readScope();
         if ($revisions === []) {
@@ -114,7 +114,7 @@ class ElasticsearchIndex
                     ['terms' => ['revision' => array_map(fn (string $id, int $version): string => $id.':'.$version, array_keys($revisions), array_values($revisions))]],
                     ['term' => ['is_deleted' => false]],
                 ]]],
-                'post_filter' => ['multi_match' => ['query' => $keyword, 'fields' => $fields, 'fuzziness' => 'AUTO']],
+                'post_filter' => ['multi_match' => ['query' => $keyword, 'fields' => $fields, 'fuzziness' => 'AUTO', 'operator' => $requireAllTerms ? 'and' : 'or']],
                 'aggs' => ['current_scope' => ['filter' => ['match_all' => (object) []]]],
             ]);
         } catch (ConnectionException) {
@@ -156,8 +156,17 @@ class ElasticsearchIndex
 
     private function client(): PendingRequest
     {
-        $request = Http::baseUrl(rtrim($this->config['hosts'][0] ?? 'http://127.0.0.1:9200', '/'))
-            ->acceptJson()->connectTimeout(1)->timeout(5);
+        $host = rtrim($this->config['hosts'][0] ?? 'http://127.0.0.1:9200', '/');
+        $apiKey = trim((string) ($this->config['api_key'] ?? ''));
+        if (app()->isProduction() && (parse_url($host, PHP_URL_SCHEME) !== 'https'
+            || (! $apiKey && (empty($this->config['username']) || empty($this->config['password']))))) {
+            throw new ConnectionException('Elasticsearch requires HTTPS and authentication in production.');
+        }
+
+        $request = Http::baseUrl($host)->acceptJson()->connectTimeout(1)->timeout(5);
+        if ($apiKey) {
+            return $request->withToken($apiKey, 'ApiKey');
+        }
 
         return empty($this->config['username']) ? $request
             : $request->withBasicAuth($this->config['username'], $this->config['password'] ?? '');

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Services\PublicContent;
+use Illuminate\Cache\RateLimiter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 
 class PublicContentController extends Controller
 {
@@ -25,6 +27,30 @@ class PublicContentController extends Controller
         }
 
         return response()->view($page === 'home' ? 'welcome' : 'public.page', $this->content->page($page), 200, $headers);
+    }
+
+    public function guide(Request $request, string $page): JsonResponse
+    {
+        $limiter = new RateLimiter(Cache::store(config('public_content.rate_limit_store', 'database')));
+        $key = 'public-guide:'.hash('sha256', (string) $request->ip());
+        $limit = 60;
+        $attempt = $limiter->increment($key, 60);
+        $headers = [
+            'Cache-Control' => 'no-store',
+            'RateLimit-Policy' => '"public-guide";q=60;w=60',
+            'RateLimit' => '"public-guide";r='.max(0, $limit - $attempt).';t='.$limiter->availableIn($key),
+        ];
+
+        if ($attempt > $limit) {
+            return response()->json(['code' => 'rate_limit_exceeded', 'message' => 'Too many requests.'], 429,
+                $headers + ['Retry-After' => (string) max(1, $limiter->availableIn($key))]);
+        }
+
+        if (! in_array($page, PublicContent::PAGES, true)) {
+            return response()->json(['code' => 'guide_not_found', 'message' => 'Public guide not found.'], 404, $headers);
+        }
+
+        return response()->json(['page' => $page, 'markdown' => $this->content->markdown($page)], 200, $headers);
     }
 
     public function markdown(string $page): Response

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\Search\BookingCodeSearch;
 use App\Services\Search\SearchCacheService;
 use App\Services\Search\SearchManager;
 use Carbon\Carbon;
@@ -187,6 +188,7 @@ class ResidentAmenityBookingService
                 'resident_notes' => $data['resident_notes'] ?? null, 'created_at' => now(), 'updated_at' => now(),
             ]);
             $this->payments->initialize((array) DB::table('amenity_bookings')->where('id', $id)->first());
+            app(BookingCodeSearch::class)->queue($id);
             $booking = $this->detail($user, $id, true);
             $this->audit($user, $id, 'INSERT', null, $booking, $request);
             $this->notifyManagers($amenity->id, $booking['booking_code'], 'Đăng ký tiện ích mới · '.$amenity->amenity_name,
@@ -289,7 +291,7 @@ class ResidentAmenityBookingService
             }
             $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
 
-            return $user->hasRole('BUILDING_MANAGER') && $profile && ($profile->assigned_block_id === null || ($amenityId !== '' && $profile->assigned_block_id === $blockId));
+            return $user->hasRole('BUILDING_MANAGER') && $profile && $amenityId !== '' && $profile->assigned_block_id !== null && $profile->assigned_block_id === $blockId;
         })->pluck('id');
         $rows = $recipients->map(fn (string $id): array => [
             'id' => (string) Str::uuid(), 'recipient_user_id' => $id,
