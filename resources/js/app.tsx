@@ -1,13 +1,13 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy, startTransition } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../css/scss/custom.scss';
-import { TicketManagementPanel } from './Components/TicketManagementPanel';
-import { AppLayout } from './Components/Layout/AppLayout';
 import { Wrench } from 'lucide-react';
 import { api } from './Services/api';
 import ChunkErrorBoundary from './Components/Common/ChunkErrorBoundary';
 import PageLoadingFallback from './Components/Common/PageLoadingFallback';
-import Home from './Pages/Home';
+const Home = lazy(() => import('./Pages/Home'));
+const TicketManagementPanel = lazy(() => import('./Components/TicketManagementPanel').then(module => ({ default: module.TicketManagementPanel })));
+const AppLayout = lazy(() => import('./Components/Layout/AppLayout').then(module => ({ default: module.AppLayout })));
 
 // Tách nhỏ bundle (Code Splitting) với React.lazy cho các trang nội bộ
 const ManagementHome = lazy(() => import('./Pages/ManagementHome'));
@@ -47,7 +47,7 @@ const App: React.FC = () => {
       setCurrentPath('/home');
     }
     const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
+      startTransition(() => setCurrentPath(window.location.pathname));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -56,7 +56,7 @@ const App: React.FC = () => {
   const navigateTo = (path: string) => {
     window.history.pushState({}, '', path);
     const clean = path.split('?')[0];
-    setCurrentPath(clean);
+    startTransition(() => setCurrentPath(clean));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

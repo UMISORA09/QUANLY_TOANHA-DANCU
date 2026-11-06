@@ -8,6 +8,7 @@ use App\Services\Search\Drivers\ElasticsearchDriver;
 use App\Services\Search\Drivers\MeilisearchDriver;
 use App\Services\Search\Drivers\SmartSearchDriver;
 use App\Services\Search\DTOs\SearchResult;
+use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 
 class SearchManager
@@ -50,6 +51,7 @@ class SearchManager
             'filters' => $filters,
             'options' => $options,
             'driver' => config('search.default', 'smart'),
+            'data_version' => Cache::get('amenities_data_version', 0),
         ];
 
         if (! empty($options['no_cache'])) {
@@ -85,6 +87,7 @@ class SearchManager
             'prefix' => trim(mb_strtolower($prefix)),
             'limit' => $limit,
             'driver' => config('search.default', 'smart'),
+            'data_version' => Cache::get('amenities_data_version', 0),
         ];
 
         return $this->rememberSearchResult("suggest_{$index}", $cacheParams, function () use ($index, $prefix, $limit): array {

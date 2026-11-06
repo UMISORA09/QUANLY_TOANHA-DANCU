@@ -4,7 +4,6 @@ namespace App\Services\Search;
 
 use App\Jobs\SyncTicketSearchIndex;
 use App\Models\Ticket;
-use App\Services\Concerns\HasPerformanceCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -12,8 +11,6 @@ use LogicException;
 
 class TicketSearch
 {
-    use HasPerformanceCache;
-
     public static function enabled(): bool
     {
         return config('search.default') === 'elasticsearch';
@@ -57,8 +54,6 @@ class TicketSearch
             'revision' => $ticket->id.':'.$ticket->version,
             ...($deleted ? [] : $ticket->only(['ticket_number', 'title', 'location'])),
         ], 2 * max(1, (int) $ticket->version) + (int) $deleted);
-        $this->flushSearchEntityCache('tickets');
-        $this->flushSearchEntityCache('tickets_filter');
     }
 
     public function filter(Builder $scope, string $keyword, bool $includeDescription = false): void
@@ -86,13 +81,9 @@ class TicketSearch
             return null;
         }
 
-        $normalizedKey = trim(mb_strtolower($keyword));
+        $readScope = fn () => (clone $scope)->limit(10001)->pluck('version', 'id')->all();
 
-        return $this->rememberSearchResult('tickets_filter', ['q' => $normalizedKey], function () use ($scope, $keyword): ?array {
-            $readScope = fn () => (clone $scope)->limit(10001)->pluck('version', 'id')->all();
-
-            return $this->index()->matchingRevisions($readScope, $keyword, ['ticket_number^3', 'title^2', 'location']);
-        }, 300);
+        return $this->index()->matchingRevisions($readScope, $keyword, ['ticket_number^3', 'title^2', 'location']);
     }
 
     private function index(): ElasticsearchIndex

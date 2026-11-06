@@ -13,7 +13,7 @@ services:
     volumes:
       - ./:/var/www/html
       - /var/www/html/node_modules
-      - /var/www/html/vendor
+      - php_vendor:/var/www/html/vendor
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
@@ -167,6 +167,7 @@ services:
       - cassavas_network
 
 volumes:
+  php_vendor:
   elasticsearch_data:
   mysql_data:
     driver: local

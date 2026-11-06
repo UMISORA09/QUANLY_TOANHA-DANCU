@@ -27,7 +27,7 @@ class SurveyAnalyticsService
     {
         abort_unless($this->accessService->canViewBlock($user, $survey->target_block_id), 403);
 
-        $subKey = "survey_{$survey->id}_v{$survey->version}";
+        $subKey = "survey_{$survey->id}_v{$survey->version}_{$survey->computed_status}";
 
         return $this->rememberAnalyticsResult('surveys', $subKey, function () use ($survey): array {
             // 1. Total survey responses
@@ -145,11 +145,11 @@ class SurveyAnalyticsService
      */
     public function getManagementOverviewKpis(User $user): array
     {
-        $subKey = "kpis_user_{$user->id}";
+        $query = SatisfactionSurvey::query();
+        $this->accessService->scopeForManager($user, $query);
+        $subKey = 'kpis_'.hash('sha256', json_encode([$query->toSql(), $query->getBindings()], JSON_THROW_ON_ERROR));
 
-        return $this->rememberAnalyticsResult('surveys', $subKey, function () use ($user): array {
-            $query = SatisfactionSurvey::query();
-            $this->accessService->scopeForManager($user, $query);
+        return $this->rememberAnalyticsResult('surveys', $subKey, function () use ($query): array {
 
             $surveys = $query->with('questions')->withCount('responses')->get();
 
