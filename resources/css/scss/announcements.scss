@@ -61,3 +61,16 @@
   blockquote { border-left: 3px solid #93c5fd; padding-left: .8rem; color: #475569; }
   a { color: #1d4ed8; text-decoration: underline; }
 }
+
+@media print {
+  .announcement-ui__header button,
+  .announcement-ui__filters,
+  .announcement-ui__pagination,
+  .announcement-ui__footer {
+    display: none !important;
+  }
+  .announcement-card, .announcement-ui {
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
