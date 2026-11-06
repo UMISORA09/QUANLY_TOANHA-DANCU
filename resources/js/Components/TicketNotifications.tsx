@@ -74,7 +74,7 @@ export function useTicketNotifications() {
     };
     window.addEventListener('NOTIFICATION_DETAIL_OPENED', opened);
     return () => window.removeEventListener('NOTIFICATION_DETAIL_OPENED', opened);
-  });
+  }, []);
   return { items, unread, page, pages, setPage, error, loading, retry, open };
 }
 

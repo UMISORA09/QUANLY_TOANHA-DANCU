@@ -88,7 +88,7 @@ export function useAmenityNotifications(audience: 'resident' | 'admin') {
     };
     window.addEventListener('NOTIFICATION_DETAIL_OPENED', opened);
     return () => window.removeEventListener('NOTIFICATION_DETAIL_OPENED', opened);
-  });
+  }, [audience]);
   const waitForDetail = (item: AmenityBookingNotification) => { pendingRead.current = item; };
   return { items, unreadCount, alert, setAlert, page, pages, setPage, unreadOnly,
     setUnreadOnly: (value: boolean) => { setUnreadOnly(value); setPage(1); }, error, loading, markRead,

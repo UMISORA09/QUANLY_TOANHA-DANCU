@@ -357,7 +357,7 @@ test('Thông báo đầu tiên tự làm mới danh sách sau khi trước đó 
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/manager/notifications')) {
       notifications++;
-      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], latest_id: notifications === 1 ? null : 'notification-qa', unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
+      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], category_activity: notifications === 1 ? {} : { TICKET: '1:2026-11-06T09:00:00Z' }, latest_id: notifications === 1 ? null : 'notification-qa', unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
     }
     if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
     if (path.endsWith('/tickets')) { lists++; return route.fulfill({ json: { data: [], current_page: 1, last_page: 1, total: 0 } }); }
@@ -426,10 +426,15 @@ for (const actor of [
     await noticeButton('Liên kết không hợp lệ').click();
     await expect(feed.getByRole('alert')).toContainText(actor.role === 'resident' ? 'Liên kết thông báo sự cố không hợp lệ' : 'Liên kết thông báo không hợp lệ');
     expect(reads).toBe(0);
+    const failedRead = page.waitForResponse((response) => response.url().endsWith('/notice-qa/read'));
     await noticeButton('Sự cố vừa được cập nhật').click();
-    await expect(feed.getByRole('alert')).toContainText('Chưa thể đánh dấu đã đọc');
-    await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'overview');
+    expect((await failedRead).status()).toBe(500);
+    await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'tickets');
+    await expect(page.getByText('Yêu cầu mở từ chuông', { exact: true })).toBeVisible();
     await expect(bell).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread + 1} chưa đọc)`);
+    expect(reads).toBe(1);
+    await page.goto(actor.portal + '?tab=overview');
+    await bell.click();
     await noticeButton('Sự cố vừa được cập nhật').click();
     await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'tickets' && url.searchParams.get('ticket_id') === 'qa-ticket');
     await expect(page.getByText('Yêu cầu mở từ chuông', { exact: true })).toBeVisible();

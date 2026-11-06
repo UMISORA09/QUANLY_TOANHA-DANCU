@@ -107,7 +107,7 @@ export function useManagerNotifications(expanded = true) {
     };
     window.addEventListener('NOTIFICATION_DETAIL_OPENED', opened);
     return () => window.removeEventListener('NOTIFICATION_DETAIL_OPENED', opened);
-  });
+  }, [account, unreadOnly]);
   const readAll = async () => {
     const token = api.getAuthToken();
     if (token !== account) throw new Error('Phiên đăng nhập đã thay đổi.');

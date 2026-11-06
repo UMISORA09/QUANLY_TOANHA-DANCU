@@ -66,7 +66,7 @@ export const SuggestionManagementPanel: React.FC = () => {
 
   // Selected Suggestion for Detail & Actions
   const [selectedSuggestion, setSelectedSuggestion] = useState<SuggestionItem | null>(null);
-  useNotificationDetailOpened('SUGGESTION', selectedSuggestion?.id);
+  useNotificationDetailOpened('SUGGESTION', selectedSuggestion?.id, selectedSuggestion);
   const [isLoadingDetail, setIsLoadingDetail] = useState<boolean>(false);
   const detailRequest = useRef(0);
 

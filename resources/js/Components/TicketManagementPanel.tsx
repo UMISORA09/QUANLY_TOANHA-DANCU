@@ -50,7 +50,7 @@ export function TicketManagementPanel() {
   const [options, setOptions] = useState<TicketOptions | null>(null);
   const [rows, setRows] = useState<ManagedTicket[]>([]);
   const [selected, setSelected] = useState<ManagedTicket | null>(null);
-  useNotificationDetailOpened('TICKET', selected?.id);
+  useNotificationDetailOpened('TICKET', selected?.id, selected);
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState('');
   const [filters, setFilters] = useState({ status: '', priority: '', category_id: '', block_id: '' });
