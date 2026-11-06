@@ -115,6 +115,7 @@ for (const resident of [false]) {
 
 for (const [width, height] of [[375, 812], [390, 844], [768, 1024], [1024, 768], [1440, 900]]) {
   test(`Ticket quản lý: form, combobox bàn phím và phiên bản ${width}px`, async ({ page }) => {
+    await page.clock.install();
     await page.setViewportSize({ width, height });
     await page.addInitScript(() => {
       localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'Admin QA', email: 'qa@example.test' }));
@@ -158,6 +159,7 @@ for (const [width, height] of [[375, 812], [390, 844], [768, 1024], [1024, 768],
       return rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth && document.elementFromPoint(rect.left + rect.width / 2, rect.bottom - 8)?.closest('[role="listbox"]') === element;
     })).toBe(true);
     await category.press('Home');
+    await page.clock.fastForward(100);
     await expect(page.getByRole('option', { name: 'Điện nước', exact: true })).toBeFocused();
     await category.press('End');
     const lastCategory = page.getByRole('option', { name: 'Danh mục QA 29', exact: true });
