@@ -565,7 +565,7 @@ class ApiService {
     const token = this.getToken();
 
     const isGet = !options.method || options.method.toUpperCase() === 'GET';
-    const dedupeKey = isGet && !etag && !options.signal ? `GET:${url}:${token || ''}` : null;
+    const dedupeKey = isGet && !etag && !options.signal && !options.headers && options.cache !== 'no-store' ? `GET:${url}:${token || ''}` : null;
 
     if (dedupeKey && this.inflightGetRequests.has(dedupeKey)) {
       return this.inflightGetRequests.get(dedupeKey)! as Promise<{ data: T | null; etag: string | null; notModified: boolean }>;
@@ -629,9 +629,8 @@ class ApiService {
 
     if (dedupeKey) {
       this.inflightGetRequests.set(dedupeKey, fetchPromise);
-      fetchPromise.finally(() => {
-        this.inflightGetRequests.delete(dedupeKey);
-      });
+      const clearInflight = () => { this.inflightGetRequests.delete(dedupeKey); };
+      void fetchPromise.then(clearInflight, clearInflight);
     }
 
     return fetchPromise;
@@ -2492,7 +2491,7 @@ class ApiService {
   }
 
   async getResidentSurveyDetails(id: string): Promise<{ status: string; data: ResidentSurveyDetailResponse }> {
-    return this.request(`/resident/surveys/${id}`);
+    return this.request(`/resident/surveys/${id}`, { cache: 'no-store' });
   }
 
   async submitResidentSurvey(id: string, answers: Record<string, any>, idempotencyKey?: string): Promise<{ status: string; message: string; data: { response_id: string; submitted_at: string } }> {
