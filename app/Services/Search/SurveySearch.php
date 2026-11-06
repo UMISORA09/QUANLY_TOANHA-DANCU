@@ -3,6 +3,7 @@
 namespace App\Services\Search;
 
 use App\Jobs\SyncSurveySearchIndex;
+use App\Services\Concerns\HasPerformanceCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -10,6 +11,8 @@ use LogicException;
 
 class SurveySearch
 {
+    use HasPerformanceCache;
+
     public static function enabled(): bool
     {
         return config('search.default') === 'elasticsearch';
@@ -59,14 +62,20 @@ class SurveySearch
             'title' => $row->title,
             'survey_code' => $row->survey_code,
         ], max(1, (int) $row->version));
+        $this->flushSearchEntityCache('surveys');
+        $this->flushSearchEntityCache('surveys_filter');
     }
 
     public function filter(Builder $scope, string $keyword): void
     {
         $ids = null;
         if (self::enabled() && trim($keyword) !== '') {
-            $readScope = fn () => (clone $scope)->limit(10001)->pluck('version', 'id')->all();
-            $ids = $this->index()->matchingRevisions($readScope, $keyword, ['survey_code^3', 'title']);
+            $normalizedKey = trim(mb_strtolower($keyword));
+            $ids = $this->rememberSearchResult('surveys_filter', ['q' => $normalizedKey], function () use ($scope, $keyword): ?array {
+                $readScope = fn () => (clone $scope)->limit(10001)->pluck('version', 'id')->all();
+
+                return $this->index()->matchingRevisions($readScope, $keyword, ['survey_code^3', 'title']);
+            }, 300);
         }
 
         if ($ids === null) {

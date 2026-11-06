@@ -7,6 +7,7 @@ use App\Models\SurveyQuestion;
 use App\Models\SurveyResponse;
 use App\Models\SurveyResponseDetail;
 use App\Models\User;
+use App\Services\Concerns\HasPerformanceCache;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -15,6 +16,8 @@ use Illuminate\Support\Str;
 
 class ResidentSurveyService
 {
+    use HasPerformanceCache;
+
     public function __construct(
         protected SurveyAccessService $accessService
     ) {}
@@ -120,7 +123,7 @@ class ResidentSurveyService
     public function submitResponse(SatisfactionSurvey $survey, User $user, array $answers, ?string $idempotencyKey = null): SurveyResponse
     {
         try {
-            return DB::transaction(function () use ($survey, $user, $answers, $idempotencyKey): SurveyResponse {
+            $result = DB::transaction(function () use ($survey, $user, $answers, $idempotencyKey): SurveyResponse {
                 $survey = SatisfactionSurvey::whereKey($survey->id)->lockForUpdate()->firstOrFail();
                 // 1. Check resident access eligibility
                 abort_unless($this->accessService->canResidentAccessSurvey($user, $survey), 403, 'Bạn không thuộc phạm vi đối tượng của cuộc khảo sát này.');
@@ -227,6 +230,10 @@ class ResidentSurveyService
 
                 return $response->load('details');
             });
+
+            $this->flushAnalyticsCache('surveys');
+
+            return $result;
         } catch (QueryException $e) {
             // MySQL error 1062 = Duplicate entry (covers unique_survey_apartment race condition)
             if ((int) ($e->errorInfo[1] ?? 0) === 1062) {

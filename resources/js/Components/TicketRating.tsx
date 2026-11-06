@@ -35,9 +35,25 @@ export function TicketRating({ ticketId, version }: { ticketId: string; version:
       if (!stars) { setError('Vui lòng chọn từ 1 đến 5 sao.'); return; }
       readGeneration.current++;
       setBusy(true); setError('');
+      const previousResult = result;
+      // Optimistic update: instantly render the completed rating state (<20ms perceived latency)
+      setResult({
+        ...result,
+        data: {
+          id: 'optimistic-pending',
+          ticket_id: ticketId,
+          rating_stars: stars,
+          review_comment: comment.trim() || null,
+          created_at: new Date().toISOString(),
+        },
+        can_rate: false,
+      });
       try {
-        setResult(await api.rateResidentTicket(ticketId, { version: result.ticket_version, rating_stars: stars, review_comment: comment }));
+        const serverData = await api.rateResidentTicket(ticketId, { version: result.ticket_version, rating_stars: stars, review_comment: comment });
+        setResult(serverData);
       } catch (err) {
+        // Rollback state if server returns conflict or error
+        setResult(previousResult);
         setError(err instanceof Error ? err.message : 'Chưa gửi được đánh giá. Vui lòng thử lại.');
       } finally { readGeneration.current++; setBusy(false); }
     }}>

@@ -3,6 +3,7 @@
 namespace App\Services\Search;
 
 use App\Jobs\SyncAnnouncementSearchIndex;
+use App\Services\Concerns\HasPerformanceCache;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -10,6 +11,8 @@ use LogicException;
 
 class AnnouncementSearch
 {
+    use HasPerformanceCache;
+
     public static function enabled(): bool
     {
         return config('search.default') === 'elasticsearch';
@@ -58,15 +61,20 @@ class AnnouncementSearch
             'is_deleted' => $deleted,
             ...($deleted ? [] : ['title' => $row->title]),
         ], max(1, (int) $row->version));
+        $this->flushSearchEntityCache('announcements');
+        $this->flushSearchEntityCache('announcements_filter');
     }
 
     public function filter(Builder $scope, string $keyword, string $alias): void
     {
         $ids = null;
         if (self::enabled() && trim($keyword) !== '') {
-            $readScope = fn () => (clone $scope)->select($alias.'.version', $alias.'.id')
-                ->limit(10001)->pluck($alias.'.version', $alias.'.id')->all();
-            $ids = $this->index()->matchingRevisions($readScope, $keyword, ['title']);
+            $ids = $this->rememberSearchResult('announcements_filter', ['q' => trim(mb_strtolower($keyword))], function () use ($scope, $keyword, $alias): ?array {
+                $readScope = fn () => (clone $scope)->select($alias.'.version', $alias.'.id')
+                    ->limit(10001)->pluck($alias.'.version', $alias.'.id')->all();
+
+                return $this->index()->matchingRevisions($readScope, $keyword, ['title']);
+            }, 300);
         }
 
         if ($ids === null) {

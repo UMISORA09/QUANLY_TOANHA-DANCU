@@ -8,10 +8,12 @@ use App\Events\AmenityUpdated;
 use App\Events\ParcelReceivedEvent;
 use App\Events\QuocTinRealtimeEvent;
 use App\Listeners\InvalidateAmenityCacheListener;
+use App\Listeners\PerformanceCacheInvalidationSubscriber;
 use App\Listeners\SendParcelNotificationListener;
 use App\Repositories\Contracts\AmenityRepositoryInterface;
 use App\Repositories\Eloquent\DatabaseAmenityRepository;
 use App\Services\Search\SearchManager;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -32,12 +34,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Model::preventLazyLoading(! $this->app->isProduction());
+
         Event::listen(AmenityCreated::class, [InvalidateAmenityCacheListener::class, 'handle']);
         Event::listen(AmenityUpdated::class, [InvalidateAmenityCacheListener::class, 'handle']);
         Event::listen(AmenityDeleted::class, [InvalidateAmenityCacheListener::class, 'handle']);
 
         Event::listen(ParcelReceivedEvent::class, [SendParcelNotificationListener::class, 'handle']);
         Event::listen(QuocTinRealtimeEvent::class, [SendParcelNotificationListener::class, 'handle']);
+        Event::subscribe(PerformanceCacheInvalidationSubscriber::class);
 
         if (
             $this->app->environment('production')

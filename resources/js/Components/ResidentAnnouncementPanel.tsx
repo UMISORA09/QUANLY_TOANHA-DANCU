@@ -34,9 +34,20 @@ export function ResidentAnnouncementPanel() {
     let sent = false;
     const markRead = () => {
       if (sent || document.hidden) return; sent = true;
+      const optimisticReadAt = new Date().toISOString();
+      setDetail((current) => current?.id === detail.id ? { ...current, read_at: optimisticReadAt } : current);
+      window.dispatchEvent(new Event(announcementReadEvent));
+
       void api.readResidentAnnouncement(detail.id, detail.version, controller.signal).then((item) => {
-        if (!controller.signal.aborted) { setDetail((current) => current?.id === item.id && current.version === item.version ? { ...current, read_at: item.read_at, acknowledged_at: item.acknowledged_at } : current); window.dispatchEvent(new Event(announcementReadEvent)); }
-      }).catch((error: ApiError) => { if (!controller.signal.aborted) setReadError(readableError(error)); });
+        if (!controller.signal.aborted) {
+          setDetail((current) => current?.id === item.id && current.version === item.version ? { ...current, read_at: item.read_at, acknowledged_at: item.acknowledged_at } : current);
+        }
+      }).catch((error: ApiError) => {
+        if (!controller.signal.aborted) {
+          setDetail((current) => current?.id === detail.id ? { ...current, read_at: null } : current);
+          setReadError(readableError(error));
+        }
+      });
     };
     markRead(); document.addEventListener('visibilitychange', markRead);
     return () => { controller.abort(); document.removeEventListener('visibilitychange', markRead); };
@@ -47,10 +58,28 @@ export function ResidentAnnouncementPanel() {
     window.history.pushState({}, '', url); setId(next);
   };
   const acknowledge = async () => {
-    if (!detail || busy) return; const controller = activeDetail.current; const item = detail; setBusy(true); setReadError('');
-    try { const result = await api.acknowledgeResidentAnnouncement(item.id, item.version, controller?.signal); if (!controller?.signal.aborted) { setDetail((current) => current?.id === item.id ? { ...current, read_at: result.read_at, acknowledged_at: result.acknowledged_at } : current); window.dispatchEvent(new Event(announcementReadEvent)); } }
-    catch (error) { if (!controller?.signal.aborted) setReadError(readableError(error as ApiError)); }
-    finally { if (!controller?.signal.aborted) setBusy(false); }
+    if (!detail || busy) return;
+    const controller = activeDetail.current;
+    const item = detail;
+    const prevAck = item.acknowledged_at;
+    const optimisticAckAt = new Date().toISOString();
+    setBusy(true);
+    setReadError('');
+    setDetail((current) => current?.id === item.id ? { ...current, acknowledged_at: optimisticAckAt } : current);
+    try {
+      const result = await api.acknowledgeResidentAnnouncement(item.id, item.version, controller?.signal);
+      if (!controller?.signal.aborted) {
+        setDetail((current) => current?.id === item.id ? { ...current, read_at: result.read_at, acknowledged_at: result.acknowledged_at } : current);
+        window.dispatchEvent(new Event(announcementReadEvent));
+      }
+    } catch (error) {
+      if (!controller?.signal.aborted) {
+        setDetail((current) => current?.id === item.id ? { ...current, acknowledged_at: prevAck } : current);
+        setReadError(readableError(error as ApiError));
+      }
+    } finally {
+      if (!controller?.signal.aborted) setBusy(false);
+    }
   };
   const download = async (file: AnnouncementAttachment) => {
     if (!detail || downloading) return; const controller = activeDetail.current; setDownloading(file.id); setFileError('');
