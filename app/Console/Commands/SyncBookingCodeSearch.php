@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class SyncBookingCodeSearch extends Command
 {
-    protected $signature = 'search:sync-booking-codes {--dry-run}';
+    protected $signature = 'search:sync-booking-codes {--dry-run} {--queue-only : Skip creating the remote index in this process}';
 
     protected $description = 'Queue Elasticsearch synchronization for amenity booking codes';
 
@@ -26,11 +26,11 @@ class SyncBookingCodeSearch extends Command
             return self::FAILURE;
         }
 
-        $search->configure();
+        if (! $this->option('queue-only')) {
+            $search->configure();
+        }
         $bookings->chunkById(100, function ($rows) use ($search): void {
-            foreach ($rows as $row) {
-                $search->queue($row->id);
-            }
+            $search->queueMany($rows->pluck('id')->all());
         });
 
         return self::SUCCESS;

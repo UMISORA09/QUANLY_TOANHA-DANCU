@@ -6,7 +6,8 @@ const databaseErrors = new Set([
   'database_inspection_failed',
 ]);
 const requiredTables = ['amenities', 'amenity_bookings', 'amenity_booking_payments', 'jobs', 'failed_jobs'];
-const failureCodes = ['worker_failed'];
+const failureCodes = ['worker_failed', 'max_attempts_exceeded', 'elasticsearch_connection_failed',
+  ...[400, 401, 403, 404, 429, 500, 502, 503, 504].map(status => `elasticsearch_http_${status}`)];
 
 async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET') {
   let response;
@@ -38,7 +39,11 @@ async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET'
   return data;
 }
 
-export async function runAmenitySearchSync({ baseUrl, secret, reindex = false }) {
+export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, retryFailedOnly = false, allQueues = false }) {
+  const deadline = Date.now() + 12 * 60_000;
+  if (reindex && retryFailedOnly) {
+    throw new Error('Choose either reindex or retry failed jobs');
+  }
   let url;
   try {
     url = new URL(baseUrl);
@@ -57,20 +62,24 @@ export async function runAmenitySearchSync({ baseUrl, secret, reindex = false })
   if (health.status !== 'healthy' || health.database !== 'healthy') {
     throw new Error('Health preflight: database_unhealthy');
   }
-  const schema = await requestJson(baseUrl, '/api/v1/internal/amenity-search/process?inspect=schema', secret, 'Schema preflight', 25_000);
-  if (requiredTables.some(table => schema.tables?.[table] !== true)) {
+  const scope = allQueues ? 'scope=all' : '';
+  const workerPath = '/api/v1/internal/amenity-search/process';
+  const schema = await requestJson(baseUrl, workerPath + '?inspect=schema' + (scope ? '&' + scope : ''), secret, 'Schema preflight', 25_000);
+  const tables = allQueues ? [...requiredTables, 'amenity_search_states', 'tickets', 'announcements', 'suggestions', 'satisfaction_surveys'] : requiredTables;
+  if (tables.some(table => schema.tables?.[table] !== true)) {
     throw new Error('Schema preflight: schema_missing');
   }
 
-  if (reindex) {
-    await requestJson(baseUrl, '/api/v1/internal/amenity-search/reindex', secret, 'Reindex', 65_000, 'POST');
+  if (reindex || retryFailedOnly) {
+    const parameters = [scope, retryFailedOnly ? 'retry_failed_only=1' : ''].filter(Boolean).join('&');
+    await requestJson(baseUrl, '/api/v1/internal/amenity-search/reindex' + (parameters ? '?' + parameters : ''), secret, retryFailedOnly ? 'Retry failed jobs' : 'Reindex', 65_000, 'POST');
   }
 
   let pending = 0;
   for (let batch = 0; batch < 45; batch++) {
     // A lost response may already have processed a job; only the next scheduled run resumes work.
     const settled = await Promise.allSettled(Array.from({ length: 3 }, () =>
-      requestJson(baseUrl, '/api/v1/internal/amenity-search/process', secret, 'Worker', 55_000)));
+      requestJson(baseUrl, workerPath + (scope ? '?' + scope : ''), secret, 'Worker', 55_000)));
     const rejected = settled.find(result => result.status === 'rejected');
     if (rejected) {
       throw rejected.reason;
@@ -82,11 +91,17 @@ export async function runAmenitySearchSync({ baseUrl, secret, reindex = false })
     }
     if (results.some(result => result.failed > 0)) {
       const codes = failureCodes.filter(code => results.some(result => Number.isSafeInteger(result.failure_codes?.[code]) && result.failure_codes[code] > 0));
-      throw new Error(`Worker: failed_jobs (${codes.join(',') || 'worker_failed'})`);
+      const origins = [...new Set(results.flatMap(result => Array.isArray(result.failure_origins) ? result.failure_origins : []))]
+        .filter(origin => typeof origin === 'string' && /^[A-Za-z_]\w{0,99}@[A-Za-z0-9_.-]{1,100}\.php:[1-9][0-9]{0,5}$/.test(origin)).slice(0, 3);
+      throw new Error(`Worker: failed_jobs (${codes.join(',') || 'worker_failed'}), pending=${Math.max(...results.map(result => result.pending))}, failed=${Math.max(...results.map(result => result.failed))}${origins.length ? `, origins=${origins.join(',')}` : ''}`);
     }
     pending = Math.max(...results.map(result => result.pending));
     if (pending === 0) {
       return { status: 'completed', pending: 0, failed: 0 };
+    }
+    // Reserve one worker timeout and the pause before the next batch; leave time for Actions cleanup.
+    if (Date.now() + 62_000 >= deadline) {
+      break;
     }
     if (batch < 44) {
       // Leave room for schema inspection and reindex within the endpoint's 30 requests/minute limit.
@@ -102,6 +117,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       baseUrl: process.env.BASE_URL,
       secret: process.env.SYNC_SECRET,
       reindex: process.env.REINDEX === 'true',
+      retryFailedOnly: process.env.RETRY_FAILED_ONLY === 'true',
+      allQueues: process.env.ALL_SEARCH_QUEUES === 'true',
     })));
   } catch (error) {
     console.error(`::error::${error.message}`);

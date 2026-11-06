@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class SyncSurveySearch extends Command
 {
-    protected $signature = 'search:sync-surveys {--dry-run}';
+    protected $signature = 'search:sync-surveys {--dry-run} {--queue-only : Skip creating the remote index in this process}';
 
     protected $description = 'Queue Elasticsearch synchronization for surveys';
 
@@ -26,11 +26,11 @@ class SyncSurveySearch extends Command
             return self::FAILURE;
         }
 
-        $search->configure();
+        if (! $this->option('queue-only')) {
+            $search->configure();
+        }
         $surveys->chunkById(100, function ($rows) use ($search): void {
-            foreach ($rows as $row) {
-                $search->queue($row->id);
-            }
+            $search->queueMany($rows->pluck('id')->all());
         });
 
         return self::SUCCESS;

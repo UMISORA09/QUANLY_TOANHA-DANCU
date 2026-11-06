@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       reindex:
-        description: 'Import the current production amenities before processing jobs'
+        description: 'Import the current production search documents before processing jobs'
+        type: boolean
+        default: false
+      retry_failed_only:
+        description: 'Retry only failed search jobs without enqueueing a new backfill'
         type: boolean
         default: false
 
@@ -23,9 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
+      ALL_SEARCH_QUEUES: 'true'
       SYNC_SECRET: ${{ secrets.AMENITY_SEARCH_SYNC_SECRET }}
       BASE_URL: ${{ vars.PRODUCTION_URL || 'https://quanly-toanha-dancu.vercel.app' }}
       REINDEX: ${{ inputs.reindex || false }}
+      RETRY_FAILED_ONLY: ${{ inputs.retry_failed_only || false }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,5 +41,5 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify readiness and process only the amenity-search queue
+      - name: Verify readiness and process the Elasticsearch search queues
         run: node scripts/amenity-search-sync.mjs

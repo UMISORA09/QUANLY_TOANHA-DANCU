@@ -17,7 +17,7 @@ function fixture({ health, schema, worker, reindex } = {}) {
     if (parsed.pathname === '/health') {
       return health ? health() : json({ status: 'healthy', database: 'healthy' });
     }
-    if (parsed.search === '?inspect=schema') {
+    if (parsed.searchParams.get('inspect') === 'schema') {
       return schema ? schema() : json({ tables });
     }
     if (parsed.pathname.endsWith('/reindex')) {
@@ -37,6 +37,36 @@ test('checks readiness before processing, authenticates only internal APIs and n
   assert.equal(calls[1].init.headers.Authorization, `Bearer ${secret}`);
   assert.ok(calls.every(call => call.init.method === 'GET' && call.init.redirect === 'error'));
   assert.equal(calls.filter(call => call.url.endsWith('/process')).length, 3);
+});
+
+test('retries failed jobs only when explicitly requested, once, without starting another backfill', async () => {
+  const calls = fixture();
+  await runAmenitySearchSync({ ...options, retryFailedOnly: true });
+  const writes = calls.filter(call => call.init.method === 'POST');
+  assert.equal(writes.length, 1);
+  assert.equal(new URL(writes[0].url).searchParams.get('retry_failed_only'), '1');
+  assert.equal(calls[2], writes[0]);
+});
+
+test('rejects conflicting recovery modes before making requests', async () => {
+  const calls = fixture();
+  await assert.rejects(runAmenitySearchSync({ ...options, reindex: true, retryFailedOnly: true }), /Choose either/);
+  assert.equal(calls.length, 0);
+});
+
+test('does not retry failed-job recovery after a lost response', async () => {
+  const calls = fixture({ reindex: () => { throw new Error(secret); } });
+  await assert.rejects(runAmenitySearchSync({ ...options, retryFailedOnly: true }), /Retry failed jobs: network_error_or_timeout/);
+  assert.equal(calls.length, 3);
+});
+
+test('checks all search tables and sends the same queue scope to reindex and workers', async () => {
+  const calls = fixture({ schema: () => json({ tables: { ...tables, amenity_search_states: true, tickets: true,
+    announcements: true, suggestions: true, satisfaction_surveys: true } }) });
+  await runAmenitySearchSync({ ...options, allQueues: true, reindex: true });
+  assert.equal(new URL(calls[1].url).searchParams.get('inspect'), 'schema');
+  assert.ok(calls.slice(1).every(call => new URL(call.url).searchParams.get('scope') === 'all'));
+  assert.equal(calls[2].init.method, 'POST');
 });
 
 test('HTTP failures, invalid JSON and unhealthy databases stop before any worker or reindex', async () => {
@@ -130,6 +160,20 @@ test('rejects invalid queue counts and exposes only known failure codes', async 
   }
 });
 
+test('reports only allowlisted failure categories and queue counts', async () => {
+  fixture({ worker: () => json({ pending: 255, failed: 6,
+    failure_codes: { max_attempts_exceeded: 3, elasticsearch_http_403: 3, [secret]: 6 },
+    failure_origins: ['RuntimeException@Worker.php:42', secret, '/private/path/Worker.php:42', 'https://private.example/Worker.php:42'] }) });
+  await assert.rejects(runAmenitySearchSync(options), error => {
+    assert.match(error.message, /max_attempts_exceeded,elasticsearch_http_403/);
+    assert.match(error.message, /pending=255, failed=6/);
+    assert.match(error.message, /origins=RuntimeException@Worker.php:42$/);
+    assert.ok(!error.message.includes('/private/'));
+    assert.ok(!error.message.includes(secret));
+    return true;
+  });
+});
+
 test('reindexes only when requested and only once after readiness succeeds', async () => {
   const calls = fixture();
   await runAmenitySearchSync({ ...options, reindex: true });
@@ -158,6 +202,30 @@ test('a lost reindex response is not retried and no workers are dispatched', asy
   const calls = fixture({ reindex: () => { throw new Error(secret); } });
   await assert.rejects(runAmenitySearchSync({ ...options, reindex: true }), /Reindex: network_error_or_timeout/);
   assert.equal(calls.length, 3);
+});
+
+test('defers slow batches before the Actions deadline without losing or retrying queued work', async () => {
+  let now = 0;
+  const pauses = [];
+  mock.method(Date, 'now', () => now);
+  const originalTimeout = globalThis.setTimeout;
+  mock.method(globalThis, 'setTimeout', (callback, milliseconds) => {
+    pauses.push(milliseconds);
+    now += milliseconds;
+    return originalTimeout(callback, 0);
+  });
+  let dispatched = 0;
+  const calls = fixture({ worker: () => {
+    if (dispatched++ % 3 === 0) {
+      now += 55_000;
+    }
+    return json({ pending: 124, failed: 0 });
+  } });
+  assert.deepEqual(await runAmenitySearchSync(options), { status: 'deferred', pending: 124, failed: 0 });
+  assert.equal(dispatched, 33);
+  assert.equal(pauses.length, 10);
+  assert.ok(now < 12 * 60_000);
+  assert.equal(calls.filter(call => call.init.method !== 'GET').length, 0);
 });
 
 test('rejects invalid URL and secret configuration without any requests', async () => {

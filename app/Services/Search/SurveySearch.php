@@ -5,6 +5,7 @@ namespace App\Services\Search;
 use App\Jobs\SyncSurveySearchIndex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use LogicException;
 
 class SurveySearch
@@ -16,7 +17,13 @@ class SurveySearch
 
     public function queue(string $id): void
     {
-        if (! self::enabled()) {
+        $this->queueMany([$id]);
+    }
+
+    /** @param list<string> $ids */
+    public function queueMany(array $ids): void
+    {
+        if ($ids === [] || ! self::enabled()) {
             return;
         }
 
@@ -25,7 +32,7 @@ class SurveySearch
             throw new LogicException('Survey search jobs must be written in the business transaction.');
         }
 
-        SyncSurveySearchIndex::dispatch($id)->onConnection('database')->onQueue('survey-search')->beforeCommit();
+        Queue::connection('database')->bulk(array_map(fn (string $id): SyncSurveySearchIndex => new SyncSurveySearchIndex($id), $ids), '', 'survey-search');
     }
 
     public function configure(): void

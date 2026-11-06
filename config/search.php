@@ -47,6 +47,7 @@ return [
             'booking_codes_index' => env('ELASTICSEARCH_BOOKING_CODES_INDEX', 'cassavas_booking_codes_v1'),
             'amenities_index' => env('ELASTICSEARCH_AMENITIES_INDEX', 'cassavas_amenities_v1'),
             'hosts' => explode(',', env('ELASTICSEARCH_HOSTS', 'http://127.0.0.1:9200')),
+            'api_key' => env('ELASTICSEARCH_API_KEY'),
             'username' => env('ELASTICSEARCH_USER', null),
             'password' => env('ELASTICSEARCH_PASS', null),
         ],
