@@ -67,7 +67,9 @@ export function CustomSelect<T extends string | number | null = string>({
         } else if (showSearch) {
             // Focus vào ô tìm kiếm khi mở
             const timer = setTimeout(() => {
-                searchInputRef.current?.focus();
+                if (!(menuRef.current || containerRef.current)?.querySelector('[role="option"]:focus')) {
+                    searchInputRef.current?.focus();
+                }
             }, 60);
             return () => clearTimeout(timer);
         }

@@ -1,3 +1,4 @@
+import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CalendarDays, Check, CheckCircle2, Clock, Copy, LayoutGrid, MapPin, RefreshCw, Sparkles, Table2, Users, X } from 'lucide-react';
 import { Amenity, AmenityListResponse, AmenityBookingPayment, ApiError, ResidentAmenityBooking, ResidentAmenityCatalog, ResidentAvailableSlot, ResidentBookingList, api } from '../Services/api';
@@ -75,6 +76,7 @@ export function ResidentAmenityBookingPanel() {
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<ResidentAmenityBooking | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  useNotificationDetailOpened('AMENITY', paymentBooking?.id ?? (!detailLoading ? detail?.id : null));
   const [modalError, setModalError] = useState<ApiError | null>(null);
   const [modalSuccess, setModalSuccess] = useState<string | null>(null);
   const [cancelMode, setCancelMode] = useState(false);

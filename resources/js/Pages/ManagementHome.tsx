@@ -533,7 +533,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   });
 
   // Notifications state
-  const notices = useManagerNotifications();
+  const notices = useManagerNotifications(isNotificationOpen);
   const unreadNotificationCount = notices.unread;
 
   // Sidebar Menu Items dynamically bound to Database KPIs and userRole

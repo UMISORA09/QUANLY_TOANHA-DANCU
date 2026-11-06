@@ -299,6 +299,7 @@ Route::prefix('api/v1/admin/tickets')->middleware('auth.bearer:strict')->group(f
 });
 Route::get('/api/v1/ticket-notifications', [TicketManagementController::class, 'notifications'])->middleware('auth.bearer:strict');
 Route::get('/api/v1/manager/notifications', [ManagerNotificationController::class, 'index'])->middleware('auth.bearer:strict');
+Route::post('/api/v1/manager/notifications/read-all', [ManagerNotificationController::class, 'readAll'])->middleware('auth.bearer:strict');
 Route::post('/api/v1/manager/notifications/{id}/read', [ManagerNotificationController::class, 'read'])->middleware('auth.bearer:strict');
 Route::post('/api/v1/ticket-notifications/{id}/read', [TicketManagementController::class, 'readNotification'])->middleware('auth.bearer:strict');
 

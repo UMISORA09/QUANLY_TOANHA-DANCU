@@ -1,3 +1,4 @@
+import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
 import { TicketRating } from './TicketRating';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TicketImage } from './TicketImage';
@@ -176,6 +177,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   // Selected Ticket for Detail View
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [detailTicket, setDetailTicket] = useState<TicketItem | null>(null);
+  useNotificationDetailOpened('TICKET', detailTicket?.id, detailTicket);
   const [isLoadingDetail, setIsLoadingDetail] = useState<boolean>(false);
 
   // Lightbox xem ảnh lớn

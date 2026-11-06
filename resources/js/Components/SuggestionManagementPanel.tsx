@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
   Search,
@@ -65,7 +66,9 @@ export const SuggestionManagementPanel: React.FC = () => {
 
   // Selected Suggestion for Detail & Actions
   const [selectedSuggestion, setSelectedSuggestion] = useState<SuggestionItem | null>(null);
+  useNotificationDetailOpened('SUGGESTION', selectedSuggestion?.id, selectedSuggestion);
   const [isLoadingDetail, setIsLoadingDetail] = useState<boolean>(false);
+  const detailRequest = useRef(0);
 
   // Action / Reply State
   const [replyText, setReplyText] = useState<string>('');
@@ -130,7 +133,14 @@ export const SuggestionManagementPanel: React.FC = () => {
     loadSuggestions();
   };
 
+  useEffect(() => {
+    const refresh = () => void loadSuggestions();
+    window.addEventListener('SUGGESTION_NOTIFICATION_RECEIVED', refresh);
+    return () => window.removeEventListener('SUGGESTION_NOTIFICATION_RECEIVED', refresh);
+  });
+
   const openDetailModal = async (id: string) => {
+    const request = ++detailRequest.current;
     try {
       setIsLoadingDetail(true);
       setActionError(null);
@@ -141,17 +151,28 @@ export const SuggestionManagementPanel: React.FC = () => {
       setAiAnalysisResult(null);
 
       const res = await api.getManagementSuggestionDetail(id);
+      if (request !== detailRequest.current) return;
       if (res?.data) {
         setSelectedSuggestion(res.data);
         setReplyText(res.data.official_response_text || '');
         setNewStatusOnReply(res.data.status === 'RESOLVED' ? 'RESOLVED' : 'RESOLVED');
       }
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Không thể tải chi tiết góp ý.');
+      if (request === detailRequest.current) alert(err?.response?.data?.message || 'Không thể tải chi tiết góp ý.');
     } finally {
-      setIsLoadingDetail(false);
+      if (request === detailRequest.current) setIsLoadingDetail(false);
     }
   };
+
+  useEffect(() => {
+    const linked = () => {
+      const id = new URLSearchParams(window.location.search).get('suggestion_id');
+      if (id) void openDetailModal(id);
+    };
+    linked();
+    window.addEventListener('popstate', linked);
+    return () => { detailRequest.current++; window.removeEventListener('popstate', linked); };
+  }, []);
 
   // State Transition Action (OCC version protected)
   const handleStatusTransition = async (newStatus: string) => {
