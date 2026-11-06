@@ -30,7 +30,8 @@ import {
   TrendingUp,
   Layers,
   HelpCircle,
-  MessageSquare
+  MessageSquare,
+  Download
 } from 'lucide-react';
 
 export const SatisfactionSurveyManagementPanel: React.FC = () => {
@@ -122,6 +123,35 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
     } finally {
       setAnalyticsLoading(false);
     }
+  };
+
+  // Export Analytics Report to CSV
+  const handleExportCsv = () => {
+    if (!analyticsData) return;
+    const rows = [
+      ['Ma khao sat', analyticsData.survey.survey_code],
+      ['Tieu de', `"${analyticsData.survey.title.replace(/"/g, '""')}"`],
+      ['Tong so phan hoi', String(analyticsData.kpis.total_responses)],
+      ['Ty le CSAT (%)', `${analyticsData.kpis.overall_csat_percentage}%`],
+      ['Diem TB', String(analyticsData.kpis.overall_average_rating)],
+      [''],
+      ['STT', 'Noi dung cau hoi', 'Loai', 'So phan hoi', 'Chi tiet / Diem TB'],
+      ...analyticsData.question_stats.map((q) => [
+        String(q.question_order),
+        `"${q.question_text.replace(/"/g, '""')}"`,
+        q.question_type,
+        String(q.total_answers),
+        q.average_rating ? `${q.average_rating} sao` : (q.yes_count !== undefined ? `Co: ${q.yes_count}; Khong: ${q.no_count}` : '—')
+      ])
+    ];
+    const csvContent = '\uFEFF' + rows.map((e) => e.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `CSAT_${analyticsData.survey.survey_code}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // Open Create Modal
@@ -804,16 +834,27 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                   Phạm vi: {analyticsData.survey.target_block_name} | Thời gian: {analyticsData.survey.start_date} đến {analyticsData.survey.end_date}
                 </p>
               </div>
-              <button
-                type="button"
-                data-testid="close-analytics-modal"
-                aria-label="Đóng báo cáo phân tích"
-                title="Đóng"
-                onClick={() => setAnalyticsSurveyId(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg p-1.5 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+                  title="Xuất báo cáo ra định dạng CSV"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Xuất CSV
+                </button>
+                <button
+                  type="button"
+                  data-testid="close-analytics-modal"
+                  aria-label="Đóng báo cáo phân tích"
+                  title="Đóng"
+                  onClick={() => setAnalyticsSurveyId(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg p-1.5 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
