@@ -40,6 +40,7 @@ async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET'
 }
 
 export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, retryFailedOnly = false, allQueues = false }) {
+  const deadline = Date.now() + 12 * 60_000;
   if (reindex && retryFailedOnly) {
     throw new Error('Choose either reindex or retry failed jobs');
   }
@@ -97,6 +98,10 @@ export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, r
     pending = Math.max(...results.map(result => result.pending));
     if (pending === 0) {
       return { status: 'completed', pending: 0, failed: 0 };
+    }
+    // Reserve one worker timeout and the pause before the next batch; leave time for Actions cleanup.
+    if (Date.now() + 62_000 >= deadline) {
+      break;
     }
     if (batch < 44) {
       // Leave room for schema inspection and reindex within the endpoint's 30 requests/minute limit.
