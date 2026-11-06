@@ -4,15 +4,12 @@ namespace App\Services\Search;
 
 use App\Jobs\SyncBookingCodeIndex;
 use App\Models\User;
-use App\Services\Concerns\HasPerformanceCache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use LogicException;
 
 class BookingCodeSearch
 {
-    use HasPerformanceCache;
-
     public static function enabled(): bool
     {
         return config('search.default') === 'elasticsearch';
@@ -61,8 +58,6 @@ class BookingCodeSearch
             'is_deleted' => $deleted,
             ...($deleted ? [] : ['booking_code' => $row->booking_code]),
         ], $deleted ? 2 : 1);
-        $this->flushSearchEntityCache('booking_codes');
-        $this->flushSearchEntityCache('booking_codes_matches');
     }
 
     /** @return list<string> */
@@ -79,24 +74,16 @@ class BookingCodeSearch
                 ->where(fn ($query) => $query->whereNull('amenity.block_id')->orWhere('amenity.block_id', $block));
         }
 
-        $cacheParams = [
-            'user_id' => $user->id,
-            'amenity_id' => $amenityId,
-            'q' => trim(mb_strtolower($keyword)),
-        ];
+        $ids = [];
+        if (self::enabled()) {
+            $readScope = fn () => (clone $scope)->limit(10001)->pluck('booking.id')
+                ->mapWithKeys(fn (string $id) => [$id => 1])->all();
+            $ids = $this->index()->matchingRevisions($readScope, $keyword, ['booking_code'], requireAllTerms: true) ?? [];
+        }
 
-        return $this->rememberSearchResult('booking_codes_matches', $cacheParams, function () use ($scope, $keyword): array {
-            $ids = [];
-            if (self::enabled()) {
-                $readScope = fn () => (clone $scope)->limit(10001)->pluck('booking.id')
-                    ->mapWithKeys(fn (string $id) => [$id => 1])->all();
-                $ids = $this->index()->matchingRevisions($readScope, $keyword, ['booking_code'], requireAllTerms: true) ?? [];
-            }
-
-            return $scope->where(fn ($query) => $query->whereIn('booking.id', $ids)
-                ->orWhereRaw('LOCATE(LOWER(?), LOWER(booking.booking_code)) > 0', [$keyword]))
-                ->pluck('booking.id')->all();
-        }, 300);
+        return $scope->where(fn ($query) => $query->whereIn('booking.id', $ids)
+            ->orWhereRaw('LOCATE(LOWER(?), LOWER(booking.booking_code)) > 0', [$keyword]))
+            ->pluck('booking.id')->all();
     }
 
     private function index(): ElasticsearchIndex

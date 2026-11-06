@@ -30,14 +30,7 @@ class SurveyAnalyticsPerformanceTest extends TestCase
         parent::setUp();
         Cache::flush();
 
-        $this->admin = User::firstOrCreate(
-            ['email' => 'admin_csat@smartcassavas.test'],
-            [
-                'full_name' => 'Admin CSAT',
-                'password' => bcrypt('password'),
-                'status' => 'ACTIVE',
-            ]
-        );
+        $this->admin = User::factory()->create(['status' => 'ACTIVE']);
 
         $role = Role::firstOrCreate(['role_code' => 'SUPER_ADMIN'], [
             'id' => (string) Str::uuid(),
@@ -97,7 +90,7 @@ class SurveyAnalyticsPerformanceTest extends TestCase
             ['survey_id' => $this->survey->id, 'apartment_id' => $apartment->id],
             [
                 'id' => (string) Str::uuid(),
-                'user_id' => $this->admin->id,
+                'resident_user_id' => $this->admin->id,
                 'submitted_at' => now(),
             ]
         );

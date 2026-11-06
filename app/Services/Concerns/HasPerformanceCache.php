@@ -4,6 +4,7 @@ namespace App\Services\Concerns;
 
 use Closure;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 trait HasPerformanceCache
 {
@@ -20,7 +21,7 @@ trait HasPerformanceCache
      */
     protected function getEntityCacheVersion(string $entity): int
     {
-        return (int) Cache::get("cache_version:{$entity}", 1);
+        return (int) Cache::get("cache_version:{$entity}", 0);
     }
 
     /**
@@ -28,11 +29,10 @@ trait HasPerformanceCache
      */
     public function flushSearchEntityCache(string $entity): void
     {
+        Cache::add("cache_version:{$entity}", 0);
+        Cache::increment("cache_version:{$entity}");
         if ($this->supportsCacheTags()) {
             Cache::tags(["search_{$entity}"])->flush();
-        } else {
-            // Tăng version lên 1 để vô hiệu hóa toàn bộ cache cũ mà không cần duyệt file
-            Cache::increment("cache_version:{$entity}");
         }
     }
 
@@ -43,6 +43,9 @@ trait HasPerformanceCache
      */
     protected function rememberSearchResult(string $entity, array $params, Closure $callback, int $ttl = 300): mixed
     {
+        if (DB::transactionLevel() > 0) {
+            return $callback();
+        }
         $version = $this->getEntityCacheVersion($entity);
         ksort($params);
         $paramHash = md5(json_encode($params));
@@ -60,6 +63,9 @@ trait HasPerformanceCache
      */
     protected function rememberAnalyticsResult(string $category, string $subKey, Closure $callback, int $ttl = 600): mixed
     {
+        if (DB::transactionLevel() > 0) {
+            return $callback();
+        }
         $version = $this->getEntityCacheVersion($category);
         $cacheKey = "analytics:{$category}:v{$version}:{$subKey}";
 
@@ -75,10 +81,10 @@ trait HasPerformanceCache
      */
     public function flushAnalyticsCache(string $category): void
     {
+        Cache::add("cache_version:{$category}", 0);
+        Cache::increment("cache_version:{$category}");
         if ($this->supportsCacheTags()) {
             Cache::tags(["analytics_{$category}"])->flush();
-        } else {
-            Cache::increment("cache_version:{$category}");
         }
     }
 }
