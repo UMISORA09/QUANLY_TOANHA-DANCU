@@ -84,12 +84,13 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   const openAmenityNotice = async (item: AmenityBookingNotification) => {
     const target = new URL(item.deepLink, window.location.origin);
     if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
+    notices.waitForDetail(item);
     window.history.pushState({}, '', '/cu-dan' + target.search);
     setActiveMenuId('amenities');
     window.dispatchEvent(new PopStateEvent('popstate'));
     setIsNotificationOpen(false);
     notices.setAlert(null);
-    await notices.markRead(item);
+
   };
   const [activeMenuId, setActiveMenuId] = useState<string>(() => {
     try {

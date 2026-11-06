@@ -41,8 +41,8 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
   initialTab = 'overview',
 }) => {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
-  const notices = useManagerNotifications();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notices = useManagerNotifications(notificationsOpen);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
 

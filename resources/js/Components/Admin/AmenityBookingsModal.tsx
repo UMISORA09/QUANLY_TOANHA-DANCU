@@ -1,3 +1,4 @@
+import { useNotificationDetailOpened } from '../../Hooks/useNotificationDetailOpened';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
@@ -69,6 +70,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
   const paymentBooking = bookings.find((booking) => booking.id === paymentBookingId) ?? null;
   const [error, setError] = useState<string | null>(null);
+  useNotificationDetailOpened('AMENITY_BOOKING', isOpen && !loading && !syncing && !error && bookings.some((item) => item.booking_code === initialSearch) ? initialSearch : null);
   const [errorStatus, setErrorStatus] = useState<number | undefined>();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);

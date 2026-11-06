@@ -14,6 +14,7 @@ export function useAmenityNotifications(audience: 'resident' | 'admin') {
   const [revision, setRevision] = useState(0);
   const seen = useRef(new Set<string>());
   const mutation = useRef(0);
+  const pendingRead = useRef<AmenityBookingNotification | null>(null);
   useEffect(() => {
     let stopped = false;
     let running = false;
@@ -26,7 +27,7 @@ export function useAmenityNotifications(audience: 'resident' | 'admin') {
       running = true;
       controller = new AbortController();
       const version = mutation.current;
-      let delay = 5000;
+      let delay = 15000;
       try {
         const data = await api.getAmenityNotifications(audience, page, unreadOnly, controller.signal);
         if (stopped || version !== mutation.current || !Array.isArray(data?.items)) return;
@@ -77,7 +78,20 @@ export function useAmenityNotifications(audience: 'resident' | 'admin') {
       setRevision((value) => value + 1);
     } catch (failure) { setError(failure as ApiError); }
   };
+  useEffect(() => {
+    const opened = (event: Event) => {
+      const detail = (event as CustomEvent<{ category: string; id: string }>).detail;
+      const item = pendingRead.current;
+      if (!item || detail.category !== 'AMENITY' || new URL(item.deepLink, location.origin).searchParams.get('booking_id') !== detail.id) return;
+      pendingRead.current = null;
+      void markRead(item);
+    };
+    window.addEventListener('NOTIFICATION_DETAIL_OPENED', opened);
+    return () => window.removeEventListener('NOTIFICATION_DETAIL_OPENED', opened);
+  });
+  const waitForDetail = (item: AmenityBookingNotification) => { pendingRead.current = item; };
   return { items, unreadCount, alert, setAlert, page, pages, setPage, unreadOnly,
     setUnreadOnly: (value: boolean) => { setUnreadOnly(value); setPage(1); }, error, loading, markRead,
+    waitForDetail,
     retry: () => setRevision((value) => value + 1) };
 }

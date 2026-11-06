@@ -176,3 +176,73 @@ test('Chuông chung: ngừng poll khi tab ẩn, focus không tạo request chồ
   await expect.poll(() => polls).toBe(2);
   expect(maxRunning).toBe(1);
 });
+
+test('Chuông: summary khi đóng, sự kiện chỉ đúng nhóm, đọc tất cả có xác nhận từ server', async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' }));
+    localStorage.setItem('smart_cassavas_token', 'qa-token');
+    (window as any).bellEvents = { ticket: 0, amenity: 0 };
+    window.addEventListener('TICKET_NOTIFICATION_RECEIVED', () => (window as any).bellEvents.ticket++);
+    window.addEventListener('AMENITY_NOTIFICATION_RECEIVED', () => (window as any).bellEvents.amenity++);
+  });
+  let version = 1, unread = 1, summaries = 0, full = 0, reads = 0;
+  await page.route('**/api/**', (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/notifications/read-all')) { reads++; unread = 0; return route.fulfill({ json: { unread_count: 0 } }); }
+    if (url.pathname.endsWith('/manager/notifications')) {
+      const summary = url.searchParams.get('summary') === '1';
+      if (summary) summaries++; else full++;
+      return route.fulfill({ json: { items: summary ? [] : [notice('qa')], unread_count: unread, latest_id: 'qa', category_activity: { TICKET: String(version) }, page: 1, total_pages: 1 } });
+    }
+    return route.fulfill({ json: { items: [], data: [], success: true } });
+  });
+  await page.goto('/quan-ly?tab=overview');
+  await expect.poll(() => summaries).toBe(1);
+  expect(full).toBe(0);
+  version++;
+  await page.clock.fastForward(15000);
+  await expect.poll(() => page.evaluate(() => (window as any).bellEvents)).toEqual({ ticket: 1, amenity: 0 });
+  await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
+  const inbox = page.getByRole('region', { name: 'Thông báo vận hành' });
+  await expect(inbox.getByRole('listitem')).toHaveCount(1);
+  await inbox.getByRole('button', { name: 'Đánh dấu tất cả đã đọc', exact: true }).click();
+  await expect(page.getByTitle('Thông báo hệ thống', { exact: true })).toHaveAttribute('aria-label', 'Thông báo hệ thống (0 chưa đọc)');
+  expect(reads).toBe(1);
+});
+
+test('Góp ý từ chuông mở đúng bài; chi tiết lỗi không bị đánh dấu đã đọc', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' }));
+    localStorage.setItem('smart_cassavas_token', 'qa-token');
+  });
+  page.on('dialog', (dialog) => dialog.dismiss());
+  let failed = true, reads = 0;
+  await page.route('**/api/**', (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/read')) { reads++; return route.fulfill({ json: { unread_count: 0 } }); }
+    if (url.pathname.endsWith('/manager/notifications')) return route.fulfill({ json: {
+      items: url.searchParams.get('summary') ? [] : [{ ...notice('suggestion'), category: 'SUGGESTION', deep_link_url: '/quan-ly?tab=suggestions&suggestion_id=qa-suggestion' }],
+      unread_count: reads ? 0 : 1, latest_id: 'suggestion', page: 1, total_pages: 1,
+    } });
+    if (url.pathname.endsWith('/management/suggestions/qa-suggestion')) {
+      if (failed) return route.fulfill({ status: 503, json: { message: 'QA detail unavailable' } });
+      return route.fulfill({ json: { success: true, data: { id: 'qa-suggestion', title: 'Góp ý QA đã tải', content_text: 'Nội dung góp ý QA', status: 'NEW', topic_category: 'KHAC', is_anonymous: true, attached_files: [], created_at: '2026-11-06T10:00:00Z', version: 1 } } });
+    }
+    if (url.pathname.endsWith('/management/suggestions')) return route.fulfill({ json: { success: true, data: [], meta: { current_page: 1, last_page: 1, total: 0 } } });
+    return route.fulfill({ json: { items: [], data: [], success: true } });
+  });
+  await page.goto('/quan-ly?tab=overview');
+  await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
+  const inbox = page.getByRole('region', { name: 'Thông báo vận hành' });
+  await expect(inbox.getByRole('listitem')).toContainText('Góp ý');
+  await inbox.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
+  await expect(page).toHaveURL(/tab=suggestions&suggestion_id=qa-suggestion/);
+  await expect(page.getByTitle('Thông báo hệ thống', { exact: true })).toHaveAttribute('aria-label', 'Thông báo hệ thống (1 chưa đọc)');
+  expect(reads).toBe(0);
+  failed = false;
+  await page.evaluate(() => window.dispatchEvent(new PopStateEvent('popstate')));
+  await expect(page.getByText('Nội dung góp ý QA', { exact: true })).toBeVisible();
+  await expect.poll(() => reads).toBe(1);
+  await expect(page.getByTitle('Thông báo hệ thống', { exact: true })).toHaveAttribute('aria-label', 'Thông báo hệ thống (0 chưa đọc)');
+});
