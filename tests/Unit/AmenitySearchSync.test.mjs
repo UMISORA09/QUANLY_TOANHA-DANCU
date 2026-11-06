@@ -160,6 +160,20 @@ test('rejects invalid queue counts and exposes only known failure codes', async 
   }
 });
 
+test('reports only allowlisted failure categories and queue counts', async () => {
+  fixture({ worker: () => json({ pending: 255, failed: 6,
+    failure_codes: { max_attempts_exceeded: 3, elasticsearch_http_403: 3, [secret]: 6 },
+    failure_origins: ['RuntimeException@Worker.php:42', secret, '/private/path/Worker.php:42', 'https://private.example/Worker.php:42'] }) });
+  await assert.rejects(runAmenitySearchSync(options), error => {
+    assert.match(error.message, /max_attempts_exceeded,elasticsearch_http_403/);
+    assert.match(error.message, /pending=255, failed=6/);
+    assert.match(error.message, /origins=RuntimeException@Worker.php:42$/);
+    assert.ok(!error.message.includes('/private/'));
+    assert.ok(!error.message.includes(secret));
+    return true;
+  });
+});
+
 test('reindexes only when requested and only once after readiness succeeds', async () => {
   const calls = fixture();
   await runAmenitySearchSync({ ...options, reindex: true });

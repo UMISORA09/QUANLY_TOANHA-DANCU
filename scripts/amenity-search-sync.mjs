@@ -6,7 +6,8 @@ const databaseErrors = new Set([
   'database_inspection_failed',
 ]);
 const requiredTables = ['amenities', 'amenity_bookings', 'amenity_booking_payments', 'jobs', 'failed_jobs'];
-const failureCodes = ['worker_failed'];
+const failureCodes = ['worker_failed', 'max_attempts_exceeded', 'elasticsearch_connection_failed',
+  ...[400, 401, 403, 404, 429, 500, 502, 503, 504].map(status => `elasticsearch_http_${status}`)];
 
 async function requestJson(baseUrl, path, secret, label, timeout, method = 'GET') {
   let response;
@@ -89,7 +90,9 @@ export async function runAmenitySearchSync({ baseUrl, secret, reindex = false, r
     }
     if (results.some(result => result.failed > 0)) {
       const codes = failureCodes.filter(code => results.some(result => Number.isSafeInteger(result.failure_codes?.[code]) && result.failure_codes[code] > 0));
-      throw new Error(`Worker: failed_jobs (${codes.join(',') || 'worker_failed'}), pending=${Math.max(...results.map(result => result.pending))}, failed=${Math.max(...results.map(result => result.failed))}`);
+      const origins = [...new Set(results.flatMap(result => Array.isArray(result.failure_origins) ? result.failure_origins : []))]
+        .filter(origin => typeof origin === 'string' && /^[A-Za-z_]\w{0,99}@[A-Za-z0-9_.-]{1,100}\.php:[1-9][0-9]{0,5}$/.test(origin)).slice(0, 3);
+      throw new Error(`Worker: failed_jobs (${codes.join(',') || 'worker_failed'}), pending=${Math.max(...results.map(result => result.pending))}, failed=${Math.max(...results.map(result => result.failed))}${origins.length ? `, origins=${origins.join(',')}` : ''}`);
     }
     pending = Math.max(...results.map(result => result.pending));
     if (pending === 0) {

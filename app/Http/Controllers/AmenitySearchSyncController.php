@@ -84,12 +84,31 @@ class AmenitySearchSyncController extends Controller
             $exitCode = Artisan::call('queue:work', ['connection' => 'database', '--queue' => implode(',', $queues), '--once' => true, '--tries' => 5, '--timeout' => 45]);
         }
 
-        $failures = DB::table('failed_jobs')->whereIn('queue', $queues)->count();
+        $failureOrigins = [];
+        $failureCodes = DB::table('failed_jobs')->where('connection', 'database')->whereIn('queue', $queues)
+            ->pluck('exception')->countBy(function (string $exception) use (&$failureOrigins): string {
+                if (preg_match('~\A([A-Za-z_\\\\][A-Za-z0-9_\\\\]{0,199}):~', $exception, $type)
+                    && preg_match('~ in /[^\r\n]+/([A-Za-z0-9_.-]{1,100}\.php):([1-9][0-9]{0,5})~', $exception, $source)) {
+                    $failureOrigins[class_basename($type[1]).'@'.$source[1].':'.$source[2]] = true;
+                }
+                if (str_contains($exception, 'MaxAttemptsExceededException')) {
+                    return 'max_attempts_exceeded';
+                }
+                if (str_contains($exception, 'ConnectionException')) {
+                    return 'elasticsearch_connection_failed';
+                }
+                if (preg_match('/HTTP request returned status code (400|401|403|404|429|500|502|503|504)\b/', $exception, $matches)) {
+                    return 'elasticsearch_http_'.$matches[1];
+                }
+
+                return 'worker_failed';
+            })->all();
 
         return response()->json([
             'pending' => DB::table('jobs')->whereIn('queue', $queues)->count(),
-            'failed' => $failures,
-            'failure_codes' => $failures > 0 ? ['worker_failed' => $failures] : [],
+            'failed' => array_sum($failureCodes),
+            'failure_codes' => $failureCodes,
+            'failure_origins' => array_slice(array_keys($failureOrigins), 0, 3),
         ], $exitCode === 0 ? 200 : 503);
     }
 

@@ -116,6 +116,25 @@ class ElasticsearchAmenitySearchTest extends TestCase
             && $request['mappings']['properties']['title']['analyzer'] === 'cassavas_text');
     }
 
+    public function test_production_requests_trim_surrounding_whitespace_from_copied_api_keys(): void
+    {
+        $this->app->instance('env', 'production');
+        Http::fake(['https://elastic.example/*' => Http::response(['hits' => ['hits' => []]])]);
+        $index = new ElasticsearchIndex(['hosts' => ['https://elastic.example'], 'api_key' => "\r\n test-key\t\r\n"], 'cassavas_test');
+
+        $this->assertTrue($index->search(['query' => ['match_all' => (object) []]])->successful());
+        Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'ApiKey test-key'));
+    }
+
+    public function test_api_keys_with_embedded_header_injection_are_still_rejected(): void
+    {
+        Http::fake();
+        $index = new ElasticsearchIndex(['hosts' => ['https://elastic.example'], 'api_key' => "test-key\r\nInjected: value"], 'cassavas_test');
+        $this->expectException(\InvalidArgumentException::class);
+
+        $index->search(['query' => ['match_all' => (object) []]]);
+    }
+
     public function test_ticket_backfill_batch_is_written_in_the_business_transaction(): void
     {
         $jobs = DB::table('jobs')->where('queue', 'ticket-search');
@@ -191,6 +210,46 @@ class ElasticsearchAmenitySearchTest extends TestCase
         $this->assertDatabaseMissing('failed_jobs', ['uuid' => $failedId]);
         $this->assertDatabaseHas('failed_jobs', ['queue' => 'unrelated-queue']);
         Http::assertNothingSent();
+    }
+
+    public function test_http_worker_processes_a_real_search_job_and_acknowledges_its_version(): void
+    {
+        config(['search.sync_secret' => str_repeat('c', 40)]);
+        Http::fakeSequence()->pushStatus(404)->push(['acknowledged' => true])->push(['result' => 'created']);
+        app(AmenitySearchSyncState::class)->queue($this->amenityId);
+
+        $this->withToken(str_repeat('c', 40))->getJson('/api/v1/internal/amenity-search/process')
+            ->assertOk()->assertJsonPath('pending', 0)->assertJsonPath('failed', 0);
+        $state = DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)->first();
+        $this->assertSame((int) $state->desired_version, (int) $state->published_version);
+        $this->assertSame('synced', $state->status);
+    }
+
+    public function test_worker_failure_diagnostics_are_scoped_and_never_return_raw_exceptions(): void
+    {
+        config(['search.sync_secret' => str_repeat('c', 40)]);
+        foreach ([
+            ['database', 'amenity-search', 'MaxAttemptsExceededException: private-value'],
+            ['database', 'amenity-search', 'ConnectionException: private-value'],
+            ['database', 'amenity-search', 'RequestException: HTTP request returned status code 403: private-value'],
+            ['database', 'amenity-search', 'App\\Exceptions\\RuntimeException: private-value in /private/path/Worker.php:42'],
+            ['database', 'other-queue', 'RuntimeException: private-value'],
+            ['redis', 'amenity-search', 'RuntimeException: private-value'],
+        ] as [$connection, $queue, $exception]) {
+            DB::table('failed_jobs')->insert(['uuid' => (string) Str::uuid(), 'connection' => $connection,
+                'queue' => $queue, 'payload' => '{}', 'exception' => $exception, 'failed_at' => now()]);
+        }
+
+        Artisan::shouldReceive('call')->never();
+        $this->withToken('invalid')->getJson('/api/v1/internal/amenity-search/process')->assertUnauthorized();
+        $this->withToken(str_repeat('c', 40))->getJson('/api/v1/internal/amenity-search/process')
+            ->assertOk()->assertJsonPath('failed', 4)
+            ->assertJsonPath('failure_codes.max_attempts_exceeded', 1)
+            ->assertJsonPath('failure_codes.elasticsearch_connection_failed', 1)
+            ->assertJsonPath('failure_codes.elasticsearch_http_403', 1)
+            ->assertJsonPath('failure_codes.worker_failed', 1)
+            ->assertJsonPath('failure_origins.0', 'RuntimeException@Worker.php:42')
+            ->assertDontSee('private-value')->assertDontSee('/private/path')->assertDontSee('RequestException');
     }
 
     public function test_retry_only_preserves_pending_work_without_creating_another_backfill(): void
