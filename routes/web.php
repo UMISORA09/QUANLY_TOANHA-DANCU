@@ -525,6 +525,12 @@ Route::get('/quan-ly/sinh-hoa-don', function () {
 Route::get('/admin/invoice-generation', function () {
     return view('welcome');
 });
+Route::get('/quan-ly/doanh-thu', function () {
+    return view('welcome');
+});
+Route::get('/admin/doanh-thu', function () {
+    return view('welcome');
+});
 
 // ==========================================
 // QUẢN LÝ KHỐI, TẦNG & CĂN HỘ (BUILDING, FLOORS & APARTMENTS) - CHỨC NĂNG 2

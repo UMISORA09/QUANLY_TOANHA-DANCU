@@ -50,9 +50,24 @@ interface BlockOption {
     block_name: string;
 }
 
-export const InvoiceManagement: React.FC = () => {
+interface InvoiceManagementProps {
+    onNavigateTab?: (tab: string) => void;
+}
+
+export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigateTab }) => {
     // Mode chuyển đổi giữa Quản lý danh sách, Lịch sử giao dịch, Dashboard Doanh thu và Sinh hóa đơn hàng loạt
-    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history' | 'analytics'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'batch_generate' | 'history' | 'analytics'>(() => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const view = params.get('view') || params.get('mode');
+            if (view === 'analytics' || view === 'history' || view === 'batch_generate') {
+                return view;
+            }
+        } catch {
+            // ignore
+        }
+        return 'list';
+    });
 
     // Dữ liệu danh sách & KPI
     const [invoices, setInvoices] = useState<InvoiceModel[]>([]);
@@ -518,16 +533,6 @@ export const InvoiceManagement: React.FC = () => {
                     >
                         <Mail className="w-4 h-4 text-amber-600" />
                         <span>Nhật Ký Nhắc Nợ</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setViewMode('analytics')}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs text-xs font-bold transition-all cursor-pointer"
-                        title="Xem biểu đồ phân tích doanh thu và thu hồi công nợ (Chức năng 12)"
-                    >
-                        <BarChart3 className="w-4 h-4 text-sky-600" />
-                        <span>Dashboard Doanh Thu</span>
                     </button>
 
                     <button

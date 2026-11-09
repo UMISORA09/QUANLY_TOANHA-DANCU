@@ -44,7 +44,8 @@ import {
   Compass,
   Terminal,
   UserPlus,
-  Car
+  Car,
+  BarChart3
 } from 'lucide-react';
 import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
 import { AmenityManagement } from './Admin/AmenityManagement';
@@ -58,6 +59,7 @@ import { ServicePricingManagement } from './Admin/ServicePricingManagement';
 import { MeterReadingManagement } from './Admin/MeterReadingManagement';
 import { InvoiceBatchGeneration } from './Admin/InvoiceBatchGeneration';
 import { InvoiceManagement } from './Admin/InvoiceManagement';
+import { RevenueAnalyticsDashboard } from './Admin/RevenueAnalyticsDashboard';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
@@ -196,12 +198,23 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     ) {
       return 'meter_readings';
     }
+    if (
+      path === '/quan-ly/doanh-thu' ||
+      path === '/admin/doanh-thu' ||
+      path === '/quan-ly/dashboard-doanh-thu' ||
+      path === '/admin/dashboard-doanh-thu' ||
+      path.startsWith('/quan-ly/doanh-thu') ||
+      path.startsWith('/admin/doanh-thu')
+    ) {
+      return 'revenue_analytics';
+    }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
     if (tabParam) {
       if (tabParam === 'buildings') return 'blocks';
+      if (tabParam === 'doanh_thu' || tabParam === 'analytics' || tabParam === 'dashboard_doanh_thu') return 'revenue_analytics';
       return tabParam;
     }
 
@@ -426,6 +439,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'pricing', label: 'Đơn giá', icon: Tag, badge: null },
         { id: 'metering', label: 'Chốt điện / nước', icon: Zap, badge: 'IoT' },
         { id: 'invoices', label: 'Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
+        { id: 'revenue_analytics', label: 'Dashboard Doanh thu', icon: BarChart3, badge: 'Biểu đồ' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
         { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${notifications.filter(n => !n.isRead).length || 2} mới` },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
@@ -666,6 +680,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: id }, '', `${basePath}/cicd`);
     } else if (id === 'amenities') {
       window.history.pushState({ tab: id }, '', `${basePath}?tab=amenities`);
+    } else if (id === 'revenue_analytics') {
+      window.history.pushState({ tab: id }, '', `${basePath}/doanh-thu`);
     } else if (id === 'account_provisioning') {
       window.history.pushState({ tab: id }, '', `${basePath}?tab=account_provisioning`);
     } else if (id === 'temporary_registrations') {
@@ -862,7 +878,11 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceManagement />
+              <InvoiceManagement onNavigateTab={handleMenuClick} />
+            </div>
+          ) : activeMenuId === 'revenue_analytics' || activeMenuId === 'doanh_thu' || activeMenuId === 'dashboard_doanh_thu' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <RevenueAnalyticsDashboard onBackToList={() => handleMenuClick('invoices')} />
             </div>
           ) : activeMenuId === 'sinh_hoa_don' || activeMenuId === 'invoice_generation' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">

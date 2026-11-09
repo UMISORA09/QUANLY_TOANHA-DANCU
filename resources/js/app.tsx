@@ -326,6 +326,14 @@ const App: React.FC = () => {
     currentPath.startsWith('/quan-ly/chot-chi-so') ||
     currentPath.startsWith('/admin/meter-readings');
 
+  const isRevenueAnalyticsPath =
+    currentPath === '/quan-ly/doanh-thu' ||
+    currentPath === '/quan-ly/dashboard-doanh-thu' ||
+    currentPath === '/admin/doanh-thu' ||
+    currentPath === '/admin/dashboard-doanh-thu' ||
+    currentPath.startsWith('/quan-ly/doanh-thu') ||
+    currentPath.startsWith('/admin/doanh-thu');
+
   const isManagerPath =
     currentPath === '/quan-ly' ||
     currentPath.startsWith('/quan-ly/') ||
@@ -336,7 +344,8 @@ const App: React.FC = () => {
     isAccountProvisioningPath ||
     isVehiclePath ||
     isPricingPath ||
-    isMeterReadingPath;
+    isMeterReadingPath ||
+    isRevenueAnalyticsPath;
 
   if (isManagerPath) {
     // Bảo vệ quyền: Nếu là lễ tân hoặc cư dân cố vào trang quản lý, chuyển về cổng tương ứng
@@ -363,6 +372,8 @@ const App: React.FC = () => {
       ? 'meter_readings'
       : isAccountProvisioningPath
       ? 'account_provisioning'
+      : isRevenueAnalyticsPath
+      ? 'revenue_analytics'
       : (managerUrlTab || undefined);
 
     return (

@@ -10,7 +10,6 @@ import {
     BarChart3,
     ArrowUpRight,
     ArrowDownRight,
-    ChevronLeft,
     CheckCircle2,
     Building2,
     Users,
@@ -204,18 +203,6 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-sky-600' : 'text-slate-600'}`} />
                     </button>
-
-                    {/* Nút Quay Lại */}
-                    {onBackToList && (
-                        <button
-                            type="button"
-                            onClick={onBackToList}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs text-xs font-bold transition-colors cursor-pointer"
-                        >
-                            <ChevronLeft className="w-4 h-4 text-sky-600" />
-                            <span>Quay Lại Danh Sách</span>
-                        </button>
-                    )}
                 </div>
             </div>
 
