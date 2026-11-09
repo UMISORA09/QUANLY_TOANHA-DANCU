@@ -15,6 +15,7 @@ export function ResidentAnnouncementPanel() {
   const [category, setCategory] = useState(''); const [filter, setFilter] = useState(''); const [page, setPage] = useState(1);
   const feed = useResidentAnnouncements(new URLSearchParams({ page: String(page), search, category, filter }).toString());
   const [id, setId] = useState(currentId); const [detail, setDetail] = useState<ResidentAnnouncement | null>(null);
+  const [conflictNotice, setConflictNotice] = useState('');
   const [detailError, setDetailError] = useState(''); const [readError, setReadError] = useState(''); const [revision, reload] = useState(0);
   const [busy, setBusy] = useState(false); const [downloading, setDownloading] = useState(''); const [fileError, setFileError] = useState('');
   const activeDetail = useRef<AbortController | null>(null);
@@ -44,12 +45,19 @@ export function ResidentAnnouncementPanel() {
   const navigate = (next: string) => {
     const url = new URL(window.location.href); url.searchParams.set('tab', 'news');
     if (next) url.searchParams.set('announcement', next); else url.searchParams.delete('announcement');
-    window.history.pushState({}, '', url); setId(next);
+    window.history.pushState({}, '', url); setConflictNotice(''); setId(next);
   };
   const acknowledge = async () => {
     if (!detail || busy) return; const controller = activeDetail.current; const item = detail; setBusy(true); setReadError('');
     try { const result = await api.acknowledgeResidentAnnouncement(item.id, item.version, controller?.signal); if (!controller?.signal.aborted) { setDetail((current) => current?.id === item.id ? { ...current, read_at: result.read_at, acknowledged_at: result.acknowledged_at } : current); window.dispatchEvent(new Event(announcementReadEvent)); } }
-    catch (error) { if (!controller?.signal.aborted) setReadError(readableError(error as ApiError)); }
+    catch (error) {
+      if (!controller?.signal.aborted) {
+        if ((error as ApiError).status === 409) {
+          setConflictNotice('Bài viết đã thay đổi. Đang tải nội dung mới; hãy đọc lại rồi bấm xác nhận.');
+          reload((value) => value + 1);
+        } else setReadError(readableError(error as ApiError));
+      }
+    }
     finally { if (!controller?.signal.aborted) setBusy(false); }
   };
   const download = async (file: AnnouncementAttachment) => {
@@ -67,7 +75,7 @@ export function ResidentAnnouncementPanel() {
     <div className="announcement-ui__list">{feed.data?.data.map((item) => <article key={item.id} className={`announcement-card ${!item.read_at ? 'resident-announcements__unread' : ''}`}><div><div className="announcement-ui__tags">{!item.read_at && <span>Chưa đọc</span>}{item.is_pinned && <span>Đã ghim</span>}{item.is_urgent && <span className="announcement-urgent">Khẩn cấp</span>}{item.requires_acknowledgement && !item.acknowledged_at && <span>Cần xác nhận</span>}</div><h2>{item.title}</h2><p>{item.summary_excerpt}</p><p className="announcement-meta">{feed.data?.categories[item.category] || item.category} · {scope(item)} · {new Date(item.publish_at).toLocaleString('vi-VN', { timeZone: zone })}</p></div><button type="button" onClick={() => navigate(item.id)} aria-label={`Đọc thông báo: ${item.title}`}>Đọc thông báo</button></article>)}</div>
     {feed.data && feed.data.last_page > 1 && <nav aria-label="Phân trang bảng tin cư dân" className="announcement-ui__pagination"><button type="button" disabled={feed.loading || page <= 1} onClick={() => setPage(page - 1)}>Trang trước</button><span>Trang {page}/{feed.data.last_page} · {feed.data.total} thông báo</span><button type="button" disabled={feed.loading || page >= feed.data.last_page} onClick={() => setPage(page + 1)}>Trang sau</button></nav>}
     <TicketDialog open={!!id} title={detail?.title || 'Chi tiết thông báo'} busy={busy} onClose={() => navigate('')} footer={detail && <div className="announcement-ui announcement-ui__footer"><button type="button" disabled={busy} onClick={() => navigate('')}>Đóng</button>{detail.requires_acknowledgement && !detail.acknowledged_at && <button type="button" className="announcement-primary" disabled={busy || !detail.read_at || !!readError} onClick={() => void acknowledge()}>{busy ? 'Đang xác nhận…' : 'Xác nhận đã đọc'}</button>}</div>}>
-      <div className="announcement-ui">{!detail && !detailError && <p role="status">Đang tải nội dung…</p>}{detailError && <p role="alert" className="announcement-error">{detailError} <button type="button" onClick={() => reload((value) => value + 1)}>Thử lại</button></p>}{detail && <><p className="announcement-meta">{scope(detail)} · {new Date(detail.publish_at).toLocaleString('vi-VN', { timeZone: zone })}</p><div className="announcement-content" dangerouslySetInnerHTML={{ __html: detail.content_html || '' }} />{!!detail.attachments?.length && <section aria-label="Tệp đính kèm"><h3>Tệp đính kèm</h3><ul className="resident-announcements__files">{detail.attachments.map((file) => <li key={file.id}><button type="button" disabled={!!downloading} onClick={() => void download(file)}>{downloading === file.id ? 'Đang tải…' : `Tải ${file.file_name}`}</button></li>)}</ul></section>}{fileError && <p role="alert" className="announcement-error">{fileError}</p>}{readError && <p role="alert" className="announcement-error">{readError} <button type="button" onClick={() => reload((value) => value + 1)}>Tải lại nội dung</button></p>}{detail.acknowledged_at ? <p role="status" className="announcement-success">Bạn đã xác nhận đọc lúc {new Date(detail.acknowledged_at).toLocaleString('vi-VN', { timeZone: zone })}.</p> : detail.requires_acknowledgement && <p>Bài viết này cần bạn bấm xác nhận sau khi đọc.</p>}</>}</div>
+      <div className="announcement-ui">{conflictNotice && <p role="status" className="announcement-error">{conflictNotice}</p>}{!detail && !detailError && <p role="status">Đang tải nội dung…</p>}{detailError && <p role="alert" className="announcement-error">{detailError} <button type="button" onClick={() => reload((value) => value + 1)}>Thử lại</button></p>}{detail && <><p className="announcement-meta">{scope(detail)} · {new Date(detail.publish_at).toLocaleString('vi-VN', { timeZone: zone })}</p><div className="announcement-content" dangerouslySetInnerHTML={{ __html: detail.content_html || '' }} />{!!detail.attachments?.length && <section aria-label="Tệp đính kèm"><h3>Tệp đính kèm</h3><ul className="resident-announcements__files">{detail.attachments.map((file) => <li key={file.id}><button type="button" disabled={!!downloading} onClick={() => void download(file)}>{downloading === file.id ? 'Đang tải…' : `Tải ${file.file_name}`}</button></li>)}</ul></section>}{fileError && <p role="alert" className="announcement-error">{fileError}</p>}{readError && <p role="alert" className="announcement-error">{readError} <button type="button" onClick={() => reload((value) => value + 1)}>Tải lại nội dung</button></p>}{detail.acknowledged_at ? <p role="status" className="announcement-success">Bạn đã xác nhận đọc lúc {new Date(detail.acknowledged_at).toLocaleString('vi-VN', { timeZone: zone })}.</p> : detail.requires_acknowledgement && <p>Bài viết này cần bạn bấm xác nhận sau khi đọc.</p>}</>}</div>
     </TicketDialog>
   </section>;
 }

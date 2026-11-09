@@ -79,6 +79,9 @@ export const SuggestionManagementPanel: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [occConflict, setOccConflict] = useState<boolean>(false);
+  const [conflictReady, setConflictReady] = useState(false);
+  const [refreshingConflict, setRefreshingConflict] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   // AI Sentiment State
   const [isAnalyzingAi, setIsAnalyzingAi] = useState<boolean>(false);
@@ -146,6 +149,8 @@ export const SuggestionManagementPanel: React.FC = () => {
       setActionError(null);
       setActionSuccess(null);
       setOccConflict(false);
+      setConflictReady(false);
+      setRefreshingConflict(false);
       setShowRejectionInput(false);
       setRejectionReason('');
       setAiAnalysisResult(null);
@@ -176,7 +181,7 @@ export const SuggestionManagementPanel: React.FC = () => {
 
   // State Transition Action (OCC version protected)
   const handleStatusTransition = async (newStatus: string) => {
-    if (!selectedSuggestion) return;
+    if (!selectedSuggestion || occConflict || updatingStatus || isSubmittingReply) return;
 
     if (newStatus === 'REJECTED' && !showRejectionInput) {
       setShowRejectionInput(true);
@@ -188,6 +193,7 @@ export const SuggestionManagementPanel: React.FC = () => {
       return;
     }
 
+    setUpdatingStatus(true);
     try {
       setActionError(null);
       setActionSuccess(null);
@@ -206,18 +212,20 @@ export const SuggestionManagementPanel: React.FC = () => {
         loadSuggestions();
       }
     } catch (err: any) {
-      if (err?.response?.status === 409) {
-        setOccConflict(true);
+      if (err?.status === 409) {
+        await reloadCurrentDetail();
       } else {
-        setActionError(err?.response?.data?.message || 'Không thể cập nhật trạng thái.');
+        setActionError(err?.message || 'Không thể cập nhật trạng thái.');
       }
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
   // Submit Official Reply (OCC protected)
   const handleReplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSuggestion) return;
+    if (!selectedSuggestion || occConflict || updatingStatus || isSubmittingReply) return;
 
     if (!replyText.trim()) {
       setActionError('Vui lòng nhập nội dung phản hồi.');
@@ -242,10 +250,10 @@ export const SuggestionManagementPanel: React.FC = () => {
         loadSuggestions();
       }
     } catch (err: any) {
-      if (err?.response?.status === 409) {
-        setOccConflict(true);
+      if (err?.status === 409) {
+        await reloadCurrentDetail();
       } else {
-        setActionError(err?.response?.data?.message || 'Không thể gửi phản hồi.');
+        setActionError(err?.message || 'Không thể gửi phản hồi.');
       }
     } finally {
       setIsSubmittingReply(false);
@@ -273,9 +281,24 @@ export const SuggestionManagementPanel: React.FC = () => {
     }
   };
 
-  const reloadCurrentDetail = () => {
-    if (selectedSuggestion) {
-      openDetailModal(selectedSuggestion.id);
+  const reloadCurrentDetail = async () => {
+    if (!selectedSuggestion) return;
+    const id = selectedSuggestion.id;
+    const request = ++detailRequest.current;
+    setOccConflict(true);
+    setConflictReady(false);
+    setRefreshingConflict(true);
+    try {
+      const response = await api.getManagementSuggestionDetail(id);
+      if (request !== detailRequest.current) return;
+      setSelectedSuggestion(response.data);
+      setConflictReady(true);
+      setActionError(null);
+      void loadSuggestions();
+    } catch (error: any) {
+      if (request === detailRequest.current) setActionError(error?.message || 'Chưa tải được bản mới. Bản nhập được giữ nguyên; hãy thử lại.');
+    } finally {
+      if (request === detailRequest.current) setRefreshingConflict(false);
     }
   };
 
@@ -613,7 +636,7 @@ export const SuggestionManagementPanel: React.FC = () => {
                 <h3 className="text-lg font-bold text-neutral-900">{selectedSuggestion.title}</h3>
               </div>
               <button
-                onClick={() => setSelectedSuggestion(null)}
+                onClick={() => { detailRequest.current++; setSelectedSuggestion(null); }}
                 className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -628,20 +651,23 @@ export const SuggestionManagementPanel: React.FC = () => {
                   <div>
                     <p className="font-bold">Tranh chấp phiên bản dữ liệu (HTTP 409 Conflict)</p>
                     <p className="text-xs text-rose-700 mt-0.5">
-                      Góp ý này vừa được một người quản lý khác cập nhật. Để tránh ghi đè dữ liệu sai lệch, vui lòng tải lại phiên bản mới nhất trước khi tiếp tục thao tác.
+                      Góp ý đã thay đổi. Phần trả lời và lý do bạn nhập được giữ nguyên. Hãy xem nội dung và phản hồi mới bên dưới trước khi tiếp tục.
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={reloadCurrentDetail}
+                  disabled={refreshingConflict}
+                  onClick={() => void reloadCurrentDetail()}
                   className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shrink-0 cursor-pointer shadow-sm"
                 >
-                  Tải lại dữ liệu
+                  {refreshingConflict ? 'Đang tải bản mới…' : 'Tải lại bản mới'}
                 </button>
               </div>
             )}
 
+            {occConflict && conflictReady && <div className="rounded-xl border p-3 text-sm"><p>Phiên bản máy chủ: {selectedSuggestion.version} · {getStatusText(selectedSuggestion.status)}</p><p>Phản hồi hiện tại:</p><blockquote className="whitespace-pre-wrap">{selectedSuggestion.official_response_text || 'Chưa có phản hồi'}</blockquote></div>}
+            {occConflict && conflictReady && <button type="button" className="px-3 py-2 rounded-xl border border-amber-400 text-amber-900" onClick={() => setOccConflict(false)}>Đã xem bản mới, tiếp tục sửa bản nhập</button>}
             {actionError && (
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -868,7 +894,7 @@ export const SuggestionManagementPanel: React.FC = () => {
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="submit"
-                    disabled={isSubmittingReply}
+                    disabled={isSubmittingReply || updatingStatus || occConflict}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-md"
                   >
                     {isSubmittingReply ? (
