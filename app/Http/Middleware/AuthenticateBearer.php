@@ -17,21 +17,18 @@ class AuthenticateBearer
     public function handle(Request $request, Closure $next, string $mode = 'legacy'): Response
     {
         $authHeader = $request->header('Authorization');
+        $token = '';
 
-        if (! $authHeader || ! str_starts_with($authHeader, 'Bearer ')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Yêu cầu xác thực Bearer token.',
-                'error' => 'UNAUTHORIZED',
-            ], 401);
+        if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
+            $token = trim(substr($authHeader, 7));
+        } elseif ($request->filled('token')) {
+            $token = trim((string) $request->query('token'));
         }
-
-        $token = trim(substr($authHeader, 7));
 
         if ($token === '') {
             return response()->json([
                 'success' => false,
-                'message' => 'Token xác thực không hợp lệ.',
+                'message' => 'Yêu cầu xác thực Bearer token.',
                 'error' => 'UNAUTHORIZED',
             ], 401);
         }
