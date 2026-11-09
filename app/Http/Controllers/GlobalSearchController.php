@@ -67,7 +67,7 @@ class GlobalSearchController extends Controller
     }
 
     /**
-     * Endpoint kiểm tra sức khỏe và chỉ mục Meilisearch
+     * Endpoint kiểm tra sức khỏe và chỉ mục Elasticsearch
      * GET /api/v1/search/health
      */
     public function health(): JsonResponse

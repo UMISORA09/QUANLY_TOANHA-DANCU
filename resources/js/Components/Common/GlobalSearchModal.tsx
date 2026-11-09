@@ -297,10 +297,10 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
         {meta && (
           <div className="px-4 py-2 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between text-xs text-slate-500">
             <div className="flex items-center gap-2">
-              {meta.engine === 'meilisearch' ? (
+              {meta.engine === 'elasticsearch' || meta.engine === 'meilisearch' ? (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold border border-emerald-200/80">
                   <Zap className="w-3 h-3 text-emerald-600 fill-emerald-600" />
-                  <span>Meilisearch Dedicated Engine</span>
+                  <span>Elasticsearch Dedicated Engine</span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-200/80">

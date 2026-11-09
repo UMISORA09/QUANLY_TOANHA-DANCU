@@ -25,7 +25,7 @@ export interface GlobalSearchMeta {
   page: number;
   per_page: number;
   total_pages: number;
-  engine: 'meilisearch' | 'database_fallback';
+  engine: 'elasticsearch' | 'meilisearch' | 'database_fallback';
   is_fallback: boolean;
   fallback_reason?: string | null;
   search_time_ms: number;
@@ -39,10 +39,15 @@ export interface GlobalSearchResponse {
 }
 
 export interface GlobalSearchHealthResponse {
-  status: 'ok' | 'degraded';
-  engine: 'meilisearch' | 'database_fallback';
+  status: 'ok' | 'degraded' | 'healthy';
+  engine: 'elasticsearch' | 'meilisearch' | 'database_fallback';
   available: boolean;
-  supported_types: string[];
+  supported_types: string[] | Record<string, string>;
+  elasticsearch?: {
+    host: string;
+    version?: string;
+    raw_status?: string;
+  };
   meilisearch?: {
     host: string;
     version?: string;

@@ -9,7 +9,7 @@ use App\Models\TemporaryRegistration;
 use App\Models\Vehicle;
 use App\Models\VisitorRegistration;
 use Illuminate\Console\Command;
-use Meilisearch\Client as MeiliClient;
+use Illuminate\Support\Facades\Http;
 use Throwable;
 
 class SyncSearchIndexesCommand extends Command
@@ -28,7 +28,7 @@ class SyncSearchIndexesCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Đồng bộ cấu hình chỉ mục Meilisearch và nhập dữ liệu hiện có từ MySQL vào Search Engine';
+    protected $description = 'Đồng bộ cấu hình chỉ mục Elasticsearch và nhập dữ liệu hiện có từ MySQL vào Search Engine';
 
     /**
      * Danh sách model cần index
@@ -49,29 +49,29 @@ class SyncSearchIndexesCommand extends Command
      */
     public function handle(): int
     {
-        $this->info('=== SMART CASSAVAS - MEILISEARCH INDEX SYNCHRONIZER ===');
+        $this->info('=== SMART CASSAVAS - ELASTICSEARCH INDEX SYNCHRONIZER ===');
 
-        $host = config('scout.meilisearch.host', env('MEILISEARCH_HOST', 'http://127.0.0.1:7700'));
-        $key = config('scout.meilisearch.key', env('MEILISEARCH_KEY'));
+        $hosts = config('search.drivers.elasticsearch.hosts', ['http://127.0.0.1:9200']);
+        $host = rtrim((string) ($hosts[0] ?? 'http://127.0.0.1:9200'), '/');
 
         $this->line("• Kết nối Search Engine: <fg=cyan>{$host}</>");
 
-        // 1. Kiểm tra kết nối Meilisearch
+        // 1. Kiểm tra kết nối Elasticsearch
         try {
-            $client = new MeiliClient($host, $key);
-            $health = $client->health();
+            $response = Http::timeout(2)->get($host);
 
-            if (($health['status'] ?? '') !== 'available') {
-                $this->error('Meilisearch phản hồi nhưng trạng thái không sẵn sàng: '.json_encode($health));
+            if (! $response->successful()) {
+                $this->error('Elasticsearch phản hồi nhưng trạng thái không sẵn sàng: '.$response->body());
 
                 return self::FAILURE;
             }
 
-            $version = $client->version();
-            $this->info("✓ Meilisearch sẵn sàng (Phiên bản: {$version['pkgVersion']})");
+            $info = $response->json();
+            $version = $info['version']['number'] ?? 'unknown';
+            $this->info("✓ Elasticsearch sẵn sàng (Phiên bản: {$version})");
         } catch (Throwable $e) {
-            $this->error('✗ Không thể kết nối đến Meilisearch: '.$e->getMessage());
-            $this->warn('Hãy đảm bảo container meilisearch đang chạy: docker compose up -d meilisearch');
+            $this->error('✗ Không thể kết nối đến Elasticsearch: '.$e->getMessage());
+            $this->warn('Hãy đảm bảo container elasticsearch đang chạy: docker compose up -d elasticsearch');
 
             return self::FAILURE;
         }
@@ -83,44 +83,46 @@ class SyncSearchIndexesCommand extends Command
         }
 
         $isFlush = $this->option('flush');
-        $indexSettings = config('scout.meilisearch.index-settings', []);
 
-        // 2. Đồng bộ Index Settings và Dữ liệu cho từng Model
+        // 2. Đồng bộ Index và Dữ liệu cho từng Model
         foreach ($this->models as $modelClass) {
             $instance = new $modelClass;
-            $indexName = $instance->searchableAs();
+            $indexName = match ($modelClass) {
+                Resident::class => config('search.drivers.elasticsearch.residents_index', 'cassavas_residents_v1'),
+                TemporaryRegistration::class => config('search.drivers.elasticsearch.temporary_registrations_index', 'cassavas_temporary_registrations_v1'),
+                Vehicle::class => config('search.drivers.elasticsearch.vehicles_index', 'cassavas_vehicles_v1'),
+                AccessCard::class => config('search.drivers.elasticsearch.access_cards_index', 'cassavas_access_cards_v1'),
+                VisitorRegistration::class => config('search.drivers.elasticsearch.visitors_index', 'cassavas_visitors_v1'),
+                Parcel::class => config('search.drivers.elasticsearch.parcels_index', 'cassavas_parcels_v1'),
+                default => $instance->searchableAs(),
+            };
+
             $this->newLine();
             $this->line("<fg=yellow>▶ Phân hệ: {$indexName} ({$modelClass})</>");
 
             try {
-                $index = $client->index($indexName);
-
                 // Nếu có cờ --flush, xóa chỉ mục hiện tại
                 if ($isFlush) {
                     $this->warn("  • Xóa dữ liệu cũ của index '{$indexName}'...");
-                    $index->deleteAllDocuments();
+                    Http::delete("{$host}/{$indexName}");
                 }
 
-                // Cập nhật Settings (searchable, filterable, sortable, typo tolerance)
-                if (isset($indexSettings[$modelClass])) {
-                    $settings = $indexSettings[$modelClass];
-                    $this->line("  • Đồng bộ cấu hình chỉ mục cho '{$indexName}'...");
-
-                    if (isset($settings['filterableAttributes'])) {
-                        $index->updateFilterableAttributes($settings['filterableAttributes']);
-                    }
-                    if (isset($settings['sortableAttributes'])) {
-                        $index->updateSortableAttributes($settings['sortableAttributes']);
-                    }
-                    if (isset($settings['searchableAttributes'])) {
-                        $index->updateSearchableAttributes($settings['searchableAttributes']);
-                    }
-                    if (isset($settings['typoTolerance'])) {
-                        $index->updateTypoTolerance($settings['typoTolerance']);
-                    }
-                    if (isset($settings['nonSeparatorTokens'])) {
-                        $index->updateNonSeparatorTokens($settings['nonSeparatorTokens']);
-                    }
+                // Đảm bảo index tồn tại
+                $checkIndex = Http::head("{$host}/{$indexName}");
+                if ($checkIndex->status() === 404) {
+                    Http::put("{$host}/{$indexName}", [
+                        'settings' => [
+                            'analysis' => [
+                                'analyzer' => [
+                                    'cassavas_text' => [
+                                        'type' => 'custom',
+                                        'tokenizer' => 'standard',
+                                        'filter' => ['lowercase', 'asciifolding'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ]);
                 }
 
                 // Import dữ liệu hiện tại từ DB vào Search Engine
@@ -131,8 +133,12 @@ class SyncSearchIndexesCommand extends Command
                     $bar = $this->output->createProgressBar($totalRecords);
                     $bar->start();
 
-                    $modelClass::chunk(200, function ($records) use ($bar) {
-                        $records->searchable();
+                    $modelClass::chunk(200, function ($records) use ($host, $indexName, $bar) {
+                        foreach ($records as $record) {
+                            $doc = method_exists($record, 'toSearchableArray') ? $record->toSearchableArray() : $record->toArray();
+                            $id = $record->getKey();
+                            Http::put("{$host}/{$indexName}/_doc/{$id}", $doc);
+                        }
                         $bar->advance($records->count());
                     });
 

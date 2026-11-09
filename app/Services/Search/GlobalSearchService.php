@@ -13,7 +13,7 @@ use App\Services\RbacService;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Meilisearch\Client as MeiliClient;
+use Illuminate\Support\Facades\Http;
 use Throwable;
 
 class GlobalSearchService
@@ -30,39 +30,37 @@ class GlobalSearchService
         'parcel' => 'Bưu phẩm giao nhận',
     ];
 
-    protected ?MeiliClient $meiliClient = null;
+    protected bool $elasticAvailable = false;
 
-    protected bool $meiliAvailable = false;
+    protected ?string $elasticError = null;
 
-    protected ?string $meiliError = null;
+    protected string $elasticHost = 'http://elasticsearch:9200';
 
     public function __construct()
     {
-        $this->initMeilisearch();
+        $this->initElasticsearch();
     }
 
     /**
-     * Khởi tạo kết nối tới Meilisearch
+     * Khởi tạo kết nối tới Elasticsearch
      */
-    protected function initMeilisearch(): void
+    protected function initElasticsearch(): void
     {
-        $host = config('scout.meilisearch.host', env('MEILISEARCH_HOST', 'http://127.0.0.1:7700'));
-        $key = config('scout.meilisearch.key', env('MEILISEARCH_KEY'));
+        $hosts = config('search.drivers.elasticsearch.hosts', ['http://elasticsearch:9200']);
+        $this->elasticHost = rtrim((string) ($hosts[0] ?? 'http://elasticsearch:9200'), '/');
 
         try {
-            $this->meiliClient = new MeiliClient($host, $key);
-            $health = $this->meiliClient->health();
-
-            if (($health['status'] ?? '') === 'available') {
-                $this->meiliAvailable = true;
-                $this->meiliError = null;
+            $response = Http::timeout(1)->get($this->elasticHost);
+            if ($response->successful()) {
+                $this->elasticAvailable = true;
+                $this->elasticError = null;
             } else {
-                $this->meiliAvailable = false;
-                $this->meiliError = 'Meilisearch health status: '.($health['status'] ?? 'unknown');
+                $this->elasticAvailable = false;
+                $this->elasticError = 'Elasticsearch responded with status: '.$response->status();
             }
         } catch (Throwable $e) {
-            $this->meiliAvailable = false;
-            $this->meiliError = $e->getMessage();
+            $this->elasticAvailable = false;
+            $this->elasticError = $e->getMessage();
         }
     }
 
@@ -75,15 +73,20 @@ class GlobalSearchService
     {
         $indexesStats = [];
 
-        if ($this->meiliAvailable && $this->meiliClient) {
+        if ($this->elasticAvailable) {
             try {
-                $indexes = $this->meiliClient->getIndexes();
-                foreach ($indexes->getResults() as $idx) {
-                    $stats = $idx->stats();
-                    $indexesStats[$idx->getUid()] = [
-                        'numberOfDocuments' => $stats['numberOfDocuments'] ?? 0,
-                        'isIndexing' => $stats['isIndexing'] ?? false,
-                    ];
+                $response = Http::timeout(2)->get($this->elasticHost.'/_cat/indices?format=json');
+                if ($response->successful()) {
+                    $indices = $response->json();
+                    if (is_array($indices)) {
+                        foreach ($indices as $idx) {
+                            $name = $idx['index'] ?? '';
+                            $indexesStats[$name] = [
+                                'numberOfDocuments' => (int) ($idx['docs.count'] ?? 0),
+                                'status' => $idx['status'] ?? 'unknown',
+                            ];
+                        }
+                    }
                 }
             } catch (Throwable) {
                 // ignore
@@ -91,10 +94,10 @@ class GlobalSearchService
         }
 
         return [
-            'status' => $this->meiliAvailable ? 'healthy' : 'degraded',
-            'engine' => 'meilisearch',
-            'available' => $this->meiliAvailable,
-            'error' => $this->meiliError,
+            'status' => $this->elasticAvailable ? 'healthy' : 'degraded',
+            'engine' => $this->elasticAvailable ? 'elasticsearch' : 'database_fallback',
+            'available' => $this->elasticAvailable,
+            'error' => $this->elasticError,
             'indexes' => $indexesStats,
             'supported_types' => self::SUPPORTED_TYPES,
         ];
@@ -131,8 +134,8 @@ class GlobalSearchService
                     'page' => $page,
                     'per_page' => $limit,
                     'total_pages' => 0,
-                    'engine' => $this->meiliAvailable ? 'meilisearch' : 'database_fallback',
-                    'is_fallback' => ! $this->meiliAvailable,
+                    'engine' => $this->elasticAvailable ? 'elasticsearch' : 'database_fallback',
+                    'is_fallback' => ! $this->elasticAvailable,
                     'search_time_ms' => 0.0,
                     'types_searched' => [],
                 ],
@@ -146,16 +149,16 @@ class GlobalSearchService
         $typesToSearch = $this->determineTypesToSearch($userScope, $typeFilter);
 
         $results = collect();
-        $isFallback = ! $this->meiliAvailable;
-        $fallbackReason = $this->meiliError;
+        $isFallback = ! $this->elasticAvailable;
+        $fallbackReason = $this->elasticError;
 
-        if ($this->meiliAvailable) {
+        if ($this->elasticAvailable) {
             try {
-                $results = $this->searchViaMeilisearch($rawQuery, $typesToSearch, $userScope, $statusFilter, $limit);
+                $results = $this->searchViaElasticsearch($rawQuery, $typesToSearch, $userScope, $statusFilter, $limit);
             } catch (Throwable $e) {
-                // Fallback nếu Meilisearch ném lỗi trong quá trình thực thi
+                // Fallback nếu Elasticsearch ném lỗi trong quá trình thực thi
                 $isFallback = true;
-                $fallbackReason = 'Meilisearch runtime exception: '.$e->getMessage();
+                $fallbackReason = 'Elasticsearch runtime exception: '.$e->getMessage();
                 $results = $this->searchViaDatabase($rawQuery, $typesToSearch, $userScope, $statusFilter, $limit);
             }
         } else {
@@ -177,7 +180,7 @@ class GlobalSearchService
                 'page' => $page,
                 'per_page' => $limit,
                 'total_pages' => $total > 0 ? (int) ceil($total / $limit) : 0,
-                'engine' => $isFallback ? 'database_fallback' : 'meilisearch',
+                'engine' => $isFallback ? 'database_fallback' : 'elasticsearch',
                 'is_fallback' => $isFallback,
                 'fallback_reason' => $isFallback ? $fallbackReason : null,
                 'search_time_ms' => $elapsedMs,
@@ -280,12 +283,12 @@ class GlobalSearchService
     }
 
     /**
-     * Tìm kiếm thông qua Meilisearch Server
+     * Tìm kiếm thông qua Elasticsearch Server
      *
      * @param  array<string>  $types
      * @param  array<string, mixed>  $scope
      */
-    protected function searchViaMeilisearch(
+    protected function searchViaElasticsearch(
         string $query,
         array $types,
         array $scope,
@@ -296,12 +299,12 @@ class GlobalSearchService
 
         foreach ($types as $type) {
             $indexName = match ($type) {
-                'resident' => 'residents',
-                'temporary_registration' => 'temporary_registrations',
-                'vehicle' => 'vehicles',
-                'access_card' => 'access_cards',
-                'visitor' => 'visitor_registrations',
-                'parcel' => 'parcels',
+                'resident' => config('search.drivers.elasticsearch.residents_index', 'cassavas_residents_v1'),
+                'temporary_registration' => config('search.drivers.elasticsearch.temporary_registrations_index', 'cassavas_temporary_registrations_v1'),
+                'vehicle' => config('search.drivers.elasticsearch.vehicles_index', 'cassavas_vehicles_v1'),
+                'access_card' => config('search.drivers.elasticsearch.access_cards_index', 'cassavas_access_cards_v1'),
+                'visitor' => config('search.drivers.elasticsearch.visitors_index', 'cassavas_visitors_v1'),
+                'parcel' => config('search.drivers.elasticsearch.parcels_index', 'cassavas_parcels_v1'),
                 default => null,
             };
 
@@ -310,36 +313,46 @@ class GlobalSearchService
             }
 
             try {
-                $index = $this->meiliClient->index($indexName);
+                $filters = $this->buildElasticFilter($type, $scope, $statusFilter);
 
-                // Xây dựng bộ lọc Meilisearch tương ứng với phân quyền
-                $filterConditions = $this->buildMeiliFilter($type, $scope, $statusFilter);
-
-                $searchOptions = [
-                    'limit' => $limit,
+                $queryBody = [
+                    'size' => $limit,
+                    'query' => [
+                        'bool' => [
+                            'must' => [
+                                [
+                                    'simple_query_string' => [
+                                        'query' => $query,
+                                        'default_operator' => 'and',
+                                    ],
+                                ],
+                            ],
+                            'filter' => $filters,
+                        ],
+                    ],
                 ];
 
-                if (! empty($filterConditions)) {
-                    $searchOptions['filter'] = implode(' AND ', $filterConditions);
+                $response = Http::timeout(2)
+                    ->acceptJson()
+                    ->post("{$this->elasticHost}/{$indexName}/_search", $queryBody);
+
+                if (! $response->successful()) {
+                    continue;
                 }
 
-                $searchRes = $index->search($query, $searchOptions);
-                $hits = $searchRes->getHits();
-
-                if (empty($hits) && ! str_starts_with($query, '"') && (str_contains($query, '-') || str_contains($query, '_') || str_contains($query, '.'))) {
-                    $exactRes = $index->search('"'.$query.'"', $searchOptions);
-                    $hits = $exactRes->getHits();
-                }
-
+                $hits = $response->json('hits.hits', []);
                 foreach ($hits as $hit) {
-                    $formatted = $this->formatHit($type, $hit, $scope);
+                    $doc = $hit['_source'] ?? [];
+                    if (! isset($doc['id']) && isset($hit['_id'])) {
+                        $doc['id'] = $hit['_id'];
+                    }
+                    $formatted = $this->formatHit($type, $doc, $scope);
                     if ($formatted) {
                         $results->push($formatted);
                     }
                 }
             } catch (Throwable $e) {
-                // Nếu 1 index bị lỗi, ghi log hoặc bỏ qua để các index khác tiếp tục
-                error_log("Meilisearch search error on index {$indexName}: ".$e->getMessage());
+                error_log("Elasticsearch search error on index {$indexName}: ".$e->getMessage());
             }
         }
 
@@ -347,12 +360,12 @@ class GlobalSearchService
     }
 
     /**
-     * Xây dựng biểu thức Filter của Meilisearch theo RBAC
+     * Xây dựng biểu thức Filter của Elasticsearch theo RBAC
      *
      * @param  array<string, mixed>  $scope
-     * @return array<string>
+     * @return array<int, array<string, mixed>>
      */
-    protected function buildMeiliFilter(string $type, array $scope, ?string $statusFilter): array
+    protected function buildElasticFilter(string $type, array $scope, ?string $statusFilter): array
     {
         $filters = [];
 
@@ -363,49 +376,79 @@ class GlobalSearchService
 
             if (empty($apartmentIds)) {
                 // Nếu cư dân chưa được gán căn hộ nào, chỉ cho phép tìm bản ghi của chính họ
-                $userFilter = match ($type) {
-                    'resident' => "user_id = '{$userId}'",
-                    'temporary_registration' => "resident_user_id = '{$userId}'",
-                    'vehicle' => "owner_user_id = '{$userId}'",
-                    'access_card' => "assigned_user_id = '{$userId}'",
-                    'visitor' => "host_resident_user_id = '{$userId}'",
-                    'parcel' => "recipient_user_id = '{$userId}'",
+                $userField = match ($type) {
+                    'resident' => 'user_id',
+                    'temporary_registration' => 'resident_user_id',
+                    'vehicle' => 'owner_user_id',
+                    'access_card' => 'assigned_user_id',
+                    'visitor' => 'host_resident_user_id',
+                    'parcel' => 'recipient_user_id',
                     default => null,
                 };
-                if ($userFilter) {
-                    $filters[] = $userFilter;
+                if ($userField) {
+                    $filters[] = ['term' => [$userField => $userId]];
                 }
             } else {
-                $aptFilter = implode(' OR ', array_map(fn ($id) => "apartment_id = '{$id}'", $apartmentIds));
-                $cardAptFilter = implode(' OR ', array_map(fn ($id) => "assigned_apartment_id = '{$id}'", $apartmentIds));
+                $aptValues = array_values($apartmentIds);
 
-                match ($type) {
-                    'resident' => $filters[] = "({$aptFilter})",
-                    'temporary_registration' => $filters[] = "({$aptFilter})",
-                    'vehicle' => $filters[] = "({$aptFilter} OR owner_user_id = '{$userId}')",
-                    'access_card' => $filters[] = "({$cardAptFilter} OR assigned_user_id = '{$userId}')",
-                    'visitor' => $filters[] = "({$aptFilter} OR host_resident_user_id = '{$userId}')",
-                    'parcel' => $filters[] = "({$aptFilter} OR recipient_user_id = '{$userId}')",
-                    default => null,
-                };
+                if ($type === 'resident' || $type === 'temporary_registration') {
+                    $filters[] = ['terms' => ['apartment_id' => $aptValues]];
+                } elseif ($type === 'vehicle') {
+                    $filters[] = [
+                        'bool' => [
+                            'should' => [
+                                ['terms' => ['apartment_id' => $aptValues]],
+                                ['term' => ['owner_user_id' => $userId]],
+                            ],
+                            'minimum_should_match' => 1,
+                        ],
+                    ];
+                } elseif ($type === 'access_card') {
+                    $filters[] = [
+                        'bool' => [
+                            'should' => [
+                                ['terms' => ['assigned_apartment_id' => $aptValues]],
+                                ['term' => ['assigned_user_id' => $userId]],
+                            ],
+                            'minimum_should_match' => 1,
+                        ],
+                    ];
+                } elseif ($type === 'visitor') {
+                    $filters[] = [
+                        'bool' => [
+                            'should' => [
+                                ['terms' => ['apartment_id' => $aptValues]],
+                                ['term' => ['host_resident_user_id' => $userId]],
+                            ],
+                            'minimum_should_match' => 1,
+                        ],
+                    ];
+                } elseif ($type === 'parcel') {
+                    $filters[] = [
+                        'bool' => [
+                            'should' => [
+                                ['terms' => ['apartment_id' => $aptValues]],
+                                ['term' => ['recipient_user_id' => $userId]],
+                            ],
+                            'minimum_should_match' => 1,
+                        ],
+                    ];
+                }
             }
         }
 
         if ($statusFilter !== null && $statusFilter !== '') {
-            if ($type === 'resident') {
-                $isActiveBool = in_array(strtolower($statusFilter), ['1', 'true', 'active'], true) ? 'true' : 'false';
-                $filters[] = "is_active = {$isActiveBool}";
-            } elseif ($type === 'vehicle') {
-                $isActiveBool = in_array(strtolower($statusFilter), ['1', 'true', 'active'], true) ? 'true' : 'false';
-                $filters[] = "is_active = {$isActiveBool}";
+            if ($type === 'resident' || $type === 'vehicle') {
+                $isActiveBool = in_array(strtolower($statusFilter), ['1', 'true', 'active'], true);
+                $filters[] = ['term' => ['is_active' => $isActiveBool]];
             } elseif ($type === 'temporary_registration') {
-                $filters[] = "police_status = '{$statusFilter}'";
+                $filters[] = ['term' => ['police_status' => $statusFilter]];
             } elseif ($type === 'access_card') {
-                $filters[] = "status = '{$statusFilter}'";
+                $filters[] = ['term' => ['status' => $statusFilter]];
             } elseif ($type === 'visitor') {
-                $filters[] = "qr_pass_status = '{$statusFilter}'";
+                $filters[] = ['term' => ['qr_pass_status' => $statusFilter]];
             } elseif ($type === 'parcel') {
-                $filters[] = "status = '{$statusFilter}'";
+                $filters[] = ['term' => ['status' => $statusFilter]];
             }
         }
 
@@ -413,7 +456,7 @@ class GlobalSearchService
     }
 
     /**
-     * Fallback sang truy vấn CSDL MySQL khi Meilisearch không sẵn sàng
+     * Fallback sang truy vấn CSDL MySQL khi Elasticsearch không sẵn sàng
      *
      * @param  array<string>  $types
      * @param  array<string, mixed>  $scope

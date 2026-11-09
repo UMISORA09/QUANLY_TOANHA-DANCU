@@ -12,7 +12,6 @@
         "laravel/scout": "^11.9",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.25",
-        "meilisearch/meilisearch-php": "^1.17",
         "symfony/html-sanitizer": "~8.1.8"
     },
     "require-dev": {

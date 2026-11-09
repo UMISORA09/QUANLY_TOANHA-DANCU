@@ -12,7 +12,6 @@ use App\Services\Search\GlobalSearchService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Meilisearch\Client;
 use Tests\TestCase;
 
 class GlobalBuildingSearchTest extends TestCase
@@ -141,6 +140,50 @@ class GlobalBuildingSearchTest extends TestCase
             'is_active' => true,
         ]);
         $this->otherResidentToken = $this->createBearerToken($this->otherResidentUser);
+
+        // 5. Tạo dữ liệu mẫu cho Phương tiện, Thẻ RFID, Bưu phẩm
+        Vehicle::firstOrCreate(
+            ['license_plate' => '59A-999.99'],
+            [
+                'id' => (string) Str::uuid(),
+                'owner_user_id' => $this->residentUser->id,
+                'apartment_id' => $this->apartmentIdA,
+                'vehicle_category' => 'CAR',
+                'brand' => 'Toyota',
+                'model' => 'Camry',
+                'is_active' => true,
+            ]
+        );
+
+        AccessCard::firstOrCreate(
+            ['card_number' => 'CARD-1001-A'],
+            [
+                'id' => (string) Str::uuid(),
+                'card_uid' => 'UID-1001-A',
+                'card_type' => 'RESIDENT_ALL_ACCESS',
+                'status' => 'ACTIVE',
+                'issued_date' => now()->toDateString(),
+                'assigned_apartment_id' => $this->apartmentIdA,
+                'assigned_user_id' => $this->residentUser->id,
+            ]
+        );
+
+        Parcel::firstOrCreate(
+            ['tracking_number' => 'VNPOST_123456'],
+            [
+                'id' => (string) Str::uuid(),
+                'courier_company' => 'VNPost',
+                'apartment_id' => $this->apartmentIdA,
+                'recipient_user_id' => $this->residentUser->id,
+                'recipient_name' => 'Nguyễn Văn Minh Anh',
+                'recipient_phone' => '0912345678',
+                'parcel_photo_url' => 'https://via.placeholder.com/150',
+                'received_by_staff_id' => $this->adminUser->id,
+                'status' => 'RECEIVED_AT_RECEPTION',
+                'pickup_pin_code' => '654321',
+                'pickup_qr_code' => 'QR_SECRET_VNPOST_123456',
+            ]
+        );
     }
 
     protected function createBearerToken(User $user): string
@@ -311,20 +354,10 @@ class GlobalBuildingSearchTest extends TestCase
             'recipient_phone' => '0912345678',
             'parcel_photo_url' => 'https://via.placeholder.com/150',
             'received_by_staff_id' => $this->adminUser->id,
-            'status' => 'RECEIVED_AT_RECEPTIO',
+            'status' => 'RECEIVED_AT_RECEPTION',
             'pickup_pin_code' => '112233',
             'pickup_qr_code' => 'SECRET_QR_'.Str::random(16),
         ]);
-        $meili = new Client(
-            config('scout.meilisearch.host', 'http://meilisearch:7700'),
-            config('scout.meilisearch.key', 'masterKey123456')
-        );
-        $searchableArray = $parcel->toSearchableArray();
-        $task = $meili->index('parcels')->addDocuments([$searchableArray]);
-        $taskStatus = $meili->waitForTask($task['taskUid'], 5000);
-        if (($taskStatus['status'] ?? '') !== 'succeeded') {
-            dump(['task_failed' => $taskStatus]);
-        }
 
         // Resident A tìm kiếm bưu phẩm của Resident B -> KHÔNG được thấy (bị chặn server-side)
         $responseA = $this->withHeader('Authorization', 'Bearer '.$this->residentToken)
@@ -384,14 +417,14 @@ class GlobalBuildingSearchTest extends TestCase
      */
     public function test_database_fallback_is_transparent(): void
     {
-        // Khởi tạo GlobalSearchService với meiliAvailable = false để giả lập Meilisearch offline
+        // Khởi tạo GlobalSearchService với elasticAvailable = false để giả lập Elasticsearch offline
         $service = new class extends GlobalSearchService
         {
             public function __construct()
             {
                 parent::__construct();
-                $this->meiliAvailable = false;
-                $this->meiliError = 'Connection refused (Simulated Downtime)';
+                $this->elasticAvailable = false;
+                $this->elasticError = 'Connection refused (Simulated Downtime)';
             }
         };
 

@@ -20,6 +20,7 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         config(['cache.default' => 'array']);
+        config(['scout.driver' => null]);
 
         if (method_exists($this, 'withoutVite')) {
             $this->withoutVite();

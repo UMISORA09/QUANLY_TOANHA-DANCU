@@ -886,7 +886,7 @@ Route::get('/api/v1/admin/amenity-search/metrics', [SearchController::class, 'me
 Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge'])->middleware('auth.bearer:strict');
 
-// Dedicated Global Search Engine (Meilisearch + Scout with Database Fallback & Multi-tenant RBAC)
+// Dedicated Global Search Engine (Elasticsearch + Smart Fallback & Multi-tenant RBAC)
 Route::middleware(['auth.bearer'])->group(function () {
     Route::get('/api/v1/search', [GlobalSearchController::class, 'search'])->name('api.v1.global-search');
     Route::get('/api/v1/search/health', [GlobalSearchController::class, 'health'])->name('api.v1.global-search.health');

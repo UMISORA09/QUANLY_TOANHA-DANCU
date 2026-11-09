@@ -5,7 +5,6 @@ namespace App\Services\Search;
 use App\Services\Concerns\HasPerformanceCache;
 use App\Services\Search\Contracts\SearchDriverInterface;
 use App\Services\Search\Drivers\ElasticsearchDriver;
-use App\Services\Search\Drivers\MeilisearchDriver;
 use App\Services\Search\Drivers\SmartSearchDriver;
 use App\Services\Search\DTOs\SearchResult;
 use Illuminate\Support\Facades\Cache;
@@ -37,7 +36,6 @@ class SearchManager
 
         return match ($name) {
             'smart', 'database', 'ponytail' => new SmartSearchDriver($config),
-            'meilisearch' => new MeilisearchDriver($config),
             'elasticsearch' => new ElasticsearchDriver($config),
             default => throw new InvalidArgumentException("Search driver [{$name}] is not supported."),
         };
