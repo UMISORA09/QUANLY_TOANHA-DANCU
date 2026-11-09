@@ -161,9 +161,9 @@ class AmenityController extends Controller
     public function getCategories(): JsonResponse
     {
         $version = $this->getDataVersion();
-        $result = Cache::remember("amenity_categories_v{$version}", 3600, function () {
+        $result = Cache::remember("amenity_categories_occ_v{$version}", 3600, function () {
             $categories = DB::table('amenity_categories')
-                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at')
+                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at', 'version')
                 ->orderBy('category_name')
                 ->get();
 
@@ -182,6 +182,7 @@ class AmenityController extends Controller
                     'icon_name' => $cat->icon_name,
                     'description' => $cat->description,
                     'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
+                    'version' => (int) $cat->version,
                     'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
                 ];
             })->values()->toArray();
@@ -189,7 +190,7 @@ class AmenityController extends Controller
 
         if (! is_array($result) || empty($result)) {
             $categories = DB::table('amenity_categories')
-                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at')
+                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at', 'version')
                 ->orderBy('category_name')
                 ->get();
 
@@ -208,10 +209,11 @@ class AmenityController extends Controller
                     'icon_name' => $cat->icon_name,
                     'description' => $cat->description,
                     'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
+                    'version' => (int) $cat->version,
                     'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
                 ];
             })->values()->toArray();
-            Cache::put("amenity_categories_v{$version}", $result, 3600);
+            Cache::put("amenity_categories_occ_v{$version}", $result, 3600);
         }
 
         return response()->json($result);
@@ -246,6 +248,7 @@ class AmenityController extends Controller
 
         return response()->json([
             'id' => $id,
+            'version' => 1,
             'category_name' => trim($validated['category_name']),
             'category_code' => strtoupper(trim($validated['category_code'])),
             'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? 'Sparkles',
@@ -260,64 +263,78 @@ class AmenityController extends Controller
      */
     public function updateCategory(Request $request, string $id): JsonResponse
     {
-        $data = $this->extractPayload($request);
-        $validated = validator($data, [
-            'category_name' => 'required|string|max:100',
-            'category_code' => 'required|string|max:50',
-            'icon_name' => 'nullable|string|max:50',
-            'description' => 'nullable|string|max:255',
-        ])->validate();
+        return DB::transaction(function () use ($request, $id): JsonResponse {
+            $data = $this->extractPayload($request);
+            $validated = validator($data, [
+                'version' => 'required|integer|min:1',
+                'category_name' => 'required|string|max:100',
+                'category_code' => 'required|string|max:50',
+                'icon_name' => 'nullable|string|max:50',
+                'description' => 'nullable|string|max:255',
+            ])->validate();
 
-        $exists = DB::table('amenity_categories')->where('id', $id)->first();
-        if (! $exists) {
-            return response()->json(['detail' => 'Không tìm thấy danh mục tiện ích.'], 404);
-        }
+            $exists = DB::table('amenity_categories')->where('id', $id)->lockForUpdate()->first();
+            if (! $exists) {
+                return response()->json(['detail' => 'Không tìm thấy danh mục tiện ích.'], 404);
+            }
 
-        DB::table('amenity_categories')->where('id', $id)->update([
-            'category_name' => trim($validated['category_name']),
-            'category_code' => strtoupper(trim($validated['category_code'])),
-            'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
-            'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
-        ]);
+            abort_if((int) $exists->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
-        $this->bumpDataVersion();
+            DB::table('amenity_categories')->where('id', $id)->update([
+                'version' => $exists->version + 1,
+                'category_name' => trim($validated['category_name']),
+                'category_code' => strtoupper(trim($validated['category_code'])),
+                'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
+                'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
+            ]);
 
-        $count = DB::table('amenities')
-            ->where('category_id', $id)
-            ->whereNull('deleted_at')
-            ->count();
+            $this->bumpDataVersion();
 
-        return response()->json([
-            'id' => $id,
-            'category_name' => trim($validated['category_name']),
-            'category_code' => strtoupper(trim($validated['category_code'])),
-            'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
-            'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
-            'created_at' => Carbon::parse($exists->created_at)->toIso8601String(),
-            'amenities_count' => $count,
-        ]);
+            $count = DB::table('amenities')
+                ->where('category_id', $id)
+                ->whereNull('deleted_at')
+                ->count();
+
+            return response()->json([
+                'id' => $id,
+                'category_name' => trim($validated['category_name']),
+                'category_code' => strtoupper(trim($validated['category_code'])),
+                'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
+                'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
+                'created_at' => Carbon::parse($exists->created_at)->toIso8601String(),
+                'amenities_count' => $count,
+                'version' => (int) $exists->version + 1,
+            ]);
+        }, 3);
     }
 
     /**
      * Xóa danh mục tiện ích
      */
-    public function deleteCategory(string $id): JsonResponse
+    public function deleteCategory(Request $request, string $id): JsonResponse
     {
-        $hasAmenities = DB::table('amenities')
-            ->where('category_id', $id)
-            ->whereNull('deleted_at')
-            ->exists();
+        return DB::transaction(function () use ($request, $id): JsonResponse {
+            $category = DB::table('amenity_categories')->where('id', $id)->lockForUpdate()->first();
+            abort_unless($category, 404);
+            $validated = validator($this->extractPayload($request), ['version' => 'required|integer|min:1'])->validate();
+            abort_if((int) $category->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
-        if ($hasAmenities) {
-            return response()->json([
-                'detail' => 'Không thể xóa danh mục này vì đang có tiện ích trực thuộc!',
-            ], 400);
-        }
+            $hasAmenities = DB::table('amenities')
+                ->where('category_id', $id)
+                ->whereNull('deleted_at')
+                ->exists();
 
-        DB::table('amenity_categories')->where('id', $id)->delete();
-        $this->bumpDataVersion();
+            if ($hasAmenities) {
+                return response()->json([
+                    'detail' => 'Không thể xóa danh mục này vì đang có tiện ích trực thuộc!',
+                ], 400);
+            }
 
-        return response()->json(['success' => true, 'message' => 'Đã xóa danh mục tiện ích.']);
+            DB::table('amenity_categories')->where('id', $id)->delete();
+            $this->bumpDataVersion();
+
+            return response()->json(['success' => true, 'message' => 'Đã xóa danh mục tiện ích.']);
+        }, 3);
     }
 
     /**
@@ -530,7 +547,7 @@ class AmenityController extends Controller
     {
         $this->amenityService->assertCanViewAmenity($request, $amenityId);
         $version = $this->getDataVersion();
-        $res = Cache::remember("amenity_slots_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
+        $res = Cache::remember("amenity_slots_occ_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
             $slots = DB::table('amenity_time_slots')
                 ->where('amenity_id', $amenityId)
                 ->orderBy('day_of_week')
@@ -548,6 +565,7 @@ class AmenityController extends Controller
                     'max_bookings' => (int) $s->max_bookings,
                     'is_active' => (bool) $s->is_active,
                     'created_at' => Carbon::parse($s->created_at)->toIso8601String(),
+                    'version' => (int) $s->version,
                 ];
             });
         });
@@ -590,6 +608,7 @@ class AmenityController extends Controller
 
         return response()->json([
             'id' => $id,
+            'version' => 1,
             'amenity_id' => $amenityId,
             'day_of_week' => (int) $validated['day_of_week'],
             'slot_start_time' => substr($validated['slot_start_time'], 0, 5),
@@ -606,9 +625,10 @@ class AmenityController extends Controller
      */
     public function updateTimeSlot(Request $request, string $amenityId, string $slotId): JsonResponse
     {
-        $this->findTimeSlot($amenityId, $slotId);
+        $slot = $this->findTimeSlot($amenityId, $slotId);
         $data = $this->extractPayload($request);
         $validated = validator($data, [
+            'version' => 'required|integer|min:1',
             'day_of_week' => 'required|integer|between:0,6',
             'slot_start_time' => 'required|date_format:H:i',
             'slot_end_time' => 'required|date_format:H:i|after:slot_start_time',
@@ -617,11 +637,14 @@ class AmenityController extends Controller
             'is_active' => 'nullable|boolean',
         ])->validate();
 
+        abort_if((int) $slot->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
+
         $this->validateSlotBookingLimit($amenityId, $validated);
         DB::table('amenity_time_slots')
             ->where('id', $slotId)
             ->where('amenity_id', $amenityId)
             ->update([
+                'version' => $slot->version + 1,
                 'day_of_week' => $validated['day_of_week'],
                 'slot_start_time' => $validated['slot_start_time'],
                 'slot_end_time' => $validated['slot_end_time'],
@@ -644,6 +667,7 @@ class AmenityController extends Controller
             'max_bookings' => (int) $slot->max_bookings,
             'is_active' => (bool) $slot->is_active,
             'created_at' => Carbon::parse($slot->created_at)->toIso8601String(),
+            'version' => (int) $slot->version,
         ]);
     }
 
@@ -652,16 +676,20 @@ class AmenityController extends Controller
      */
     public function toggleTimeSlotStatus(Request $request, string $amenityId, string $slotId): JsonResponse
     {
-        $this->findTimeSlot($amenityId, $slotId);
+        $slot = $this->findTimeSlot($amenityId, $slotId);
         $data = $this->extractPayload($request);
         $validated = validator($data, [
+            'version' => 'required|integer|min:1',
             'is_active' => 'required|boolean',
         ])->validate();
+
+        abort_if((int) $slot->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
         DB::table('amenity_time_slots')
             ->where('id', $slotId)
             ->where('amenity_id', $amenityId)
             ->update([
+                'version' => $slot->version + 1,
                 'is_active' => $validated['is_active'] ? 1 : 0,
             ]);
 
@@ -679,15 +707,20 @@ class AmenityController extends Controller
             'max_bookings' => (int) $slot->max_bookings,
             'is_active' => (bool) $slot->is_active,
             'created_at' => Carbon::parse($slot->created_at)->toIso8601String(),
+            'version' => (int) $slot->version,
         ]);
     }
 
     /**
      * Xóa khung giờ
      */
-    public function deleteTimeSlot(string $amenityId, string $slotId): JsonResponse
+    public function deleteTimeSlot(Request $request, string $amenityId, string $slotId): JsonResponse
     {
-        $this->findTimeSlot($amenityId, $slotId);
+        $slot = $this->findTimeSlot($amenityId, $slotId);
+        abort_unless($slot, 404);
+        $validated = validator($this->extractPayload($request), ['version' => 'required|integer|min:1'])->validate();
+        abort_if((int) $slot->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
+
         DB::table('amenity_time_slots')
             ->where('id', $slotId)
             ->where('amenity_id', $amenityId)
@@ -726,7 +759,7 @@ class AmenityController extends Controller
     {
         $this->amenityService->assertCanViewAmenity($request, $amenityId);
         $version = $this->getDataVersion();
-        $res = Cache::remember("amenity_blackouts_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
+        $res = Cache::remember("amenity_blackouts_occ_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
             $blackouts = DB::table('amenity_blackouts')
                 ->where('amenity_id', $amenityId)
                 ->orderBy('blackout_date', 'desc')
@@ -742,6 +775,7 @@ class AmenityController extends Controller
                     'reason' => $b->reason,
                     'created_by' => $b->created_by,
                     'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
+                    'version' => (int) $b->version,
                 ];
             });
         });
@@ -786,6 +820,7 @@ class AmenityController extends Controller
 
         return response()->json([
             'id' => $id,
+            'version' => 1,
             'amenity_id' => $amenityId,
             'blackout_date' => $validated['blackout_date'],
             'start_time' => $startTime ? substr($startTime, 0, 5) : null,
@@ -801,15 +836,19 @@ class AmenityController extends Controller
      */
     public function updateBlackout(Request $request, string $amenityId, string $blackoutId): JsonResponse
     {
-        abort_unless(DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first(), 404);
+        $blackout = DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first();
+        abort_unless($blackout, 404);
         $data = $this->extractPayload($request);
         $validated = validator($data, [
+            'version' => 'required|integer|min:1',
             'blackout_date' => 'required|date',
             'start_time' => 'nullable|required_with:end_time|date_format:H:i',
             'end_time' => 'nullable|required_with:start_time|date_format:H:i|after:start_time',
             'reason' => 'required|string|max:255',
             'confirmation_token' => 'nullable|string|size:64',
         ])->validate();
+
+        abort_if((int) $blackout->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
         $bookings = app(ResidentAmenityBookingService::class)->prepareClosure($amenityId, $validated, $validated['confirmation_token'] ?? null, $request);
 
@@ -820,6 +859,7 @@ class AmenityController extends Controller
             ->where('id', $blackoutId)
             ->where('amenity_id', $amenityId)
             ->update([
+                'version' => $blackout->version + 1,
                 'blackout_date' => $validated['blackout_date'],
                 'start_time' => $startTime,
                 'end_time' => $endTime,
@@ -840,15 +880,20 @@ class AmenityController extends Controller
             'reason' => $b->reason,
             'created_by' => $b->created_by,
             'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
+            'version' => (int) $b->version,
         ]);
     }
 
     /**
      * Xóa ngày đóng cửa bảo trì
      */
-    public function deleteBlackout(string $amenityId, string $blackoutId): JsonResponse
+    public function deleteBlackout(Request $request, string $amenityId, string $blackoutId): JsonResponse
     {
-        abort_unless(DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first(), 404);
+        $blackout = DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first();
+        abort_unless($blackout, 404);
+        $validated = validator($this->extractPayload($request), ['version' => 'required|integer|min:1'])->validate();
+        abort_if((int) $blackout->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
+
         DB::table('amenity_blackouts')
             ->where('id', $blackoutId)
             ->where('amenity_id', $amenityId)
