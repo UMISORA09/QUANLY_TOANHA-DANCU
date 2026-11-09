@@ -773,6 +773,11 @@ Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
     Route::get('reports/financial/export-pdf', [FinancialReportController::class, 'exportPdf']);
 });
 
+// Alias công khai phục vụ In ấn PDF A4 và Xuất file Excel
+Route::get('reports/financial/preview', [FinancialReportController::class, 'preview']);
+Route::get('reports/financial/export-excel', [FinancialReportController::class, 'exportExcel']);
+Route::get('reports/financial/export-pdf', [FinancialReportController::class, 'exportPdf']);
+
 Route::get('/quan-ly/sinh-hoa-don', function () {
     return view('welcome');
 });
