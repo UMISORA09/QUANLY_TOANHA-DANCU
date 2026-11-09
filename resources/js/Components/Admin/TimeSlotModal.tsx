@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Edit2, Trash2, Clock, Check, AlertCircle, Sparkles, Power } from 'lucide-react';
 import { api, TimeSlot, Amenity } from '../../Services/api';
 import { amenityCache } from '../../Services/amenityCache';
@@ -41,17 +41,44 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [editingVersion, setEditingVersion] = useState(1);
+  const [hasConflict, setHasConflict] = useState(false);
+  const [latestSlot, setLatestSlot] = useState<TimeSlot | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const conflictGeneration = useRef(0);
+  const listGeneration = useRef(0);
+  useEffect(() => () => { conflictGeneration.current++; listGeneration.current++; }, [isOpen, amenity?.id]);
+  const recoverConflict = async (id: string, preserveDraft = false) => {
+    if (!amenity) return;
+    const generation = ++conflictGeneration.current;
+    const listRequest = ++listGeneration.current;
+    if (preserveDraft) { setHasConflict(true); setLatestSlot(null); }
+    setRecovering(true);
+    try {
+      const data = await api.getTimeSlots(amenity.id, true);
+      if (generation !== conflictGeneration.current) return;
+      if (listRequest === listGeneration.current) setSlots(data);
+      if (preserveDraft) setLatestSlot(data.find((item) => item.id === id) || null);
+      setErrorMessage('Khung giờ đã thay đổi. Bản nhập được giữ nguyên; hãy xem lại trước khi thao tác tiếp.');
+    } catch {
+      if (generation === conflictGeneration.current) setErrorMessage('Chưa tải được khung giờ mới. Bản nhập vẫn được giữ; hãy thử lại.');
+    } finally {
+      if (generation === conflictGeneration.current) setRecovering(false);
+      if (listRequest === listGeneration.current) setLoading(false);
+    }
+  };
 
   const fetchSlots = async () => {
     if (!amenity) return;
+    const listRequest = ++listGeneration.current;
     setLoading(true);
     try {
-      const data = await api.getTimeSlots(amenity.id);
-      setSlots(data);
+      const data = await api.getTimeSlots(amenity.id, true);
+      if (listRequest === listGeneration.current) setSlots(data);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Không thể tải danh sách khung giờ.');
+      if (listRequest === listGeneration.current) setErrorMessage(err.message || 'Không thể tải danh sách khung giờ.');
     } finally {
-      setLoading(false);
+      if (listRequest === listGeneration.current) setLoading(false);
     }
   };
 
@@ -60,7 +87,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
       fetchSlots();
       resetForm();
     }
-  }, [isOpen, amenity]);
+  }, [isOpen, amenity?.id]);
 
   // Lắng nghe sự kiện đồng bộ khung giờ từ tab khác
   useEffect(() => {
@@ -83,6 +110,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
   const resetForm = () => {
     setEditingId(null);
+    setEditingVersion(1); setHasConflict(false); setLatestSlot(null); setRecovering(false);
     setDayOfWeek(1);
     setStartTime('09:00');
     setEndTime('11:00');
@@ -93,7 +121,9 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   };
 
   const handleEdit = (s: TimeSlot) => {
+    if (isSubmitting || recovering) return;
     setEditingId(s.id);
+    setEditingVersion(s.version); setHasConflict(false); setLatestSlot(null);
     setDayOfWeek(s.day_of_week);
     setStartTime(s.slot_start_time.slice(0, 5));
     setEndTime(s.slot_end_time.slice(0, 5));
@@ -105,6 +135,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || recovering || hasConflict) return;
     setSuccessMessage(null);
     if (!amenity) return;
 
@@ -131,7 +162,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
     try {
       if (editingId) {
-        await api.updateTimeSlot(amenity.id, editingId, payload);
+        await api.updateTimeSlot(amenity.id, editingId, { ...payload, version: editingVersion });
         setSuccessMessage('Đã cập nhật khung giờ thành công!');
       } else {
         await api.createTimeSlot(amenity.id, payload);
@@ -143,40 +174,46 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Đã xảy ra lỗi khi lưu khung giờ.');
+      if (err.status === 409 && editingId) await recoverConflict(editingId, true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleToggleStatus = async (slot: TimeSlot) => {
-    if (!amenity) return;
+    if (!amenity || isSubmitting || recovering) return;
+    setIsSubmitting(true);
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      await api.patchTimeSlotStatus(amenity.id, slot.id, !slot.is_active);
+      await api.patchTimeSlotStatus(amenity.id, slot.id, !slot.is_active, slot.version);
       setSuccessMessage(`Đã ${slot.is_active ? 'tạm ngưng' : 'kích hoạt'} khung giờ thành công.`);
       await fetchSlots();
       onChanged();
     } catch (err: any) {
       setErrorMessage(err.message || 'Không thể đổi trạng thái khung giờ.');
-    }
+      if (err.status === 409) await recoverConflict(slot.id);
+    } finally { setIsSubmitting(false); }
   };
 
   const handleDelete = async (slotId: string) => {
-    if (!amenity) return;
+    if (!amenity || isSubmitting || recovering) return;
+    const slot = slots.find((item) => item.id === slotId); if (!slot) return;
     if (!confirm('Bạn có chắc muốn xóa khung giờ này?')) return;
+    setIsSubmitting(true);
     setErrorMessage(null);
     setSuccessMessage(null);
 
     try {
-      await api.deleteTimeSlot(amenity.id, slotId);
+      await api.deleteTimeSlot(amenity.id, slotId, slot.version);
       setSuccessMessage('Đã xóa khung giờ.');
       await fetchSlots();
       onChanged();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Không thể xóa khung giờ.');
-    }
+      if (err.status === 409) await recoverConflict(slotId);
+    } finally { setIsSubmitting(false); }
   };
 
   if (!isOpen || !amenity) return null;
@@ -222,8 +259,14 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
           <div role="alert" className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shrink-0">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
+            {!hasConflict && <button type="button" disabled={isSubmitting || recovering || loading} className="min-h-11 shrink-0 underline" onClick={() => { setErrorMessage(null); void fetchSlots(); }}>Tải lại danh sách</button>}
           </div>
         )}
+        {hasConflict && <section aria-label="Bản khung giờ mới nhất" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 space-y-2">
+          <p>Bản nhập chưa bị thay thế. {recovering ? 'Đang tải bản mới…' : 'Hãy đối chiếu trước khi lưu tiếp.'}</p>
+          {latestSlot && <><p>Phiên bản máy chủ: {latestSlot.version} · {DAYS_OF_WEEK.find((day) => day.value === latestSlot.day_of_week)?.label}</p><p>{latestSlot.slot_start_time}–{latestSlot.slot_end_time} · {latestSlot.slot_label} · Tối đa {latestSlot.max_bookings} lượt · {latestSlot.is_active ? 'Hoạt động' : 'Tạm ngưng'}</p><button type="button" disabled={recovering} className="min-h-11 underline font-semibold" onClick={() => { setEditingVersion(latestSlot.version); setHasConflict(false); setErrorMessage(null); }}>Đã xem bản mới, tiếp tục sửa bản nhập</button></>}
+          <button type="button" disabled={recovering} className="min-h-11 underline" onClick={() => { if (editingId) void recoverConflict(editingId, true); }}>Tải lại bản mới</button>
+        </section>}
         {successMessage && (
           <div role="status" className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -326,6 +369,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
               {editingId && (
                 <button
                   type="button"
+                  disabled={isSubmitting || recovering}
                   onClick={resetForm}
                   className="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-200/70 rounded-lg transition-colors cursor-pointer"
                 >
@@ -334,7 +378,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
               )}
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || recovering || hasConflict}
                 className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
               >
                 {isSubmitting ? (
@@ -411,7 +455,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 type="button"
-                                onClick={() => handleToggleStatus(s)}
+                                disabled={isSubmitting || recovering}
+                      onClick={() => handleToggleStatus(s)}
                                 className={`p-1 rounded-md transition-colors cursor-pointer ${
                                   s.is_active
                                     ? 'text-emerald-600 hover:bg-emerald-50'
@@ -423,7 +468,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleEdit(s)}
+                                disabled={isSubmitting || recovering}
+                      onClick={() => handleEdit(s)}
                                 className="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
                                 title="Chỉnh sửa"
                               >
@@ -431,7 +477,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDelete(s.id)}
+                                disabled={isSubmitting || recovering}
+                      onClick={() => handleDelete(s.id)}
                                 className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                                 title="Xóa"
                               >
