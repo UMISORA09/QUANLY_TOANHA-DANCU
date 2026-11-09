@@ -21,7 +21,7 @@ export function AnnouncementManagement() {
   const [selected, setSelected] = useState<Announcement | null>(null); const [form, setForm] = useState<Draft | null>(null);
   const [files, setFiles] = useState<File[]>([]); const [removed, setRemoved] = useState<string[]>([]); const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false); const [formError, setFormError] = useState(''); const [fields, setFields] = useState<Record<string, string[]>>({}); const [conflict, setConflict] = useState(false);
-  const [preview, setPreview] = useState<{ title: string; content_html: string; version?: number } | null>(null);
+  const [preview, setPreview] = useState<{ title: string; content_html: string; version?: number; latest?: Announcement } | null>(null);
   const [confirm, setConfirm] = useState<'discard' | 'unpublish' | 'archive' | string | null>(null); const [reason, setReason] = useState('');
   const mounted = useRef(true); const detailRequest = useRef<AbortController | null>(null);
   const uploads = useRef(new Map<File, AnnouncementUpload>());
@@ -36,7 +36,24 @@ export function AnnouncementManagement() {
     return () => controller.abort();
   }, [page, search, filters, revision]);
   useEffect(() => { if (!dirty) return; const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [dirty]);
-  const failed = (err: ApiError) => { if (mounted.current) { setFormError(err.message || 'Không thể thực hiện. Dữ liệu nhập vẫn được giữ lại.'); setFields(err.errors || {}); setConflict(err.status === 409); } };
+  const failed = async (err: ApiError) => {
+    if (!mounted.current) return;
+    setFormError(err.message || 'Không thể thực hiện. Dữ liệu nhập vẫn được giữ lại.'); setFields(err.errors || {});
+    if (err.status !== 409) return;
+    setConflict(true);
+    const id = form?.version ? form.id : selected?.id;
+    if (!id) return;
+    detailRequest.current?.abort(); const controller = new AbortController(); detailRequest.current = controller;
+    try {
+      const latest = await api.getAnnouncement(id, controller.signal);
+      if (controller.signal.aborted || !mounted.current) return;
+      setSelected(latest); reload((value) => value + 1);
+      if (form) setPreview({ title: 'Bản mới nhất trên máy chủ', content_html: latest.content_html, version: latest.version, latest });
+      else { setConfirm(null); setConflict(false); setFormError('Bài đã thay đổi. Hãy kiểm tra bản mới trước khi chọn lại thao tác.'); }
+    } catch {
+      if (!controller.signal.aborted && mounted.current) setFormError('Chưa tải được bản mới. Bản nhập và tệp đang chọn được giữ nguyên; hãy thử tải lại.');
+    }
+  };
   const change = <K extends keyof Draft>(key: K, value: Draft[K]) => { setForm((current) => current && { ...current, [key]: value }); setDirty(true); };
   const start = (item: Announcement | null) => { discardUploads(); setSelected(item); setForm(item ? { id: item.id, version: item.version, title: item.title, summary_excerpt: item.summary_excerpt || '', content_html: item.content_html, category: item.category, target_scope: item.target_scope, target_block_id: item.target_block_id || '', target_floor_id: item.target_floor_id || '', is_pinned: item.is_pinned, is_urgent: item.is_urgent, requires_acknowledgement: item.requires_acknowledgement, publish_at: inputDate(item.publish_at, zone), expires_at: inputDate(item.expires_at, zone) } : empty(options)); setFiles([]); setRemoved([]); setDirty(false); setFormError(''); setFields({}); setConflict(false); };
   const open = async (id: string) => {
@@ -45,7 +62,7 @@ export function AnnouncementManagement() {
   };
   const closeForm = () => { if (busy) return; if (dirty) setConfirm('discard'); else { discardUploads(); setForm(null); } };
   const save = async (publish: boolean) => {
-    if (!form || busy) return; setBusy(true); setFormError(''); setFields({}); setConflict(false);
+    if (!form || busy || conflict) return; setBusy(true); setFormError(''); setFields({});
     try {
       const body = new FormData(); Object.entries(form).forEach(([key, value]) => { if (key === 'id' && form.version) return; if (value !== undefined) body.set(key, typeof value === 'boolean' ? (value ? '1' : '0') : String(value)); });
       for (const file of files) {
@@ -63,22 +80,22 @@ export function AnnouncementManagement() {
       if (publish) result = await api.announcementAction(result.id, 'publish', { version: result.version, publish_at: form.publish_at || null });
       if (!mounted.current) return;
       setSelected(result); setForm(null); setNotice(publish ? 'Đã lưu và đăng/hẹn đăng bảng tin.' : 'Đã lưu bài viết.'); reload((value) => value + 1);
-    } catch (err) { failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
+    } catch (err) { await failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
   };
   const showPreview = async (latest = false) => {
     if (!form || busy) return; setBusy(true); setFormError('');
-    try { const result = latest ? await api.getAnnouncement(form.id) : await api.previewAnnouncement(form.content_html); if (mounted.current) setPreview({ title: latest ? 'Bản mới nhất trên máy chủ' : form.title || 'Xem trước bảng tin', content_html: result.content_html, version: 'version' in result && typeof result.version === 'number' ? result.version : undefined }); } catch (err) { failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
+    try { const result = latest ? await api.getAnnouncement(form.id) : await api.previewAnnouncement(form.content_html); if (mounted.current) setPreview({ title: latest ? 'Bản mới nhất trên máy chủ' : form.title || 'Xem trước bảng tin', content_html: result.content_html, version: 'version' in result && typeof result.version === 'number' ? result.version : undefined, latest: latest ? result as Announcement : undefined }); } catch (err) { await failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
   };
   const action = async () => {
     if (!confirm || busy) return;
     if (confirm === 'discard') { discardUploads(); setDirty(false); setForm(null); setConfirm(null); return; }
     if (confirm !== 'unpublish' && confirm !== 'archive') { setRemoved((ids) => [...ids, confirm]); setDirty(true); setConfirm(null); return; }
     if (!selected) return; setBusy(true); setFormError('');
-    try { const result = await api.announcementAction(selected.id, confirm, { version: selected.version, reason }); if (mounted.current) { setSelected(confirm === 'archive' ? null : result); setConfirm(null); setNotice(confirm === 'archive' ? 'Đã lưu trữ bài viết.' : 'Đã gỡ bài viết.'); reload((value) => value + 1); } } catch (err) { failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
+    try { const result = await api.announcementAction(selected.id, confirm, { version: selected.version, reason }); if (mounted.current) { setSelected(confirm === 'archive' ? null : result); setConfirm(null); setNotice(confirm === 'archive' ? 'Đã lưu trữ bài viết.' : 'Đã gỡ bài viết.'); reload((value) => value + 1); } } catch (err) { await failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
   };
   const publishExisting = async () => {
     if (!selected || busy) return; setBusy(true); setFormError('');
-    try { const result = await api.announcementAction(selected.id, 'publish', { version: selected.version, publish_at: selected.publish_at }); if (mounted.current) { setSelected(result); setNotice('Đã đăng theo lịch đã lưu.'); reload((value) => value + 1); } } catch (err) { failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
+    try { const result = await api.announcementAction(selected.id, 'publish', { version: selected.version, publish_at: selected.publish_at }); if (mounted.current) { setSelected(result); setNotice('Đã đăng theo lịch đã lưu.'); reload((value) => value + 1); } } catch (err) { await failed(err as ApiError); } finally { if (mounted.current) setBusy(false); }
   };
   const download = async (item: Announcement, attachmentId: string, name: string) => {
     try { const blob = await api.announcementAttachment(item.id, attachmentId); if (!mounted.current) return; const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (err) { setFormError((err as Error).message); }
@@ -109,7 +126,7 @@ export function AnnouncementManagement() {
         {selected?.attachments?.filter((file) => !removed.includes(file.id)).map((file) => <div key={file.id} className="announcement-ui__actions"><span>{file.file_name}</span><button type="button" disabled={busy} onClick={() => setConfirm(file.id)}>Bỏ tệp {file.file_name}</button></div>)}{files.map((file, index) => <div key={`${index}-${file.name}`} className="announcement-ui__actions"><span>{file.name}</span><button type="button" disabled={busy} onClick={() => setConfirm(`new:${index}`)}>Bỏ tệp mới {file.name}</button></div>)}
       </form>}
     </TicketDialog>
-    <TicketDialog open={!!preview} title={preview?.title || 'Xem trước'} busy={busy} onClose={() => setPreview(null)}>{preview && <div className="announcement-ui">{preview.version !== undefined && <p>Phiên bản máy chủ: {preview.version}. Bản nhập chưa bị thay thế.</p>}<div className="announcement-content" dangerouslySetInnerHTML={{ __html: preview.content_html }} />{preview.version !== undefined && form && <button type="button" className="announcement-primary" onClick={() => { setForm((current) => current && { ...current, version: preview.version }); setConflict(false); setFormError(''); setPreview(null); }}>Giữ bản nhập và dùng phiên bản {preview.version}</button>}<button type="button" onClick={() => setPreview(null)}>Quay lại bản nhập</button></div>}</TicketDialog>
+    <TicketDialog open={!!preview} title={preview?.title || 'Xem trước'} busy={busy} onClose={() => setPreview(null)}>{preview && <div className="announcement-ui">{preview.version !== undefined && formError && <p role="alert" className="announcement-error">{formError}</p>}{preview.version !== undefined && <p>Phiên bản máy chủ: {preview.version}. Bản nhập chưa bị thay thế.</p>}{preview.latest && <div><h3>{preview.latest.title}</h3><p>{preview.latest.summary_excerpt}</p><p>{preview.latest.category} · {scopes[preview.latest.target_scope]} · {statusNames[preview.latest.status]}</p><p>Lịch đăng: {preview.latest.publish_at || 'Chưa đặt'} · Hết hạn: {preview.latest.expires_at || 'Không'}</p><p>{preview.latest.attachments?.map((file) => file.file_name).join(', ') || 'Không có tệp'}</p></div>}<div className="announcement-content" dangerouslySetInnerHTML={{ __html: preview.content_html }} />{preview.version !== undefined && form && <button type="button" className="announcement-primary" onClick={() => { setForm((current) => current && { ...current, version: preview.version }); setConflict(false); setFormError(''); setPreview(null); }}>Giữ bản nhập và dùng phiên bản {preview.version}</button>}<button type="button" onClick={() => setPreview(null)}>Quay lại bản nhập</button></div>}</TicketDialog>
     <TicketDialog open={!!confirm} title={confirm === 'discard' ? 'Bỏ thay đổi chưa lưu?' : confirm === 'unpublish' ? 'Gỡ bài viết?' : confirm === 'archive' ? 'Lưu trữ bài viết?' : 'Bỏ tệp đính kèm?'} busy={busy} onClose={() => setConfirm(null)}><div className="announcement-ui announcement-form"><p>{confirm === 'discard' ? 'Nội dung chưa lưu sẽ bị bỏ.' : confirm === 'unpublish' || confirm === 'archive' ? 'Bài và tệp vẫn được giữ để đối chiếu. Thao tác yêu cầu lý do.' : 'Tệp chỉ được bỏ khỏi máy chủ sau khi bạn lưu bài thành công.'}</p>{(confirm === 'unpublish' || confirm === 'archive') && <label>Lý do<textarea minLength={5} maxLength={500} value={reason} disabled={busy} onChange={(event) => setReason(event.target.value)} /></label>}{formError && <p role="alert" className="announcement-error">{formError}</p>}<div className="announcement-ui__actions"><button type="button" disabled={busy} onClick={() => setConfirm(null)}>Quay lại</button><button type="button" className="announcement-danger" disabled={busy || ((confirm === 'unpublish' || confirm === 'archive') && reason.trim().length < 5)} onClick={() => { if (confirm?.startsWith('new:')) { const file = files[Number(confirm.slice(4))]; const ticket = uploads.current.get(file); if (ticket) { void api.discardAnnouncementUpload(ticket.token).catch(() => {}); uploads.current.delete(file); } setFiles((current) => current.filter((_, index) => index !== Number(confirm.slice(4)))); setDirty(true); setConfirm(null); } else void action(); }}>Xác nhận</button></div></div></TicketDialog>
   </section>;
 }
