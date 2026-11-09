@@ -32,9 +32,6 @@ services:
       - REDIS_CLIENT=phpredis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - SCOUT_DRIVER=meilisearch
-      - MEILISEARCH_HOST=http://meilisearch:7700
-      - MEILISEARCH_KEY=${MEILISEARCH_KEY:-masterKey123456}
       - RUN_DEV_INIT=false
       - RUN_MIGRATIONS=false
       - SEED_DEMO_DATA=false
@@ -150,27 +147,6 @@ services:
     networks:
       - cassavas_network
 
-  meilisearch:
-    image: getmeili/meilisearch:v1.12
-    container_name: smart_cassavas_meilisearch
-    restart: unless-stopped
-    ports:
-      - "7700:7700"
-    environment:
-      - MEILI_ENV=development
-      - MEILI_MASTER_KEY=${MEILISEARCH_KEY:-masterKey123456}
-      - MEILI_NO_ANALYTICS=true
-    volumes:
-      - meilisearch_data:/meili_data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f -s http://127.0.0.1:7700/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 5s
-    networks:
-      - cassavas_network
-
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.5.6
     profiles: ["search"]
@@ -196,8 +172,6 @@ volumes:
   mysql_data:
     driver: local
   redis_data:
-    driver: local
-  meilisearch_data:
     driver: local
 
 networks:
