@@ -81,22 +81,64 @@ class AuthenticateBearer
                 return User::with('roles.permissions')->find($parts[2]);
             }
             if ($token === 'smart_token_admin_demo' || (isset($parts[2]) && in_array($parts[2], ['admin', 'superadmin'], true))) {
-                return User::with('roles.permissions')
+                $user = User::with('roles.permissions')
                     ->whereHas('roles', fn ($q) => $q->where('role_code', 'SUPER_ADMIN'))
                     ->where('status', 'ACTIVE')
                     ->first() ?? User::where('status', 'ACTIVE')->first();
+
+                if ($user) {
+                    return $user;
+                }
+
+                $mock = new User([
+                    'id' => '00000000-0000-0000-0000-000000000001',
+                    'full_name' => 'Ban Quản Lý (Admin)',
+                    'email' => 'admin@cassavas.vn',
+                    'status' => 'ACTIVE',
+                ]);
+                $mock->exists = true;
+
+                return $mock;
             }
             if ($token === 'smart_token_manager_demo' || (isset($parts[2]) && in_array($parts[2], ['manager', 'building_manager', 'quanly'], true))) {
-                return User::with('roles.permissions')
+                $user = User::with('roles.permissions')
                     ->whereHas('roles', fn ($q) => $q->whereIn('role_code', ['BUILDING_MANAGER', 'SUPER_ADMIN']))
                     ->where('status', 'ACTIVE')
                     ->first() ?? User::where('status', 'ACTIVE')->first();
+
+                if ($user) {
+                    return $user;
+                }
+
+                $mock = new User([
+                    'id' => '00000000-0000-0000-0000-000000000002',
+                    'full_name' => 'Quản Lý Tòa Nhà',
+                    'email' => 'quanly@cassavas.vn',
+                    'status' => 'ACTIVE',
+                ]);
+                $mock->exists = true;
+
+                return $mock;
             }
             if ($token === 'smart_token_reception_demo' || (isset($parts[2]) && in_array($parts[2], ['reception', 'letan', 'receptionist', 'security', 'baove', 'an_ninh'], true))) {
-                return User::with('roles.permissions')
+                $user = User::with('roles.permissions')
                     ->whereHas('roles', fn ($q) => $q->whereIn('role_code', ['RECEPTIONIST', 'SECURITY_GUARD', 'SUPER_ADMIN', 'BUILDING_MANAGER']))
                     ->where('status', 'ACTIVE')
                     ->first() ?? User::where('status', 'ACTIVE')->first();
+
+                if ($user) {
+                    return $user;
+                }
+
+                $mock = new User([
+                    'id' => '00000000-0000-0000-0000-000000000003',
+                    'full_name' => 'Lễ Tân Tòa Nhà',
+                    'email' => 'letan@cassavas.vn',
+                    'status' => 'ACTIVE',
+                ]);
+                $mock->exists = true;
+
+                return $mock;
             }
         }
 
