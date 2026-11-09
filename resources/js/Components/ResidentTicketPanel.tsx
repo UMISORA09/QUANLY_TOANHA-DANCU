@@ -229,6 +229,23 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [isReopening, setIsReopening] = useState(false);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [versionConflict, setVersionConflict] = useState(false);
+  const [conflictTicket, setConflictTicket] = useState<TicketItem | null>(null);
+  const [refreshingConflict, setRefreshingConflict] = useState(false);
+  const conflictRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => conflictRequest.current?.abort(), [detailTicket?.id]);
+  const refreshConflict = async (id: string) => {
+    setVersionConflict(true); setConflictTicket(null); setRefreshingConflict(true);
+    conflictRequest.current?.abort(); const controller = new AbortController(); conflictRequest.current = controller;
+    try {
+      const response = await api.getResidentTicketDetail(id, controller.signal);
+      if (!controller.signal.aborted) { setDetailTicket(response.data); setConflictTicket(response.data); }
+    } catch (error: any) {
+      if (!controller.signal.aborted) showToast(error.message || 'Chưa tải được bản mới. Bản nhập được giữ nguyên; hãy thử lại.', 'error');
+    } finally {
+      if (!controller.signal.aborted) setRefreshingConflict(false);
+    }
+  };
   const [editFormData, setEditFormData] = useState({
     title: '',
     location: '',
@@ -525,7 +542,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Không thể hủy yêu cầu sự cố.', 'error');
-      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
+      if (err.status === 409) await refreshConflict(detailTicket.id);
     } finally {
       setIsCancelling(false);
     }
@@ -546,7 +563,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Không thể xác nhận hoàn thành.', 'error');
-      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
+      if (err.status === 409) await refreshConflict(detailTicket.id);
     } finally {
       setIsConfirming(false);
     }
@@ -571,7 +588,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Không thể gửi phản hồi.', 'error');
-      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
+      if (err.status === 409) await refreshConflict(detailTicket.id);
     } finally {
       setIsReopening(false);
     }
@@ -596,7 +613,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   // Cập nhật Ticket qua PATCH
   const handleSaveEditTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!detailTicket) return;
+    if (!detailTicket || isUpdating || versionConflict) return;
 
     if (!editFormData.title.trim() || !editFormData.description.trim() || !editFormData.location.trim()) {
       showToast('Vui lòng điền đầy đủ tiêu đề, vị trí và mô tả sự cố.', 'error');
@@ -623,7 +640,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       }
     } catch (err: any) {
       showToast(err?.message || 'Cập nhật thất bại. Vui lòng tải lại dữ liệu mới nhất.', 'error');
-      if (err.status === 409) void fetchTicketDetail(detailTicket.id);
+      if (err.status === 409) await refreshConflict(detailTicket.id);
     } finally {
       setIsUpdating(false);
     }
@@ -1525,7 +1542,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return;
                     setImageBusy(true);
                     try { const res = await api.addTicketImages(detailTicket.id, files, detailTicket.version); setDetailTicket(res.data); showToast('Đã thêm ảnh.'); }
-                    catch (error: any) { showToast(error.message, 'error'); if (error.status === 409) void fetchTicketDetail(detailTicket.id); }
+                    catch (error: any) { showToast(error.message, 'error'); if (error.status === 409) await refreshConflict(detailTicket.id); }
                     finally { setImageBusy(false); }
                   }} className="block mt-2" />
                 </label>}
@@ -1664,12 +1681,22 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         </TicketDialog>
       )}
 
+      <TicketDialog open={versionConflict} title="Yêu cầu đã được cập nhật" busy={refreshingConflict} onClose={() => { setVersionConflict(false); setIsEditModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setRemoveImageId(null); }}>
+        <div className="space-y-3 text-sm">
+          <p role="alert">Nội dung đang nhập được giữ nguyên. Hãy xem bản mới trước khi thao tác lại.</p>
+          {refreshingConflict && <p role="status">Đang tải bản mới…</p>}
+          {conflictTicket && <><p>Phiên bản máy chủ: {conflictTicket.version} · {STATUS_CONFIG[conflictTicket.status]?.label || conflictTicket.status}</p><h3 className="font-bold">{conflictTicket.title}</h3><p className="whitespace-pre-wrap">{conflictTicket.description}</p><p>{conflictTicket.location}</p>
+            <button type="button" className="min-h-11 rounded-xl border px-4" onClick={() => { setEditFormData((current) => ({ ...current, version: conflictTicket.version })); setVersionConflict(false); }}>Đã xem bản mới, tiếp tục sửa bản nhập</button></>}
+          <button type="button" disabled={refreshingConflict} onClick={() => { if (detailTicket) void refreshConflict(detailTicket.id); }}>Tải lại bản mới</button>
+          <button type="button" disabled={refreshingConflict} onClick={() => { setVersionConflict(false); setIsEditModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setRemoveImageId(null); }}>Bỏ bản nhập và đóng</button>
+        </div>
+      </TicketDialog>
       {/* ================= MODAL: CHỈNH SỬA TICKET ================= */}
       <TicketDialog open={!!removeImageId} title="Bỏ ảnh sự cố" busy={imageBusy} onClose={() => setRemoveImageId(null)}><p className="text-sm">Bạn muốn bỏ ảnh này khỏi yêu cầu?</p><div className="mt-4 flex justify-end gap-2"><button type="button" disabled={imageBusy} className="rounded-xl border px-4 py-2 cursor-pointer" onClick={() => setRemoveImageId(null)}>Đóng</button><button type="button" disabled={imageBusy} className="rounded-xl bg-rose-600 px-4 py-2 text-white cursor-pointer" onClick={async () => {
         if (!detailTicket || !removeImageId || imageBusy) return;
         setImageBusy(true);
         try { const res = await api.removeTicketImage(detailTicket.id, removeImageId, detailTicket.version); setDetailTicket(res.data); setRemoveImageId(null); showToast('Đã bỏ ảnh.'); }
-        catch (error: any) { showToast(error.message, 'error'); if (error.status === 409) void fetchTicketDetail(detailTicket.id); }
+        catch (error: any) { showToast(error.message, 'error'); if (error.status === 409) await refreshConflict(detailTicket.id); }
         finally { setImageBusy(false); }
       }}>Bỏ ảnh</button></div></TicketDialog>
       {isEditModalOpen && (

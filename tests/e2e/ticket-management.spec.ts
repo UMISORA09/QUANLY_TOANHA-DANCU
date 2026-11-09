@@ -245,7 +245,9 @@ test('Ticket: chặn phân công thiếu người, giữ ghi chú khi lỗi và 
     if (path.endsWith('/workflow')) { writes++; return route.fulfill({ status: 422, json: { message: 'Chưa thể hủy yêu cầu. Vui lòng thử lại.' } }); }
     if (path.endsWith('/tickets/qa-ticket')) {
       if (route.request().method() === 'PATCH') {
-        writes++; ticket = { ...ticket, title: 'Nội dung từ người phụ trách', version: 2 };
+        writes++;
+        if (writes > 2) { expect(route.request().postDataJSON().version).toBe(2); return route.fulfill({ json: { ...ticket, ...route.request().postDataJSON(), version: 3 } }); }
+        ticket = { ...ticket, title: 'Nội dung từ người phụ trách', version: 2 };
         return route.fulfill({ status: 409, json: { message: 'Yêu cầu đã thay đổi.' } });
       }
       return route.fulfill({ json: ticket });
@@ -277,8 +279,12 @@ test('Ticket: chặn phân công thiếu người, giữ ghi chú khi lỗi và 
   await expect(edit.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Nội dung đang nhập');
   await expect(edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true })).toBeDisabled();
   expect(writes).toBe(2);
-  await edit.getByRole('button', { name: 'Xem bản mới nhất', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'TCK-QA-001', exact: true })).toContainText('Nội dung từ người phụ trách');
+  await expect(edit).toContainText('Nội dung từ người phụ trách');
+  await edit.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập', exact: true }).click();
+  await expect(edit.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Nội dung đang nhập');
+  await expect(edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true })).toBeEnabled();
+  await edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true }).click();
+  await expect(edit).not.toBeVisible(); expect(writes).toBe(3);
 });
 
 test('Ticket: tải lại ảnh lỗi HTTP, ảnh hỏng và đóng ảnh phóng to bằng bàn phím', async ({ page }) => {
