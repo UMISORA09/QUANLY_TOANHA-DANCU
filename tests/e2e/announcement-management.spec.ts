@@ -31,6 +31,7 @@ async function setup(page: Page, store: State, role = 'admin') {
     const updating = field('_method') === 'PATCH'; const identity = updating ? id : field('id'); store.ids.push(identity);
     if (store.fail) { store.fail = false; return route.abort('failed'); }
     if (store.conflict) return route.fulfill({ status: 409, json: { message: 'Bài viết đã thay đổi. Bản nhập vẫn được giữ.' } });
+    if (updating && row) expect(Number(field('version'))).toBe(row.version);
     const result = row || { ...base(), id: identity };
     Object.assign(result, { title: field('title'), content_html: field('content_html'), summary_excerpt: field('summary_excerpt'), version: updating ? result.version + 1 : 1 });
     if (body.includes('uploaded_attachment_tokens[]')) result.attachments = [{ id: 'attachment-1', file_name: 'rules.pdf', mime_type: 'application/pdf', file_size_bytes: 45 }];
@@ -63,9 +64,9 @@ test('MOCKED: lỗi mạng giữ bản nhập và UUID; 409 không ghi đè vers
   await page.getByRole('button', { name: 'Soạn thông báo', exact: true }).click(); await page.getByLabel('Tiêu đề', { exact: true }).fill('Bản nháp cần giữ'); await page.getByRole('textbox', { name: 'Nội dung bảng tin', exact: true }).fill('Nội dung chưa gửi');
   await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); await expect(page.getByRole('alert')).toBeVisible(); await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Bản nháp cần giữ');
   await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); await expect.poll(() => store.rows.length).toBe(1); expect(store.ids[0]).toBe(store.ids[1]);
-  await page.getByRole('button', { name: 'Sửa bài viết', exact: true }).click(); await page.getByLabel('Tiêu đề', { exact: true }).fill('Bản nhập khác máy chủ'); store.conflict = true;
-  await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Bài viết đã thay đổi'); await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Bản nhập khác máy chủ');
-  await page.getByRole('button', { name: 'Xem bản mới nhất', exact: true }).click(); await expect(page.getByText(/Phiên bản máy chủ/)).toContainText('1'); await page.getByRole('button', { name: 'Giữ bản nhập và dùng phiên bản 1', exact: true }).click(); await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Bản nhập khác máy chủ'); store.conflict = false; await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); await expect.poll(() => store.rows[0].title).toBe('Bản nhập khác máy chủ');
+  await page.getByRole('button', { name: 'Sửa bài viết', exact: true }).click(); await page.getByLabel('Tiêu đề', { exact: true }).fill('Bản nhập khác máy chủ'); store.rows[0].version = 2; store.conflict = true;
+  await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Bài viết đã thay đổi');
+  await expect(page.getByText(/Phiên bản máy chủ/)).toContainText('2'); await page.getByRole('button', { name: 'Giữ bản nhập và dùng phiên bản 2', exact: true }).click(); await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Bản nhập khác máy chủ'); store.conflict = false; await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); await expect.poll(() => store.rows[0].title).toBe('Bản nhập khác máy chủ');
 });
 
 test('MOCKED: mobile combobox cuộn, tương phản, hủy giữ bản nháp và bàn phím', async ({ page }) => {
