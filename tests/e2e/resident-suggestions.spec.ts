@@ -48,3 +48,33 @@ for (const width of [1280, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+test('F12 manager: 409 automatically reloads detail and preserves unsent reply', async ({ page }) => {
+  await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-token'); });
+  let item = { id: 'qa-suggestion', title: 'Góp ý QA', content: 'Nội dung góp ý', content_text: 'Nội dung góp ý', topic_category: 'OTHER', status: 'RECEIVED', version: 1, is_anonymous: true, created_at: '2026-11-01T00:00:00Z', official_response_text: '' };
+  let writes = 0; let reads = 0;
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/qa-suggestion/reply')) {
+      writes++; const payload = route.request().postDataJSON();
+      expect(payload.version).toBe(writes === 1 ? 1 : 2);
+      if (writes === 1) { item = { ...item, version: 2, official_response_text: 'Phản hồi mới trên máy chủ' }; return route.fulfill({ status: 409, json: { message: 'Góp ý đã được cập nhật.' } }); }
+      item = { ...item, official_response_text: payload.official_response_text, version: 3 };
+      return route.fulfill({ json: { success: true, data: item } });
+    }
+    if (path.endsWith('/qa-suggestion')) { reads++; return route.fulfill({ json: { success: true, data: item } }); }
+    if (path.endsWith('/management/suggestions')) return route.fulfill({ json: { data: [item], pagination: { last_page: 1, total: 1 } } });
+    return route.fulfill({ json: { data: [], items: [], unread_count: 0 } });
+  });
+  await page.goto('/quan-ly?tab=feedback');
+  await page.getByText('Góp ý QA', { exact: true }).click();
+  const reply = page.getByPlaceholder('Nhập nội dung phản hồi chính thức gửi tới cư dân (văn minh, chuẩn mực, nêu rõ giải pháp hoặc tiến độ xử lý)...');
+  await reply.fill('Bản trả lời đang soạn');
+  const submit = page.getByRole('button', { name: 'Lưu & Gửi phản hồi chính thức' });
+  await submit.click();
+  await expect(page.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập' })).toBeVisible();
+  await expect(reply).toHaveValue('Bản trả lời đang soạn'); await expect(submit).toBeDisabled();
+  expect(reads).toBe(2); expect(writes).toBe(1);
+  await page.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập' }).click();
+  await submit.click(); await expect.poll(() => writes).toBe(2);
+});
