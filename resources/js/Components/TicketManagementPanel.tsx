@@ -1,6 +1,6 @@
 import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
 import { TicketRating } from './TicketRating';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { api, ManagedTicket, TicketOptions } from '../Services/api';
 import { CustomSelect } from './Common/CustomSelect';
 import { TicketDialog } from './TicketDialog';
@@ -73,6 +73,20 @@ export function TicketManagementPanel() {
   const [preview, setPreview] = useState('');
   const [removeImageId, setRemoveImageId] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
+  const [conflictReady, setConflictReady] = useState(false);
+  const conflictRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => conflictRequest.current?.abort(), [selected?.id, mode]);
+  const refreshConflict = async () => {
+    if (!selected) return;
+    conflictRequest.current?.abort(); const controller = new AbortController(); conflictRequest.current = controller;
+    setConflictReady(false);
+    try {
+      const latest = await api.getManagedTicket(selected.id, controller.signal);
+      if (!controller.signal.aborted) { setSelected(latest); setConflictReady(true); reload(); }
+    } catch {
+      if (!controller.signal.aborted) setError('Chưa tải được bản mới. Bản nhập vẫn được giữ; hãy thử tải lại.');
+    }
+  };
   const reload = () => setRevision((value) => value + 1);
   useEffect(() => { if (query === keyword) return; const timer = setTimeout(() => { setKeyword(query); setPage(1); }, 350); return () => clearTimeout(timer); }, [query, keyword]);
   useEffect(() => { let active = true; api.getTicketOptions().then((data) => { if (active) setOptions(data); }).catch((err) => { if (active) setError(err.message); }); return () => { active = false; }; }, [revision]);
@@ -96,8 +110,7 @@ export function TicketManagementPanel() {
     setError(err.message); setFields(err.errors || {});
     if (err.status === 409 && selected) {
       setConflict(true);
-      try { setSelected(await api.getManagedTicket(selected.id)); reload(); }
-      catch { setError('Yêu cầu đã thay đổi nhưng chưa tải được bản mới. Hãy đóng form và thử tải lại.'); }
+      await refreshConflict();
     }
   };
   const submit = async (event: React.FormEvent) => {
@@ -475,9 +488,13 @@ export function TicketManagementPanel() {
         {conflict && (
           <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-xs font-medium text-amber-900">
             Yêu cầu đã được người khác cập nhật. Dữ liệu bạn nhập vẫn được giữ; hãy xem lại bản mới trước khi tiếp tục.{' '}
-            <button type="button" className="min-h-11 font-bold underline ml-1 cursor-pointer" onClick={() => setMode(null)}>
-              Xem bản mới nhất
-            </button>
+            {conflictReady && selected && <div className="mt-2 space-y-2">
+              <p>Phiên bản máy chủ: {selected.version} · {ticketStatuses[selected.status]}</p>
+              <p className="font-bold">{selected.title}</p><p className="whitespace-pre-wrap">{selected.description}</p>
+              <p>{selected.location} · {ticketPriorities[selected.priority]}</p>
+              <button type="button" className="min-h-11 font-bold underline" onClick={() => { setForm((current) => ({ ...current, version: selected.version })); setConflict(false); setError(''); }}>Đã xem bản mới, tiếp tục sửa bản nhập</button>
+            </div>}
+            <button type="button" disabled={busy} className="min-h-11 font-bold underline ml-1 cursor-pointer" onClick={() => void refreshConflict()}>Tải lại bản mới</button>
           </div>
         )}
         {mode === 'workflow' ? (
