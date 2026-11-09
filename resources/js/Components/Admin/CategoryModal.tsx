@@ -30,16 +30,42 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [editingVersion, setEditingVersion] = useState(1);
+  const [hasConflict, setHasConflict] = useState(false);
+  const [latestCategory, setLatestCategory] = useState<Category | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const conflictGeneration = useRef(0);
+  const listGeneration = useRef(0);
+  useEffect(() => () => { conflictGeneration.current++; listGeneration.current++; }, [isOpen]);
+  const recoverConflict = async (id: string, preserveDraft = false) => {
+    const generation = ++conflictGeneration.current;
+    const listRequest = ++listGeneration.current;
+    if (preserveDraft) { setHasConflict(true); setLatestCategory(null); }
+    setRecovering(true);
+    try {
+      const data = await api.getCategories(true);
+      if (generation !== conflictGeneration.current) return;
+      if (listRequest === listGeneration.current) setCategories(data);
+      if (preserveDraft) setLatestCategory(data.find((item) => item.id === id) || null);
+      setErrorMessage('Danh mục đã thay đổi. Bản nhập được giữ nguyên; hãy xem bản mới trước khi thao tác lại.');
+    } catch {
+      if (generation === conflictGeneration.current) setErrorMessage('Chưa tải được danh mục mới. Bản nhập vẫn được giữ; hãy thử lại.');
+    } finally {
+      if (generation === conflictGeneration.current) setRecovering(false);
+      if (listRequest === listGeneration.current) setLoading(false);
+    }
+  };
 
   const fetchCategories = async () => {
+    const listRequest = ++listGeneration.current;
     setLoading(true);
     try {
-      const data = await api.getCategories();
-      setCategories(data);
+      const data = await api.getCategories(true);
+      if (listRequest === listGeneration.current) setCategories(data);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Không thể tải danh sách danh mục.');
+      if (listRequest === listGeneration.current) setErrorMessage(err.message || 'Không thể tải danh sách danh mục.');
     } finally {
-      setLoading(false);
+      if (listRequest === listGeneration.current) setLoading(false);
     }
   };
 
@@ -67,6 +93,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
   const resetForm = () => {
     setEditingId(null);
+    setEditingVersion(1); setHasConflict(false); setLatestCategory(null); setRecovering(false);
     setName('');
     setCode('');
     setDescription('');
@@ -75,7 +102,9 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   };
 
   const handleEdit = (cat: Category) => {
+    if (isSubmitting || recovering) return;
     setEditingId(cat.id);
+    setEditingVersion(cat.version); setHasConflict(false); setLatestCategory(null);
     setName(cat.category_name);
     setCode(cat.category_code);
     setDescription(cat.description || '');
@@ -85,6 +114,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || recovering || hasConflict) return;
     setSuccessMessage(null);
     const trimmedCode = code.trim().toUpperCase();
     const trimmedName = name.trim();
@@ -121,6 +151,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
     try {
       if (editingId) {
         await api.updateCategory(editingId, {
+          version: editingVersion,
           category_name: trimmedName,
           category_code: trimmedCode,
           icon_name: iconName,
@@ -142,12 +173,14 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Đã xảy ra lỗi khi lưu danh mục.');
+      if (err.status === 409 && editingId) await recoverConflict(editingId, true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (cat: Category) => {
+    if (isSubmitting || recovering || loading) return;
     setSuccessMessage(null);
     if (cat.amenities_count > 0) {
       setErrorMessage(`Không thể xóa danh mục '${cat.category_name}' vì đang có ${cat.amenities_count} tiện ích trực thuộc!`);
@@ -161,13 +194,14 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
     try {
       setErrorMessage(null);
       setSuccessMessage(null);
-      await api.deleteCategory(cat.id);
+      await api.deleteCategory(cat.id, cat.version);
       setSuccessMessage('Đã xóa danh mục.');
       await fetchCategories();
       onChanged();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Lỗi khi xóa danh mục.');
+      if (err.status === 409) await recoverConflict(cat.id);
     } finally {
       setLoading(false);
     }
@@ -176,7 +210,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   if (!isOpen) return null;
 
   return (
-    <dialog ref={dialog} aria-label="Quản lý danh mục tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting) onClose(); }} className="catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
+    <dialog ref={dialog} aria-label="Quản lý danh mục tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting && !recovering) onClose(); }} className="catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
       {/* Backdrop */}
       <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 
@@ -207,8 +241,14 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
           <div role="alert" className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
+            {!hasConflict && <button type="button" disabled={isSubmitting || recovering || loading} className="min-h-11 shrink-0 underline" onClick={() => { setErrorMessage(null); void fetchCategories(); }}>Tải lại danh sách</button>}
           </div>
         )}
+        {hasConflict && <section aria-label="Bản danh mục mới nhất" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 space-y-2">
+          <p>Bản nhập chưa bị thay thế. {recovering ? 'Đang tải bản mới…' : 'Hãy đối chiếu trước khi lưu tiếp.'}</p>
+          {latestCategory && <><p>Phiên bản máy chủ: {latestCategory.version}</p><p>{latestCategory.category_name} · {latestCategory.category_code} · {latestCategory.icon_name}</p><p className="whitespace-pre-wrap">{latestCategory.description}</p><button type="button" disabled={recovering} className="min-h-11 underline font-semibold" onClick={() => { setEditingVersion(latestCategory.version); setHasConflict(false); setErrorMessage(null); }}>Đã xem bản mới, tiếp tục sửa bản nhập</button></>}
+          <button type="button" disabled={recovering} className="min-h-11 underline" onClick={() => { if (editingId) void recoverConflict(editingId, true); }}>Tải lại bản mới</button>
+        </section>}
         {successMessage && (
           <div role="status" className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -290,7 +330,8 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
             {editingId && (
               <button
                 type="button"
-                onClick={resetForm}
+                disabled={isSubmitting || recovering}
+                  onClick={resetForm}
                 className="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-200/70 rounded-lg transition-colors cursor-pointer"
               >
                 Hủy sửa
@@ -298,7 +339,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
             )}
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || recovering || hasConflict}
               className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
             >
               {isSubmitting ? (
@@ -354,6 +395,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
+                      disabled={isSubmitting || recovering}
                       onClick={() => handleEdit(cat)}
                       className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
                       title="Chỉnh sửa"
@@ -363,7 +405,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
                     <button
                       type="button"
                       onClick={() => handleDelete(cat)}
-                      disabled={cat.amenities_count > 0}
+                      disabled={isSubmitting || recovering || cat.amenities_count > 0}
                       className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                         cat.amenities_count > 0
                           ? 'text-neutral-300 cursor-not-allowed'
