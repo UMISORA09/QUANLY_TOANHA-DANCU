@@ -838,16 +838,35 @@ class SatisfactionSurveyTest extends TestCase
         $this->assertSame(2, $survey->fresh()->version);
     }
 
-    public function test_toggle_advances_current_version_even_when_input_model_is_stale(): void
+    public function test_toggle_rejects_stale_version_and_accepts_reviewed_version(): void
     {
         $survey = $this->createRegressionSurvey();
         $stale = SatisfactionSurvey::findOrFail($survey->id);
         $service = app(SatisfactionSurveyService::class);
         $service->updateSurvey($survey, ['version' => 1, 'title' => 'Nội dung mới'], $this->managerUser);
-        $result = $service->toggleActive($stale, false, $this->managerUser);
+        try {
+            $service->toggleActive($stale, false, $this->managerUser, 1);
+            $this->fail('A stale toggle must not change the current survey.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+        $this->assertTrue($survey->fresh()->is_active);
+        $this->assertSame(2, $survey->fresh()->version);
+        $result = $service->toggleActive($stale, false, $this->managerUser, 2);
         $this->assertSame(3, $result->version);
         $this->assertSame('Nội dung mới', $result->title);
         $this->assertFalse($result->is_active);
+    }
+
+    public function test_toggle_api_requires_version_and_rejects_stale_retry(): void
+    {
+        $survey = $this->createRegressionSurvey();
+        $url = '/api/v1/management/surveys/'.$survey->id.'/toggle-status';
+        $this->withToken($this->managerToken)->postJson($url, ['is_active' => false])->assertUnprocessable()->assertJsonValidationErrors('version');
+        $this->postJson($url, ['is_active' => false, 'version' => 1])->assertOk()->assertJsonPath('data.version', 2);
+        $this->postJson($url, ['is_active' => true, 'version' => 1])->assertConflict();
+        $this->assertFalse($survey->fresh()->is_active);
+        $this->assertSame(2, $survey->fresh()->version);
     }
 
     private function createRegressionSurvey(): SatisfactionSurvey
@@ -874,7 +893,7 @@ class SatisfactionSurveyTest extends TestCase
                 if ($action === 'update') {
                     $service->updateSurvey($survey, ['version' => 1, 'title' => 'Không được lưu'], $this->managerUser);
                 } else {
-                    $service->toggleActive($survey, false, $this->managerUser);
+                    $service->toggleActive($survey, false, $this->managerUser, 1);
                 }
                 $this->fail('Audit failure must abort the transaction.');
             } catch (\RuntimeException $exception) {
@@ -936,7 +955,7 @@ class SatisfactionSurveyTest extends TestCase
         DB::table('staff_profiles')->where('user_id', $this->managerUser->id)->update(['assigned_block_id' => null]);
         $this->withToken($this->managerToken)->getJson('/api/v1/management/surveys/'.$survey->id)->assertForbidden();
         $this->getJson('/api/v1/management/surveys/'.$survey->id.'/analytics')->assertForbidden();
-        $this->postJson('/api/v1/management/surveys/'.$survey->id.'/toggle-status', ['is_active' => false])->assertForbidden();
+        $this->postJson('/api/v1/management/surveys/'.$survey->id.'/toggle-status', ['is_active' => false, 'version' => 1])->assertForbidden();
         DB::table('staff_profiles')->where('user_id', $this->managerUser->id)->delete();
         $this->getJson('/api/v1/management/surveys')->assertForbidden();
     }
