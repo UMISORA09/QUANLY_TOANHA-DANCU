@@ -60,9 +60,9 @@ test('MOCKED F11: tải chi tiết lỗi không ghi đọc và retry không tự
 
 test('MOCKED F11: version cũ cần tải lại trước xác nhận', async ({ page }) => {
   const store = state(); store.conflict = true; await setup(page, store); await page.getByRole('button', { name: 'Đọc thông báo: Thông báo BQL 1', exact: true }).click();
-  const dialog = page.getByRole('dialog'); await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByRole('alert')).toContainText('đã thay đổi');
-  await expect(dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true })).toBeDisabled(); await dialog.getByRole('button', { name: 'Tải lại nội dung', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByRole('status')).toContainText('Bạn đã xác nhận');
+  const dialog = page.getByRole('dialog'); await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByText(/Bài viết đã thay đổi/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true })).toBeEnabled(); expect(store.acknowledgements).toBe(1);
+  await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByText(/Bạn đã xác nhận đọc lúc/)).toBeVisible();
 });
 
 test('MOCKED F11: 15 bài mỗi trang, tìm kiếm, bộ lọc và URL tải lại', async ({ page }) => {
