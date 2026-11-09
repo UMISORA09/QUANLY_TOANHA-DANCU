@@ -400,7 +400,7 @@ export const FinancialReportManagement: React.FC<FinancialReportManagementProps>
 
         // 1. Thử gọi API backend trước
         try {
-            const res = await fetch(`/api/v1/reports/financial/export-excel?${params.toString()}`, {
+            const res = await fetch(`/reports/financial/export-excel?${params.toString()}`, {
                 headers: {
                     Accept: 'text/csv, application/json',
                     Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
