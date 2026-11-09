@@ -10,7 +10,6 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -330,14 +329,9 @@ class AuthController extends Controller
             $token = trim(substr($authHeader, 7));
             $tokenHash = hash('sha256', $token);
 
-            try {
-                DB::table('user_sessions')
-                    ->where('refresh_token_hash', $tokenHash)
-                    ->orWhere('refresh_token_hash', $token)
-                    ->update(['is_revoked' => 1]);
-            } catch (\Throwable) {
-                // ignore
-            }
+            DB::table('user_sessions')
+                ->where('refresh_token_hash', $tokenHash)
+                ->update(['is_revoked' => 1]);
         }
 
         return response()->json([

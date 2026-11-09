@@ -8,6 +8,7 @@ use App\Models\TicketCategory;
 use App\Models\User;
 use App\Services\ManagerNotificationService;
 use App\Services\ResidentTicketService;
+use App\Services\Search\TicketSearch;
 use App\Services\TicketConflictException;
 use App\Services\TicketManagementService;
 use App\Services\TicketWorkflowService;
@@ -24,7 +25,14 @@ class TicketManagementController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate(['page' => 'nullable|integer|min:1', 'search' => 'nullable|string|max:100', 'status' => 'nullable|in:NEW,RECEIVED,IN_PROGRESS,RESOLVED,CLOSED,CANCELLED', 'priority' => 'nullable|in:LOW,MEDIUM,HIGH,URGENT', 'category_id' => 'nullable|uuid', 'block_id' => 'nullable|uuid']);
-        $query = $this->tickets->access->scope($request->user(), Ticket::query())->with(['category', 'apartment.block', 'creator:id,full_name', 'technician:id,full_name']);
+        $query = $this->tickets->access->scope($request->user(), Ticket::query())->with([
+            'category',
+            'apartment.block',
+            'creator:id,full_name',
+            'technician:id,full_name,email',
+            'attachments',
+            'rating',
+        ]);
         foreach (['status', 'priority', 'category_id'] as $key) {
             if (! empty($data[$key])) {
                 $query->where($key, $data[$key]);
@@ -34,7 +42,7 @@ class TicketManagementController extends Controller
             $query->whereHas('apartment', fn ($q) => $q->where('block_id', $data['block_id']));
         }
         if (! empty($data['search'])) {
-            $query->where(fn ($q) => $q->where('title', 'like', '%'.$data['search'].'%')->orWhere('ticket_number', 'like', '%'.$data['search'].'%')->orWhere('location', 'like', '%'.$data['search'].'%'));
+            app(TicketSearch::class)->filter($query, trim($data['search']));
         }
         $page = $query->orderByDesc('created_at')->orderBy('id')->paginate(15);
         $page->getCollection()->each(fn (Ticket $ticket) => $ticket->setAttribute('actions', $this->tickets->access->actions($request->user(), $ticket)));

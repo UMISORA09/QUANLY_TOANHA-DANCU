@@ -107,7 +107,9 @@ class User extends Authenticatable
     {
         $roleList = is_array($roles) ? $roles : [$roles];
 
-        $userRoleCodes = $this->roles->pluck('role_code')->toArray();
+        $userRoleCodes = $this->relationLoaded('roles')
+            ? $this->roles->pluck('role_code')->toArray()
+            : $this->roles()->pluck('role_code')->toArray();
 
         foreach ($roleList as $r) {
             if (in_array(strtoupper(trim($r)), $userRoleCodes, true)) {

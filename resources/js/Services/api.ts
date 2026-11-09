@@ -148,6 +148,24 @@ export interface AmenityListResponse {
   search_time_ms?: number;
   corrected_query?: string | null;
   is_fuzzy?: boolean;
+  engine?: string;
+  applied_query?: string;
+  is_corrected?: boolean;
+  fallback_reason?: string | null;
+}
+
+export interface AmenitySearchMetrics {
+  days: number;
+  requests: number;
+  zero_result_rate: number;
+  fallback_rate: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  engines: Array<{ engine: string; requests: number }>;
+  fallback_reasons: Array<{ fallback_reason: string; requests: number }>;
+  dirty_documents: number;
+  failed_documents: number;
+  last_synced_at: string | null;
 }
 
 export interface ResidentAmenityCatalog {
@@ -299,7 +317,6 @@ export interface ReceptionVisitorItem {
   } | null;
   created_at: string;
 }
-
 export interface ReceptionVisitorListResponse {
   success: boolean;
   data: ReceptionVisitorItem[];
@@ -416,7 +433,6 @@ export interface TimeSlot {
   is_active: boolean;
   created_at: string;
 }
-
 export interface Blackout {
   id: string;
   amenity_id: string;
@@ -427,7 +443,6 @@ export interface Blackout {
   created_by?: string | null;
   created_at: string;
 }
-
 export interface BlockOption {
   id: string;
   block_code: string;
@@ -536,6 +551,8 @@ class ApiService {
     window.dispatchEvent(new Event('AUTH_SESSION_CHANGED'));
   }
 
+  private inflightGetRequests = new Map<string, Promise<{ data: any; etag: string | null; notModified: boolean }>>();
+
   /**
    * Enhanced HTTP Request with ETag support & automatic header propagation
    */
@@ -546,6 +563,13 @@ class ApiService {
   ): Promise<{ data: T | null; etag: string | null; notModified: boolean }> {
     const url = `${API_BASE_URL}${endpoint}`;
     const token = this.getToken();
+
+    const isGet = !options.method || options.method.toUpperCase() === 'GET';
+    const dedupeKey = isGet && !etag && !options.signal && !options.headers && options.cache !== 'no-store' ? `GET:${url}:${token || ''}` : null;
+
+    if (dedupeKey && this.inflightGetRequests.has(dedupeKey)) {
+      return this.inflightGetRequests.get(dedupeKey)! as Promise<{ data: T | null; etag: string | null; notModified: boolean }>;
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -565,39 +589,51 @@ class ApiService {
       headers['If-None-Match'] = etag;
     }
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+    const executeFetch = async (): Promise<{ data: T | null; etag: string | null; notModified: boolean }> => {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers,
+        });
 
-      if (response.status === 304) {
-        return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        if (response.status === 304) {
+          return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        }
+
+        if (response.status === 204) {
+          return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
+        }
+
+        const newEtag = response.headers.get('ETag');
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
+          const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+          error.status = response.status;
+          error.data = data;
+          error.errors = data?.errors;
+          throw error;
+        }
+
+        return { data: data as T, etag: newEtag, notModified: false };
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return { data: null, etag: null, notModified: true };
+        }
+        throw err;
       }
+    };
 
-      if (response.status === 204) {
-        return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
-      }
+    const fetchPromise = executeFetch();
 
-      const newEtag = response.headers.get('ETag');
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
-        const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-        error.status = response.status;
-        error.data = data;
-        error.errors = data?.errors;
-        throw error;
-      }
-
-      return { data: data as T, etag: newEtag, notModified: false };
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        return { data: null, etag: null, notModified: true };
-      }
-      throw err;
+    if (dedupeKey) {
+      this.inflightGetRequests.set(dedupeKey, fetchPromise);
+      const clearInflight = () => { this.inflightGetRequests.delete(dedupeKey); };
+      void fetchPromise.then(clearInflight, clearInflight);
     }
+
+    return fetchPromise;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -620,12 +656,11 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ username: identifier, identifier, password }),
     });
-    if (res.access_token) {
-      this.setToken(res.access_token);
+    if (!res.access_token || !res.user?.id || !Array.isArray(res.user.roles) || res.user.roles.length === 0) {
+      throw new Error('Phản hồi đăng nhập không có phiên hoặc quyền hợp lệ.');
     }
-    if (res.user) {
-      this.setUser(res.user);
-    }
+    this.setToken(res.access_token);
+    this.setUser(res.user);
     amenityCache.clearAll();
     return res;
   }
@@ -952,7 +987,7 @@ class ApiService {
     const trimmed = query.trim();
     if (!trimmed || trimmed.length < 2) return [];
 
-    const cacheKey = `${type}:${trimmed.toLowerCase()}`;
+    const cacheKey = `${this.getUser()?.id ?? 'anonymous'}:${type}:${trimmed.toLowerCase()}`;
     const cached = suggestionCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < SUGGESTION_TTL) {
       return cached.data;
@@ -1299,6 +1334,11 @@ class ApiService {
   }
 
   // ================= BOOKINGS =================
+  async getAmenityBookingCodeMatches(amenityId: string, query: string, signal: AbortSignal): Promise<{ ids: string[] }> {
+    const params = new URLSearchParams({ q: query });
+    return this.request<{ ids: string[] }>(`/admin/amenities/${amenityId}/booking-code-matches?${params}`, { signal, cache: 'no-store' });
+  }
+
   async getAmenityBookings(amenityId: string, forceRefresh: boolean = false, signal?: AbortSignal): Promise<AmenityBooking[]> {
     const key = `amenity:${amenityId}:bookings`;
     const lookup = amenityCache.get<AmenityBooking[]>(key);
@@ -1388,8 +1428,22 @@ class ApiService {
     return this.request<any>(`/resident/overview${query}`);
   }
 
-  async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
-    return this.request('/resident/amenities', { signal, cache: 'no-store' });
+  async getResidentAmenities(signal?: AbortSignal, metadataOnly = false): Promise<ResidentAmenityCatalog> {
+    return this.request(`/resident/amenities${metadataOnly ? '?metadata_only=1' : ''}`, { signal, cache: 'no-store' });
+  }
+
+  async searchResidentAmenities(params: { q: string; apartment_id: string; category_id: string; page: number }, signal?: AbortSignal): Promise<AmenityListResponse> {
+    const query = new URLSearchParams({ q: params.q, apartment_id: params.apartment_id, page: String(params.page) });
+    if (params.category_id) query.set('category_id', params.category_id);
+    return this.request(`/resident/amenities/search?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentAmenity(id: string, apartmentId: string, signal?: AbortSignal): Promise<Amenity> {
+    return this.request(`/resident/amenities/${id}?apartment_id=${encodeURIComponent(apartmentId)}`, { signal, cache: 'no-store' });
+  }
+
+  async getAmenitySearchMetrics(signal?: AbortSignal): Promise<AmenitySearchMetrics> {
+    return this.request('/admin/amenity-search/metrics', { signal, cache: 'no-store' });
   }
 
   async getResidentAvailability(amenityId: string, date: string, apartmentId: string, signal?: AbortSignal): Promise<{ slots: ResidentAvailableSlot[] }> {
@@ -2252,18 +2306,21 @@ class ApiService {
   async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
   async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
   async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
-  async getManagerNotifications(page: number, category: string, unread: boolean, signal?: AbortSignal) {
+  async getManagerNotifications(page: number, category: string, unread: boolean, signal?: AbortSignal, summary = false) {
     const query = new URLSearchParams({ page: String(page), unread: unread ? '1' : '0' });
     if (category) query.set('category', category);
-    return this.request<{ items: ManagerNotification[]; unread_count: number; latest_id: string | null; page: number; total_pages: number }>(`/manager/notifications?${query}`, { signal, cache: 'no-store' });
+    if (summary) query.set('summary', '1');
+    return this.request<{ items: ManagerNotification[]; unread_count: number; latest_id: string | null; category_activity?: Record<string, string>; page: number; total_pages: number }>(`/manager/notifications?${query}`, { signal, cache: 'no-store' });
   }
+  async readAllManagerNotifications() { return this.request<{ unread_count: number }>('/manager/notifications/read-all', { method: 'POST', cache: 'no-store' }); }
   async readManagerNotification(id: string) { return this.request<{ unread_count: number }>(`/manager/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', cache: 'no-store' }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
 
-  async ticketImage(path: string, signal?: AbortSignal): Promise<Blob> {
-    if (!path.startsWith('/api/v1/resident/tickets/')) throw new Error('Đường dẫn ảnh không hợp lệ.');
+  async ticketImage(path: string, signal?: AbortSignal, anonymousToken?: string): Promise<Blob> {
+    if (!/^\/api\/v1\/(resident\/tickets|suggestions)\/[a-zA-Z0-9-]+\/attachments\/[a-zA-Z0-9-]+(?:\/content)?$/.test(path)) throw new Error('Đường dẫn ảnh không hợp lệ.');
     const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
-    const response = await fetch(url, { signal, headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    const response = await fetch(url, { signal, cache: 'no-store', headers: anonymousToken
+      ? { 'X-Anonymous-Token': anonymousToken } : { Authorization: `Bearer ${this.getToken() || ''}` } });
     if (!response.ok) throw new Error('Không tải được ảnh sự cố.');
     return response.blob();
   }
@@ -2338,6 +2395,14 @@ class ApiService {
     });
   }
 
+  async getTicketRating(id: string, signal?: AbortSignal) {
+    return this.request<TicketRatingResponse>(`/tickets/${id}/rating`, { signal, cache: 'no-store' });
+  }
+
+  async rateResidentTicket(id: string, payload: { version: number; rating_stars: number; review_comment: string }) {
+    return this.request<TicketRatingResponse>(`/resident/tickets/${id}/rating`, { method: 'POST', body: JSON.stringify(payload), cache: 'no-store' });
+  }
+
   async confirmResidentTicket(id: string, version: number, note?: string) {
     return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
       method: 'POST',
@@ -2368,6 +2433,11 @@ class ApiService {
   async getTicketDiscussionHistory(id: string, cursor?: string, signal?: AbortSignal) {
     return this.request<TicketDiscussionPage<TicketHistoryItem>>(`/tickets/${id}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { signal, cache: 'no-store' });
   }
+  async getResidentAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<ResidentAnnouncementPage>(`/resident/announcements?${params}`, { signal, cache: 'no-store' }); }
+  async getResidentAnnouncement(id: string, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}`, { signal, cache: 'no-store' }); }
+  async readResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/read`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+  async acknowledgeResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/acknowledge`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+
   async getAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<AnnouncementPage>(`/admin/announcements?${params}`, { signal, cache: 'no-store' }); }
   async getAnnouncementOptions(signal?: AbortSignal) { return this.request<AnnouncementOptions>('/admin/announcements/options', { signal, cache: 'no-store' }); }
   async getAnnouncement(id: string, signal?: AbortSignal) { return this.request<Announcement>(`/admin/announcements/${id}`, { signal, cache: 'no-store' }); }
@@ -2386,17 +2456,141 @@ class ApiService {
     } catch (error) { void this.discardAnnouncementUpload(ticket.token).catch(() => {}); throw error; }
   }
   async discardAnnouncementUpload(token: string) { return this.request('/admin/announcements/uploads/discard', { method: 'POST', body: JSON.stringify({ token }) }); }
-  async announcementAttachment(id: string, attachmentId: string): Promise<Blob> {
-    const response = await fetch(`${API_BASE_URL}/admin/announcements/${id}/attachments/${attachmentId}`, { cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+  async announcementAttachment(id: string, attachmentId: string, audience: 'admin' | 'resident' = 'admin', signal?: AbortSignal): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/${audience}/announcements/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`, { signal, cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
     if (!response.ok) throw new Error('Không tải được tệp. Kiểm tra phiên đăng nhập và quyền xem bài.');
     if (response.headers.get('content-type')?.includes('application/json')) {
       const result: { download_url: string } = await response.json();
       if (!result.download_url.startsWith('https://')) throw new Error('Địa chỉ tải không hợp lệ.');
-      const download = await fetch(result.download_url, { credentials: 'omit', cache: 'no-store' });
+      const download = await fetch(result.download_url, { signal, credentials: 'omit', cache: 'no-store' });
       if (!download.ok) throw new Error('Không tải được tệp từ kho riêng tư.');
       return download.blob();
     }
     return response.blob();
+  }
+
+  // ================= F12: HÒM THƯ GÓP Ý & PHÂN TÍCH CẢM XÚC =================
+  async getResidentSuggestionBoxes(): Promise<{ success: boolean; data: SuggestionBoxItem[] }> {
+    return this.request('/resident/suggestion-boxes');
+  }
+
+  async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string; replayed?: boolean }> {
+    return this.request('/resident/suggestions', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async getResidentSuggestions(params?: Record<string, any>): Promise<ResidentSuggestionListResponse> {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return this.request(`/resident/suggestions/my-suggestions${query}`);
+  }
+
+  async lookupAnonymousSuggestion(token: string): Promise<{ success: boolean; data: AnonymousSuggestionDetail }> {
+    return this.request(`/resident/suggestions/anonymous-lookup?token=${encodeURIComponent(token)}`);
+  }
+
+  async getManagementSuggestions(params?: Record<string, any>): Promise<ManagementSuggestionListResponse> {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return this.request(`/management/suggestions${query}`);
+  }
+
+  async getManagementSuggestionDetail(id: string): Promise<{ success: boolean; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}`);
+  }
+
+  async updateSuggestionStatus(id: string, payload: { status: string; version: number; rejection_reason?: string }): Promise<{ success: boolean; message: string; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async replySuggestion(id: string, payload: { official_response_text: string; version: number; status?: string }): Promise<{ success: boolean; message: string; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}/reply`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async analyzeSuggestionSentiment(suggestionId: string): Promise<{ success: boolean; status: string; message: string; data: SuggestionItem }> {
+    return this.request('/suggestions/ai-sentiment-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suggestion_id: suggestionId }),
+    });
+  }
+
+  async createSuggestionBox(payload: { box_name: string; block_id?: string | null; description?: string; is_open?: boolean }): Promise<{ success: boolean; message: string; data: SuggestionBoxItem }> {
+    return this.request('/management/suggestion-boxes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // ================= F13: KHAO SAT & THONG KE CSAT =================
+  async getResidentActiveSurveys(): Promise<{ status: string; data: ResidentSurveyItem[] }> {
+    return this.request('/resident/surveys/active');
+  }
+
+  async getResidentSurveyDetails(id: string): Promise<{ status: string; data: ResidentSurveyDetailResponse }> {
+    return this.request(`/resident/surveys/${id}`, { cache: 'no-store' });
+  }
+
+  async submitResidentSurvey(id: string, answers: Record<string, any>, idempotencyKey?: string): Promise<{ status: string; message: string; data: { response_id: string; submitted_at: string } }> {
+    return this.request(`/resident/surveys/${id}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers, idempotency_key: idempotencyKey }),
+    });
+  }
+
+  async getManagementSurveys(params?: Record<string, any>): Promise<ManagementSurveyListResponse> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '') {
+          query.append(key, String(val));
+        }
+      });
+    }
+    const qStr = query.toString();
+    return this.request(`/management/surveys${qStr ? `?${qStr}` : ''}`);
+  }
+
+  async getManagementSurveyKpis(): Promise<{ status: string; data: SurveyOverviewKpis }> {
+    return this.request('/management/surveys/kpis');
+  }
+
+  async createManagementSurvey(payload: CreateSurveyPayload): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request('/management/surveys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateManagementSurvey(id: string, payload: UpdateSurveyPayload): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async toggleManagementSurveyStatus(id: string, isActive: boolean): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}/toggle-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive }),
+    });
+  }
+
+  async getManagementSurveyAnalytics(id: string): Promise<{ status: string; data: SurveyAnalyticsData }> {
+    return this.request(`/management/surveys/${id}/analytics`);
   }
 
 }
@@ -2420,7 +2614,7 @@ export interface ManagedTicket extends TicketItem {
   actions: Record<string, boolean>;
 }
 export interface TicketNotification { id: string; title: string; body_message: string; deep_link_url: string; is_read: boolean | number; created_at: string; }
-export interface ManagerNotification extends TicketNotification { category: 'TICKET' | 'AMENITY_BOOKING'; }
+export interface ManagerNotification extends TicketNotification { category: 'TICKET' | 'AMENITY_BOOKING' | 'SUGGESTION'; }
 export interface TicketOptions {
   categories: TicketCategoryItem[];
   blocks: { id: string; block_name: string }[];
@@ -2450,7 +2644,6 @@ export interface TicketAttachmentItem {
   file_size_bytes?: number;
   created_at: string;
 }
-
 export interface TicketHistoryItem {
   id: string;
   ticket_id: string;
@@ -2708,6 +2901,7 @@ export default api;
 export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED' | 'SCHEDULED' | 'EXPIRED';
 export interface AnnouncementAttachment { id: string; file_name: string; mime_type: string; file_size_bytes: number; }
 export interface Announcement {
+  requires_acknowledgement: boolean;
   id: string; title: string; summary_excerpt: string | null; content_html: string; category: string;
   target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; target_block_id: string | null; target_floor_id: string | null;
   is_pinned: boolean; is_urgent: boolean; publish_at: string; expires_at: string | null; author_name?: string;
@@ -2721,3 +2915,311 @@ export interface AnnouncementOptions {
 }
 
 export interface AnnouncementUpload { token: string; transport: 'local' | 's3'; url: string; headers: Record<string, string>; expires_at: number; }
+
+export interface ResidentAnnouncement {
+  id: string; title: string; summary_excerpt: string | null; category: string;
+  target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; block_name: string | null; floor_name: string | null;
+  is_pinned: boolean; is_urgent: boolean; requires_acknowledgement: boolean; version: number;
+  publish_at: string; expires_at: string | null; read_at: string | null; acknowledged_at: string | null;
+  content_html?: string; attachments?: AnnouncementAttachment[];
+}
+export interface ResidentAnnouncementPage {
+  data: ResidentAnnouncement[]; current_page: number; last_page: number; total: number;
+  unread_count: number; categories: Record<string, string>; timezone: string;
+}
+
+// ================= F12 SUGGESTION INTERFACES =================
+export interface SuggestionBoxItem {
+  id: string;
+  box_name: string;
+  block_id: string | null;
+  description: string | null;
+  is_open: boolean;
+  created_at?: string;
+  block?: {
+    id: string;
+    block_name: string;
+    block_code: string;
+  } | null;
+}
+
+export interface SuggestionAttachmentItem {
+  id: string;
+  file_name: string;
+  storage_disk: string;
+  storage_path: string;
+  mime_type: string;
+  file_size_bytes: number;
+  url: string;
+}
+
+export interface SuggestionItem {
+  id: string;
+  box_id: string;
+  idempotency_key?: string | null;
+  resident_user_id?: string | null;
+  apartment_id?: string | null;
+  is_anonymous: boolean;
+  topic_category: 'AN_NINH' | 'VE_SINH' | 'BAI_XE' | 'TIEN_ICH' | 'THAI_DO_NHAN_VIEN' | 'KHAC' | string;
+  title: string;
+  content_text: string;
+  attached_files?: SuggestionAttachmentItem[];
+  status: 'RECEIVED' | 'REVIEWING' | 'ACCEPTED' | 'RESOLVED' | 'REJECTED' | string;
+  version: number;
+  official_response_text?: string | null;
+  rejection_reason?: string | null;
+  responded_by_staff_id?: string | null;
+  responded_at?: string | null;
+  ai_sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'VERY_ANGRY' | 'NOT_ANALYZED' | string;
+  ai_sentiment_score?: number | null;
+  created_at: string;
+  updated_at: string;
+  box?: SuggestionBoxItem;
+  resident_user?: {
+    id: string;
+    full_name: string;
+    phone_number?: string;
+  } | null;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id: string;
+  } | null;
+  responded_by_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
+}
+
+export interface SuggestionKpis {
+  total: number;
+  received: number;
+  reviewing: number;
+  accepted: number;
+  resolved: number;
+  rejected: number;
+  negative_sentiment: number;
+}
+
+export interface ManagementSuggestionListResponse {
+  success: boolean;
+  data: SuggestionItem[];
+  kpis: SuggestionKpis;
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface ResidentSuggestionListResponse {
+  success: boolean;
+  data: SuggestionItem[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface AnonymousSuggestionDetail {
+  id: string;
+  box_name?: string;
+  topic_category: string;
+  title: string;
+  content_text: string;
+  status: string;
+  attached_files?: SuggestionAttachmentItem[];
+  official_response_text?: string | null;
+  rejection_reason?: string | null;
+  responded_at?: string | null;
+  created_at: string;
+}
+
+// ================= F13 TYPES: KHAO SAT CSAT =================
+export interface SurveyQuestionItem {
+  id: string;
+  question_order: number;
+  question_text: string;
+  question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+  options?: string[];
+  options_json?: string[];
+  is_required: boolean;
+}
+
+export interface ResidentSurveyItem {
+  id: string;
+  survey_code: string;
+  title: string;
+  description?: string;
+  target_block_name: string;
+  start_date: string;
+  end_date: string;
+  days_left: number;
+  total_questions: number;
+  has_submitted: boolean;
+  is_open: boolean;
+}
+
+export interface ResidentSurveyDetailResponse {
+  survey: {
+    id: string;
+    survey_code: string;
+    title: string;
+    description?: string;
+    target_block_name: string;
+    start_date: string;
+    end_date: string;
+    is_open: boolean;
+    has_submitted: boolean;
+    submitted_at?: string | null;
+  };
+  questions: SurveyQuestionItem[];
+}
+
+export interface SatisfactionSurveyItem {
+  id: string;
+  survey_code: string;
+  title: string;
+  description?: string | null;
+  target_block_id?: string | null;
+  target_block?: { id: string; block_name: string } | null;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  computed_status: 'ACTIVE' | 'UPCOMING' | 'CLOSED' | 'DISABLED';
+  version: number;
+  created_at: string;
+  questions_count?: number;
+  responses_count?: number;
+  eligible_count?: number;
+  participation_rate_percent?: number | null;
+  questions?: SurveyQuestionItem[];
+}
+
+export interface SurveyOverviewKpis {
+  total_surveys: number;
+  active_surveys: number;
+  total_responses: number;
+  overall_average_rating: number;
+  overall_csat_percentage: number;
+  total_valid_ratings: number;
+  dissatisfied_count: number;
+}
+
+export interface QuestionRatingDistribution {
+  stars: number;
+  count: number;
+  percent: number;
+}
+
+export interface QuestionOptionDistribution {
+  option: string;
+  count: number;
+  percent: number;
+}
+
+export interface QuestionAnalyticsItem {
+  question_id: string;
+  question_order: number;
+  question_text: string;
+  question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+  is_required: boolean;
+  total_answers: number;
+  average_rating?: number;
+  csat_percentage?: number;
+  data_status?: 'AVAILABLE' | 'NO_DATA';
+  satisfied_count?: number;
+  neutral_count?: number;
+  dissatisfied_count?: number;
+  rating_distribution?: QuestionRatingDistribution[];
+  yes_count?: number;
+  no_count?: number;
+  yes_percentage?: number;
+  no_percentage?: number;
+  options_distribution?: QuestionOptionDistribution[];
+  text_responses?: Array<{ id: string; answer: string; created_at: string }>;
+  notice?: string;
+}
+
+export interface SurveyAnalyticsData {
+  survey: {
+    id: string;
+    survey_code: string;
+    title: string;
+    description?: string;
+    target_block_id?: string | null;
+    target_block_name: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    computed_status: string;
+    version: number;
+  };
+  kpis: {
+    total_responses: number;
+    eligible_apartments_count: number;
+    participation_rate_percent: number | null;
+    overall_average_rating: number;
+    overall_csat_percentage: number;
+    total_valid_ratings: number;
+    satisfied_ratings_count: number;
+    neutral_ratings_count: number;
+    dissatisfied_ratings_count: number;
+  };
+  question_stats: QuestionAnalyticsItem[];
+}
+
+export interface CreateSurveyPayload {
+  survey_code?: string;
+  title: string;
+  description?: string;
+  target_block_id?: string | null;
+  start_date: string;
+  end_date: string;
+  is_active?: boolean;
+  questions: Array<{
+    question_text: string;
+    question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+    options_json?: string[];
+    is_required?: boolean;
+    question_order?: number;
+  }>;
+}
+
+export interface UpdateSurveyPayload {
+  version: number;
+  title?: string;
+  description?: string;
+  target_block_id?: string | null;
+  start_date?: string;
+  end_date?: string;
+  is_active?: boolean;
+  questions?: Array<{
+    question_text: string;
+    question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+    options_json?: string[];
+    is_required?: boolean;
+    question_order?: number;
+  }>;
+}
+
+export interface ManagementSurveyListResponse {
+  status: string;
+  data: SatisfactionSurveyItem[];
+  kpis: SurveyOverviewKpis;
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface TicketRatingResponse {
+  data: { id: string; ticket_id: string; rating_stars: number; review_comment: string | null; created_at: string } | null;
+  can_rate: boolean;
+  ticket_version: number;
+}

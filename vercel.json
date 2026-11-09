@@ -12,6 +12,10 @@
   },
   "routes": [
     {
+      "src": "^/(?:index\\.html)?$",
+      "dest": "/api/index.php"
+    },
+    {
       "handle": "filesystem"
     },
     {

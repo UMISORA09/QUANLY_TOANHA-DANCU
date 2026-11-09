@@ -1,8 +1,11 @@
+import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CalendarDays, CheckCircle2, Clock, LayoutGrid, MapPin, RefreshCw, Search, Sparkles, Table2, Users, X } from 'lucide-react';
-import { Amenity, AmenityBookingPayment, ApiError, ResidentAmenityBooking, ResidentAmenityCatalog, ResidentAvailableSlot, ResidentBookingList, api } from '../Services/api';
+import { CalendarDays, Check, CheckCircle2, Clock, Copy, LayoutGrid, MapPin, RefreshCw, Sparkles, Table2, Users, X } from 'lucide-react';
+import { Amenity, AmenityListResponse, AmenityBookingPayment, ApiError, ResidentAmenityBooking, ResidentAmenityCatalog, ResidentAvailableSlot, ResidentBookingList, api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
 import { AmenityPaymentDialog, paymentStatusNames } from './AmenityPaymentDialog';
+import { AmenitySearchField, highlightAmenityText } from './Common/AmenitySearchField';
+import { useDebounce } from '../Hooks/useDebounce';
 
 const moneyFormatter = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 const dateFormatter = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' });
@@ -41,7 +44,13 @@ export function ResidentAmenityBookingPanel() {
   const [revision, setRevision] = useState(0);
   const [apartmentId, setApartmentId] = useState('');
   const [amenityId, setAmenityId] = useState('');
+  const [selectedAmenity, setSelectedAmenity] = useState<Amenity | null>(null);
+  const [searchResults, setSearchResults] = useState<AmenityListResponse | null>(null);
+  const [searchResultsKey, setSearchResultsKey] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<ApiError | null>(null);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search.trim(), 300);
   const [categoryId, setCategoryId] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [amenityPage, setAmenityPage] = useState(1);
@@ -67,23 +76,27 @@ export function ResidentAmenityBookingPanel() {
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<ResidentAmenityBooking | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  useNotificationDetailOpened('AMENITY', paymentBooking?.id ?? (!detailLoading ? detail?.id : null));
   const [modalError, setModalError] = useState<ApiError | null>(null);
   const [modalSuccess, setModalSuccess] = useState<string | null>(null);
   const [cancelMode, setCancelMode] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const copyCode = (code: string) => { void navigator.clipboard?.writeText(code); setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); };
   const dialog = useRef<HTMLDialogElement>(null);
   const registrationDialog = useRef<HTMLDialogElement>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const selectionVersion = useRef(0);
-  const amenity = catalog?.amenities.find((item) => item.id === amenityId);
+  const amenity = selectedAmenity?.id === amenityId ? selectedAmenity : null;
   const apartment = catalog?.apartments.find((item) => item.id === apartmentId);
-  const filteredAmenities = (catalog?.amenities || []).filter((item) => (!item.block_id || item.block_id === apartment?.block_id) && (!categoryId || item.category_id === categoryId) && item.amenity_name.toLocaleLowerCase('vi').includes(search.trim().toLocaleLowerCase('vi')));
-  const amenityTotalPages = Math.max(1, Math.ceil(filteredAmenities.length / 15));
+  const searchKey = `${apartmentId}:${categoryId}:${debouncedSearch}:${amenityPage}`;
+  const visibleAmenities = searchResultsKey === searchKey ? searchResults?.items ?? [] : [];
+  const amenityTotal = searchResultsKey === searchKey ? searchResults?.total ?? 0 : 0;
+  const amenityTotalPages = Math.max(1, searchResults?.total_pages ?? 1);
   const currentAmenityPage = Math.min(amenityPage, amenityTotalPages);
-  const visibleAmenities = filteredAmenities.slice((currentAmenityPage - 1) * 15, currentAmenityPage * 15);
   const slot = slots.find((item) => item.slot_id === slotId);
-  const catalogBlocked = catalogError?.status === 401 || catalogError?.status === 403;
+  const catalogBlocked = [catalogError?.status, searchError?.status].some((status) => status === 401 || status === 403);
 
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const paymentChanged = (payment: AmenityBookingPayment | null) => {
@@ -106,16 +119,31 @@ export function ResidentAmenityBookingPanel() {
     const controller = new AbortController();
     setCatalogLoading(true);
     setCatalogError(null);
-    api.getResidentAmenities(controller.signal).then((data) => {
+    api.getResidentAmenities(controller.signal, true).then((data) => {
       if (controller.signal.aborted || !data) return;
       setCatalog(data);
       setApartmentId((current) => data.apartments.some((item) => item.id === current) ? current : data.apartments.length === 1 ? data.apartments[0].id : '');
-      setAmenityId((current) => data.amenities.some((item) => item.id === current) ? current : '');
+      if (apartmentId && !data.apartments.some((item) => item.id === apartmentId)) setAmenityId('');
       setDate((current) => current && current >= data.today ? current : data.today);
     }).catch((error: ApiError) => { if (!controller.signal.aborted) setCatalogError(error); })
       .finally(() => { if (!controller.signal.aborted) setCatalogLoading(false); });
     return () => controller.abort();
   }, [catalogRevision]);
+
+  useEffect(() => {
+    if (!apartmentId || tab !== 'register' || search.trim() !== debouncedSearch) return;
+    const controller = new AbortController();
+    setSearchLoading(true); setSearchError(null);
+    api.searchResidentAmenities({ q: debouncedSearch, apartment_id: apartmentId, category_id: categoryId, page: amenityPage }, controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        if (amenityPage > data.total_pages) { setAmenityPage(data.total_pages); return; }
+        setSearchResults(data); setSearchResultsKey(searchKey);
+      })
+      .catch((error: ApiError) => { if (!controller.signal.aborted) setSearchError(error); })
+      .finally(() => { if (!controller.signal.aborted) setSearchLoading(false); });
+    return () => controller.abort();
+  }, [apartmentId, tab, search, debouncedSearch, categoryId, amenityPage, catalogRevision]);
 
   useEffect(() => {
     selectionVersion.current += 1;
@@ -185,7 +213,7 @@ export function ResidentAmenityBookingPanel() {
   }, [amenity, tab, catalogBlocked]);
 
   const closeRegistration = () => { if (!submittingRef.current) setAmenityId(''); };
-  const pickAmenity = (item: Amenity) => { setAmenityId(item.id); setDate(catalog!.today); setAttendees('1'); setNotes(''); };
+  const pickAmenity = (item: Amenity) => { setSelectedAmenity(item); setAmenityId(item.id); setDate(catalog!.today); setAttendees('1'); setNotes(''); };
   const fieldError = (name: string) => formError?.errors?.[name] && <p className="mt-1 text-xs text-rose-700" role="alert">{formError.errors[name][0]}</p>;
 
   const submit = async (event: React.FormEvent) => {
@@ -197,10 +225,9 @@ export function ResidentAmenityBookingPanel() {
     setFormError(null);
     let posting = false;
     try {
-      const currentCatalog = await api.getResidentAmenities();
+      const currentAmenity = await api.getResidentAmenity(amenity.id, apartmentId);
       if (version !== selectionVersion.current) return;
-      setCatalog(currentCatalog);
-      const currentAmenity = currentCatalog.amenities.find((item) => item.id === amenity.id);
+      setSelectedAmenity(currentAmenity);
       if (!currentAmenity || currentAmenity.rules_and_regulations !== amenity.rules_and_regulations) {
         setAcceptedRules(false);
         throw Object.assign(new Error('Tiện ích hoặc nội quy vừa thay đổi. Vui lòng kiểm tra thông tin mới trước khi xác nhận lại.'), { status: 409 });
@@ -321,17 +348,18 @@ export function ResidentAmenityBookingPanel() {
     </div>
     {tab === 'register' ? <>
       <ErrorNotice error={catalogError} retry={() => setCatalogRevision((value) => value + 1)} />
+      <ErrorNotice error={searchError} retry={() => setCatalogRevision((value) => value + 1)} />
       {catalogLoading && !catalog && <p role="status" className="p-8 text-center text-sm text-neutral-500">Đang tải tiện ích…</p>}
       {catalog && !catalogBlocked && <>
         {!catalog.apartments.length ? <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center text-sm text-neutral-600">Bạn chưa có hồ sơ cư trú còn hiệu lực. Vui lòng liên hệ ban quản lý để được hỗ trợ.</div> : <>
           <div className="booking-toolbar grid gap-3 rounded-2xl border border-neutral-200/90 bg-white/90 p-4 shadow-xs sm:grid-cols-3">
             <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-neutral-700">Căn hộ đăng ký<select aria-label="Căn hộ đăng ký" className={`${inputClass} resident-amenity-select h-11 min-w-0 font-normal`} disabled={submitting} value={apartmentId} onChange={(event) => { setApartmentId(event.target.value); setAmenityId(''); setAmenityPage(1); }}><option value="">Chọn căn hộ</option>{catalog.apartments.map((item) => <option key={item.id} value={item.id}>{item.apartment_number} · {item.block_name}</option>)}</select></label>
-            <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-neutral-700">Tìm tiện ích<div className="relative"><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" /><input className={`${inputClass} h-11 pl-9 font-normal`} value={search} onChange={(event) => { setSearch(event.target.value); setAmenityPage(1); }} placeholder="Tên tiện ích…" /></div></label>
+            <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-neutral-700">Tìm tiện ích<AmenitySearchField className={`${inputClass} h-11 font-normal`} value={search} onChange={(value) => { setSearch(value); setAmenityPage(1); }} suggestions={visibleAmenities} loading={searchLoading || search.trim() !== debouncedSearch} placeholder="Tên tiện ích…" /></label>
             <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-neutral-700">Danh mục<select className={`${inputClass} resident-amenity-select h-11 min-w-0 font-normal`} value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setAmenityPage(1); }}><option value="">Tất cả danh mục</option>{catalog.categories.map((item) => <option key={item.id} value={item.id}>{item.category_name}</option>)}</select></label>
           </div>
           {!apartmentId ? <p className="rounded-xl bg-neutral-100 p-4 text-sm text-neutral-600">Chọn căn hộ trước khi đăng ký tiện ích.</p> : <>
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-neutral-500">{filteredAmenities.length} tiện ích</p>
+              <p className="text-sm text-neutral-500">{amenityTotal} tiện ích</p>
               <button type="button" aria-label={`Chuyển sang dạng ${viewMode === 'grid' ? 'bảng' : 'lưới'}`} aria-pressed={viewMode === 'table'} onClick={() => setViewMode((current) => current === 'grid' ? 'table' : 'grid')} className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700">
                 {viewMode === 'grid' ? <Table2 aria-hidden="true" className="h-4 w-4" /> : <LayoutGrid aria-hidden="true" className="h-4 w-4" />}
                 {viewMode === 'grid' ? 'Dạng bảng' : 'Dạng lưới'}
@@ -340,14 +368,14 @@ export function ResidentAmenityBookingPanel() {
             {viewMode === 'grid' ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleAmenities.map((item) => <button key={item.id} type="button" disabled={submitting} aria-pressed={amenityId === item.id} onClick={() => pickAmenity(item)} className={`booking-amenity overflow-hidden rounded-2xl border bg-white text-left shadow-xs transition hover:shadow-md disabled:opacity-60 ${amenityId === item.id ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-neutral-200'}`}>
                 <div className="booking-cover relative flex h-28 items-center justify-center overflow-hidden bg-neutral-100"><Sparkles className="h-9 w-9 text-neutral-500" />{item.cover_image_url && <img alt="" loading="lazy" src={item.cover_image_url} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover" />}</div>
-                <div className="space-y-2 p-4"><div className="flex items-start justify-between gap-2"><h2 className="font-bold text-neutral-900">{item.amenity_name}</h2>{Boolean(item.requires_admin_approval) && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">Cần duyệt</span>}</div><p className="flex items-center gap-1.5 text-xs text-neutral-500"><MapPin className="h-3.5 w-3.5 shrink-0" />{item.location_detail}</p><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="flex items-center gap-1 text-neutral-500"><Users className="h-3.5 w-3.5" />{item.max_capacity_per_slot} người/khung giờ</span><strong className="text-emerald-700">{Number(item.hourly_rate) ? `${money(item.hourly_rate)}/giờ` : 'Miễn phí'}</strong></div></div>
+                <div className="space-y-2 p-4"><div className="flex items-start justify-between gap-2"><h2 className="font-bold text-neutral-900">{highlightAmenityText(item.amenity_name, debouncedSearch)}</h2>{Boolean(item.requires_admin_approval) && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">Cần duyệt</span>}</div><p className="flex items-center gap-1.5 text-xs text-neutral-500"><MapPin className="h-3.5 w-3.5 shrink-0" />{item.location_detail}</p><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="flex items-center gap-1 text-neutral-500"><Users className="h-3.5 w-3.5" />{item.max_capacity_per_slot} người/khung giờ</span><strong className="text-emerald-700">{Number(item.hourly_rate) ? `${money(item.hourly_rate)}/giờ` : 'Miễn phí'}</strong></div></div>
               </button>)}
-            </div> : filteredAmenities.length > 0 && <div role="region" aria-label="Bảng tiện ích, cuộn ngang để xem đầy đủ" tabIndex={0} className="table-scrollbar max-w-full overflow-x-auto rounded-2xl border border-neutral-200 bg-white shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700">
+            </div> : amenityTotal > 0 && <div role="region" aria-label="Bảng tiện ích, cuộn ngang để xem đầy đủ" tabIndex={0} className="table-scrollbar max-w-full overflow-x-auto rounded-2xl border border-neutral-200 bg-white shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700">
               <table className="w-full min-w-[720px] text-left text-sm">
                 <caption className="sr-only">Danh sách tiện ích</caption>
                 <thead className="border-b border-neutral-200 bg-neutral-50 text-xs text-neutral-600"><tr>{['Tiện ích', 'Vị trí', 'Sức chứa', 'Giá mỗi giờ', 'Xét duyệt', 'Đăng ký'].map((title) => <th key={title} scope="col" className="px-4 py-3 font-semibold">{title}</th>)}</tr></thead>
                 <tbody className="divide-y divide-neutral-100">{visibleAmenities.map((item) => <tr key={item.id} className="hover:bg-neutral-50">
-                  <th scope="row" className="px-4 py-4 font-semibold text-neutral-900">{item.amenity_name}</th>
+                  <th scope="row" className="px-4 py-4 font-semibold text-neutral-900">{highlightAmenityText(item.amenity_name, debouncedSearch)}</th>
                   <td className="px-4 py-4 text-neutral-600">{item.location_detail || '—'}</td>
                   <td className="px-4 py-4 text-neutral-600">{item.max_capacity_per_slot} người/khung giờ</td>
                   <td className="whitespace-nowrap px-4 py-4 font-semibold text-emerald-700">{Number(item.hourly_rate) ? money(item.hourly_rate) : 'Miễn phí'}</td>
@@ -356,9 +384,11 @@ export function ResidentAmenityBookingPanel() {
                 </tr>)}</tbody>
               </table>
             </div>}
-            {!filteredAmenities.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><p className="text-sm text-slate-600">Không có tiện ích phù hợp.</p><button type="button" className="mt-3 min-h-11 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-800" onClick={() => { setSearch(''); setCategoryId(''); setAmenityPage(1); }}>Xóa bộ lọc</button></div>}
-            {filteredAmenities.length > 0 && <nav aria-label="Phân trang tiện ích" className="flex flex-wrap items-center justify-between gap-3 text-sm text-neutral-500">
-              <span role="status">Trang {currentAmenityPage}/{amenityTotalPages} · {filteredAmenities.length} tiện ích</span>
+            {searchLoading && <p role="status" className="p-4 text-sm text-slate-600">Đang tìm tiện ích…</p>}
+            {searchResults?.is_corrected && searchResults.applied_query && searchResultsKey === searchKey && <p className="text-sm text-slate-600">Kết quả cho “{searchResults.applied_query}”.</p>}
+            {!searchLoading && !searchError && !amenityTotal && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><p className="text-sm text-slate-600">Không có tiện ích phù hợp.</p><button type="button" className="mt-3 min-h-11 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-800" onClick={() => { setSearch(''); setCategoryId(''); setAmenityPage(1); }}>Xóa bộ lọc</button></div>}
+            {amenityTotal > 0 && <nav aria-label="Phân trang tiện ích" className="flex flex-wrap items-center justify-between gap-3 text-sm text-neutral-500">
+              <span role="status">Trang {currentAmenityPage}/{amenityTotalPages} · {amenityTotal} tiện ích</span>
               {amenityTotalPages > 1 && <div className="flex gap-2">
                 <button type="button" disabled={currentAmenityPage <= 1} className="rounded-lg border border-neutral-200 bg-white px-3 py-2 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => setAmenityPage(currentAmenityPage - 1)}>Trước</button>
                 <button type="button" disabled={currentAmenityPage >= amenityTotalPages} className="rounded-lg border border-neutral-200 bg-white px-3 py-2 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => setAmenityPage(currentAmenityPage + 1)}>Sau</button>
@@ -422,7 +452,7 @@ export function ResidentAmenityBookingPanel() {
     </div>}
     <dialog ref={dialog} role={cancelMode ? 'alertdialog' : 'dialog'} aria-labelledby="resident-booking-dialog-title" onCancel={(event) => { event.preventDefault(); closeDetail(); }} className="m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-6 text-neutral-900 shadow-2xl backdrop:bg-neutral-950/50 ">
       {modalSuccess && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{modalSuccess}</p>}
-      {detail && <div className="space-y-4"><div className="flex justify-between gap-3"><h2 id="resident-booking-dialog-title" className="text-lg font-bold">{cancelMode ? 'Hủy đăng ký tiện ích' : 'Chi tiết đăng ký'}</h2><button type="button" aria-label="Đóng chi tiết" disabled={cancelling} onClick={closeDetail}><X className="h-5 w-5" /></button></div><p className="text-sm font-semibold">{detail.amenity_name} · {detail.booking_code}</p>{cancelMode && <p className="text-sm text-neutral-600">Bạn muốn hủy lịch này? Chỗ đã đặt sẽ được giải phóng sau khi xác nhận. Tiền đã chuyển cần liên hệ ban quản lý để đối soát hoặc hoàn tiền.</p>}{!cancelMode && <BookingStatus booking={detail} />}<dl className="space-y-2 text-sm"><div><dt className="text-neutral-400">Ngày giờ</dt><dd>{dateLabel(detail.booking_date)} · {detail.start_time} – {detail.end_time}</dd></div>{!cancelMode && <><div><dt className="text-neutral-400">Căn hộ · Số người</dt><dd>{detail.apartment_number} · {detail.attendee_count} người</dd></div><div><dt className="text-neutral-400">Phí sử dụng · Tiền cọc</dt><dd>{money(detail.total_amount)} · {money(detail.deposit_amount)}</dd></div>{detail.resident_notes && <div><dt className="text-neutral-400">Ghi chú</dt><dd className="whitespace-pre-wrap">{detail.resident_notes}</dd></div>}{detail.rejection_reason && <div><dt className="text-neutral-400">Lý do từ chối</dt><dd>{detail.rejection_reason}</dd></div>}<div><dt className="text-neutral-400">Hạn hủy</dt><dd>{new Date(detail.cancel_deadline).toLocaleString('vi-VN', { timeZone: catalog?.timezone || 'Asia/Ho_Chi_Minh' })}</dd></div></>}</dl>{detailLoading && <p role="status" className="text-sm text-neutral-500">Đang cập nhật thông tin…</p>}<ErrorNotice error={modalError} retry={() => openDetail(detail, cancelMode)} />{cancelMode && detail.can_cancel && <label className="block space-y-2 text-sm">Lý do hủy (không bắt buộc)<textarea className={inputClass} rows={3} maxLength={500} disabled={cancelling} value={reason} onChange={(event) => setReason(event.target.value)} /></label>}{cancelMode && !detail.can_cancel && <p className="text-sm text-amber-800">Lượt đăng ký không còn được phép hủy.</p>}<div className="flex justify-end gap-2"><button type="button" className="rounded-xl border px-4 py-2 text-sm" disabled={cancelling} onClick={closeDetail}>{cancelMode ? 'Giữ đăng ký' : 'Đóng'}</button>{detail.can_cancel && (cancelMode ? <button type="button" className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={detailLoading || cancelling || Boolean(modalError)} onClick={cancelBooking}>{cancelling ? 'Đang hủy…' : 'Xác nhận hủy'}</button> : <button type="button" className={primaryClass} disabled={detailLoading || Boolean(modalError)} onClick={() => setCancelMode(true)}>Hủy đăng ký</button>)}</div></div>}
+      {detail && <div className="space-y-4"><div className="flex justify-between gap-3"><h2 id="resident-booking-dialog-title" className="text-lg font-bold">{cancelMode ? 'Hủy đăng ký tiện ích' : 'Chi tiết đăng ký'}</h2><button type="button" aria-label="Đóng chi tiết" disabled={cancelling} onClick={closeDetail}><X className="h-5 w-5" /></button></div><div className="flex items-center gap-2"><p className="text-sm font-semibold">{detail.amenity_name} · <span className="font-mono text-emerald-700">{detail.booking_code}</span></p><button type="button" onClick={() => copyCode(detail.booking_code)} className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-50" title="Sao chép mã đặt chỗ">{copiedCode ? <><Check className="h-3 w-3 text-emerald-600" /> Đã chép</> : <><Copy className="h-3 w-3" /> Sao chép</>}</button></div>{cancelMode && <p className="text-sm text-neutral-600">Bạn muốn hủy lịch này? Chỗ đã đặt sẽ được giải phóng sau khi xác nhận. Tiền đã chuyển cần liên hệ ban quản lý để đối soát hoặc hoàn tiền.</p>}{!cancelMode && <BookingStatus booking={detail} />}<dl className="space-y-2 text-sm"><div><dt className="text-neutral-400">Ngày giờ</dt><dd>{dateLabel(detail.booking_date)} · {detail.start_time} – {detail.end_time}</dd></div>{!cancelMode && <><div><dt className="text-neutral-400">Căn hộ · Số người</dt><dd>{detail.apartment_number} · {detail.attendee_count} người</dd></div><div><dt className="text-neutral-400">Phí sử dụng · Tiền cọc</dt><dd>{money(detail.total_amount)} · {money(detail.deposit_amount)}</dd></div>{detail.resident_notes && <div><dt className="text-neutral-400">Ghi chú</dt><dd className="whitespace-pre-wrap">{detail.resident_notes}</dd></div>}{detail.rejection_reason && <div><dt className="text-neutral-400">Lý do từ chối</dt><dd>{detail.rejection_reason}</dd></div>}<div><dt className="text-neutral-400">Hạn hủy</dt><dd>{new Date(detail.cancel_deadline).toLocaleString('vi-VN', { timeZone: catalog?.timezone || 'Asia/Ho_Chi_Minh' })}</dd></div></>}</dl>{detailLoading && <p role="status" className="text-sm text-neutral-500">Đang cập nhật thông tin…</p>}<ErrorNotice error={modalError} retry={() => openDetail(detail, cancelMode)} />{cancelMode && detail.can_cancel && <label className="block space-y-2 text-sm">Lý do hủy (không bắt buộc)<textarea className={inputClass} rows={3} maxLength={500} disabled={cancelling} value={reason} onChange={(event) => setReason(event.target.value)} /></label>}{cancelMode && !detail.can_cancel && <p className="text-sm text-amber-800">Lượt đăng ký không còn được phép hủy.</p>}<div className="flex justify-end gap-2"><button type="button" className="rounded-xl border px-4 py-2 text-sm" disabled={cancelling} onClick={closeDetail}>{cancelMode ? 'Giữ đăng ký' : 'Đóng'}</button>{detail.can_cancel && (cancelMode ? <button type="button" className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={detailLoading || cancelling || Boolean(modalError)} onClick={cancelBooking}>{cancelling ? 'Đang hủy…' : 'Xác nhận hủy'}</button> : <button type="button" className={primaryClass} disabled={detailLoading || Boolean(modalError)} onClick={() => setCancelMode(true)}>Hủy đăng ký</button>)}</div></div>}
     </dialog>
     {paymentBooking && <AmenityPaymentDialog key={paymentBooking.id} booking={paymentBooking} onClose={() => setPaymentBooking(null)} onChanged={paymentChanged} />}
   </section>;

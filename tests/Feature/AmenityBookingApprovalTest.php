@@ -2,9 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SyncBookingCodeIndex;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\User;
+use App\Services\Search\BookingCodeSearch;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
@@ -17,6 +22,56 @@ class AmenityBookingApprovalTest extends TestCase
     {
         parent::setUp();
         $this->createBookingFixture();
+    }
+
+    public function test_docker_booking_code_search_indexes_only_code_and_enforces_scope(): void
+    {
+        $host = getenv('TEST_ELASTICSEARCH_URL');
+        if (! $host) {
+            $this->markTestSkipped('Set TEST_ELASTICSEARCH_URL to a disposable Elasticsearch instance.');
+        }
+        $this->assertStringEndsWith('_test', DB::getDatabaseName());
+        $index = 'cassavas_booking_test_'.strtolower(Str::random(12));
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.hosts' => [$host], 'search.drivers.elasticsearch.booking_codes_index' => $index]);
+        $url = "/api/v1/admin/amenities/{$this->amenityId}/booking-code-matches";
+        $resident = ['Authorization' => 'Bearer '.$this->residentToken];
+        $admin = ['Authorization' => 'Bearer '.$this->adminToken];
+
+        try {
+            $booking = $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload(), $resident)->assertCreated()->json('booking');
+            $code = $booking['booking_code'];
+            $typo = substr($code, 0, -1).(str_ends_with($code, 'A') ? 'B' : 'A');
+            $this->assertDatabaseHas('jobs', ['queue' => 'booking-code-search']);
+            $this->getJson($url.'?q='.$code, $resident)->assertForbidden();
+            $this->getJson($url.'?q='.$code, $admin)->assertOk()->assertExactJson(['ids' => [$booking['id']]]);
+            $this->getJson($url.'?q='.$typo, $admin)->assertOk()->assertExactJson(['ids' => []]);
+
+            $job = new SyncBookingCodeIndex($booking['id']);
+            $job->handle(app(BookingCodeSearch::class));
+            $this->getJson($url.'?q='.$typo, $admin)->assertOk()->assertExactJson(['ids' => [$booking['id']]]);
+            $this->getJson($url.'?q=BK-NOMATCH999999999', $admin)->assertOk()->assertExactJson(['ids' => []]);
+            $this->getJson($url.'?q=0900000000', $admin)->assertUnprocessable();
+            $source = Http::get(rtrim($host, '/').'/'.$index.'/_doc/'.$booking['id'])->throw()->json('_source');
+            $this->assertSame(['revision', 'is_deleted', 'booking_code'], array_keys($source));
+
+            $role = Role::firstOrCreate(['role_code' => 'BUILDING_MANAGER'], ['role_name' => 'QA manager']);
+            $permission = Permission::where('permission_code', 'AMENITY:UPDATE')->firstOrFail();
+            $role->permissions()->syncWithoutDetaching([$permission->id]);
+            $manager = User::factory()->create(['status' => 'ACTIVE']);
+            $manager->assignRole($role);
+            $managerHeaders = ['Authorization' => 'Bearer '.$this->sessionToken($manager)];
+            $this->getJson($url.'?q='.$code, $managerHeaders)->assertForbidden();
+            $otherBlock = (string) Str::uuid();
+            DB::table('blocks')->insert(['id' => $otherBlock, 'block_code' => 'QA-'.Str::random(8), 'block_name' => 'QA ngoài phạm vi']);
+            $department = (string) Str::uuid();
+            DB::table('departments')->insert(['id' => $department, 'department_code' => 'QA-'.Str::random(8), 'department_name' => 'QA']);
+            DB::table('staff_profiles')->insert(['id' => (string) Str::uuid(), 'user_id' => $manager->id, 'department_id' => $department, 'employee_code' => 'QA-'.Str::random(8), 'job_title' => 'Manager', 'hire_date' => today(), 'assigned_block_id' => $otherBlock]);
+            $this->getJson($url.'?q='.$typo, $managerHeaders)->assertOk()->assertExactJson(['ids' => []]);
+            DB::table('staff_profiles')->where('user_id', $manager->id)->update(['assigned_block_id' => $this->blockId]);
+            $this->getJson($url.'?q='.$typo, $managerHeaders)->assertOk()->assertExactJson(['ids' => [$booking['id']]]);
+        } finally {
+            Http::delete(rtrim($host, '/').'/'.$index);
+        }
     }
 
     /**

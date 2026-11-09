@@ -36,7 +36,7 @@ class SaveAnnouncementRequest extends FormRequest
             'remove_attachment_ids.*' => 'required|uuid|distinct',
             'status' => 'prohibited',
             'author_user_id' => 'prohibited',
-            'requires_acknowledgement' => 'prohibited',
+            'requires_acknowledgement' => 'sometimes|boolean',
         ];
     }
 }

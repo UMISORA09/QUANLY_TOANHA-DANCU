@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Middleware\AuthenticateBearer;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -18,57 +19,13 @@ class RbacService
      */
     public static function resolveUser(Request $request): ?object
     {
-        if ($user = $request->user()) {
-            return $user;
+        $user = $request->user() ?? Auth::user();
+        $token = trim((string) $request->bearerToken());
+        if (! $user && $token !== '') {
+            $user = AuthenticateBearer::resolveSessionUser($token);
         }
 
-        if (Auth::check()) {
-            return Auth::user();
-        }
-
-        // Kiểm tra Bearer token nếu có
-        $authHeader = $request->header('Authorization');
-        if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
-            $token = trim(substr($authHeader, 7));
-            if ($token === '') {
-                return null;
-            }
-
-            // Cơ chế token demo chỉ chấp nhận trong môi trường testing/local
-            if (app()->environment('testing', 'local')) {
-                if ($token === 'smart_token_admin_demo') {
-                    return User::where('username', 'admin')->first() ?? DB::table('users')->where('username', 'admin')->first();
-                }
-
-                if ($token === 'smart_token_manager_demo') {
-                    return User::where('username', 'manager')->first() ?? DB::table('users')->where('username', 'manager')->first();
-                }
-
-                if ($token === 'smart_token_reception_demo') {
-                    return User::where('username', 'receptionist')->first() ?? User::where('username', 'letan')->first() ?? DB::table('users')->where('username', 'receptionist')->first();
-                }
-
-                if ($token === 'smart_token_resident_demo') {
-                    return User::where('email', 'nguyenvanan@cassavas.vn')->first() ?? User::where('username', 'resident.owner')->first() ?? DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
-                }
-            }
-
-            $tokenHash = hash('sha256', $token);
-            $session = DB::table('user_sessions')
-                ->where(function ($q) use ($token, $tokenHash) {
-                    $q->where('refresh_token_hash', $tokenHash)
-                        ->orWhere('refresh_token_hash', $token);
-                })
-                ->where('is_revoked', 0)
-                ->where('expires_at', '>', now())
-                ->first();
-
-            if ($session) {
-                return User::find($session->user_id) ?? DB::table('users')->where('id', $session->user_id)->first();
-            }
-        }
-
-        return null;
+        return $user?->status === 'ACTIVE' ? $user : null;
     }
 
     /**

@@ -64,6 +64,19 @@ class AnnouncementManagementTest extends TestCase
         return $user;
     }
 
+    public function test_acknowledgement_configuration_preserves_legacy_updates(): void
+    {
+        $row = $this->create(['requires_acknowledgement' => true]);
+        $this->assertTrue($row['requires_acknowledgement']);
+        $payload = $this->payload();
+        unset($payload['id']);
+        $updated = $this->patchJson($this->url($row['id']), [...$payload, 'version' => $row['version']])->assertOk()->json();
+        $this->assertTrue($updated['requires_acknowledgement']);
+        $this->patchJson($this->url($row['id']), [...$payload, 'version' => $updated['version'], 'requires_acknowledgement' => false])->assertOk()->assertJsonPath('requires_acknowledgement', false);
+        $this->assertFalse($this->create()['requires_acknowledgement']);
+        $this->postJson($this->url(), [...$this->payload(), 'requires_acknowledgement' => 'invalid'])->assertUnprocessable();
+    }
+
     public function test_strict_auth_and_resident_and_technician_are_rejected(): void
     {
         $this->withHeader('Authorization', '')->getJson($this->url())->assertUnauthorized();

@@ -1,0 +1,15 @@
+.resident-announcements {
+  .announcement-ui__filters { align-items: end; }
+  &__unread { border-left: 4px solid #2563eb !important; }
+  &__files { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+  @media (min-width: 640px) { .announcement-ui__filters { grid-template-columns: 2fr 1fr 1fr; } }
+}
+.resident-announcement-notices {
+  border-top: 1px solid #e2e8f0; margin-top: 1rem; padding-top: 1rem;
+  h3 { font-size: .875rem; font-weight: 650; margin-bottom: .5rem; }
+  ul { display: grid; gap: .5rem; }
+  button { cursor: pointer; border: 1px solid #bfdbfe; border-radius: .75rem; padding: .75rem; background: #eff6ff; color: #1e3a8a; text-align: left; width: 100%; overflow-wrap: anywhere; }
+  button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  p { font-size: .75rem; color: #475569; }
+  time { display: block; font-size: .75rem; margin-top: .25rem; }
+}

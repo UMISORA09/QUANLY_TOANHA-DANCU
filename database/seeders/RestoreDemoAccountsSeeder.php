@@ -25,11 +25,11 @@ class RestoreDemoAccountsSeeder extends Seeder
 
         $demoUsers = [
             [
-                'id' => '01a140f5-9b83-73b5-8fa4-c12d377f729d',
+                'id' => '35f553dc-a206-4200-a3e5-8c054db0c9d6',
                 'username' => 'admin',
                 'email' => 'admin@cassavas.vn',
                 'phone_number' => '0900000001',
-                'full_name' => 'Quản Trị Viên Hệ Thống',
+                'full_name' => 'Admin Cassavas',
                 'gender' => 'MALE',
                 'role_code' => 'SUPER_ADMIN',
             ],

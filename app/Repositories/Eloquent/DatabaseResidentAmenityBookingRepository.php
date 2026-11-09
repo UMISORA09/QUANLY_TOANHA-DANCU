@@ -39,6 +39,15 @@ class DatabaseResidentAmenityBookingRepository
             ->orderBy('amenities.amenity_name')->get();
     }
 
+    /** @param array<int, string> $blockIds */
+    public function categories(array $blockIds): Collection
+    {
+        return DB::table('amenities')->join('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
+            ->where('amenities.is_active', 1)->whereNull('amenities.deleted_at')
+            ->where(fn (Builder $query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $blockIds))
+            ->select('amenity_categories.id', 'amenity_categories.category_name')->distinct()->orderBy('amenity_categories.category_name')->get();
+    }
+
     public function amenity(string $id, bool $lock = false): ?object
     {
         $query = DB::table('amenities')->where('id', $id);

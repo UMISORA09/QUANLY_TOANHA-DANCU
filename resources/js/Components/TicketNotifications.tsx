@@ -13,6 +13,7 @@ export function useTicketNotifications() {
   const previousUnread = useRef<number | null>(null);
   const initialized = useRef(false);
   const mutation = useRef(0);
+  const pendingRead = useRef<TicketNotification | null>(null);
   useEffect(() => {
     let active = true, running = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -52,14 +53,28 @@ export function useTicketNotifications() {
   const open = async (item: TicketNotification) => {
     const target = new URL(item.deep_link_url, location.origin);
     if (target.origin !== location.origin || !['/admin', '/quan-ly', '/cu-dan'].includes(target.pathname) || target.searchParams.get('tab') !== 'tickets') throw new Error('Liên kết thông báo sự cố không hợp lệ.');
-    mutation.current++;
-    await api.readTicketNotification(item.id);
-    setItems((current) => current.map((notice) => notice.id === item.id ? { ...notice, is_read: true } : notice));
-    if (!item.is_read) setUnread((count) => Math.max(0, count - 1));
+    if (!target.searchParams.get('ticket_id')) throw new Error('Thông báo không có mã sự cố.');
+    pendingRead.current = item;
     window.history.pushState({}, '', target.pathname + target.search);
     window.dispatchEvent(new PopStateEvent('popstate'));
     window.dispatchEvent(new Event('TICKET_NOTIFICATION_RECEIVED'));
   };
+  useEffect(() => {
+    const opened = (event: Event) => {
+      const detail = (event as CustomEvent<{ category: string; id: string }>).detail;
+      const item = pendingRead.current;
+      if (!item || detail.category !== 'TICKET' || new URL(item.deep_link_url, location.origin).searchParams.get('ticket_id') !== detail.id) return;
+      pendingRead.current = null;
+      const token = api.getAuthToken();
+      mutation.current++;
+      void api.readTicketNotification(item.id).then(() => {
+        if (api.getAuthToken() !== token) return;
+        retry();
+      }).catch((failure) => setError(failure.message || 'Không thể đánh dấu đã đọc.'));
+    };
+    window.addEventListener('NOTIFICATION_DETAIL_OPENED', opened);
+    return () => window.removeEventListener('NOTIFICATION_DETAIL_OPENED', opened);
+  }, []);
   return { items, unread, page, pages, setPage, error, loading, retry, open };
 }
 

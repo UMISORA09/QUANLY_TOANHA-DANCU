@@ -2,11 +2,12 @@
 
 namespace App\Jobs;
 
-use App\Services\Search\AlgoliaTaskPendingException;
-use App\Services\Search\Drivers\AlgoliaDriver;
+use App\Services\Search\AmenitySearchSyncState;
+use App\Services\Search\Drivers\ElasticsearchDriver;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class SyncAmenitySearchIndex implements ShouldQueue
 {
@@ -16,27 +17,27 @@ class SyncAmenitySearchIndex implements ShouldQueue
 
     public int $backoff = 30;
 
-    public function __construct(public string $amenityId, public ?int $taskId = null) {}
+    public function __construct(public string $amenityId) {}
 
     public function handle(): void
     {
-        try {
-            DB::transaction(function (): void {
-                $driver = new AlgoliaDriver(config('search.drivers.algolia', []));
-                if (($this->taskId ?? null) !== null) {
-                    $driver->waitForTask('amenities', $this->taskId, 5);
+        $states = app(AmenitySearchSyncState::class);
+        $snapshot = $states->snapshot($this->amenityId);
+        if ($snapshot === null) {
+            return;
+        }
 
-                    return;
-                }
-                $row = DB::table('amenities')->where('id', $this->amenityId)->lockForUpdate()->first();
-                if (! $row || $row->deleted_at !== null) {
-                    $driver->delete('amenities', $this->amenityId);
-                } else {
-                    $driver->index('amenities', $this->amenityId, (array) $row);
-                }
-            });
-        } catch (AlgoliaTaskPendingException $exception) {
-            self::dispatch($this->amenityId, $exception->taskId)->onConnection('database')->onQueue('amenity-search')->delay(30);
+        $version = $snapshot['version'];
+        try {
+            (new ElasticsearchDriver(config('search.drivers.elasticsearch')))
+                ->publish($this->amenityId, $snapshot['document'], $version);
+            $states->acknowledge($this->amenityId, $version);
+        } catch (Throwable $exception) {
+            DB::table('amenity_search_states')->where('amenity_id', $this->amenityId)->where('desired_version', $version)
+                ->whereColumn('published_version', '<', 'desired_version')
+                ->update(['status' => 'failed', 'error_code' => 'sync_failed', 'updated_at' => now()]);
+
+            throw $exception;
         }
     }
 }

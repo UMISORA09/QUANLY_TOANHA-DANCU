@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Services\RbacService;
 use App\Services\ReceptionVisitorService;
 use Illuminate\Http\JsonResponse;

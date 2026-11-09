@@ -1,12 +1,15 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ isset($canonical) ? 'vi' : str_replace('_', '-', app()->getLocale()) }}">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
-        <meta name="description" content="SMART CASSAVAS - Nền tảng quản lý tòa nhà thông minh, kết nối cư dân, ban quản lý, lễ tân và admin trong một hệ thống rõ ràng và an toàn.">
-
-        <title>{{ config('app.name', 'SMART CASSAVAS') }} - Nền tảng quản lý tòa nhà</title>
+        @if (isset($canonical))
+            @include('public.head')
+        @else
+            <meta name="robots" content="noindex, nofollow">
+            <title>SMART CASSAVAS - Nền tảng quản lý tòa nhà</title>
+        @endif
 
         <link rel="dns-prefetch" href="//fonts.googleapis.com">
         <link rel="dns-prefetch" href="//fonts.gstatic.com">
@@ -23,6 +26,6 @@
         @vite(['resources/css/app.css', 'resources/js/app.tsx'])
     </head>
     <body class="antialiased bg-[#FAFAFA] text-[#171717] min-h-screen">
-        <div id="app"></div>
+        <div id="app">@isset($html)<main class="public-guide mx-auto max-w-4xl px-6 py-12">{!! $html !!}</main>@endisset</div>
     </body>
 </html>

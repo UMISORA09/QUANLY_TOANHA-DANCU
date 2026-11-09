@@ -40,7 +40,7 @@ class CurrentMonthInvoiceDetailTest extends TestCase
             'status' => 'ACTIVE',
         ]);
 
-        $this->token = 'smart_token_'.$this->residentUser->id.'_invoice';
+        $this->token = $this->issueTestBearerToken($this->residentUser);
 
         $this->block = Block::create([
             'block_code' => 'T-A',

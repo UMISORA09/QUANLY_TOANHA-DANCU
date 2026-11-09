@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Services\Search\AnnouncementSearch;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -141,13 +142,17 @@ class AnnouncementService
                     $row = $this->query($user)->where('id', $id)->lockForUpdate()->firstOrFail();
                     $this->mutate($user, $row, 'UPDATE', (int) $data['version']);
                     $version = (int) $row->version + 1;
+                    if (array_key_exists('requires_acknowledgement', $data)) {
+                        $values['requires_acknowledgement'] = (bool) $data['requires_acknowledgement'];
+                    }
                     DB::table('announcements')->where('id', $id)->update([...$values, 'version' => $version]);
                 } else {
                     $id = $data['id'];
                     abort_if(DB::table('announcements')->where('id', $id)->exists(), 409, 'Mã bài viết đã tồn tại. Hãy tải lại danh sách để mở bài đã lưu.');
-                    DB::table('announcements')->insert([...$values, 'id' => $id, 'author_user_id' => $user->id, 'status' => 'DRAFT', 'version' => 1, 'created_at' => now()]);
+                    DB::table('announcements')->insert([...$values, 'requires_acknowledgement' => (bool) ($data['requires_acknowledgement'] ?? false), 'id' => $id, 'author_user_id' => $user->id, 'status' => 'DRAFT', 'version' => 1, 'created_at' => now()]);
                 }
                 $this->files($id, $data, $created, $user);
+                app(AnnouncementSearch::class)->queue($id);
                 $this->audit($user, $id, $id === ($data['id'] ?? null) ? 'INSERT' : 'UPDATE', 'Lưu nội dung bảng tin');
 
                 return $id;
@@ -292,6 +297,7 @@ class AnnouncementService
                 $values['deleted_at'] = now();
             }
             DB::table('announcements')->where('id', $id)->update($values);
+            app(AnnouncementSearch::class)->queue($id);
             $this->audit($user, $id, 'UPDATE', $action.': '.($data['reason'] ?? 'Đăng bảng tin'));
         });
     }

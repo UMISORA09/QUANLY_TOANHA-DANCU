@@ -25,7 +25,8 @@ test('API thật QA: soạn, tải PDF private, bỏ tệp, hẹn đăng, gỡ v
   await page.getByLabel('Tiêu đề', { exact: true }).fill('Browser QA bảo trì thang máy'); await page.getByRole('textbox', { name: 'Nội dung bảng tin', exact: true }).fill('Kính gửi cư dân, vui lòng theo dõi lịch bảo trì.');
   await page.getByLabel('Tệp đính kèm', { exact: true }).setInputFiles({ name: 'rules.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF'), Buffer.alloc(5 * 1024 * 1024 - 46, 32)]) });
   await page.getByRole('button', { name: 'Xem trước', exact: true }).click(); await expect(page.locator('.announcement-content')).toContainText('Kính gửi cư dân'); await page.getByRole('button', { name: 'Quay lại bản nhập', exact: true }).click();
-  const created = page.waitForResponse((response) => response.url().endsWith('/admin/announcements') && response.request().method() === 'POST');
+  // Saving waits for upload preparation, the 5 MB transfer and then draft creation.
+  const created = page.waitForResponse((response) => response.url().endsWith('/admin/announcements') && response.request().method() === 'POST', { timeout: 120000 });
   await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); expect((await created).status()).toBe(201);
   const downloaded = page.waitForResponse((response) => response.url().includes('/attachments/'));
   await page.getByRole('button', { name: 'Tải rules.pdf', exact: true }).click(); expect((await downloaded).status()).toBe(200);

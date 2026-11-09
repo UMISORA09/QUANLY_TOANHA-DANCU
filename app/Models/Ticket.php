@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Services\Search\TicketSearch;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Ticket extends Model
@@ -38,6 +40,12 @@ class Ticket extends Model
         'actual_repair_cost',
         'invoice_id',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(fn (Ticket $ticket) => app(TicketSearch::class)->queue($ticket->id));
+        static::deleted(fn (Ticket $ticket) => app(TicketSearch::class)->queue($ticket->id));
+    }
 
     protected function casts(): array
     {
@@ -84,5 +92,15 @@ class Ticket extends Model
     public function history(): HasMany
     {
         return $this->hasMany(TicketHistory::class, 'ticket_id')->orderBy('created_at', 'asc');
+    }
+
+    public function rating(): HasOne
+    {
+        return $this->hasOne(TicketRating::class, 'ticket_id');
+    }
+
+    public function ratings(): HasMany
+    {
+        return $this->hasMany(TicketRating::class, 'ticket_id');
     }
 }

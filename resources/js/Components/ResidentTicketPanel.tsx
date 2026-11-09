@@ -1,3 +1,5 @@
+import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
+import { TicketRating } from './TicketRating';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TicketImage } from './TicketImage';
 import { TicketDiscussion } from './TicketDiscussion';
@@ -175,6 +177,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   // Selected Ticket for Detail View
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [detailTicket, setDetailTicket] = useState<TicketItem | null>(null);
+  useNotificationDetailOpened('TICKET', detailTicket?.id, detailTicket);
   const [isLoadingDetail, setIsLoadingDetail] = useState<boolean>(false);
 
   // Lightbox xem ảnh lớn
@@ -1530,6 +1533,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
             )}
           </div>
 
+          {detailTicket.status === 'CLOSED' && <TicketRating key={detailTicket.id} ticketId={detailTicket.id} version={detailTicket.version} />}
           <TicketDiscussion key={detailTicket.id} ticketId={detailTicket.id} active={!isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId && !previewImage} />
         </div>
       )}

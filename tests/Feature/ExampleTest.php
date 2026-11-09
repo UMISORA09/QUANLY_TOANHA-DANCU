@@ -2,8 +2,7 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Illuminate\Foundation\Testing\TestCase;
 
 class ExampleTest extends TestCase
 {
@@ -13,10 +12,11 @@ class ExampleTest extends TestCase
     public function test_the_application_returns_a_successful_response(): void
     {
         $this->withoutVite();
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('a', 32)), 'session.driver' => 'array']);
 
         $response = $this->get('/');
 
-        $response->assertRedirect('/home');
+        $response->assertOk()->assertSee('SMART CASSAVAS');
 
         $homeResponse = $this->get('/home');
         $homeResponse->assertStatus(200);

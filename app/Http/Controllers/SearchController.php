@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\AmenityService;
 use App\Services\RbacService;
 use App\Services\Search\AiVectorSearchService;
+use App\Services\Search\AmenitySearchMetrics;
 use App\Services\Search\SearchCacheService;
 use App\Services\Search\SearchManager;
 use App\Services\Search\VietnameseNormalizer;
-use App\Services\Search\VietnameseSpellCorrector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class SearchController extends Controller
 {
@@ -28,7 +31,7 @@ class SearchController extends Controller
     public function searchAmenities(Request $request): JsonResponse
     {
         // 1. Kiểm tra RBAC: Người dùng phải có quyền AMENITY:VIEW nếu có định danh
-        $user = RbacService::resolveUser($request);
+        $user = $request->user();
         if ($user && ! RbacService::hasPermission($user, 'AMENITY:VIEW')) {
             return response()->json([
                 'message' => 'Bạn không có quyền xem tiện ích (AMENITY:VIEW)',
@@ -39,26 +42,17 @@ class SearchController extends Controller
         $rawQuery = (string) ($request->query('q') ?? $request->query('query') ?? $request->query('search') ?? '');
         $page = max((int) $request->query('page', 1), 1);
         $limit = max(min((int) ($request->query('limit') ?? $request->query('per_page') ?? 10), 100), 1);
-        $categoryId = $request->query('category_id');
-        $blockId = $request->query('block_id');
-        $isActive = $request->query('is_active');
+        $filtersArray = $this->amenityService->scopedFilters($request);
         $sort = (string) $request->query('sort', 'relevance');
 
         // Chuẩn hóa truy vấn và sửa lỗi gõ tiếng Việt
         $norm = VietnameseNormalizer::normalize($rawQuery);
-        $correction = VietnameseSpellCorrector::correctQuery($rawQuery);
         $normalizedQuery = $norm['normalized'] !== '' ? $norm['normalized'] : 'empty';
 
         // Xây dựng Cache key: amenity_search:{normalized_query}:{filters}:{page}
-        $filtersArray = array_filter([
-            'category_id' => $categoryId ?: null,
-            'block_id' => $blockId ?: null,
-            'is_active' => $isActive !== null ? $isActive : null,
-        ], fn ($v) => $v !== null && $v !== '');
-
         $filterString = ! empty($filtersArray) ? md5(json_encode($filtersArray)) : 'none';
         $driverName = (string) config('search.default', 'smart');
-        $context = hash('sha256', json_encode([$rawQuery, $limit, $sort, $driverName, $user?->id]));
+        $context = hash('sha256', json_encode([3, $rawQuery, $limit, $sort, $driverName, config('search.drivers.elasticsearch.amenities_index'), $user?->id]));
         $cacheKey = "amenity_search:{$normalizedQuery}:{$filterString}:{$page}:{$context}";
 
         $startTime = microtime(true);
@@ -66,11 +60,11 @@ class SearchController extends Controller
         $load = function () use (
             $rawQuery,
             $norm,
-            $correction,
             $filtersArray,
             $page,
             $limit,
             $sort,
+            $user,
             $startTime
         ) {
             $driver = $this->searchManager->driver();
@@ -78,6 +72,7 @@ class SearchController extends Controller
                 'page' => $page,
                 'per_page' => $limit,
                 'sort' => $sort,
+                'cache_context' => $user?->id,
             ]);
 
             $items = $searchResult->items;
@@ -88,19 +83,33 @@ class SearchController extends Controller
                 'data' => $items,
                 'query' => $rawQuery,
                 'normalized_query' => $norm['normalized'],
-                'corrected_query' => $searchResult->metadata['corrected_query'] ?? $correction['corrected'],
+                'corrected_query' => $searchResult->extra['corrected_query'] ?? $rawQuery,
+                'applied_query' => $searchResult->extra['applied_query'] ?? $searchResult->extra['corrected_query'] ?? $rawQuery,
+                'is_corrected' => $searchResult->extra['is_corrected'] ?? (($searchResult->extra['corrected_query'] ?? $rawQuery) !== $rawQuery),
+                'fallback_reason' => $searchResult->extra['fallback_reason'] ?? null,
+                'page' => $page, 'per_page' => $limit, 'total_pages' => $searchResult->getTotalPages(),
                 'total' => $total,
                 'engine' => $searchResult->engine,
                 'search_time_ms' => round($elapsedMs, 2),
             ];
         };
-        $responsePayload = $driverName === 'algolia' ? $load() : SearchCacheService::remember($cacheKey, 60, $load);
+        $isHit = Cache::has($cacheKey);
+        $request->attributes->set('x_cache_status', $isHit ? 'HIT' : 'MISS');
+        $responsePayload = SearchCacheService::remember($cacheKey, 300, $load);
 
         // Nếu lấy từ Cache, cập nhật search_time_ms phản ánh thời gian thực (< 1ms)
         $totalElapsed = (microtime(true) - $startTime) * 1000;
         $responsePayload['search_time_ms'] = round($totalElapsed, 2);
+        app(AmenitySearchMetrics::class)->record('manager_search', $responsePayload, $totalElapsed);
 
-        return response()->json($responsePayload);
+        return response()->json($responsePayload)->header('Cache-Control', 'private, no-store');
+    }
+
+    public function metrics(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->hasRole(['ADMIN', 'SUPER_ADMIN', 'SUPER_ADMI']), 403);
+
+        return response()->json(app(AmenitySearchMetrics::class)->summary())->header('Cache-Control', 'private, no-store');
     }
 
     /**
@@ -109,23 +118,33 @@ class SearchController extends Controller
      */
     public function suggestions(Request $request): JsonResponse
     {
+        $request->validate(['q' => 'nullable|string|max:200', 'limit' => 'nullable|integer|min:1|max:20', 'type' => 'nullable|in:amenities']);
         $query = (string) $request->query('q', '');
         $type = (string) $request->query('type', 'amenities');
         abort_unless($type === 'amenities', 422, 'Only amenities suggestions are supported here.');
-        $limit = max(min((int) $request->query('limit', 5), 20), 1);
-
+        $limit = (int) $request->query('limit', 5);
+        $filters = $this->amenityService->scopedFilters($request);
         $startTime = microtime(true);
-        $suggestions = $this->searchManager->suggest($type, $query, $limit);
-        $elapsedMs = (microtime(true) - $startTime) * 1000;
+        $suggestions = [];
+        if (mb_strlen(trim($query)) >= 2) {
+            $result = $this->searchManager->search('amenities', $query, $filters, [
+                'page' => 1, 'per_page' => $limit, 'cache_context' => $request->user()->id, 'request_kind' => 'manager_suggestions',
+            ]);
+            $suggestions = array_map(static function (array|object $item): array {
+                $item = (object) $item;
+
+                return [
+                    'id' => $item->id, 'label' => $item->amenity_name, 'code' => $item->amenity_code,
+                    'category' => $item->category_name ?? null, 'block' => $item->block_name ?? null,
+                    'type' => 'amenity', 'score' => $item->relevance_score ?? 1,
+                ];
+            }, $result->items);
+        }
 
         return response()->json([
             'suggestions' => $suggestions,
-            'meta' => [
-                'query' => $query,
-                'count' => count($suggestions),
-                'search_time_ms' => round($elapsedMs, 2),
-            ],
-        ]);
+            'meta' => ['query' => $query, 'count' => count($suggestions), 'search_time_ms' => round((microtime(true) - $startTime) * 1000, 2)],
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     /**
@@ -134,16 +153,28 @@ class SearchController extends Controller
      */
     public function aiKnowledge(Request $request): JsonResponse
     {
-        $query = (string) $request->query('q', '');
-        $buildingId = $request->query('building_id');
-        $categories = $request->has('categories') ? explode(',', (string) $request->query('categories')) : [];
-        $limit = max(min((int) $request->query('limit', 5), 20), 1);
-
-        // Security check: Cư dân chỉ được phép tìm kiếm tài liệu thuộc tòa nhà của họ hoặc tài liệu chung
+        $data = $request->validate([
+            'q' => 'nullable|string|max:500', 'building_id' => 'nullable|uuid',
+            'categories' => 'nullable|string|max:500', 'limit' => 'nullable|integer|min:1|max:20',
+        ]);
+        $query = (string) ($data['q'] ?? '');
+        $buildingId = $data['building_id'] ?? null;
+        $categories = array_values(array_filter(array_map('trim', explode(',', $data['categories'] ?? ''))));
+        $limit = (int) ($data['limit'] ?? 5);
         $user = $request->user();
-        if ($user && ! empty($user->building_id) && empty($buildingId)) {
-            $buildingId = $user->building_id;
+        $allowedBlockIds = null;
+        if (! $user->isSuperAdmin() && ! $user->hasRole('ADMIN')) {
+            if ($user->hasRole('BUILDING_MANAGER')) {
+                $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
+                abort_unless($profile, 403, 'Chưa có hồ sơ nhân viên và phạm vi tòa nhà.');
+                abort_if($user->hasRole('BUILDING_MANAGER') && $profile->assigned_block_id === null, 403, 'Chưa được phân công tòa nhà.');
+                $allowedBlockIds = $profile->assigned_block_id === null ? null : [$profile->assigned_block_id];
+            } else {
+                $allowedBlockIds = app(DatabaseResidentAmenityBookingRepository::class)->apartments($user->id)->pluck('block_id')->unique()->values()->all();
+                abort_if($allowedBlockIds === [], 403, 'Bạn chưa có hồ sơ cư trú còn hiệu lực.');
+            }
         }
+        abort_if($buildingId !== null && $allowedBlockIds !== null && ! in_array($buildingId, $allowedBlockIds, true), 403);
 
         $startTime = microtime(true);
         $results = $this->aiVectorSearchService->hybridSearch(
@@ -151,7 +182,8 @@ class SearchController extends Controller
             null,
             $buildingId,
             $categories,
-            $limit
+            $limit,
+            $allowedBlockIds
         );
         $elapsedMs = (microtime(true) - $startTime) * 1000;
 
@@ -163,6 +195,6 @@ class SearchController extends Controller
                 'building_id' => $buildingId,
                 'search_time_ms' => round($elapsedMs, 2),
             ],
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 }

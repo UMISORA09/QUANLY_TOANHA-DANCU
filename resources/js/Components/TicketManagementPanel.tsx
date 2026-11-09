@@ -1,3 +1,5 @@
+import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
+import { TicketRating } from './TicketRating';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, ManagedTicket, TicketOptions } from '../Services/api';
 import { CustomSelect } from './Common/CustomSelect';
@@ -48,6 +50,7 @@ export function TicketManagementPanel() {
   const [options, setOptions] = useState<TicketOptions | null>(null);
   const [rows, setRows] = useState<ManagedTicket[]>([]);
   const [selected, setSelected] = useState<ManagedTicket | null>(null);
+  useNotificationDetailOpened('TICKET', selected?.id, selected);
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState('');
   const [filters, setFilters] = useState({ status: '', priority: '', category_id: '', block_id: '' });
@@ -433,6 +436,7 @@ export function TicketManagementPanel() {
             ))}
           </div>
 
+          {selected.status === 'CLOSED' && <TicketRating key={selected.id} ticketId={selected.id} version={selected.version} />}
           <TicketDiscussion key={selected.id} ticketId={selected.id} />
         </div>
       )}

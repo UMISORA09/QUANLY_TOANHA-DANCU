@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../Services/api';
 
-export function TicketImage({ url, name, onPreview }: { url: string; name: string; onPreview: (url: string) => void }) {
+export function TicketImage({ url, name, onPreview, anonymousToken }: { url: string; name: string; onPreview: (url: string) => void; anonymousToken?: string }) {
   const [src, setSrc] = useState('');
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -10,13 +10,13 @@ export function TicketImage({ url, name, onPreview }: { url: string; name: strin
     let objectUrl = '';
     setSrc('');
     setFailed(false);
-    api.ticketImage(url, controller.signal).then((blob) => {
+    api.ticketImage(url, controller.signal, anonymousToken).then((blob) => {
       if (controller.signal.aborted) return;
       objectUrl = URL.createObjectURL(blob);
       setSrc(objectUrl);
     }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [url, attempt]);
+  }, [url, attempt, anonymousToken]);
   if (failed) {
     return (
       <div className="grid aspect-video place-content-center gap-2 rounded-2xl border border-rose-200/80 bg-rose-50/50 p-3 text-center shadow-2xs">

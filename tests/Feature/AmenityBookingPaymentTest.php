@@ -301,13 +301,14 @@ class AmenityBookingPaymentTest extends TestCase
 
     public function test_webhook_requires_configuration_valid_signature_and_fresh_timestamp(): void
     {
-        $payload = $this->webhookPayload($this->createPaidAmenityBooking());
+        $id = $this->createPaidAmenityBooking();
+        $payload = $this->webhookPayload($id);
         config(['amenity_payments.sepay_webhook_secret' => null]);
         $this->sendWebhook($payload)->assertStatus(503);
         config(['amenity_payments.sepay_webhook_secret' => 'qa-secret']);
         $this->sendWebhook($payload, signingSecret: 'wrong')->assertUnauthorized();
         $this->sendWebhook($payload, now()->timestamp - 301)->assertUnauthorized();
-        $this->assertDatabaseCount('amenity_booking_payments', 1);
+        $this->assertSame(1, DB::table('amenity_booking_payments')->where('booking_id', $id)->count());
         $this->assertSame(0, DB::table('audit_logs')->where('table_name', 'amenity_payment_webhooks')->count());
     }
 
@@ -447,6 +448,8 @@ class AmenityBookingPaymentTest extends TestCase
 
     public function test_deletion_preserves_access_to_unresolved_payments_and_refunds(): void
     {
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+        $reviewCount = $this->getJson('/api/v1/admin/amenity-booking-worklist?bucket=REVIEW')->assertOk()->json('counts.REVIEW');
         $id = $this->createPaidAmenityBooking();
         $this->postJson($this->paymentUrl($id).'/report')->assertOk();
         $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
@@ -455,7 +458,7 @@ class AmenityBookingPaymentTest extends TestCase
         $this->deleteJson($url)->assertConflict();
         $this->assertDatabaseHas('amenities', ['id' => $this->amenityId, 'deleted_at' => null]);
         $this->assertSame(0, DB::table('audit_logs')->where('record_id', $this->amenityId)->where('action', 'DELETE')->count());
-        $this->getJson('/api/v1/admin/amenity-booking-worklist?bucket=REVIEW')->assertOk()->assertJsonPath('counts.REVIEW', 1);
+        $this->getJson('/api/v1/admin/amenity-booking-worklist?bucket=REVIEW')->assertOk()->assertJsonPath('counts.REVIEW', $reviewCount + 1);
         $this->postJson($this->confirmUrl($id), $this->receipt())->assertOk()->assertJsonPath('payment.refund_required', true);
         $this->deleteJson($url)->assertConflict();
         $this->getJson($url.'/bookings')->assertOk()->assertJsonPath('0.payment.bank_transaction_id', 'VCB-TEST-001');

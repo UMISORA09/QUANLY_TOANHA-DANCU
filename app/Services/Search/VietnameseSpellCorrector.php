@@ -129,7 +129,7 @@ class VietnameseSpellCorrector
                 'tokens' => $unaccentedTokens,
                 'corrected_tokens' => explode(' ', $mapped),
                 'candidate_queries' => array_values(array_unique([$mapped, $norm['unaccented'], $norm['normalized']])),
-                'is_corrected' => true,
+                'is_corrected' => $mapped !== $norm['unaccented'],
             ];
         }
 
