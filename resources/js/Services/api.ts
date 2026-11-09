@@ -13,6 +13,7 @@ const SUGGESTION_TTL = 60 * 1000; // 60s
 
 export interface Category {
   id: string;
+  version: number;
   category_name: string;
   category_code: string;
   icon_name?: string | null;
@@ -424,6 +425,7 @@ export interface ParcelDetailResponse {
 
 export interface TimeSlot {
   id: string;
+  version: number;
   amenity_id: string;
   day_of_week: number;
   slot_start_time: string;
@@ -435,6 +437,7 @@ export interface TimeSlot {
 }
 export interface Blackout {
   id: string;
+  version: number;
   amenity_id: string;
   blackout_date: string;
   start_time?: string | null;
@@ -807,8 +810,13 @@ class ApiService {
   async getCategories(forceRefresh: boolean = false): Promise<Category[]> {
     const key = 'amenities:categories';
     const cached = amenityCache.get<Category[]>(key);
+    if (forceRefresh) {
+      const data = await this.request<Category[]>('/admin/amenity-categories', { cache: 'no-store' });
+      amenityCache.set(key, data, null, 10 * 60 * 1000);
+      return data;
+    }
 
-    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.isFresh) {
+    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.data.every((category) => typeof category.version === 'number') && cached.isFresh) {
       return cached.data;
     }
 
@@ -856,6 +864,7 @@ class ApiService {
   async updateCategory(
     id: string,
     payload: {
+      version: number;
       category_name: string;
       category_code: string;
       icon_name?: string | null;
@@ -871,9 +880,10 @@ class ApiService {
     return result;
   }
 
-  async deleteCategory(id: string): Promise<void> {
+  async deleteCategory(id: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenity-categories/${id}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateCategories();
     amenityCache.broadcastMutation('CATEGORY_CHANGED', id);
@@ -1192,14 +1202,14 @@ class ApiService {
   }
 
   // ================= TIME SLOTS =================
-  async getTimeSlots(amenityId: string): Promise<TimeSlot[]> {
+  async getTimeSlots(amenityId: string, forceRefresh = false): Promise<TimeSlot[]> {
     const key = `amenity:${amenityId}:slots`;
     const lookup = amenityCache.get<TimeSlot[]>(key);
-    if (lookup.exists && lookup.data && lookup.isFresh) {
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.data.every((item) => typeof item.version === 'number') && lookup.isFresh) {
       return lookup.data;
     }
 
-    const slots = await this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`);
+    const slots = await this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`, { cache: 'no-store' });
     amenityCache.set(key, slots, null, 5 * 60 * 1000);
     return slots;
   }
@@ -1229,6 +1239,7 @@ class ApiService {
     amenityId: string,
     slotId: string,
     payload: {
+      version: number;
       day_of_week: number;
       slot_start_time: string;
       slot_end_time: string;
@@ -1247,10 +1258,10 @@ class ApiService {
     return result;
   }
 
-  async patchTimeSlotStatus(amenityId: string, slotId: string, is_active: boolean): Promise<TimeSlot> {
+  async patchTimeSlotStatus(amenityId: string, slotId: string, is_active: boolean, version: number): Promise<TimeSlot> {
     const result = await this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots/${slotId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active }),
+      body: JSON.stringify({ is_active, version }),
     });
     amenityCache.invalidateSlots(amenityId);
     amenityCache.invalidateAmenities();
@@ -1258,9 +1269,10 @@ class ApiService {
     return result;
   }
 
-  async deleteTimeSlot(amenityId: string, slotId: string): Promise<void> {
+  async deleteTimeSlot(amenityId: string, slotId: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenities/${amenityId}/time-slots/${slotId}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateSlots(amenityId);
     amenityCache.invalidateAmenities();
@@ -1269,14 +1281,14 @@ class ApiService {
   }
 
   // ================= BLACKOUTS =================
-  async getBlackouts(amenityId: string): Promise<Blackout[]> {
+  async getBlackouts(amenityId: string, forceRefresh = false): Promise<Blackout[]> {
     const key = `amenity:${amenityId}:blackouts`;
     const lookup = amenityCache.get<Blackout[]>(key);
-    if (lookup.exists && lookup.data && lookup.isFresh) {
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.data.every((item) => typeof item.version === 'number') && lookup.isFresh) {
       return lookup.data;
     }
 
-    const blackouts = await this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`);
+    const blackouts = await this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`, { cache: 'no-store' });
     amenityCache.set(key, blackouts, null, 5 * 60 * 1000);
     return blackouts;
   }
@@ -1306,6 +1318,7 @@ class ApiService {
     amenityId: string,
     blackoutId: string,
     payload: {
+      version: number;
       blackout_date: string;
       start_time?: string | null;
       end_time?: string | null;
@@ -1324,9 +1337,10 @@ class ApiService {
     return result;
   }
 
-  async deleteBlackout(amenityId: string, blackoutId: string): Promise<void> {
+  async deleteBlackout(amenityId: string, blackoutId: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateBlackouts(amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
@@ -2312,8 +2326,8 @@ class ApiService {
     return this.request<TicketListResponse>(`/resident/tickets${query}`, { signal });
   }
 
-  async getResidentTicketDetail(id: string) {
-    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`);
+  async getResidentTicketDetail(id: string, signal?: AbortSignal) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`, { signal, cache: 'no-store' });
   }
 
   async createResidentTicket(payload: FormData | Record<string, any>, idempotencyKey?: string) {
