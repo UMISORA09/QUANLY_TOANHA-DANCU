@@ -60,6 +60,24 @@ class RestoreDemoAccountsSeeder extends Seeder
                 'gender' => 'MALE',
                 'role_code' => 'RESIDENT_OWNER',
             ],
+            [
+                'id' => '71b14a22-358b-4bcf-90f7-111111111111',
+                'username' => 'accountant',
+                'email' => 'accountant@cassavas.vn',
+                'phone_number' => '0900000003',
+                'full_name' => 'Kế Toán Tòa Nhà',
+                'gender' => 'FEMALE',
+                'role_code' => 'ACCOUNTANT',
+            ],
+            [
+                'id' => '71b14a22-358b-4bcf-90f7-222222222222',
+                'username' => 'kythuat',
+                'email' => 'kythuat@cassavas.vn',
+                'phone_number' => '0900000005',
+                'full_name' => 'Kỹ Thuật Viên Otis',
+                'gender' => 'MALE',
+                'role_code' => 'TECHNICIAN',
+            ],
         ];
 
         DB::transaction(function () use ($demoUsers, $now, $hash) {
@@ -86,7 +104,7 @@ class RestoreDemoAccountsSeeder extends Seeder
                 );
 
                 // Gán đúng role trong bảng user_roles
-                $role = Role::where('role_code', $item['role_code'])->first();
+                $role = Role::whereIn('role_code', [$item['role_code'], rtrim($item['role_code'], 'N')])->first();
                 if ($role) {
                     DB::table('user_roles')->updateOrInsert(
                         ['user_id' => $userId, 'role_id' => $role->id],
