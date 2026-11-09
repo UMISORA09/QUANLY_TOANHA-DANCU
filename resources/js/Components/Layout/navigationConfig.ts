@@ -112,6 +112,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'tickets', label: 'Báo cáo sự cố', icon: AlertCircle, badge: '2', badgeType: 'danger' },
       { id: 'amenities', label: 'Đặt tiện ích', icon: Sparkles },
       { id: 'visitors', label: 'Khai báo khách', icon: Users },
+      { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an', isNew: true },
       { id: 'profile', label: 'Thông tin cá nhân', icon: User },
       { id: 'community', label: 'Cộng đồng cư dân', icon: MessageSquare },
       { id: 'feedback', label: 'Góp ý & Khảo sát', icon: FileText },

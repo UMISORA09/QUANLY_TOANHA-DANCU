@@ -273,7 +273,7 @@ class ReceptionDashboardTest extends TestCase
      */
     public function test_aggregates_visitors_currently_inside_and_checked_out(): void
     {
-        $this->travelTo(Carbon::now(config('app.timezone'))->setTime(12, 0));
+        $this->travelTo(Carbon::now(config('app.timezone'))->endOfDay()->subHours(1));
         $now = Carbon::now();
 
         // 1. Tạo lượt đăng ký khách

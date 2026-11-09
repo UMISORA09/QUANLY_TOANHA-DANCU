@@ -37,7 +37,14 @@ abstract class TestCase extends BaseTestCase
                 ['role_code' => 'RESIDENT_MEMBER', 'role_name' => 'Resident Member', 'is_system_role' => false],
             ];
             foreach ($defaultRoles as $defRole) {
-                Role::firstOrCreate(['role_code' => $defRole['role_code']], $defRole);
+                $role = Role::withTrashed()->where('role_code', $defRole['role_code'])->first();
+                if ($role) {
+                    if ($role->trashed()) {
+                        $role->restore();
+                    }
+                } else {
+                    Role::create($defRole);
+                }
             }
         }
     }

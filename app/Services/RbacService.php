@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 class RbacService
 {
     /**
-     * Xác định người dùng từ Request (Hỗ trợ Laravel Auth, X-User-Id, Bearer token, session token)
+     * Xác định người dùng từ Request đã xác thực (Hỗ trợ Laravel Auth, Bearer token qua bảng user_sessions)
      */
     public static function resolveUser(Request $request): ?object
     {
@@ -26,34 +26,31 @@ class RbacService
             return Auth::user();
         }
 
-        $userId = $request->header('X-User-Id') ?? $request->query('user_id');
-        if ($userId) {
-            return User::find($userId) ?? DB::table('users')->where('id', $userId)->first();
-        }
-
-        $userEmail = $request->header('X-User-Email');
-        if ($userEmail) {
-            return User::where('email', $userEmail)->first() ?? DB::table('users')->where('email', $userEmail)->first();
-        }
-
-        // Kiểm tra Bearer token nếu có mapping
+        // Kiểm tra Bearer token nếu có
         $authHeader = $request->header('Authorization');
         if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
-            $token = substr($authHeader, 7);
-            if (str_contains($token, 'admin')) {
-                return User::where('username', 'admin')->first() ?? DB::table('users')->where('username', 'admin')->first();
+            $token = trim(substr($authHeader, 7));
+            if ($token === '') {
+                return null;
             }
 
-            if (str_contains($token, 'manager')) {
-                return User::where('username', 'manager')->first() ?? DB::table('users')->where('username', 'manager')->first();
-            }
+            // Cơ chế token demo chỉ chấp nhận trong môi trường testing/local
+            if (app()->environment('testing', 'local')) {
+                if ($token === 'smart_token_admin_demo') {
+                    return User::where('username', 'admin')->first() ?? DB::table('users')->where('username', 'admin')->first();
+                }
 
-            if (str_contains($token, 'reception')) {
-                return User::where('username', 'receptionist')->first() ?? User::where('username', 'letan')->first() ?? DB::table('users')->where('username', 'receptionist')->first();
-            }
+                if ($token === 'smart_token_manager_demo') {
+                    return User::where('username', 'manager')->first() ?? DB::table('users')->where('username', 'manager')->first();
+                }
 
-            if (str_contains($token, 'resident')) {
-                return User::where('email', 'nguyenvanan@cassavas.vn')->first() ?? User::where('username', 'resident.owner')->first() ?? DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
+                if ($token === 'smart_token_reception_demo') {
+                    return User::where('username', 'receptionist')->first() ?? User::where('username', 'letan')->first() ?? DB::table('users')->where('username', 'receptionist')->first();
+                }
+
+                if ($token === 'smart_token_resident_demo') {
+                    return User::where('email', 'nguyenvanan@cassavas.vn')->first() ?? User::where('username', 'resident.owner')->first() ?? DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
+                }
             }
 
             $tokenHash = hash('sha256', $token);
@@ -63,16 +60,11 @@ class RbacService
                         ->orWhere('refresh_token_hash', $token);
                 })
                 ->where('is_revoked', 0)
+                ->where('expires_at', '>', now())
                 ->first();
+
             if ($session) {
                 return User::find($session->user_id) ?? DB::table('users')->where('id', $session->user_id)->first();
-            }
-
-            if (str_starts_with($token, 'smart_token_')) {
-                $parts = explode('_', $token);
-                if (isset($parts[2]) && strlen($parts[2]) === 36) {
-                    return User::find($parts[2]) ?? DB::table('users')->where('id', $parts[2])->first();
-                }
             }
         }
 
@@ -253,11 +245,23 @@ class RbacService
             ]);
         }
 
+        $upperCodes = array_map(fn ($p) => is_string($p) ? strtoupper(trim($p)) : $p, $permissionIds);
+
         // Tìm các Permission ID thực tế
         $resolvedIds = Permission::whereIn('id', $permissionIds)
             ->orWhereIn('permission_code', $permissionIds)
+            ->orWhereIn('permission_code', $upperCodes)
             ->pluck('id')
             ->toArray();
+
+        // Hỗ trợ alias 'special' / 'SPECIAL' để cấp quyền người đặc biệt
+        if (in_array('SPECIAL', $upperCodes, true)) {
+            $specialIds = Permission::where('permission_code', 'SPECIAL')
+                ->orWhere('permission_code', 'SYSTEM:SPECIAL')
+                ->pluck('id')
+                ->toArray();
+            $resolvedIds = array_values(array_unique(array_merge($resolvedIds, $specialIds)));
+        }
 
         $oldPerms = DB::table('role_permissions')
             ->where('role_id', $role->id)

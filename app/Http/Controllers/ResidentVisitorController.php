@@ -7,7 +7,6 @@ use App\Services\RbacService;
 use App\Services\ResidentVisitorService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class ResidentVisitorController extends Controller
@@ -17,13 +16,13 @@ class ResidentVisitorController extends Controller
     ) {}
 
     /**
-     * Helper giải quyết người dùng đã xác thực (hỗ trợ Bearer Token, Session, X-User-Id header)
+     * Helper giải quyết người dùng đã xác thực (hỗ trợ Bearer Token qua user_sessions hoặc Laravel Auth)
      */
     protected function resolveAuthUser(Request $request): object
     {
         $user = $request->user() ?? RbacService::resolveUser($request);
 
-        if (! $user) {
+        if (! $user && app()->environment('testing', 'local')) {
             $bearer = $request->bearerToken();
             if ($bearer && in_array($bearer, ['smart_token_manager_demo', 'smart_token_resident_demo', 'smart_token_admin_demo', 'smart_token_reception_demo'], true)) {
                 $user = User::where('email', 'nguyenvanan@cassavas.vn')->first()
@@ -31,13 +30,6 @@ class ResidentVisitorController extends Controller
                     ?? User::where('username', 'manager')->first()
                     ?? User::where('username', 'admin')->first()
                     ?? User::where('status', 'ACTIVE')->first();
-            }
-        }
-
-        if (! $user) {
-            $userId = $request->header('X-User-Id') ?? $request->query('user_id');
-            if ($userId) {
-                $user = User::find($userId) ?? DB::table('users')->where('id', $userId)->first();
             }
         }
 

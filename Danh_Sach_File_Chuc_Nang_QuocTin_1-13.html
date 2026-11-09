@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Báo Cáo Danh Mục Mã Nguồn Module 1 - 13 (Quốc Tín)</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 12mm 14mm 12mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      background-color: #ffffff;
+      line-height: 1.45;
+      font-size: 11pt;
+      margin: 0;
+      padding: 0;
+    }
+    .header {
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+    .project-tag {
+      font-size: 9pt;
+      font-weight: 700;
+      color: #0284c7;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    h1 {
+      font-size: 18pt;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 4px 0 6px 0;
+      line-height: 1.25;
+    }
+    .meta-info {
+      font-size: 9.5pt;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+    .summary-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #0284c7;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 9.5pt;
+    }
+    .summary-box p {
+      margin: 2px 0;
+    }
+    .module-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      page-break-inside: avoid;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .module-header {
+      background-color: #f1f5f9;
+      padding: 8px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #cbd5e1;
+    }
+    .module-title {
+      font-size: 11.5pt;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .module-branch {
+      font-family: 'Consolas', monospace;
+      font-size: 9pt;
+      font-weight: 600;
+      background-color: #e2e8f0;
+      color: #334155;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .module-desc {
+      padding: 8px 14px 4px 14px;
+      font-size: 9.5pt;
+      color: #475569;
+      background-color: #ffffff;
+      border-bottom: 1px dashed #e2e8f0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9pt;
+      background: #ffffff;
+    }
+    th, td {
+      padding: 6px 10px;
+      text-align: left;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: top;
+    }
+    th {
+      background-color: #f8fafc;
+      color: #475569;
+      font-weight: 600;
+      font-size: 8.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      font-size: 8pt;
+      font-weight: 700;
+      border-radius: 4px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .badge-controller { background-color: #e0f2fe; color: #0369a1; }
+    .badge-service    { background-color: #fef3c7; color: #b45309; }
+    .badge-model      { background-color: #f3e8ff; color: #7e22ce; }
+    .badge-frontend   { background-color: #dcfce7; color: #15803d; }
+    .badge-test       { background-color: #ffe4e6; color: #be123c; }
+    .badge-event      { background-color: #ffedd5; color: #c2410c; }
+    .badge-route      { background-color: #e2e8f0; color: #334155; }
+    .file-path {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 8.5pt;
+      color: #0f172a;
+      word-break: break-all;
+    }
+    .file-desc {
+      font-size: 8.5pt;
+      color: #64748b;
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 8.5pt;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="project-tag">HỆ THỐNG QUẢN LÝ TÒA NHÀ & CƯ DÂN (QUANLY_TOANHA-DANCU)</div>
+    <h1>DANH MỤC FILE & MÃ NGUỒN PHÂN HỆ QUỐC TÍN (MODULE 1 - 13)</h1>
+    <div class="meta-info">
+      <span><strong>Tác giả:</strong> Nhánh Quốc Tín (Branches: QuocTin/1 - QuocTin/13)</span>
+      <span><strong>Ngày xuất:</strong> 23/10/2026</span>
+      <span><strong>Môi trường:</strong> Laravel 13 (PHP 8.4) & React TSX</span>
+    </div>
+  </div>
+
+  <!-- SUMMARY BOX -->
+  <div class="summary-box">
+    <p><strong>Phạm vi tài liệu:</strong> Tổng hợp đầy đủ các file Controller, Service, Model, Request, Job/Listener/Mail, Frontend Component, Routes và Bộ Feature Test cho trọn vẹn 13 chức năng đã triển khai.</p>
+    <p><strong>Hạ tầng dùng chung:</strong> 100% các chức năng đều được trang bị hệ thống phân quyền <strong>RBAC đa tầng</strong>, chuẩn hóa CSDL chống N+1, và cơ chế <strong>Realtime Live Sync (WebSocket / SSE)</strong> qua <code>QuocTinRealtimeService</code> không dùng polling.</p>
+  </div>
+
+  <!-- ================= MODULE 1 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">1. Quản lý Phân quyền Vai trò & Quyền hạn (RBAC)</span>
+      <span class="module-branch">Branch: QuocTin/1-RBAC</span>
+    </div>
+    <div class="module-desc">Hệ thống phân quyền Role-Based Access Control, quản lý ma trận quyền hạn theo module và vai trò nhân viên/cư dân.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/RoleController.php</td>
+          <td class="file-desc">CRUD danh sách vai trò, gán danh mục quyền hạn</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/PermissionController.php</td>
+          <td class="file-desc">Quản lý và tra cứu danh mục quyền theo phân hệ</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/RbacService.php</td>
+          <td class="file-desc">Lõi xác thực quyền (hasPermission), resolve user</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/Role.php, Permission.php, UserRole.php</td>
+          <td class="file-desc">Các Eloquent Model định nghĩa bảng RBAC</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Pages/Admin/RbacManagement.tsx</td>
+          <td class="file-desc">Giao diện quản trị vai trò và ma trận phân quyền</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/Rbac/RbacManagementTest.php</td>
+          <td class="file-desc">Test phân quyền, bảo mật role và permission</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 2 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">2. Quản lý Thông tin Cư dân & Căn hộ (Resident Management)</span>
+      <span class="module-branch">Branch: QuocTin/2-QLTNDC</span>
+    </div>
+    <div class="module-desc">Quản lý hồ sơ cư dân, chủ hộ, các thành viên trong gia đình gắn liền với từng căn hộ chung cư.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/ResidentController.php</td>
+          <td class="file-desc">CRUD cư dân, lọc theo căn hộ/tầng/tòa nhà</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/ResidentService.php</td>
+          <td class="file-desc">Xử lý quan hệ căn hộ, chủ hộ, kiểm tra trùng CCCD</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Request / Model</span></td>
+          <td class="file-path">app/Http/Requests/ResidentRequest.php, Resident.php</td>
+          <td class="file-desc">Validate dữ liệu đầu vào và Model quan hệ cư dân</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Pages/Admin/ResidentManagement.tsx</td>
+          <td class="file-desc">Giao diện quản lý danh sách cư dân, tra cứu nhanh</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/Residents/ResidentManagementTest.php</td>
+          <td class="file-desc">Test CRUD cư dân, kiểm tra tính toàn vẹn căn hộ</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 3 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">3. Quản lý Đăng ký Tạm trú / Tạm vắng</span>
+      <span class="module-branch">Branch: QuocTin/3-ĐK&DTT</span>
+    </div>
+    <div class="module-desc">Tiếp nhận, xử lý và phê duyệt hồ sơ khai báo tạm trú / tạm vắng trực tuyến của cư dân.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/TemporaryRegistrationController.php</td>
+          <td class="file-desc">Duyệt, từ chối, xuất dữ liệu hồ sơ tạm trú/tạm vắng</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/TemporaryRegistrationService.php</td>
+          <td class="file-desc">Nghiệp vụ phê duyệt, quản lý thời hạn tạm trú</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/TemporaryRegistration.php</td>
+          <td class="file-desc">Model lưu trữ thông tin khai báo và tệp đính kèm</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Pages/Admin/TemporaryRegistrationManagement.tsx</td>
+          <td class="file-desc">Giao diện ban quản lý phê duyệt hồ sơ trực tuyến</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/TemporaryRegistrations/TemporaryRegistrationTest.php</td>
+          <td class="file-desc">Test quy trình duyệt hồ sơ và bảo mật phân quyền</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 4 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">4. Cấp phát & Kích hoạt Tài khoản Người dùng (Account Provisioning)</span>
+      <span class="module-branch">Branch: QuocTin/4-CapPhatTaiKhoan</span>
+    </div>
+    <div class="module-desc">Tự động khởi tạo tài khoản, phân quyền ban đầu và gửi mã kích hoạt cho cư dân/nhân viên mới.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/AccountProvisioningController.php</td>
+          <td class="file-desc">Endpoint cấp phát và kích hoạt tài khoản</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/AccountProvisioningService.php</td>
+          <td class="file-desc">Xử lý hash mật khẩu an toàn, sinh token kích hoạt</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Pages/Admin/AccountProvisioningManagement.tsx</td>
+          <td class="file-desc">Bảng quản lý tài khoản chờ cấp phát và kích hoạt</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/AccountProvisioning/AccountProvisioningTest.php</td>
+          <td class="file-desc">Test tạo tài khoản an toàn, chống trùng lặp</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 5 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">5. Đăng ký Phương tiện Giao thông & Đẩy phí Hóa đơn</span>
+      <span class="module-branch">Branch: QuocTin/5-DangKyPhuongTien</span>
+    </div>
+    <div class="module-desc">Đăng ký xe ô tô/xe máy, xét duyệt biển số và tự động tích hợp đẩy phí gửi xe vào hóa đơn hàng tháng.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/VehicleController.php</td>
+          <td class="file-desc">Quản lý hồ sơ xe, phê duyệt biển số, đẩy phí tự động</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/VehicleService.php</td>
+          <td class="file-desc">Tính toán biểu phí lũy tiến theo từng loại xe</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/Vehicle.php, VehicleFeePushLog.php</td>
+          <td class="file-desc">Lưu thông tin phương tiện và nhật ký đẩy phí hóa đơn</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Pages/Admin/VehicleManagement.tsx</td>
+          <td class="file-desc">Giao diện duyệt xe, xem ảnh đăng ký và nút đẩy phí</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/Vehicles/VehicleManagementTest.php</td>
+          <td class="file-desc">Test đăng ký xe và kiểm tra tính toán phí hóa đơn</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 6 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">6. Quản lý Thẻ từ RFID (RFID Card Management)</span>
+      <span class="module-branch">Branch: QuocTin/6-QuanLyMaThe</span>
+    </div>
+    <div class="module-desc">Cấp phát, quản lý vòng đời thẻ từ thang máy, thẻ ra vào tòa nhà và thẻ gửi xe thông minh.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/AccessCardController.php</td>
+          <td class="file-desc">Khởi tạo mã thẻ RFID, gán thẻ cho căn hộ/phương tiện</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/AccessCardService.php</td>
+          <td class="file-desc">Khóa thẻ khi mất, mở khóa thẻ và kiểm tra mã thẻ</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/AccessCard.php</td>
+          <td class="file-desc">Lưu thông tin mã thẻ vật lý, loại thẻ và căn hộ gán</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Pages/Admin/RfidManagement.tsx</td>
+          <td class="file-desc">Giao diện quản lý thẻ từ, lọc nhanh và gán thẻ</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/RfidManagement/RfidManagementTest.php</td>
+          <td class="file-desc">Test chu trình gán thẻ, khóa thẻ và chống trùng mã</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 7 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">7. Cư dân Khai báo Trước Khách Viếng thăm (Resident Visitor)</span>
+      <span class="module-branch">Branch: QuocTin/7-KBTTKVT</span>
+    </div>
+    <div class="module-desc">Cho phép cư dân đăng ký trước thông tin khách đến thăm, tự động sinh mã QR Access Pass tiện lợi.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/ResidentVisitorController.php</td>
+          <td class="file-desc">Endpoint cư dân khai báo lịch hẹn khách viếng thăm</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/ResidentVisitorService.php</td>
+          <td class="file-desc">Tạo mã vé QR Access Pass, xác thực thông tin căn hộ</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/VisitorRegistration.php</td>
+          <td class="file-desc">Model bản ghi đăng ký trước của khách</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Components/ResidentVisitorRegistrationPanel.tsx</td>
+          <td class="file-desc">Form cư dân khai báo khách và mã QR trên Resident Portal</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/ResidentVisitor/ResidentVisitorTest.php</td>
+          <td class="file-desc">Test khai báo khách, cấp mã QR và bảo mật cư dân</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 8 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">8. Tra cứu & Check-in / Check-out Khách tại Quầy Lễ tân</span>
+      <span class="module-branch">Branch: QuocTin/8-TraCuu&CheckIn,Out</span>
+    </div>
+    <div class="module-desc">Hệ thống quét mã QR, tra cứu khách, cấp thẻ tạm RFID và check-out khi khách rời khỏi tòa nhà.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/ReceptionVisitorController.php</td>
+          <td class="file-desc">Endpoint tra cứu QR, thực hiện Check-in / Check-out</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/ReceptionVisitorService.php</td>
+          <td class="file-desc">Gán thẻ tạm, phân tầng thang máy, ghi log lưu trú</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/VisitorCheckinLog.php</td>
+          <td class="file-desc">Nhật ký check-in, check-out thời gian thực của khách</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Components/ReceptionVisitorCheckinPanel.tsx</td>
+          <td class="file-desc">Bảng điều khiển quét mã, quản lý khách ra/vào tại sảnh</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/ReceptionVisitor/ReceptionVisitorCheckinTest.php</td>
+          <td class="file-desc">Test toàn diện chu trình Check-in, Check-out khách</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 9 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">9. Tiếp nhận Kiện hàng Bưu phẩm & Upload Ảnh Bưu kiện</span>
+      <span class="module-branch">Branch: QuocTin/9-TiepNhan&UpAnh</span>
+    </div>
+    <div class="module-desc">Tiếp nhận bưu kiện từ shipper tại quầy, tự động sinh mã vận đơn theo đơn vị vận chuyển và lưu ảnh chụp.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/ReceptionParcelController.php</td>
+          <td class="file-desc">Tiếp nhận kiện hàng, upload ảnh, tra cứu người nhận</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/ReceptionParcelService.php</td>
+          <td class="file-desc">Sinh mã theo hãng (Shopee, GHTK, GHN, Viettel Post)</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/Parcel.php</td>
+          <td class="file-desc">Lưu trữ thông tin bưu kiện, trạng thái và ảnh chụp</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Components/ReceptionParcelPanel.tsx</td>
+          <td class="file-desc">Form tiếp nhận bưu kiện, chụp ảnh camera/upload file</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/ReceptionParcel/ReceptionParcelTest.php</td>
+          <td class="file-desc">Test tiếp nhận bưu phẩm, lưu ảnh và sinh mã vận đơn</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 10 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">10. Tự động Kích hoạt Web Push Notification & Email Bưu phẩm</span>
+      <span class="module-branch">Branch: QuocTin/10-Notification&Email</span>
+    </div>
+    <div class="module-desc">Hệ thống gửi thông báo đẩy (Web Push) và Email tự động kèm ảnh chụp kiện hàng ngay khi tiếp nhận thành công.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-event">Event & Listener</span></td>
+          <td class="file-path">app/Events/ParcelReceivedEvent.php, SendParcelNotificationListener.php</td>
+          <td class="file-desc">Bắt sự kiện tiếp nhận thành công và kích hoạt gửi tin</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-event">Job & Mail</span></td>
+          <td class="file-path">app/Jobs/SendParcelNotificationJob.php, ParcelReceivedMail.php</td>
+          <td class="file-desc">Queue Job gửi Email & Web Push VAPID không gây chậm UI</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/WebPushService.php</td>
+          <td class="file-desc">Gửi Web Push Notification chuẩn RFC 8291/8292</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/WebPushSubscription.php, ParcelNotificationLog.php</td>
+          <td class="file-desc">Lưu subscription trình duyệt và lịch sử gửi thông báo</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend & SW</span></td>
+          <td class="file-path">public/sw.js, resources/js/Components/ResidentPushNotificationToggle.tsx</td>
+          <td class="file-desc">Service Worker nhận thông báo và nút bật thông báo đẩy</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/Notifications/ParcelNotificationTest.php</td>
+          <td class="file-desc">Test Web Push subscription, dispatch Job và gửi Email</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 11 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">11. Bàn giao & Check-out Bưu phẩm cho Cư dân</span>
+      <span class="module-branch">Branch: QuocTin/11-BanGiao&Checkout</span>
+    </div>
+    <div class="module-desc">Quét mã vạch/mã nhận bưu kiện, xác nhận cư dân nhận hàng, chữ ký bàn giao và gửi thông báo nhắc nhở kiện hàng quá hạn.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/ReceptionParcelController.php</td>
+          <td class="file-desc">Endpoints: /check-out, /lookup, /remind-expiring</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/ReceptionParcelService.php</td>
+          <td class="file-desc">Xử lý bàn giao, chuyển trạng thái DELIVERED, lưu collected_at</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Components/ReceptionParcelPanel.tsx</td>
+          <td class="file-desc">Tab Bàn giao bưu phẩm, quét mã vạch và ký nhận</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Components/ResidentParcelWidget.tsx</td>
+          <td class="file-desc">Widget xem bưu phẩm chờ nhận trên Resident Portal</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/ReceptionParcel/ReceptionParcelCheckoutTest.php</td>
+          <td class="file-desc">Test bàn giao kiện hàng, trừ tồn kho và gửi nhắc nhở</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 12 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">12. Quản lý Xếp ca trực theo Tuần/Tháng cho Lễ tân & Bảo vệ</span>
+      <span class="module-branch">Branch: QuocTin/12-QuanLyXepCa</span>
+    </div>
+    <div class="module-desc">Lên lịch phân ca trực trực quan theo tuần/tháng, kiểm tra xung đột trùng ca và quản lý ứng viên trực.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/StaffScheduleController.php</td>
+          <td class="file-desc">CRUD ca trực, danh sách ca mẫu (Sáng, Chiều, Đêm)</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/StaffScheduleService.php</td>
+          <td class="file-desc">Kiểm tra trùng lịch trực, tối ưu query tuần/tháng</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-model">Model</span></td>
+          <td class="file-path">app/Models/StaffSchedule.php</td>
+          <td class="file-desc">Model bảng lịch trực nhân viên lễ tân & bảo vệ</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Components/ManagementStaffSchedulePanel.tsx</td>
+          <td class="file-desc">Lịch phân ca dạng Grid tương tác theo tuần/tháng</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">API Client</span></td>
+          <td class="file-path">resources/js/Services/staffScheduleApi.ts</td>
+          <td class="file-desc">Client API gọi dịch vụ phân ca trực</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/StaffSchedule/StaffScheduleTest.php</td>
+          <td class="file-desc">Test phân ca trực, kiểm tra chặn trùng ca và quyền quản lý</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MODULE 13 ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">13. Dashboard Giám sát Bưu phẩm Tồn đọng & Khách trong Tòa nhà</span>
+      <span class="module-branch">Branch: QuocTin/13-GiamSatBP</span>
+    </div>
+    <div class="module-desc">Dashboard giám sát thời gian thực: tổng bưu phẩm chờ nhận, phân nhóm Aging tồn kho, số khách đang có mặt trong tòa nhà và biểu đồ lưu lượng.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/ReceptionDashboardController.php</td>
+          <td class="file-desc">Endpoint GET /api/v1/reception/dashboard</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/ReceptionDashboardService.php</td>
+          <td class="file-desc">Conditional Aggregation, phân loại Aging, bảo vệ PII (mask phone)</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Components/ReceptionDashboardPanel.tsx</td>
+          <td class="file-desc">Giao diện Dashboard tổng quan, thẻ KPI, biểu đồ lưu lượng</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Frontend</span></td>
+          <td class="file-path">resources/js/Pages/ReceptionHome.tsx</td>
+          <td class="file-desc">Nhúng Dashboard Panel vào tab Tổng quan Lễ tân</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-test">Feature Test</span></td>
+          <td class="file-path">tests/Feature/ReceptionDashboard/ReceptionDashboardTest.php</td>
+          <td class="file-desc">Bộ 8 test cases: bưu phẩm, khách, aging, bộ lọc, bảo mật RBAC</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= HẠ TẦNG DÙNG CHUNG ================= -->
+  <div class="module-card">
+    <div class="module-header">
+      <span class="module-title">Hạ tầng Đồng bộ Realtime & Hệ thống Dùng chung</span>
+      <span class="module-branch">Shared Infrastructure</span>
+    </div>
+    <div class="module-desc">Các file hạ tầng dùng chung cho toàn bộ 13 module của Quốc Tín.</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 14%;">Loại</th>
+          <th style="width: 46%;">Đường dẫn File</th>
+          <th style="width: 40%;">Mô tả & Chức năng</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-service">Service</span></td>
+          <td class="file-path">app/Services/QuocTinRealtimeService.php</td>
+          <td class="file-desc">Quản lý tên kênh broadcast, kiểm tra quyền channel, cooldown lock</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-controller">Controller</span></td>
+          <td class="file-path">app/Http/Controllers/RealtimeStreamController.php</td>
+          <td class="file-desc">Máy chủ SSE / WebSocket stream phát dữ liệu realtime đến client</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-frontend">Hook React</span></td>
+          <td class="file-path">resources/js/Hooks/useRealtimeSync.ts</td>
+          <td class="file-desc">Hook React lắng nghe đa kênh, auto reconnect, chống duplicate event</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-route">Broadcasting</span></td>
+          <td class="file-path">routes/channels.php</td>
+          <td class="file-desc">Đăng ký và ủy quyền các kênh broadcast quoc-tin.*</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Báo cáo được khởi tạo tự động từ mã nguồn nhánh <strong>QuocTin/13-GiamSatBP</strong> &bull; Dự án QUANLY_TOANHA-DANCU &bull; Trang 1/1
+  </div>
+
+</body>
+</html>

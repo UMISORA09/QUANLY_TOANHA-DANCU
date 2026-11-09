@@ -135,11 +135,8 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Kiểm tra mật khẩu chuẩn xác thực cryptographic hash hoặc fallback demo mật khẩu cho môi trường thử nghiệm
-        $isDemoFallbackPass = in_array($user->username, ['admin', 'manager', 'receptionist', 'security', 'resident.owner', 'resident.member', 'accountant', 'nguyenvanan', 'quanly', 'letan'], true)
-            && in_array($password, ['123567', '123456', 'Admin@123456', 'Manager@123456', 'Receptionist@123456', 'Security@123456', 'Resident@123456', 'Accountant@123456'], true);
-
-        $isValidPassword = (! empty($user->password_hash) && Hash::check($password, $user->password_hash)) || $isDemoFallbackPass;
+        // Xác thực mật khẩu duy nhất bằng hàm băm cryptographic an toàn
+        $isValidPassword = ! empty($user->password_hash) && rescue(fn () => Hash::check($password, $user->password_hash), false);
 
         if (! $isValidPassword) {
             return response()->json([
@@ -265,11 +262,11 @@ class AuthController extends Controller
 
                 if ($session) {
                     $user = User::with('roles:id,role_code')->find($session->user_id);
-                } elseif (str_starts_with($token, 'smart_token_')) {
-                    $parts = explode('_', $token);
-                    if (isset($parts[2]) && strlen($parts[2]) === 36) {
-                        $user = User::with('roles:id,role_code')->find($parts[2]);
-                    }
+                } elseif (app()->environment('testing', 'local') && $token === 'smart_token_admin_demo') {
+                    $user = User::with('roles:id,role_code')
+                        ->whereHas('roles', fn ($q) => $q->where('role_code', 'SUPER_ADMIN'))
+                        ->where('status', 'ACTIVE')
+                        ->first();
                 }
             }
         }
@@ -408,7 +405,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => "Mã xác thực OTP đã được gửi tới email {$email}. Vui lòng kiểm tra hộp thư của bạn.",
             'email' => $email,
-            'debug_otp' => $otp,
+            'debug_otp' => app()->environment('local', 'testing') ? $otp : null,
         ]);
     }
 
@@ -768,7 +765,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => "Mã xác thực OTP đã được gửi tới email {$email}. Vui lòng kiểm tra hộp thư của bạn.",
             'email' => $email,
-            'debug_otp' => app()->isLocal() ? $otp : null,
+            'debug_otp' => app()->environment('local', 'testing') ? $otp : null,
         ]);
     }
 

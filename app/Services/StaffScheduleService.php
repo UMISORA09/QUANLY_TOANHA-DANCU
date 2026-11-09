@@ -147,6 +147,18 @@ class StaffScheduleService
         $startDate = $filters['start_date'] ?? now()->startOfWeek()->toDateString();
         $endDate = $filters['end_date'] ?? now()->endOfWeek()->toDateString();
 
+        try {
+            $parsedStart = Carbon::parse($startDate);
+            $parsedEnd = Carbon::parse($endDate);
+            // Giới hạn phạm vi truy vấn tối đa 93 ngày (~1 quý) để ngăn chặn quét toàn bảng, giữ trọn vẹn UX tuần/tháng
+            if ($parsedStart->diffInDays($parsedEnd) > 93) {
+                $endDate = $parsedStart->copy()->addDays(93)->toDateString();
+            }
+        } catch (\Throwable) {
+            $startDate = now()->startOfWeek()->toDateString();
+            $endDate = now()->endOfWeek()->toDateString();
+        }
+
         $query = StaffSchedule::query()
             ->with([
                 'staffProfile' => function ($q) {

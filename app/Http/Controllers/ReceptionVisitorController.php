@@ -18,7 +18,7 @@ class ReceptionVisitorController extends Controller
     protected function resolveAuthUser(Request $request): object
     {
         $user = $request->user() ?? RbacService::resolveUser($request);
-        if (! $user) {
+        if (! $user && app()->environment('testing', 'local')) {
             $bearer = $request->bearerToken();
             if ($bearer === 'smart_token_reception_demo' || $bearer === 'smart_token_admin_demo' || $bearer === 'smart_token_manager_demo') {
                 $user = User::whereHas('roles', function ($q) {

@@ -13,6 +13,7 @@ use App\Http\Controllers\DebtReminderController;
 use App\Http\Controllers\DevOpsApiController;
 use App\Http\Controllers\FinancialReportController;
 use App\Http\Controllers\FreshnessController;
+use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InvoiceGenerationController;
 use App\Http\Controllers\InvoiceManagementController;
@@ -215,19 +216,21 @@ Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::
 Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
 
 // API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Module #11: Bàn giao & Check-out)
-Route::get('/api/v1/reception/parcels', [ReceptionParcelController::class, 'index']);
-Route::get('/api/v1/reception/parcels/lookup', [ReceptionParcelController::class, 'lookup']);
-Route::post('/api/v1/reception/parcels/check-out', [ReceptionParcelController::class, 'checkOut']);
-Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'store']);
-Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
-Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
-Route::post('/api/v1/reception/parcels/remind-expiring', [ReceptionParcelController::class, 'remindExpiring']);
-Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
-Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
-Route::post('/api/v1/reception/parcels/{id}/check-out', [ReceptionParcelController::class, 'checkOut']);
-Route::post('/api/v1/reception/parcels/{id}/handover', [ReceptionParcelController::class, 'checkOut']);
-Route::post('/api/v1/reception/parcels/{id}/remind', [ReceptionParcelController::class, 'remind']);
-Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
+Route::middleware('auth.bearer')->group(function () {
+    Route::get('/api/v1/reception/parcels', [ReceptionParcelController::class, 'index']);
+    Route::get('/api/v1/reception/parcels/lookup', [ReceptionParcelController::class, 'lookup']);
+    Route::post('/api/v1/reception/parcels/check-out', [ReceptionParcelController::class, 'checkOut']);
+    Route::post('/api/v1/reception/parcels', [ReceptionParcelController::class, 'store']);
+    Route::get('/api/v1/reception/parcels/recipients/search', [ReceptionParcelController::class, 'searchRecipients']);
+    Route::get('/api/v1/reception/parcels/apartments/search', [ReceptionParcelController::class, 'searchApartments']);
+    Route::post('/api/v1/reception/parcels/remind-expiring', [ReceptionParcelController::class, 'remindExpiring']);
+    Route::get('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'show']);
+    Route::match(['PUT', 'POST'], '/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'update']);
+    Route::post('/api/v1/reception/parcels/{id}/check-out', [ReceptionParcelController::class, 'checkOut']);
+    Route::post('/api/v1/reception/parcels/{id}/handover', [ReceptionParcelController::class, 'checkOut']);
+    Route::post('/api/v1/reception/parcels/{id}/remind', [ReceptionParcelController::class, 'remind']);
+    Route::delete('/api/v1/reception/parcels/{id}', [ReceptionParcelController::class, 'destroy']);
+});
 
 // =========================================================================
 // API Quản lý Xếp ca trực theo tuần/tháng cho Lễ tân & Bảo vệ (Module #12)
@@ -388,6 +391,10 @@ Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:rbac'])->group(fun
     Route::get('users/{id}/roles', [UserController::class, 'getUserRoles'])->middleware('permission:USER:VIEW');
     Route::put('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
     Route::patch('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+    Route::get('users/{id}/permissions', [UserController::class, 'getUserPermissions'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}/permissions', [UserController::class, 'syncUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
+    Route::patch('users/{id}/permissions', [UserController::class, 'syncUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
+    Route::delete('users/{id}/permissions', [UserController::class, 'resetUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
 
     // 2. Quản lý Vai trò (Roles)
     Route::get('roles', [RoleController::class, 'index'])->middleware('permission:ROLE:VIEW');
@@ -418,6 +425,9 @@ Route::prefix('api/v1/admin')->middleware(['auth.bearer', 'cooldown:rbac'])->gro
     Route::delete('users/{id}', [UserController::class, 'destroy'])->middleware('permission:USER:DELETE');
     Route::get('users/{id}/roles', [UserController::class, 'getUserRoles'])->middleware('permission:USER:VIEW');
     Route::put('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+    Route::get('users/{id}/permissions', [UserController::class, 'getUserPermissions'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}/permissions', [UserController::class, 'syncUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
+    Route::delete('users/{id}/permissions', [UserController::class, 'resetUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
 
     Route::get('roles', [RoleController::class, 'index'])->middleware('permission:ROLE:VIEW');
     Route::post('roles', [RoleController::class, 'store'])->middleware('permission:ROLE:CREATE');
@@ -446,6 +456,10 @@ Route::prefix('api/v1/rbac')->middleware(['auth.bearer', 'cooldown:rbac'])->grou
     Route::get('users/{id}/roles', [UserController::class, 'getUserRoles'])->middleware('permission:USER:VIEW');
     Route::put('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
     Route::patch('users/{id}/roles', [UserController::class, 'assignRoles'])->middleware('permission:USER:ASSIGN_ROLE|USER:UPDATE');
+    Route::get('users/{id}/permissions', [UserController::class, 'getUserPermissions'])->middleware('permission:USER:VIEW');
+    Route::put('users/{id}/permissions', [UserController::class, 'syncUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
+    Route::patch('users/{id}/permissions', [UserController::class, 'syncUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
+    Route::delete('users/{id}/permissions', [UserController::class, 'resetUserPermissions'])->middleware('permission:USER:UPDATE|ROLE:ASSIGN_PERMISSION');
 
     // 2. Quản lý Vai trò (Roles)
     Route::get('roles', [RoleController::class, 'index'])->middleware('permission:ROLE:VIEW');
@@ -794,6 +808,12 @@ Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenitie
 Route::get('/api/v1/search/suggestions', [SearchController::class, 'suggestions'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/search/ai-knowledge', [SearchController::class, 'aiKnowledge']);
 
+// Dedicated Global Search Engine (Meilisearch + Scout with Database Fallback & Multi-tenant RBAC)
+Route::middleware(['auth.bearer'])->group(function () {
+    Route::get('/api/v1/search', [GlobalSearchController::class, 'search'])->name('api.v1.global-search');
+    Route::get('/api/v1/search/health', [GlobalSearchController::class, 'health'])->name('api.v1.global-search.health');
+});
+
 // Phân hệ Quản lý tiện ích & Cấu hình Slot
 Route::prefix('api/v1/admin')->middleware('amenity.lock')->group(function () {
     // Tòa nhà / Blocks
@@ -913,12 +933,14 @@ Route::prefix('api/public')->group(function () {
 // ==========================================
 // REAL-TIME AUTO-SYNC APIS (QUỐC TÍN MODULES)
 // ==========================================
-Route::get('/api/realtime/stream', [RealtimeStreamController::class, 'stream']);
-Route::get('/api/v1/realtime/stream', [RealtimeStreamController::class, 'stream']);
-Route::get('/api/realtime/events', [RealtimeStreamController::class, 'events']);
-Route::get('/api/v1/realtime/events', [RealtimeStreamController::class, 'events']);
-Route::get('/api/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
-Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
+Route::middleware('auth.bearer')->group(function () {
+    Route::get('/api/realtime/stream', [RealtimeStreamController::class, 'stream']);
+    Route::get('/api/v1/realtime/stream', [RealtimeStreamController::class, 'stream']);
+    Route::get('/api/realtime/events', [RealtimeStreamController::class, 'events']);
+    Route::get('/api/v1/realtime/events', [RealtimeStreamController::class, 'events']);
+    Route::get('/api/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
+    Route::get('/api/v1/realtime/cooldown', [RealtimeStreamController::class, 'cooldown']);
+});
 
 Route::fallback(function () {
     return response()->view('errors.404', [], 404);

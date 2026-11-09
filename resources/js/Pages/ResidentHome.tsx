@@ -38,6 +38,7 @@ import { TicketNotificationList, useTicketNotifications } from '../Components/Ti
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
+import { ResidentTemporaryRegistrationPanel } from '../Components/ResidentTemporaryRegistrationPanel';
 import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
 import { ResidentPushNotificationToggle } from '../Components/ResidentPushNotificationToggle';
 import { ResidentParcelWidget } from '../Components/ResidentParcelWidget';
@@ -161,6 +162,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
     { id: 'tickets', label: 'Báo cáo sự cố', icon: AlertCircle, badge: '2' },
     { id: 'amenities', label: 'Đặt tiện ích', icon: Sparkles },
     { id: 'visitors', label: 'Khai báo khách', icon: Users },
+    { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an' },
     { id: 'profile', label: 'Thông tin cá nhân', icon: User },
     { id: 'community', label: 'Cộng đồng cư dân', icon: MessageSquare },
     { id: 'feedback', label: 'Góp ý & Khảo sát', icon: FileText },
@@ -536,6 +538,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           <ResidentAmenityBookingPanel />
         ) : activeMenuId === 'visitors' ? (
           <ResidentVisitorRegistrationPanel />
+        ) : activeMenuId === 'temporary_registrations' ? (
+          <ResidentTemporaryRegistrationPanel />
         ) : activeMenuId === 'tickets' ? (
           <ResidentTicketPanel onNavigateOverview={() => selectMenu('overview')} />
         ) : activeMenuId === 'overview' ? (

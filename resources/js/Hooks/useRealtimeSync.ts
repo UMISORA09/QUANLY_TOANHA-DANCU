@@ -397,8 +397,23 @@ export function useModuleCooldown(module: string): ModuleCooldownState {
 
   const checkServerCooldown = useCallback(async (): Promise<boolean> => {
     try {
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('smart_cassavas_token') ||
+            sessionStorage.getItem('smart_cassavas_token') ||
+            localStorage.getItem('smart_token') ||
+            sessionStorage.getItem('smart_token') ||
+            localStorage.getItem('token') ||
+            sessionStorage.getItem('token') ||
+            ''
+          : '';
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(`/api/v1/realtime/cooldown?module=${canonicalModule}`, {
-        headers: { Accept: 'application/json' },
+        headers,
       });
       if (!res.ok) return false;
       const json = await res.json();

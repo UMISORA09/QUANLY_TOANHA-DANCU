@@ -13,6 +13,7 @@ class RestoreDemoAccountsSeeder extends Seeder
 {
     /**
      * Nạp phục hồi đúng các tài khoản demo bị thiếu theo yêu cầu của hệ thống:
+     * - admin@cassavas.vn (SUPER_ADMIN)
      * - quanly@cassavas.vn (BUILDING_MANAGER)
      * - letan@cassavas.vn (RECEPTIONIST)
      * - nguyenvanan@cassavas.vn (RESIDENT_OWNER)
@@ -23,6 +24,15 @@ class RestoreDemoAccountsSeeder extends Seeder
         $hash = Hash::make('123567');
 
         $demoUsers = [
+            [
+                'id' => '01a140f5-9b83-73b5-8fa4-c12d377f729d',
+                'username' => 'admin',
+                'email' => 'admin@cassavas.vn',
+                'phone_number' => '0900000001',
+                'full_name' => 'Quản Trị Viên Hệ Thống',
+                'gender' => 'MALE',
+                'role_code' => 'SUPER_ADMIN',
+            ],
             [
                 'id' => '835115e3-40b4-447b-94d7-b0d8660ac221',
                 'username' => 'quanly',
