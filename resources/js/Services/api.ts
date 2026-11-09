@@ -2268,7 +2268,7 @@ class ApiService {
     return this.request<{ data: ManagedTicket[]; current_page: number; last_page: number; total: number }>(`/admin/tickets?${params}`, { signal });
   }
   async getTicketOptions() { return this.request<TicketOptions>('/admin/tickets/options'); }
-  async getManagedTicket(id: string) { return this.request<ManagedTicket>(`/admin/tickets/${id}`); }
+  async getManagedTicket(id: string, signal?: AbortSignal) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { signal, cache: 'no-store' }); }
   async createManagedTicket(payload: Record<string, unknown>) { return this.request<ManagedTicket>('/admin/tickets', { method: 'POST', body: JSON.stringify(payload) }); }
   async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
   async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
