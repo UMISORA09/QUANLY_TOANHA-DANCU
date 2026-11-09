@@ -2312,8 +2312,8 @@ class ApiService {
     return this.request<TicketListResponse>(`/resident/tickets${query}`, { signal });
   }
 
-  async getResidentTicketDetail(id: string) {
-    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`);
+  async getResidentTicketDetail(id: string, signal?: AbortSignal) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`, { signal, cache: 'no-store' });
   }
 
   async createResidentTicket(payload: FormData | Record<string, any>, idempotencyKey?: string) {
