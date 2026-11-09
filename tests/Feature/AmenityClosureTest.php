@@ -111,7 +111,7 @@ class AmenityClosureTest extends TestCase
         foreach ([$edge, $outside, $otherDay] as $unaffected) {
             $this->assertDatabaseHas('amenity_bookings', ['id' => $unaffected, 'status' => 'APPROVED']);
         }
-        $this->deleteJson($this->url().'/blackouts/'.$blackout)->assertOk();
+        $this->deleteJson($this->url().'/blackouts/'.$blackout, ['version' => 1])->assertOk();
         $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'status' => 'CANCELLED']);
     }
 
@@ -148,7 +148,7 @@ class AmenityClosureTest extends TestCase
         $blackout = $this->postJson($this->url().'/blackouts', ['blackout_date' => today()->addDays(3)->toDateString(), 'reason' => 'Kiểm tra'])->assertCreated()->json('id');
         $period = ['blackout_date' => $this->bookingDate, 'reason' => 'Đóng cả ngày'];
         $token = $this->getJson($this->url().'/closure-impact?'.http_build_query($period))->assertJsonPath('count', 1)->json('confirmation_token');
-        $this->putJson($this->url().'/blackouts/'.$blackout, array_merge($period, ['confirmation_token' => $token]))->assertOk();
+        $this->putJson($this->url().'/blackouts/'.$blackout, array_merge($period, ['confirmation_token' => $token, 'version' => 1]))->assertOk();
         $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'status' => 'CANCELLED']);
         $this->assertDatabaseHas('amenity_bookings', ['id' => $terminal, 'status' => 'COMPLETED']);
     }
