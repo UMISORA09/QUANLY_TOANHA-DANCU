@@ -2531,6 +2531,10 @@ class ApiService {
     return this.request(`/management/surveys${qStr ? `?${qStr}` : ''}`);
   }
 
+  async getManagementSurveyDetail(id: string, signal?: AbortSignal): Promise<{ status: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}`, { signal, cache: 'no-store' });
+  }
+
   async getManagementSurveyKpis(): Promise<{ status: string; data: SurveyOverviewKpis }> {
     return this.request('/management/surveys/kpis');
   }
@@ -2551,11 +2555,11 @@ class ApiService {
     });
   }
 
-  async toggleManagementSurveyStatus(id: string, isActive: boolean): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+  async toggleManagementSurveyStatus(id: string, isActive: boolean, version: number): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
     return this.request(`/management/surveys/${id}/toggle-status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_active: isActive }),
+      body: JSON.stringify({ is_active: isActive, version }),
     });
   }
 

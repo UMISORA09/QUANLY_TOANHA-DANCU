@@ -210,13 +210,15 @@ class SatisfactionSurveyService
     /**
      * Toggle active status.
      */
-    public function toggleActive(SatisfactionSurvey $survey, bool $isActive, User $updater): SatisfactionSurvey
+    public function toggleActive(SatisfactionSurvey $survey, bool $isActive, User $updater, int $version): SatisfactionSurvey
     {
-        return DB::transaction(function () use ($survey, $isActive, $updater) {
+        return DB::transaction(function () use ($survey, $isActive, $updater, $version) {
             $survey = SatisfactionSurvey::query()->whereKey($survey->getKey())->lockForUpdate()->firstOrFail();
             abort_unless($this->accessService->isManager($updater) && $updater->hasPermission('SURVEY:MANAGE'), 403, 'Bạn không có quyền thay đổi trạng thái kích hoạt khảo sát.');
 
             $this->accessService->assertCanManageBlock($updater, $survey->target_block_id);
+
+            abort_if((int) $survey->version !== $version, 409, 'Khảo sát đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
             $survey->update([
                 'is_active' => $isActive,

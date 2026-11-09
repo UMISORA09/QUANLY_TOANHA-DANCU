@@ -102,7 +102,7 @@ class ManagementSurveyController extends Controller
         $user = $request->user();
         abort_unless($user && $this->accessService->isManager($user), 403, 'Bạn không có quyền xem khảo sát.');
 
-        $survey = SatisfactionSurvey::with(['targetBlock', 'questions'])->findOrFail($id);
+        $survey = SatisfactionSurvey::with(['targetBlock', 'questions'])->withCount('responses')->findOrFail($id);
 
         abort_unless($this->accessService->canViewBlock($user, $survey->target_block_id), 403);
 
@@ -159,10 +159,11 @@ class ManagementSurveyController extends Controller
 
         $validated = $request->validate([
             'is_active' => ['required', 'boolean'],
+            'version' => ['required', 'integer', 'min:1'],
         ]);
 
         $survey = SatisfactionSurvey::findOrFail($id);
-        $updated = $this->surveyService->toggleActive($survey, (bool) $validated['is_active'], $user);
+        $updated = $this->surveyService->toggleActive($survey, (bool) $validated['is_active'], $user, (int) $validated['version']);
 
         return response()->json([
             'status' => 'success',
