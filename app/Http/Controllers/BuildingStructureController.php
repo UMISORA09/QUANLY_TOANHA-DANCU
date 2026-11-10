@@ -3,14 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Floor;
-use App\Models\User;
 use App\Services\BuildingStructureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use RuntimeException;
-use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class BuildingStructureController extends Controller
@@ -18,86 +16,6 @@ class BuildingStructureController extends Controller
     public function __construct(
         protected BuildingStructureService $service
     ) {}
-
-    /**
-     * Kiểm tra xác thực và quyền hạn đối với phân hệ Hạ tầng tòa nhà & Căn hộ
-     */
-    protected function checkAuthorization(Request $request, string|array $requiredPermissions): ?JsonResponse
-    {
-        $user = $request->user();
-
-        if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Yêu cầu xác thực tài khoản.',
-                'error' => 'UNAUTHORIZED',
-            ], Response::HTTP_UNAUTHORIZED);
-        }
-
-        // 1. Quản trị viên cấp cao có toàn quyền tối cao
-        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            return null;
-        }
-
-        $perms = is_array($requiredPermissions) ? $requiredPermissions : [$requiredPermissions];
-
-        // 2. Quyền người đặc biệt theo phân hệ tương ứng với danh sách quyền yêu cầu
-        if (method_exists($user, 'hasPermission')) {
-            $hasBuildingRequirement = false;
-            $hasApartmentRequirement = false;
-            foreach ($perms as $p) {
-                if (str_starts_with($p, 'BUILDING:')) {
-                    $hasBuildingRequirement = true;
-                }
-                if (str_starts_with($p, 'APARTMENT:')) {
-                    $hasApartmentRequirement = true;
-                }
-            }
-
-            // BUILDING:SPECIAL áp dụng cho các thao tác yêu cầu quyền BUILDING:*
-            // (bao gồm cả căn hộ vì phân cấp quản lý tòa nhà quản trị cả danh mục căn hộ)
-            if ($hasBuildingRequirement && $user->hasPermission('BUILDING:SPECIAL')) {
-                return null;
-            }
-
-            // APARTMENT:SPECIAL CHỈ áp dụng cho các thao tác có yêu cầu quyền APARTMENT:*
-            // Tuyệt đối KHÔNG áp dụng cho các thao tác chỉ yêu cầu BUILDING:* (như quản lý tầng)
-            if ($hasApartmentRequirement && $user->hasPermission('APARTMENT:SPECIAL')) {
-                return null;
-            }
-        }
-
-        // 3. Kiểm tra danh sách quyền yêu cầu (OR logic)
-        foreach ($perms as $perm) {
-            if (method_exists($user, 'hasPermission') && $user->hasPermission($perm)) {
-                return null;
-            }
-        }
-
-        $permText = implode(' hoặc ', $perms);
-
-        return response()->json([
-            'success' => false,
-            'message' => "Bạn không có quyền thực hiện thao tác này (yêu cầu quyền: {$permText}).",
-            'error' => 'FORBIDDEN',
-        ], Response::HTTP_FORBIDDEN);
-    }
-
-    /**
-     * Kiểm tra người dùng có phải nhân sự quản lý vận hành tòa nhà không
-     */
-    protected function isStaffUser(User $user): bool
-    {
-        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            return true;
-        }
-
-        if (method_exists($user, 'hasRole')) {
-            return $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'BUILDING_MANAGER', 'ACCOUNTANT', 'MANAGER', 'ADMIN', 'TECHNICIAN']);
-        }
-
-        return false;
-    }
 
     /**
      * Tăng số phiên bản dữ liệu khi có thay đổi CRUD để làm mới bộ đệm Cache ngay lập tức
@@ -131,10 +49,6 @@ class BuildingStructureController extends Controller
      */
     public function bootstrap(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['BUILDING:VIEW', 'BUILDING:MANAGE', 'APARTMENT:VIEW', 'APARTMENT:MANAGE'])) {
-            return $authError;
-        }
-
         try {
             $version = (int) Cache::get('apartments_data_version', 1);
             $cacheKey = "buildings_bootstrap_v{$version}";
@@ -182,10 +96,6 @@ class BuildingStructureController extends Controller
      */
     public function indexBlocks(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['BUILDING:VIEW', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
         try {
             $version = (int) Cache::get('apartments_data_version', 1);
             $cached = Cache::remember("blocks_overview_v{$version}", 120, function () {
@@ -214,10 +124,6 @@ class BuildingStructureController extends Controller
      */
     public function getStats(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['BUILDING:VIEW', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
         try {
             $blockId = (string) ($request->query('block_id') ?: 'all');
             $version = (int) Cache::get('apartments_data_version', 1);
@@ -243,10 +149,6 @@ class BuildingStructureController extends Controller
      */
     public function indexFloors(Request $request, string $blockId): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['BUILDING:VIEW', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
         try {
             $version = (int) Cache::get('apartments_data_version', 1);
             $floors = Cache::remember("block_{$blockId}_floors_v{$version}", 300, function () use ($blockId) {
@@ -271,19 +173,6 @@ class BuildingStructureController extends Controller
      */
     public function storeFloor(Request $request, string $blockId): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, 'BUILDING:MANAGE')) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản lý cấu trúc tầng tòa nhà.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $validated = $request->validate([
             'floor_number' => 'required|integer',
             'floor_code' => 'nullable|string|max:30',
@@ -321,19 +210,6 @@ class BuildingStructureController extends Controller
      */
     public function updateFloor(Request $request, string $floorId): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, 'BUILDING:MANAGE')) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản lý cấu trúc tầng tòa nhà.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $validated = $request->validate([
             'floor_name' => 'nullable|string|max:80',
             'floor_type' => 'nullable|string|in:RESIDENTIAL,COMMERCIAL,BASEMENT,TECHNICAL',
@@ -363,19 +239,6 @@ class BuildingStructureController extends Controller
      */
     public function destroyFloor(Request $request, string $floorId): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, 'BUILDING:MANAGE')) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản lý cấu trúc tầng tòa nhà.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $force = filter_var($request->query('force', false), FILTER_VALIDATE_BOOLEAN);
 
         try {
@@ -405,10 +268,6 @@ class BuildingStructureController extends Controller
      */
     public function indexApartments(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['APARTMENT:VIEW', 'BUILDING:VIEW', 'APARTMENT:MANAGE', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
         try {
             $page = max(1, (int) $request->query('page', 1));
             $perPage = max(1, min((int) $request->query('per_page', 15), 1000));
@@ -465,19 +324,6 @@ class BuildingStructureController extends Controller
      */
     public function storeApartment(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['APARTMENT:MANAGE', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản trị căn hộ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $validated = $request->validate([
             'block_id' => 'nullable|string',
             'floor_id' => 'nullable|string',
@@ -523,19 +369,6 @@ class BuildingStructureController extends Controller
      */
     public function batchGenerateApartments(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['APARTMENT:MANAGE', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản trị căn hộ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $validated = $request->validate([
             'block_id' => 'nullable|string',
             'floor_id' => 'required|string',
@@ -576,19 +409,6 @@ class BuildingStructureController extends Controller
      */
     public function updateApartment(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['APARTMENT:MANAGE', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản trị căn hộ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $validated = $request->validate([
             'apartment_number' => 'nullable|string|max:30',
             'floor_id' => 'nullable|string',
@@ -633,19 +453,6 @@ class BuildingStructureController extends Controller
      */
     public function updateStatus(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['APARTMENT:MANAGE', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản trị căn hộ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $validated = $request->validate([
             'status' => 'required|string',
         ]);
@@ -676,21 +483,8 @@ class BuildingStructureController extends Controller
      * Xóa mềm căn hộ
      * DELETE /api/v1/apartments/{id}
      */
-    public function destroyApartment(Request $request, string $id): JsonResponse
+    public function destroyApartment(string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['APARTMENT:MANAGE', 'BUILDING:MANAGE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if ($user && ! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền quản trị căn hộ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         try {
             $this->service->deleteApartment($id);
             $this->bumpVersion();

@@ -4,11 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\DebtReminderLog;
 use App\Models\Invoice;
-use App\Models\User;
 use App\Services\DebtReminderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 
 class DebtReminderController extends Controller
 {
@@ -17,87 +15,13 @@ class DebtReminderController extends Controller
     ) {}
 
     /**
-     * Kiểm tra xác thực và quyền hạn đối với phân hệ Nhắc Nợ
-     */
-    protected function checkAuthorization(Request $request, string|array $requiredPermissions): ?JsonResponse
-    {
-        $user = $request->user();
-
-        if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Yêu cầu xác thực tài khoản.',
-                'error' => 'UNAUTHORIZED',
-            ], Response::HTTP_UNAUTHORIZED);
-        }
-
-        // 1. Quản trị viên cấp cao có toàn quyền tối cao
-        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            return null;
-        }
-
-        // 2. Quyền người đặc biệt phân hệ hóa đơn
-        if (
-            method_exists($user, 'hasPermission') &&
-            $user->hasPermission('INVOICE:SPECIAL')
-        ) {
-            return null;
-        }
-
-        // 3. Kiểm tra danh sách quyền yêu cầu (OR logic)
-        $perms = is_array($requiredPermissions) ? $requiredPermissions : [$requiredPermissions];
-        foreach ($perms as $perm) {
-            if (method_exists($user, 'hasPermission') && $user->hasPermission($perm)) {
-                return null;
-            }
-        }
-
-        $permText = implode(' hoặc ', $perms);
-
-        return response()->json([
-            'success' => false,
-            'message' => "Bạn không có quyền thực hiện thao tác này (yêu cầu quyền: {$permText}).",
-            'error' => 'FORBIDDEN',
-        ], Response::HTTP_FORBIDDEN);
-    }
-
-    /**
-     * Kiểm tra người dùng có phải nhân viên vận hành / ban quản lý không
-     */
-    protected function isStaffUser(User $user): bool
-    {
-        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            return true;
-        }
-
-        if (method_exists($user, 'hasRole')) {
-            return $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'BUILDING_MANAGER', 'ACCOUNTANT', 'MANAGER', 'ADMIN']);
-        }
-
-        return false;
-    }
-
-    /**
      * POST /api/v1/invoices/{id}/send-reminder
      * Gửi email nhắc nợ cho một hóa đơn
      */
     public function sendSingle(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['INVOICE:UPDATE', 'INVOICE:APPROVE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if (! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền gửi nhắc nợ hóa đơn.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $invoice = Invoice::findOrFail($id);
-        $staffUserId = (string) $user->id;
+        $staffUserId = $request->user()?->id ? (string) $request->user()->id : null;
 
         try {
             $log = $this->reminderService->queueReminderForInvoice($invoice, $staffUserId);
@@ -106,12 +30,12 @@ class DebtReminderController extends Controller
                 'success' => true,
                 'message' => "Đã đưa email nhắc nợ cho hóa đơn {$invoice->invoice_number} vào hàng đợi xử lý nền.",
                 'data' => $log,
-            ], Response::HTTP_ACCEPTED);
+            ], 202);
         } catch (\DomainException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            ], 422);
         }
     }
 
@@ -121,19 +45,6 @@ class DebtReminderController extends Controller
      */
     public function sendBulk(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['INVOICE:UPDATE', 'INVOICE:APPROVE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if (! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền gửi nhắc nợ hóa đơn hàng loạt.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $validated = $request->validate([
             'invoice_ids' => ['required', 'array', 'min:1'],
             'invoice_ids.*' => ['required', 'string'],
@@ -142,7 +53,7 @@ class DebtReminderController extends Controller
             'invoice_ids.min' => 'Vui lòng chọn ít nhất một hóa đơn.',
         ]);
 
-        $staffUserId = (string) $user->id;
+        $staffUserId = $request->user()?->id ? (string) $request->user()->id : null;
 
         $result = $this->reminderService->queueBulkReminders($validated['invoice_ids'], $staffUserId);
 
@@ -150,7 +61,7 @@ class DebtReminderController extends Controller
             'success' => true,
             'message' => "Đã đưa {$result['queued_count']} email nhắc nợ vào hàng đợi Queue xử lý nền.",
             'data' => $result,
-        ], Response::HTTP_ACCEPTED);
+        ], 202);
     }
 
     /**
@@ -159,19 +70,6 @@ class DebtReminderController extends Controller
      */
     public function logs(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, 'INVOICE:VIEW')) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if (! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền xem nhật ký nhắc nợ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $filters = $request->only([
             'invoice_id',
             'apartment_id',
@@ -192,21 +90,8 @@ class DebtReminderController extends Controller
      * GET /api/v1/invoices/reminders/summary
      * Thống kê KPI tổng quan hàng đợi email nhắc nợ
      */
-    public function summary(Request $request): JsonResponse
+    public function summary(): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, 'INVOICE:VIEW')) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if (! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền xem thống kê nhắc nợ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $summary = $this->reminderService->getReminderSummary();
 
         return response()->json([
@@ -221,19 +106,6 @@ class DebtReminderController extends Controller
      */
     public function autoDispatch(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['INVOICE:UPDATE', 'INVOICE:APPROVE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if (! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền kích hoạt quét nhắc nợ tự động.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $overdueOnly = $request->boolean('overdue_only', true);
         $daysBeforeDue = max(1, min(30, (int) $request->input('days_before_due', 3)));
 
@@ -254,21 +126,8 @@ class DebtReminderController extends Controller
      * GET /api/v1/invoices/reminders/{id}/preview
      * Xem trước nội dung email mẫu
      */
-    public function preview(Request $request, string $id): JsonResponse
+    public function preview(string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, 'INVOICE:VIEW')) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if (! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền xem trước nội dung nhắc nợ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         try {
             $preview = $this->reminderService->previewEmail($id);
 
@@ -280,7 +139,7 @@ class DebtReminderController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Không tìm thấy hóa đơn hoặc nhật ký nhắc nợ tương ứng: '.$e->getMessage(),
-            ], Response::HTTP_NOT_FOUND);
+            ], 404);
         }
     }
 
@@ -288,21 +147,8 @@ class DebtReminderController extends Controller
      * POST /api/v1/invoices/reminders/{id}/retry
      * Thử lại gửi email nhắc nợ cho bản ghi lỗi
      */
-    public function retry(Request $request, string $id): JsonResponse
+    public function retry(string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request, ['INVOICE:UPDATE', 'INVOICE:APPROVE'])) {
-            return $authError;
-        }
-
-        $user = $request->user();
-        if (! $this->isStaffUser($user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền thử lại gửi nhắc nợ.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $log = DebtReminderLog::findOrFail($id);
         $this->reminderService->retryLog($log);
 
