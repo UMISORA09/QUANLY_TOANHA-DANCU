@@ -27,7 +27,6 @@ class DatabaseSeeder extends Seeder
             TicketPermissionsSeeder::class,
             AnnouncementPermissionsSeeder::class,
             InvoiceSampleSeeder::class,
-            RestoreDemoAccountsSeeder::class,
         ]);
 
         // Bộ dữ liệu mẫu dùng chung cho toàn bộ nhóm (Shared Demo Data)
