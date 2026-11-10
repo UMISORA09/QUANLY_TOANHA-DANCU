@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SendParcelNotificationJob;
 use App\Models\Apartment;
+use App\Models\Parcel;
 use App\Models\Resident;
 use App\Models\Role;
 use App\Models\TemporaryRegistration;
@@ -14,6 +15,7 @@ use App\Services\ResidentService;
 use App\Services\TemporaryRegistrationService;
 use App\Services\VehicleService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -41,9 +43,9 @@ class RealtimeSyncTest extends TestCase
 
         // 1. Tạo tài khoản Admin có toàn quyền
         $this->adminUser = User::create([
-            'username' => 'rt_admin_' . Str::random(8),
-            'phone_number' => '09' . rand(10000000, 99999999),
-            'email' => 'rt_admin_' . Str::random(8) . '@cassavas.vn',
+            'username' => 'rt_admin_'.Str::random(8),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'rt_admin_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Realtime Admin Tester',
             'status' => 'ACTIVE',
@@ -60,7 +62,7 @@ class RealtimeSyncTest extends TestCase
             ]);
         }
 
-        $this->adminToken = 'smart_token_' . $this->adminUser->id . '_' . Str::random(40);
+        $this->adminToken = 'smart_token_'.$this->adminUser->id.'_'.Str::random(40);
         $adminTokenHash = hash('sha256', $this->adminToken);
 
         DB::table('user_sessions')->insert([
@@ -77,15 +79,15 @@ class RealtimeSyncTest extends TestCase
 
         // 2. Tạo tài khoản thường không có quyền quản trị
         $this->restrictedUser = User::create([
-            'username' => 'rt_user_' . Str::random(8),
-            'phone_number' => '09' . rand(10000000, 99999999),
-            'email' => 'rt_user_' . Str::random(8) . '@cassavas.vn',
+            'username' => 'rt_user_'.Str::random(8),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'rt_user_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Restricted User',
             'status' => 'ACTIVE',
         ]);
 
-        $this->restrictedToken = 'smart_token_' . $this->restrictedUser->id . '_' . Str::random(40);
+        $this->restrictedToken = 'smart_token_'.$this->restrictedUser->id.'_'.Str::random(40);
         $userTokenHash = hash('sha256', $this->restrictedToken);
 
         DB::table('user_sessions')->insert([
@@ -106,10 +108,10 @@ class RealtimeSyncTest extends TestCase
         $blockId = $block?->id ?? (string) Str::uuid();
         $floorId = $floor?->id ?? (string) Str::uuid();
 
-        if (!$block) {
+        if (! $block) {
             DB::table('blocks')->insert([
                 'id' => $blockId,
-                'block_code' => 'RT-' . Str::random(6),
+                'block_code' => 'RT-'.Str::random(6),
                 'block_name' => 'Realtime Block',
                 'total_floors' => 10,
                 'created_at' => now(),
@@ -117,7 +119,7 @@ class RealtimeSyncTest extends TestCase
             ]);
         }
 
-        if (!$floor) {
+        if (! $floor) {
             DB::table('floors')->insert([
                 'id' => $floorId,
                 'block_id' => $blockId,
@@ -130,12 +132,12 @@ class RealtimeSyncTest extends TestCase
         }
 
         $this->testApartment = Apartment::first();
-        if (!$this->testApartment) {
+        if (! $this->testApartment) {
             $this->testApartment = Apartment::create([
                 'id' => (string) Str::uuid(),
                 'block_id' => $blockId,
                 'floor_id' => $floorId,
-                'apartment_number' => 'RT-' . rand(100, 999),
+                'apartment_number' => 'RT-'.rand(100, 999),
                 'room_type' => '2_BEDROOM',
                 'gross_floor_area_sqm' => 75.0,
                 'net_usable_area_sqm' => 68.0,
@@ -144,7 +146,7 @@ class RealtimeSyncTest extends TestCase
         }
 
         $this->testResident = Resident::where('is_active', 1)->first();
-        if (!$this->testResident) {
+        if (! $this->testResident) {
             $this->testResident = Resident::create([
                 'apartment_id' => $this->testApartment->id,
                 'user_id' => $this->adminUser->id,
@@ -174,7 +176,7 @@ class RealtimeSyncTest extends TestCase
     private function getAdminHeaders(): array
     {
         return [
-            'Authorization' => 'Bearer ' . $this->adminToken,
+            'Authorization' => 'Bearer '.$this->adminToken,
             'Accept' => 'application/json',
         ];
     }
@@ -182,7 +184,7 @@ class RealtimeSyncTest extends TestCase
     private function getRestrictedHeaders(): array
     {
         return [
-            'Authorization' => 'Bearer ' . $this->restrictedToken,
+            'Authorization' => 'Bearer '.$this->restrictedToken,
             'Accept' => 'application/json',
         ];
     }
@@ -193,7 +195,7 @@ class RealtimeSyncTest extends TestCase
     public function test_1_client_a_create_vehicle_broadcasts_to_channel(): void
     {
         $aptId = $this->testApartment->id;
-        $plate = '29A-' . rand(10000, 99999);
+        $plate = '29A-'.rand(10000, 99999);
 
         $response = $this->postJson('/api/v1/vehicles', [
             'apartment_id' => $aptId,
@@ -244,7 +246,7 @@ class RealtimeSyncTest extends TestCase
     public function test_3_client_a_delete_role_broadcasts_to_channel(): void
     {
         $role = Role::create([
-            'role_code' => 'TEMP_ROLE_' . Str::random(6),
+            'role_code' => 'TEMP_ROLE_'.Str::random(6),
             'role_name' => 'Temporary Role For Test',
             'is_system_role' => 0,
         ]);
@@ -314,11 +316,11 @@ class RealtimeSyncTest extends TestCase
     public function test_5_multiple_clients_watching_same_record_receive_targeted_entity_id(): void
     {
         $vehicle = Vehicle::first();
-        if (!$vehicle) {
+        if (! $vehicle) {
             $vehicle = Vehicle::create([
                 'apartment_id' => $this->testApartment->id,
                 'owner_user_id' => $this->adminUser->id,
-                'license_plate' => '29C-' . rand(10000, 99999),
+                'license_plate' => '29C-'.rand(10000, 99999),
                 'vehicle_category' => 'MOTORBIKE',
                 'monthly_parking_fee' => 120000,
                 'is_active' => 1,
@@ -492,7 +494,7 @@ class RealtimeSyncTest extends TestCase
         $response = $this->postJson(
             '/api/v1/vehicles',
             [
-                'license_plate' => '51A-' . rand(10000, 99999),
+                'license_plate' => '51A-'.rand(10000, 99999),
                 'vehicle_category' => 'CAR',
             ],
             $this->getAdminHeaders()
@@ -629,9 +631,9 @@ class RealtimeSyncTest extends TestCase
     protected function createResidentUserWithSession(array $apartmentIds = []): array
     {
         $user = User::create([
-            'username' => 'res_user_' . Str::random(8),
-            'phone_number' => '09' . rand(10000000, 99999999),
-            'email' => 'res_' . Str::random(8) . '@cassavas.vn',
+            'username' => 'res_user_'.Str::random(8),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'res_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Resident Tester',
             'status' => 'ACTIVE',
@@ -650,12 +652,12 @@ class RealtimeSyncTest extends TestCase
 
         foreach ($apartmentIds as $aptId) {
             $exists = DB::table('apartments')->where('id', $aptId)->exists();
-            if (!$exists) {
+            if (! $exists) {
                 DB::table('apartments')->insert([
                     'id' => $aptId,
                     'block_id' => DB::table('blocks')->value('id') ?? (string) Str::uuid(),
                     'floor_id' => DB::table('floors')->value('id') ?? (string) Str::uuid(),
-                    'apartment_number' => 'TEST-' . Str::random(5),
+                    'apartment_number' => 'TEST-'.Str::random(5),
                     'gross_floor_area_sqm' => 70,
                     'net_usable_area_sqm' => 65,
                     'status' => 'OCCUPIED',
@@ -678,7 +680,7 @@ class RealtimeSyncTest extends TestCase
             ]);
         }
 
-        $token = 'smart_token_' . $user->id . '_' . Str::random(40);
+        $token = 'smart_token_'.$user->id.'_'.Str::random(40);
         DB::table('user_sessions')->insert([
             'id' => (string) Str::uuid(),
             'user_id' => $user->id,
@@ -695,7 +697,7 @@ class RealtimeSyncTest extends TestCase
             'user' => $user,
             'token' => $token,
             'headers' => [
-                'Authorization' => 'Bearer ' . $token,
+                'Authorization' => 'Bearer '.$token,
                 'Accept' => 'application/json',
             ],
         ];
@@ -929,7 +931,7 @@ class RealtimeSyncTest extends TestCase
         $resA = $this->createResidentUserWithSession([$aptAId]);
 
         // Cư dân A không được phép xem bưu phẩm căn B qua API BUG-01
-        $parcelB = \App\Models\Parcel::create([
+        $parcelB = Parcel::create([
             'id' => (string) Str::uuid(),
             'tracking_number' => 'SECURE-BUG01-B',
             'courier_company' => 'Shopee Express',
@@ -1010,15 +1012,15 @@ class RealtimeSyncTest extends TestCase
     public function test_bug05_stage3_05_expired_token_is_rejected(): void
     {
         $user = User::create([
-            'username' => 'expired_user_' . Str::random(6),
-            'phone_number' => '09' . rand(10000000, 99999999),
-            'email' => 'expired_' . Str::random(6) . '@cassavas.vn',
+            'username' => 'expired_user_'.Str::random(6),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'expired_'.Str::random(6).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Expired User',
             'status' => 'ACTIVE',
         ]);
 
-        $token = 'smart_token_' . $user->id . '_expired_' . Str::random(30);
+        $token = 'smart_token_'.$user->id.'_expired_'.Str::random(30);
         DB::table('user_sessions')->insert([
             'id' => (string) Str::uuid(),
             'user_id' => $user->id,
@@ -1032,7 +1034,7 @@ class RealtimeSyncTest extends TestCase
         ]);
 
         $headers = [
-            'Authorization' => 'Bearer ' . $token,
+            'Authorization' => 'Bearer '.$token,
             'Accept' => 'application/json',
         ];
 
@@ -1047,15 +1049,15 @@ class RealtimeSyncTest extends TestCase
     public function test_bug05_stage3_06_revoked_token_is_rejected(): void
     {
         $user = User::create([
-            'username' => 'revoked_user_' . Str::random(6),
-            'phone_number' => '09' . rand(10000000, 99999999),
-            'email' => 'revoked_' . Str::random(6) . '@cassavas.vn',
+            'username' => 'revoked_user_'.Str::random(6),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'revoked_'.Str::random(6).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Revoked User',
             'status' => 'ACTIVE',
         ]);
 
-        $token = 'smart_token_' . $user->id . '_revoked_' . Str::random(30);
+        $token = 'smart_token_'.$user->id.'_revoked_'.Str::random(30);
         DB::table('user_sessions')->insert([
             'id' => (string) Str::uuid(),
             'user_id' => $user->id,
@@ -1069,7 +1071,7 @@ class RealtimeSyncTest extends TestCase
         ]);
 
         $headers = [
-            'Authorization' => 'Bearer ' . $token,
+            'Authorization' => 'Bearer '.$token,
             'Accept' => 'application/json',
         ];
 
@@ -1213,7 +1215,7 @@ class RealtimeSyncTest extends TestCase
             'id' => $aptId,
             'block_id' => $blockId,
             'floor_id' => $floorId,
-            'apartment_number' => 'EXP-' . Str::random(5),
+            'apartment_number' => 'EXP-'.Str::random(5),
             'gross_floor_area_sqm' => 80,
             'net_usable_area_sqm' => 75,
             'status' => 'OCCUPIED',
@@ -1732,9 +1734,9 @@ class RealtimeSyncTest extends TestCase
     protected function createStaffUserWithPermission(string $permissionCode): array
     {
         $user = User::create([
-            'username' => 'staff_' . Str::random(8),
-            'phone_number' => '09' . rand(10000000, 99999999),
-            'email' => 'staff_' . Str::random(8) . '@cassavas.vn',
+            'username' => 'staff_'.Str::random(8),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'staff_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Staff Tester',
             'status' => 'ACTIVE',
@@ -1758,7 +1760,7 @@ class RealtimeSyncTest extends TestCase
         // 2. Tạo role riêng biệt cho test để gán đúng quyền cần kiểm tra, tránh duplicate key và không làm ô nhiễm role chung
         $customRole = Role::create([
             'id' => (string) Str::uuid(),
-            'role_code' => 'STAFF_CUSTOM_' . Str::random(8),
+            'role_code' => 'STAFF_CUSTOM_'.Str::random(8),
             'role_name' => 'Staff Custom Perm Role',
             'created_at' => now(),
             'updated_at' => now(),
@@ -1773,12 +1775,12 @@ class RealtimeSyncTest extends TestCase
         ]);
 
         $permission = DB::table('permissions')->where('permission_code', $permissionCode)->first();
-        if (!$permission) {
+        if (! $permission) {
             $permId = (string) Str::uuid();
             DB::table('permissions')->insert([
                 'id' => $permId,
                 'permission_code' => $permissionCode,
-                'permission_name' => 'Test Permission ' . $permissionCode,
+                'permission_name' => 'Test Permission '.$permissionCode,
                 'module' => 'TEST',
                 'created_at' => now(),
             ]);
@@ -1792,7 +1794,7 @@ class RealtimeSyncTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $token = 'smart_token_' . $user->id . '_' . Str::random(40);
+        $token = 'smart_token_'.$user->id.'_'.Str::random(40);
         DB::table('user_sessions')->insert([
             'id' => (string) Str::uuid(),
             'user_id' => $user->id,
@@ -1805,7 +1807,7 @@ class RealtimeSyncTest extends TestCase
             'created_at' => now(),
         ]);
 
-        return ['user' => $user, 'token' => $token, 'headers' => ['Authorization' => 'Bearer ' . $token, 'Accept' => 'application/json']];
+        return ['user' => $user, 'token' => $token, 'headers' => ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json']];
     }
 
     /**
@@ -1901,7 +1903,7 @@ class RealtimeSyncTest extends TestCase
         // Cố tình gán permission PARCEL:VIEW cho role của cư dân
         $residentRole = DB::table('roles')->where('role_code', 'RESIDENT')->first();
         $perm = DB::table('permissions')->where('permission_code', 'PARCEL:VIEW')->first();
-        if (!$perm) {
+        if (! $perm) {
             $permId = (string) Str::uuid();
             DB::table('permissions')->insert([
                 'id' => $permId,
@@ -2193,7 +2195,7 @@ class RealtimeSyncTest extends TestCase
         }
 
         $channels = Broadcast::driver()->getChannels();
-        $callback = $channels instanceof \Illuminate\Support\Collection
+        $callback = $channels instanceof Collection
             ? $channels->get($channelName)
             : ($channels[$channelName] ?? null);
 
@@ -2244,7 +2246,7 @@ class RealtimeSyncTest extends TestCase
 
         $residentRole = DB::table('roles')->where('role_code', 'RESIDENT')->first();
         $perm = DB::table('permissions')->where('permission_code', 'PARCEL:VIEW')->first();
-        if (!$perm) {
+        if (! $perm) {
             $permId = (string) Str::uuid();
             DB::table('permissions')->insert([
                 'id' => $permId,
@@ -2404,7 +2406,7 @@ class RealtimeSyncTest extends TestCase
 
         // 2. Kiểm tra Admin
         $adminRole = Role::where('role_code', 'ADMIN')->first();
-        if (!$adminRole) {
+        if (! $adminRole) {
             $adminRole = Role::create([
                 'id' => (string) Str::uuid(),
                 'role_code' => 'ADMIN',
@@ -2412,9 +2414,9 @@ class RealtimeSyncTest extends TestCase
             ]);
         }
         $adminTester = User::create([
-            'username' => 'admin_cb_' . Str::random(8),
-            'phone_number' => '09' . rand(10000000, 99999999),
-            'email' => 'admin_cb_' . Str::random(8) . '@cassavas.vn',
+            'username' => 'admin_cb_'.Str::random(8),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'admin_cb_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Admin Callback Tester',
             'status' => 'ACTIVE',
