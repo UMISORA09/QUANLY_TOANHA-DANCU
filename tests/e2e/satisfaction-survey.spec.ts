@@ -201,3 +201,38 @@ test.describe('F13: Khảo sát và Thống kê Mức độ Hài lòng Cư dân 
     await expect(page.getByText('Khảo sát Thang máy 2026')).toBeVisible();
   });
 });
+
+test('F13: conflict reload preserves draft and requires review before retry', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' }));
+    localStorage.setItem('smart_cassavas_token', 'qa-token');
+  });
+  const survey = { id: 'qa-survey', survey_code: 'QA-OCC', title: 'Khảo sát ban đầu', description: '', start_date: '2026-11-01', end_date: '2027-12-31', is_active: true, version: 1, responses_count: 0, questions: [{ id: 'q1', question_text: 'Dịch vụ tốt không?', question_type: 'YES_NO', options_json: ['Có', 'Không'], is_required: true }] };
+  let writes = 0;
+  let detailReads = 0;
+  await page.route('**/api/v1/management/surveys**', async (route) => {
+    const req = route.request(); const path = new URL(req.url()).pathname;
+    if (req.method() === 'PUT' || req.method() === 'PATCH') {
+      writes++;
+      expect(req.postDataJSON().version).toBe(writes === 1 ? 1 : 2);
+      return route.fulfill(writes === 1 ? { status: 409, json: { message: 'Khảo sát đã thay đổi' } } : { json: { status: 'success', data: { ...survey, version: 3 } } });
+    }
+    if (path.endsWith('/qa-survey')) {
+      detailReads++;
+      return route.fulfill({ json: { status: 'success', data: { ...survey, title: 'Bản mới của người khác', version: 2 } } });
+    }
+    return route.fulfill({ json: { status: 'success', data: [survey], meta: { last_page: 1 } } });
+  });
+  await page.goto('/quan-ly?tab=surveys');
+  await page.getByTitle('Chỉnh sửa cấu hình').click();
+  const title = page.getByPlaceholder('Ví dụ: Khảo sát Mức độ Hài lòng Dịch vụ Quý 4/2026...');
+  await title.fill('Nội dung đang soạn');
+  await page.getByRole('button', { name: 'Lưu cập nhật', exact: true }).click();
+  await expect(page.getByText('Bản mới của người khác', { exact: true })).toBeVisible();
+  await expect(title).toHaveValue('Nội dung đang soạn');
+  expect(detailReads).toBe(1); expect(writes).toBe(1);
+  await page.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập' }).click();
+  await page.getByRole('button', { name: 'Lưu cập nhật', exact: true }).click();
+  await expect(page.getByTestId('survey-builder-modal')).not.toBeVisible();
+  expect(writes).toBe(2);
+});

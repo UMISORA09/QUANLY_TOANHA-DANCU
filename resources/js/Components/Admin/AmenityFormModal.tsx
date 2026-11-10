@@ -135,6 +135,10 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConflict, setIsConflict] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
+  const [latestAmenity, setLatestAmenity] = useState<Amenity | null>(null);
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(amenity?.updated_at);
+  const conflictGeneration = useRef(0);
+  useEffect(() => () => { conflictGeneration.current++; }, [isOpen, amenity?.id]);
 
   // Auto-fill preset helper based on Category & Block
   const applyCategoryPreset = (targetCatId: string, currentBlockId?: string, force = true) => {
@@ -240,6 +244,9 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      setIsConflict(false);
+      setLatestAmenity(null);
+      setExpectedUpdatedAt(amenity?.updated_at);
       if (amenity) {
         setCategoryId(amenity.category_id);
         setBlockId(amenity.block_id || '');
@@ -298,36 +305,21 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
 
   const handleReloadLatest = async () => {
     if (!amenity?.id) return;
-    setIsReloading(true);
+    const generation = ++conflictGeneration.current;
+    setIsReloading(true); setLatestAmenity(null);
     try {
       const fresh = await api.getAmenity(amenity.id, true);
-      setCategoryId(fresh.category_id);
-      setBlockId(fresh.block_id || '');
-      setAmenityName(fresh.amenity_name);
-      setAmenityCode(fresh.amenity_code);
-      setLocationDetail(fresh.location_detail);
-      setMaxCapacity(fresh.max_capacity_per_slot);
-      setHourlyRate(Number(fresh.hourly_rate) || 0);
-      setSecurityDeposit(Number(fresh.security_deposit_required) || 0);
-      setAdvanceDays(fresh.advance_booking_days_limit);
-      setMinCancelHours(fresh.min_cancel_hours_before);
-      setRequiresApproval(fresh.requires_admin_approval);
-      setRules(fresh.rules_and_regulations || '');
-      setCoverImageUrl(fresh.cover_image_url || '');
-      setGalleryImages(Array.isArray(fresh.gallery_images) ? fresh.gallery_images : []);
-      setIsActive(fresh.is_active);
-      amenity.updated_at = fresh.updated_at;
-      setIsConflict(false);
-      setErrorMessage(null);
+      if (generation === conflictGeneration.current) setLatestAmenity(fresh);
     } catch (err: any) {
-      setErrorMessage('Không thể tải lại dữ liệu tiện ích: ' + (err.message || ''));
+      if (generation === conflictGeneration.current) setErrorMessage('Chưa tải được bản mới. Bản nhập được giữ nguyên: ' + (err.message || ''));
     } finally {
-      setIsReloading(false);
+      if (generation === conflictGeneration.current) setIsReloading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isConflict) return;
 
     if (!categoryId) {
       setErrorMessage('Vui lòng chọn danh mục tiện ích.');
@@ -376,7 +368,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
       if (isEdit && amenity) {
         await api.updateAmenity(amenity.id, {
           ...payload,
-          updated_at: amenity.updated_at,
+          updated_at: expectedUpdatedAt,
         });
       } else {
         await api.createAmenity(payload);
@@ -392,6 +384,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
         msg.toLowerCase().includes('phiên bản')
       ) {
         setIsConflict(true);
+        await handleReloadLatest();
       }
     } finally {
       setIsSubmitting(false);
@@ -441,6 +434,15 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
           </div>
         )}
 
+        {isConflict && latestAmenity && <section aria-label="Bản tiện ích mới nhất" className="p-4 rounded-xl border border-amber-300 text-sm space-y-2">
+          <p>Phiên bản máy chủ: {latestAmenity.updated_at}. Nội dung đang nhập được giữ nguyên.</p>
+          <h3 className="font-bold">{latestAmenity.amenity_name}</h3>
+          <p>{latestAmenity.amenity_code} · {latestAmenity.location_detail}</p>
+          <p>Sức chứa: {latestAmenity.max_capacity_per_slot} · Giá/giờ: {latestAmenity.hourly_rate} · Cọc: {latestAmenity.security_deposit_required}</p>
+          <p>Đặt trước: {latestAmenity.advance_booking_days_limit} ngày · Hủy trước: {latestAmenity.min_cancel_hours_before} giờ · {latestAmenity.is_active ? 'Hoạt động' : 'Tạm ngưng'}</p>
+          <p className="whitespace-pre-wrap">{latestAmenity.rules_and_regulations}</p>
+          <button type="button" className="min-h-11 underline font-bold" onClick={() => { setExpectedUpdatedAt(latestAmenity.updated_at); setIsConflict(false); setErrorMessage(null); }}>Đã xem bản mới, tiếp tục sửa bản nhập</button>
+        </section>}
         {/* OCC Conflict Alert Banner */}
         {isConflict && (
           <div className="mt-3 p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0 shadow-xs animate-in fade-in">
@@ -773,7 +775,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isConflict || isReloading}
               className="px-5 py-2.5 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
             >
               {isSubmitting ? (
