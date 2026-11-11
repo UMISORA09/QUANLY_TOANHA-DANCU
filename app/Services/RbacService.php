@@ -14,6 +14,9 @@ use Illuminate\Validation\ValidationException;
 
 class RbacService
 {
+    /**
+     * Xác định người dùng từ Request đã xác thực (Hỗ trợ Laravel Auth, Bearer token qua bảng user_sessions)
+     */
     public static function resolveUser(Request $request): ?object
     {
         $user = $request->user() ?? Auth::user();
@@ -199,11 +202,23 @@ class RbacService
             ]);
         }
 
+        $upperCodes = array_map(fn ($p) => is_string($p) ? strtoupper(trim($p)) : $p, $permissionIds);
+
         // Tìm các Permission ID thực tế
         $resolvedIds = Permission::whereIn('id', $permissionIds)
             ->orWhereIn('permission_code', $permissionIds)
+            ->orWhereIn('permission_code', $upperCodes)
             ->pluck('id')
             ->toArray();
+
+        // Hỗ trợ alias 'special' / 'SPECIAL' để cấp quyền người đặc biệt
+        if (in_array('SPECIAL', $upperCodes, true)) {
+            $specialIds = Permission::where('permission_code', 'SPECIAL')
+                ->orWhere('permission_code', 'SYSTEM:SPECIAL')
+                ->pluck('id')
+                ->toArray();
+            $resolvedIds = array_values(array_unique(array_merge($resolvedIds, $specialIds)));
+        }
 
         $oldPerms = DB::table('role_permissions')
             ->where('role_id', $role->id)

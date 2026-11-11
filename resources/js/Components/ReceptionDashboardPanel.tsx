@@ -21,6 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useRealtimeSync, RealtimeEventPayload } from '../Hooks/useRealtimeSync';
+import { CustomSelect } from './Common/CustomSelect';
 
 // =========================================================================
 // INTERFACES & TYPE DEFINITIONS
@@ -147,6 +148,7 @@ export const ReceptionDashboardPanel: React.FC<ReceptionDashboardPanelProps> = (
     return d.toISOString().slice(0, 10);
   });
   const [filterError, setFilterError] = useState<string | null>(null);
+  const [parcelAgingFilter, setParcelAgingFilter] = useState<string>('ALL');
 
   // 2. Trạng thái Dữ liệu & Tải
   const [data, setData] = useState<DashboardMetrics | null>(null);
@@ -302,6 +304,12 @@ export const ReceptionDashboardPanel: React.FC<ReceptionDashboardPanelProps> = (
     return max;
   }, [trafficSeries]);
 
+  const filteredTopParcels = useMemo(() => {
+    const list = data?.top_pending_parcels ?? [];
+    if (parcelAgingFilter === 'ALL') return list;
+    return list.filter((p) => p.aging_group === parcelAgingFilter);
+  }, [data?.top_pending_parcels, parcelAgingFilter]);
+
   return (
     <div className={`space-y-6 ${embedded ? '' : 'w-full max-w-7xl mx-auto'}`}>
       {/* ========================================================================= */}
@@ -366,52 +374,20 @@ export const ReceptionDashboardPanel: React.FC<ReceptionDashboardPanelProps> = (
 
         {/* Date Filter Controls */}
         <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          {/* Preset Buttons */}
-          <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setPreset('today')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                preset === 'today'
-                  ? 'bg-white text-neutral-900 shadow-xs'
-                  : 'text-slate-600 hover:text-neutral-900'
-              }`}
-            >
-              Hôm nay
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreset('last_7_days')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                preset === 'last_7_days'
-                  ? 'bg-white text-neutral-900 shadow-xs'
-                  : 'text-slate-600 hover:text-neutral-900'
-              }`}
-            >
-              7 ngày qua
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreset('this_month')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                preset === 'this_month'
-                  ? 'bg-white text-neutral-900 shadow-xs'
-                  : 'text-slate-600 hover:text-neutral-900'
-              }`}
-            >
-              Tháng này
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreset('custom')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                preset === 'custom'
-                  ? 'bg-white text-neutral-900 shadow-xs'
-                  : 'text-slate-600 hover:text-neutral-900'
-              }`}
-            >
-              Tùy chọn ngày
-            </button>
+          {/* Preset Combobox */}
+          <div className="w-56">
+            <CustomSelect
+              value={preset}
+              onChange={(val: any) => setPreset(val)}
+              options={[
+                { value: 'today', label: 'Hôm nay' },
+                { value: 'last_7_days', label: '7 ngày qua' },
+                { value: 'this_month', label: 'Tháng này' },
+                { value: 'custom', label: 'Tùy chọn ngày...' },
+              ]}
+              prefixIcon={<Calendar className="w-3.5 h-3.5" />}
+              searchable={false}
+            />
           </div>
 
           {/* Custom Date Pickers */}
@@ -829,7 +805,7 @@ export const ReceptionDashboardPanel: React.FC<ReceptionDashboardPanelProps> = (
         {/* Table 1: Top bưu phẩm tồn đọng lâu nhất */}
         <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-rose-500" />
@@ -838,22 +814,40 @@ export const ReceptionDashboardPanel: React.FC<ReceptionDashboardPanelProps> = (
                 <p className="text-xs text-slate-400 mt-0.5">Ưu tiên gọi điện hoặc gửi nhắc nhở cư dân</p>
               </div>
 
-              {onNavigateTab && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateTab('parcels')}
-                  className="text-xs font-semibold text-amber-600 hover:text-amber-700 cursor-pointer"
-                >
-                  Xem tất cả
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                <div className="w-44">
+                  <CustomSelect
+                    value={parcelAgingFilter}
+                    onChange={(val) => setParcelAgingFilter(val)}
+                    options={[
+                      { value: 'ALL', label: 'Tất cả mức tồn' },
+                      { value: 'over_5_days', label: 'Quá 5 ngày (Quá hạn)' },
+                      { value: '3_to_5_days', label: '3 - 5 ngày (Cảnh báo)' },
+                      { value: '1_to_3_days', label: '1 - 3 ngày' },
+                      { value: 'under_24h', label: 'Dưới 24 giờ' },
+                    ]}
+                    placeholder="Lọc thời gian lưu"
+                    searchable={false}
+                  />
+                </div>
+
+                {onNavigateTab && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateTab('parcels')}
+                    className="text-xs font-semibold text-amber-600 hover:text-amber-700 cursor-pointer shrink-0"
+                  >
+                    Xem tất cả
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="mt-3 divide-y divide-slate-100">
-              {(data?.top_pending_parcels ?? []).length === 0 ? (
-                <p className="text-xs text-slate-400 py-6 text-center">Không có bưu phẩm nào đang tồn đọng.</p>
+              {filteredTopParcels.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Không có bưu phẩm nào phù hợp bộ lọc.</p>
               ) : (
-                (data?.top_pending_parcels ?? []).map((parcel) => {
+                filteredTopParcels.map((parcel) => {
                   const isOverdue = parcel.aging_group === 'over_5_days';
                   const isWarning = parcel.aging_group === '3_to_5_days';
 

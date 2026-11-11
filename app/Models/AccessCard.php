@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Laravel\Scout\Searchable;
 
 class AccessCard extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, Searchable;
 
     protected $table = 'access_cards';
 
@@ -35,6 +36,41 @@ class AccessCard extends Model
             'deposit_fee' => 'float',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * Tên search index
+     */
+    public function searchableAs(): string
+    {
+        return 'access_cards';
+    }
+
+    /**
+     * Dữ liệu được index vào Search Engine (Meilisearch)
+     */
+    public function toSearchableArray(): array
+    {
+        $this->loadMissing(['assignedUser', 'assignedApartment.block', 'assignedVehicle']);
+
+        return [
+            'id' => (string) $this->id,
+            'card_uid' => $this->card_uid,
+            'card_number' => $this->card_number,
+            'card_type' => $this->card_type,
+            'status' => $this->status,
+            'assigned_user_id' => (string) $this->assigned_user_id,
+            'assigned_apartment_id' => (string) $this->assigned_apartment_id,
+            'assigned_vehicle_id' => (string) $this->assigned_vehicle_id,
+            'user_name' => $this->assignedUser?->full_name ?? '',
+            'user_phone' => $this->assignedUser?->phone_number ?? '',
+            'apartment_number' => $this->assignedApartment?->apartment_number ?? '',
+            'block_name' => $this->assignedApartment?->block?->block_name ?? '',
+            'vehicle_license_plate' => $this->assignedVehicle?->license_plate ?? '',
+            'issued_date' => $this->issued_date?->format('Y-m-d'),
+            'expiry_date' => $this->expiry_date?->format('Y-m-d'),
+            'created_at' => $this->created_at?->timestamp,
         ];
     }
 

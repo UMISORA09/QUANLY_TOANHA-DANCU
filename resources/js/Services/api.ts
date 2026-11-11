@@ -1877,6 +1877,50 @@ class ApiService {
     });
   }
 
+  async getUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      data: {
+        user_id: string;
+        username: string;
+        full_name: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`);
+  }
+
+  async syncUserPermissions(id: string, permissions: string[]) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    });
+  }
+
+  async resetUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'DELETE',
+    });
+  }
+
   async getRoles() {
     return this.request<{ success: boolean; data: RoleRbac[] }>('/roles');
   }

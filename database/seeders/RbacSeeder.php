@@ -139,6 +139,68 @@ class RbacSeeder extends Seeder
             ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:UPDATE', 'permission_name' => 'Cập nhật thông tin phương tiện', 'description' => 'Chỉnh sửa biển số, dòng xe, màu sắc và trạng thái'],
             ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:DELETE', 'permission_name' => 'Xóa / ngừng theo dõi xe', 'description' => 'Xóa mềm phương tiện ra khỏi bãi đỗ'],
             ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:APPROVE', 'permission_name' => 'Phê duyệt xe & kích hoạt thu phí', 'description' => 'Duyệt phương tiện và kích hoạt đẩy phí vào kỳ hóa đơn'],
+
+            // VEHICLE MODULE EXTENSIONS
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:DOWNLOAD', 'permission_name' => 'Tải về danh sách xe', 'description' => 'Xuất file Excel danh sách phương tiện'],
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:UPLOAD', 'permission_name' => 'Tải lên danh sách xe', 'description' => 'Nhập dữ liệu xe hàng loạt'],
+            ['module' => 'VEHICLE', 'permission_code' => 'VEHICLE:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ phương tiện', 'description' => 'Quyền người đặc biệt cấp thẻ xe ưu tiên đặc thù'],
+
+            // ROLE MODULE EXTENSIONS
+            ['module' => 'ROLE', 'permission_code' => 'ROLE:DOWNLOAD', 'permission_name' => 'Tải về danh sách vai trò', 'description' => 'Tải về dữ liệu vai trò'],
+            ['module' => 'ROLE', 'permission_code' => 'ROLE:UPLOAD', 'permission_name' => 'Tải lên danh sách vai trò', 'description' => 'Tải lên cấu hình vai trò'],
+            ['module' => 'ROLE', 'permission_code' => 'ROLE:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ vai trò', 'description' => 'Quyền người đặc biệt thao tác vai trò đặc thù'],
+
+            // PERMISSION MODULE EXTENSIONS
+            ['module' => 'PERMISSION', 'permission_code' => 'PERMISSION:DOWNLOAD', 'permission_name' => 'Tải về danh mục quyền hạn', 'description' => 'Tải về danh mục quyền hạn hệ thống'],
+            ['module' => 'PERMISSION', 'permission_code' => 'PERMISSION:UPLOAD', 'permission_name' => 'Tải lên danh mục quyền hạn', 'description' => 'Tải lên danh mục quyền hạn hệ thống'],
+            ['module' => 'PERMISSION', 'permission_code' => 'PERMISSION:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ quyền hạn', 'description' => 'Quyền người đặc biệt quản lý quyền hạn đặc thù'],
+
+            // AMENITY MODULE EXTENSIONS
+            ['module' => 'AMENITY', 'permission_code' => 'AMENITY:DOWNLOAD', 'permission_name' => 'Tải về dữ liệu tiện ích', 'description' => 'Tải về danh sách tiện ích và đặt chỗ'],
+            ['module' => 'AMENITY', 'permission_code' => 'AMENITY:UPLOAD', 'permission_name' => 'Tải lên dữ liệu tiện ích', 'description' => 'Tải lên thông tin tiện ích và biểu phí'],
+            ['module' => 'AMENITY', 'permission_code' => 'AMENITY:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ tiện ích', 'description' => 'Quyền người đặc biệt phê duyệt đặt chỗ đặc thù'],
+
+            // INVOICE MODULE EXTENSIONS
+            ['module' => 'INVOICE', 'permission_code' => 'INVOICE:DELETE', 'permission_name' => 'Xóa hóa đơn', 'description' => 'Hủy hoặc xóa hóa đơn'],
+            ['module' => 'INVOICE', 'permission_code' => 'INVOICE:DOWNLOAD', 'permission_name' => 'Tải về hóa đơn', 'description' => 'Xuất và tải về hóa đơn chứng từ'],
+            ['module' => 'INVOICE', 'permission_code' => 'INVOICE:UPLOAD', 'permission_name' => 'Tải lên biểu phí hóa đơn', 'description' => 'Tải lên file dữ liệu hóa đơn'],
+            ['module' => 'INVOICE', 'permission_code' => 'INVOICE:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ hóa đơn', 'description' => 'Quyền người đặc biệt can thiệp tài chính đặc thù'],
+
+            // TICKET MODULE EXTENSIONS
+            ['module' => 'TICKET', 'permission_code' => 'TICKET:DELETE', 'permission_name' => 'Xóa phản ánh sự cố', 'description' => 'Xóa phản ánh hoặc báo cáo rác'],
+            ['module' => 'TICKET', 'permission_code' => 'TICKET:DOWNLOAD', 'permission_name' => 'Tải về danh sách sự cố', 'description' => 'Xuất và tải về danh sách sự cố'],
+            ['module' => 'TICKET', 'permission_code' => 'TICKET:UPLOAD', 'permission_name' => 'Tải lên tài liệu kỹ thuật', 'description' => 'Tải lên file đính kèm biên bản xử lý'],
+            ['module' => 'TICKET', 'permission_code' => 'TICKET:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ sự cố', 'description' => 'Quyền người đặc biệt xử lý khiếu nại đặc thù'],
+
+            // VISITOR MODULE EXTENSIONS
+            ['module' => 'VISITOR', 'permission_code' => 'VISITOR:UPDATE', 'permission_name' => 'Cập nhật thông tin khách', 'description' => 'Chỉnh sửa thông tin khách đến'],
+            ['module' => 'VISITOR', 'permission_code' => 'VISITOR:DELETE', 'permission_name' => 'Xóa nhật ký khách đến', 'description' => 'Xóa dữ liệu khách viếng thăm'],
+            ['module' => 'VISITOR', 'permission_code' => 'VISITOR:DOWNLOAD', 'permission_name' => 'Tải về nhật ký khách đến', 'description' => 'Xuất nhật ký khách ra vào'],
+            ['module' => 'VISITOR', 'permission_code' => 'VISITOR:UPLOAD', 'permission_name' => 'Tải lên danh sách khách', 'description' => 'Nhập danh sách khách sự kiện từ tệp'],
+            ['module' => 'VISITOR', 'permission_code' => 'VISITOR:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ khách đến', 'description' => 'Quyền người đặc biệt cấp phép đón khách đặc biệt'],
+
+            // REPORT MODULE EXTENSIONS
+            ['module' => 'REPORT', 'permission_code' => 'REPORT:CREATE', 'permission_name' => 'Tạo mẫu báo cáo mới', 'description' => 'Thiết lập mẫu báo cáo thống kê mới'],
+            ['module' => 'REPORT', 'permission_code' => 'REPORT:UPDATE', 'permission_name' => 'Cập nhật mẫu báo cáo', 'description' => 'Chỉnh sửa cấu hình báo cáo'],
+            ['module' => 'REPORT', 'permission_code' => 'REPORT:DELETE', 'permission_name' => 'Xóa mẫu báo cáo', 'description' => 'Xóa báo cáo tùy chỉnh'],
+            ['module' => 'REPORT', 'permission_code' => 'REPORT:DOWNLOAD', 'permission_name' => 'Tải về báo cáo thống kê', 'description' => 'Tải về dữ liệu báo cáo dạng Excel/PDF'],
+            ['module' => 'REPORT', 'permission_code' => 'REPORT:UPLOAD', 'permission_name' => 'Tải lên dữ liệu đối soát', 'description' => 'Tải lên tệp dữ liệu số liệu đối soát'],
+            ['module' => 'REPORT', 'permission_code' => 'REPORT:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ báo cáo', 'description' => 'Quyền người đặc biệt xem báo cáo tài chính bảo mật'],
+
+            // USER MODULE EXTENSIONS (DOWNLOAD, UPLOAD, SPECIAL)
+            ['module' => 'USER', 'permission_code' => 'USER:DOWNLOAD', 'permission_name' => 'Tải về danh sách người dùng', 'description' => 'Tải về danh sách tài khoản định dạng Excel/CSV'],
+            ['module' => 'USER', 'permission_code' => 'USER:UPLOAD', 'permission_name' => 'Tải lên danh sách người dùng', 'description' => 'Tải lên danh sách tài khoản hàng loạt từ tệp tin'],
+            ['module' => 'USER', 'permission_code' => 'USER:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ người dùng', 'description' => 'Quyền người đặc biệt thao tác tài khoản đặc thù'],
+
+            // SYSTEM MODULE (7 CORE RBAC PERMISSIONS INCL. SPECIAL)
+            ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:CREATE', 'permission_name' => 'Thêm thiết lập hệ thống', 'description' => 'Thêm mới cấu hình và tham số hệ thống'],
+            ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:DELETE', 'permission_name' => 'Xóa thiết lập hệ thống', 'description' => 'Xóa cấu hình và dữ liệu hệ thống'],
+            ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:UPDATE', 'permission_name' => 'Sửa thiết lập hệ thống', 'description' => 'Chỉnh sửa cấu hình và tham số hệ thống'],
+            ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:DOWNLOAD', 'permission_name' => 'Tải về sao lưu hệ thống', 'description' => 'Tải về tệp tin sao lưu và nhật ký hệ thống'],
+            ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:UPLOAD', 'permission_name' => 'Tải lên cấu hình hệ thống', 'description' => 'Tải lên gói cập nhật và tệp tin hệ thống'],
+            ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:VIEW', 'permission_name' => 'Xem cấu hình hệ thống', 'description' => 'Tra cứu thông tin và nhật ký hoạt động hệ thống'],
+            ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:SPECIAL', 'permission_name' => 'Người đặc biệt (special)', 'description' => 'Quyền người đặc biệt với thẩm quyền quản trị đặc thù'],
+            ['module' => 'SYSTEM', 'permission_code' => 'SPECIAL', 'permission_name' => 'Người đặc biệt (special)', 'description' => 'Quyền người đặc biệt toàn hệ thống'],
         ];
 
         $permissionModelMap = [];

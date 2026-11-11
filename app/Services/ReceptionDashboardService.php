@@ -166,8 +166,8 @@ class ReceptionDashboardService
         // 7. Danh sách tóm tắt: Bưu phẩm tồn đọng lâu nhất (giới hạn 6 kiện)
         $topPendingParcels = $this->getTopPendingParcels($now, 6);
 
-        // 8. Danh sách tóm tắt: Khách hiện đang ở trong tòa nhà (giới hạn 6 lượt)
-        $currentVisitorsInside = $this->getCurrentVisitorsInside($now, 6);
+        // 8. Danh sách tóm tắt: Khách hiện đang ở trong tòa nhà (giới hạn 25 lượt)
+        $currentVisitorsInside = $this->getCurrentVisitorsInside($now, 25);
 
         return [
             'meta' => [
@@ -632,7 +632,7 @@ class ReceptionDashboardService
      *
      * @return array<int, array<string, mixed>>
      */
-    protected function getCurrentVisitorsInside(Carbon $now, int $limit = 6): array
+    protected function getCurrentVisitorsInside(Carbon $now, int $limit = 25): array
     {
         $logs = DB::table('visitor_checkin_logs as vcl')
             ->leftJoin('apartments as a', 'vcl.apartment_id', '=', 'a.id')
@@ -651,7 +651,7 @@ class ReceptionDashboardService
                 'vr.visit_purpose',
                 'vr.registration_code',
             ])
-            ->orderBy('vcl.checkin_time', 'asc')
+            ->orderBy('vcl.checkin_time', 'desc')
             ->limit($limit)
             ->get();
 
@@ -662,17 +662,22 @@ class ReceptionDashboardService
 
             return [
                 'id' => (string) $l->id,
+                'checkin_log_id' => (string) $l->id,
                 'visitor_name' => (string) $l->visitor_name,
                 'visitor_phone_masked' => $this->maskPhoneNumber((string) $l->visitor_phone),
                 'apartment_number' => (string) ($l->apartment_number ?? 'N/A'),
                 'block_code' => (string) ($l->block_code ?? ''),
+                'purpose' => (string) ($l->visit_purpose ?: 'Thăm căn hộ'),
                 'visit_purpose' => (string) ($l->visit_purpose ?: 'Thăm căn hộ'),
                 'registration_code' => (string) ($l->registration_code ?: 'Vãng lai'),
                 'checkin_time' => $cin->toIso8601String(),
                 'checkin_formatted' => $cin->format('H:i d/m/Y'),
                 'duration_minutes' => $minutesInside,
                 'duration_hours' => $hoursInside,
+                'stay_duration_minutes' => $minutesInside,
+                'stay_duration_label' => $hoursInside >= 1 ? "{$hoursInside}h" : "{$minutesInside}m",
                 'temp_card_assigned' => ! empty($l->temp_card_id),
+                'temp_card_id' => $l->temp_card_id ? (string) $l->temp_card_id : null,
             ];
         })->toArray();
     }
