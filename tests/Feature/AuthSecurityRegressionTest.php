@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\OtpVerificationMail;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -24,9 +25,9 @@ class AuthSecurityRegressionTest extends TestCase
         parent::setUp();
 
         $this->activeUser = User::create([
-            'username' => 'auth_test_'.Str::random(8),
+            'username' => strtolower('auth_test_'.Str::random(8)),
             'phone_number' => '09'.rand(10000000, 99999999),
-            'email' => 'auth_test_'.Str::random(8).'@cassavas.vn',
+            'email' => strtolower('auth_test_'.Str::random(8).'@cassavas.vn'),
             'password_hash' => Hash::make($this->rawPassword),
             'full_name' => 'Security Tester',
             'status' => 'ACTIVE',
@@ -309,22 +310,21 @@ class AuthSecurityRegressionTest extends TestCase
     }
 
     /**
-     * BUG-02-B TEST 5: Local và Testing vẫn giữ được khả năng debug OTP theo thiết kế
+     * BUG-02-B TEST 5: Local và Testing vẫn gửi OTP qua Mail và không lộ debug_otp trong response
      */
     public function test_bug02_b_local_or_testing_environment_retains_debug_otp_capability(): void
     {
         Mail::fake();
         app()['env'] = 'testing';
 
-        $testEmail = 'testotp_'.Str::random(8).'@example.com';
+        $testEmail = strtolower('testotp_'.Str::random(8).'@example.com');
         $res = $this->postJson('/api/v1/auth/send-register-otp', [
             'email' => $testEmail,
         ]);
 
         $res->assertStatus(200);
-        $debugOtp = $res->json('debug_otp');
-        $this->assertNotNull($debugOtp, 'Trong môi trường testing phải giữ debug_otp');
-        $this->assertEquals(6, strlen($debugOtp));
+        $this->assertNull($res->json('debug_otp'), 'Trong môi trường testing không được lộ debug_otp trong response');
+        Mail::assertSent(OtpVerificationMail::class, fn ($mail) => $mail->hasTo($testEmail) && strlen($mail->otp) === 6);
     }
 
     /**
@@ -343,7 +343,7 @@ class AuthSecurityRegressionTest extends TestCase
     }
 
     /**
-     * BUG-02-C TEST 7: Demo token vẫn hoạt động trong local/testing khi được RbacService hỗ trợ
+     * BUG-02-C TEST 7: Demo token hoạt động trong local/testing khi có phiên hợp lệ trong user_sessions
      */
     public function test_bug02_c_demo_token_works_in_testing_environment_for_reception_dashboard(): void
     {
@@ -366,6 +366,20 @@ class AuthSecurityRegressionTest extends TestCase
         DB::table('user_roles')->updateOrInsert(
             ['user_id' => $recUser->id, 'role_id' => $role->id],
             ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
+        );
+
+        DB::table('user_sessions')->updateOrInsert(
+            ['refresh_token_hash' => hash('sha256', 'smart_token_reception_demo')],
+            [
+                'id' => (string) Str::uuid(),
+                'user_id' => $recUser->id,
+                'device_name' => 'Security Regression Demo Session',
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'PHPUnit',
+                'expires_at' => now()->addDays(7),
+                'is_revoked' => 0,
+                'created_at' => now(),
+            ]
         );
 
         $res = $this->withHeader('Authorization', 'Bearer smart_token_reception_demo')

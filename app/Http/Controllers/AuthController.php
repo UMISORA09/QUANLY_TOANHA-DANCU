@@ -134,8 +134,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Xác thực mật khẩu duy nhất bằng hàm băm cryptographic an toàn
-        $isValidPassword = ! empty($user->password_hash) && rescue(fn () => Hash::check($password, $user->password_hash), false);
+        $isValidPassword = ! empty($user->password_hash) && Hash::check($password, $user->password_hash);
 
         if (! $isValidPassword) {
             return response()->json([
@@ -241,34 +240,7 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user() ?? Auth::user();
-
-        // Nếu chưa được nạp qua middleware, thử giải mã từ Bearer token
-        if (! $user) {
-            $authHeader = $request->header('Authorization');
-            if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
-                $token = trim(substr($authHeader, 7));
-                $tokenHash = hash('sha256', $token);
-
-                $session = DB::table('user_sessions')
-                    ->where(function ($q) use ($token, $tokenHash) {
-                        $q->where('refresh_token_hash', $tokenHash)
-                            ->orWhere('refresh_token_hash', $token);
-                    })
-                    ->where('is_revoked', 0)
-                    ->where('expires_at', '>', now())
-                    ->first();
-
-                if ($session) {
-                    $user = User::with('roles:id,role_code')->find($session->user_id);
-                } elseif (app()->environment('testing', 'local') && $token === 'smart_token_admin_demo') {
-                    $user = User::with('roles:id,role_code')
-                        ->whereHas('roles', fn ($q) => $q->where('role_code', 'SUPER_ADMIN'))
-                        ->where('status', 'ACTIVE')
-                        ->first();
-                }
-            }
-        }
+        $user = $request->user();
 
         if (! $user) {
             return response()->json([
@@ -399,7 +371,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => "Mã xác thực OTP đã được gửi tới email {$email}. Vui lòng kiểm tra hộp thư của bạn.",
             'email' => $email,
-            'debug_otp' => app()->environment('local', 'testing') ? $otp : null,
+            'debug_otp' => null,
         ]);
     }
 
@@ -759,7 +731,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => "Mã xác thực OTP đã được gửi tới email {$email}. Vui lòng kiểm tra hộp thư của bạn.",
             'email' => $email,
-            'debug_otp' => app()->environment('local', 'testing') ? $otp : null,
+            'debug_otp' => null,
         ]);
     }
 

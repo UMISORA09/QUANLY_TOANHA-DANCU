@@ -933,13 +933,13 @@ class RealtimeSyncTest extends TestCase
         // Cư dân A không được phép xem bưu phẩm căn B qua API BUG-01
         $parcelB = Parcel::create([
             'id' => (string) Str::uuid(),
-            'tracking_number' => 'SECURE-BUG01-B',
+            'tracking_number' => 'SECURE-BUG01-B-'.Str::random(6),
             'courier_company' => 'Shopee Express',
             'apartment_id' => $aptBId,
             'recipient_name' => 'Resident B',
             'recipient_phone' => '0912345678',
             'pickup_pin_code' => '9999',
-            'pickup_qr_code' => 'QR-9999',
+            'pickup_qr_code' => 'QR-9999-'.Str::random(6),
             'parcel_photo_url' => 'https://example.com/photo.jpg',
             'status' => 'STORED',
             'received_at' => now(),
@@ -1921,11 +1921,20 @@ class RealtimeSyncTest extends TestCase
             );
         }
 
-        // Dù có permission, nhưng không phải staff -> Tuyệt đối không được bypass channel toàn tòa!
-        $this->assertFalse(
-            QuocTinRealtimeService::isUserAuthorizedForChannel($resident, 'quoc-tin.parcels'),
-            'Permission PARCEL:VIEW không được phép cho phép cư dân bypass vào channel WebSocket bưu phẩm toàn tòa'
-        );
+        try {
+            // Dù có permission, nhưng không phải staff -> Tuyệt đối không được bypass channel toàn tòa!
+            $this->assertFalse(
+                QuocTinRealtimeService::isUserAuthorizedForChannel($resident, 'quoc-tin.parcels'),
+                'Permission PARCEL:VIEW không được phép cho phép cư dân bypass vào channel WebSocket bưu phẩm toàn tòa'
+            );
+        } finally {
+            if ($residentRole && $perm) {
+                DB::table('role_permissions')
+                    ->where('role_id', $residentRole->id)
+                    ->where('permission_id', $perm->id)
+                    ->delete();
+            }
+        }
     }
 
     /**
@@ -1946,10 +1955,19 @@ class RealtimeSyncTest extends TestCase
             );
         }
 
-        $this->assertFalse(
-            QuocTinRealtimeService::isUserAuthorizedForChannel($resident, 'quoc-tin.visitors'),
-            'Permission VISITOR:VIEW không được phép cho phép cư dân bypass vào channel WebSocket khách toàn tòa'
-        );
+        try {
+            $this->assertFalse(
+                QuocTinRealtimeService::isUserAuthorizedForChannel($resident, 'quoc-tin.visitors'),
+                'Permission VISITOR:VIEW không được phép cho phép cư dân bypass vào channel WebSocket khách toàn tòa'
+            );
+        } finally {
+            if ($residentRole && $perm) {
+                DB::table('role_permissions')
+                    ->where('role_id', $residentRole->id)
+                    ->where('permission_id', $perm->id)
+                    ->delete();
+            }
+        }
     }
 
     /**
@@ -2264,10 +2282,19 @@ class RealtimeSyncTest extends TestCase
             );
         }
 
-        $callback = $this->getBroadcastChannelCallback('quoc-tin.parcels');
-        $result = $callback($resident);
+        try {
+            $callback = $this->getBroadcastChannelCallback('quoc-tin.parcels');
+            $result = $callback($resident);
 
-        $this->assertFalse($result, 'Callback Broadcast::channel(quoc-tin.parcels) thực tế phải từ chối cư dân kể cả khi có PARCEL:VIEW');
+            $this->assertFalse($result, 'Callback Broadcast::channel(quoc-tin.parcels) thực tế phải từ chối cư dân kể cả khi có PARCEL:VIEW');
+        } finally {
+            if ($residentRole && $perm) {
+                DB::table('role_permissions')
+                    ->where('role_id', $residentRole->id)
+                    ->where('permission_id', $perm->id)
+                    ->delete();
+            }
+        }
     }
 
     /**
@@ -2288,10 +2315,19 @@ class RealtimeSyncTest extends TestCase
             );
         }
 
-        $callback = $this->getBroadcastChannelCallback('quoc-tin.visitors');
-        $result = $callback($resident);
+        try {
+            $callback = $this->getBroadcastChannelCallback('quoc-tin.visitors');
+            $result = $callback($resident);
 
-        $this->assertFalse($result, 'Callback Broadcast::channel(quoc-tin.visitors) thực tế phải từ chối cư dân kể cả khi có VISITOR:VIEW');
+            $this->assertFalse($result, 'Callback Broadcast::channel(quoc-tin.visitors) thực tế phải từ chối cư dân kể cả khi có VISITOR:VIEW');
+        } finally {
+            if ($residentRole && $perm) {
+                DB::table('role_permissions')
+                    ->where('role_id', $residentRole->id)
+                    ->where('permission_id', $perm->id)
+                    ->delete();
+            }
+        }
     }
 
     /**

@@ -804,27 +804,6 @@ class QuocTinRealtimeService
             return self::filterEventsForResident($events, $user);
         }
 
-        // Nếu không truyền $user: Chặn toàn bộ các kênh nhạy cảm để tránh rò rỉ nặc danh
-        $hasSensitiveChannel = false;
-        foreach ($channelList as $ch) {
-            if (in_array($ch, ['quoc-tin.parcels', 'quoc-tin.visitors', 'quoc-tin.rfid-cards', 'quoc-tin.schedules', 'quoc-tin.staff_schedules'], true)) {
-                $hasSensitiveChannel = true;
-                break;
-            }
-        }
-
-        if ($hasSensitiveChannel) {
-            $safeEvents = [];
-            foreach ($events as $ev) {
-                $ch = $ev['channel'] ?? '';
-                if (! in_array($ch, ['quoc-tin.parcels', 'quoc-tin.visitors', 'quoc-tin.rfid-cards', 'quoc-tin.schedules', 'quoc-tin.staff_schedules'], true)) {
-                    $safeEvents[] = $ev;
-                }
-            }
-
-            return $safeEvents;
-        }
-
         return $events;
     }
 }

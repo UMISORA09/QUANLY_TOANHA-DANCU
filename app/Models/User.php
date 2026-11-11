@@ -201,9 +201,9 @@ class User extends Authenticatable
             return true;
         }
 
-        // Hỗ trợ kiểm tra quyền người đặc biệt ('special' hoặc 'SPECIAL') - chỉ giữ permission toàn cục chính xác nếu tồn tại
+        // Hỗ trợ kiểm tra quyền người đặc biệt ('special' hoặc 'SPECIAL')
         if ($target === 'SPECIAL') {
-            return in_array('SPECIAL', $allPerms, true);
+            return in_array('SPECIAL', $allPerms, true) || in_array('SYSTEM:SPECIAL', $allPerms, true);
         }
 
         return false;

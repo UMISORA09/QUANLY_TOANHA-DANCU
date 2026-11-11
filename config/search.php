@@ -34,6 +34,11 @@ return [
             'cache_ttl_seconds' => 300,
         ],
 
+        'meilisearch' => [
+            'host' => env('MEILISEARCH_HOST', 'http://127.0.0.1:7700'),
+            'key' => env('MEILISEARCH_KEY', null),
+        ],
+
         'elasticsearch' => [
             'surveys_index' => env('ELASTICSEARCH_SURVEYS_INDEX', 'cassavas_surveys_v1'),
             'suggestions_index' => env('ELASTICSEARCH_SUGGESTIONS_INDEX', 'cassavas_suggestions_v1'),
