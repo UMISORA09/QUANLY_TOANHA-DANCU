@@ -975,7 +975,7 @@ Route::withoutMiddleware([
 });
 
 // DevOps Management & Metrics APIs
-Route::prefix('api/devops')->group(function () {
+Route::prefix('api/devops')->middleware(['auth.bearer:strict', 'permission:CICD:VIEW'])->group(function () {
     Route::get('status', [DevOpsApiController::class, 'status']);
     Route::get('metrics', [DevOpsApiController::class, 'metrics']);
     Route::get('deployments', [DevOpsApiController::class, 'deployments']);

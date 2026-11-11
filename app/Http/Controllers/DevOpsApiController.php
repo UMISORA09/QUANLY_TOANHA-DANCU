@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
 
 class DevOpsApiController extends Controller
 {
@@ -28,6 +29,10 @@ class DevOpsApiController extends Controller
 
         $overview = $this->cicdService->getOverview();
         $health = $this->cicdService->getSystemHealth();
+        $commit = (string) (env('COMMIT_SHA') ?: env('VERCEL_GIT_COMMIT_SHA', ''));
+        $branch = (string) env('VERCEL_GIT_COMMIT_REF', '');
+        $commit = $commit !== '' ? $commit : $this->gitValue(['rev-parse', 'HEAD']);
+        $branch = $branch !== '' ? $branch : $this->gitValue(['branch', '--show-current']);
 
         return response()->json([
             'status' => 'success',
@@ -41,9 +46,9 @@ class DevOpsApiController extends Controller
                     'search' => 'operational',
                 ],
                 'current_release' => [
-                    'version' => env('APP_VERSION', ($commit = exec('git rev-parse HEAD 2>/dev/null')) ? 'sha-'.substr($commit, 0, 7) : 'unknown'),
-                    'branch' => exec('git branch --show-current 2>/dev/null') ?: 'unknown',
-                    'commit' => ($commit = exec('git rev-parse HEAD 2>/dev/null')) ? substr($commit, 0, 7) : 'unknown',
+                    'version' => env('APP_VERSION') ?: ($commit !== 'unknown' ? 'sha-'.substr($commit, 0, 7) : 'unknown'),
+                    'branch' => $branch,
+                    'commit' => $commit !== 'unknown' ? substr($commit, 0, 7) : 'unknown',
                     'environment' => app()->environment(),
                     'deployed_at' => null,
                 ],
@@ -53,6 +58,18 @@ class DevOpsApiController extends Controller
         ]);
     }
 
+    /** @param list<string> $arguments */
+    private function gitValue(array $arguments): string
+    {
+        try {
+            $result = Process::path(base_path())->timeout(2)->run(['git', ...$arguments]);
+
+            return $result->successful() && trim($result->output()) !== '' ? trim($result->output()) : 'unknown';
+        } catch (\Throwable) {
+            return 'unknown';
+        }
+    }
+
     /**
      * Lấy các chỉ số hiệu năng hệ thống: GET /api/devops/metrics
      */
@@ -60,14 +77,14 @@ class DevOpsApiController extends Controller
     {
         $health = $this->cicdService->getSystemHealth();
         $memoryUsed = memory_get_usage(true);
-        $memoryPeak = memory_get_peak_usage(true);
         $dbPingMs = $health['metrics']['db_ping_ms'] ?? 0;
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'cpu_percent' => function_exists('sys_getloadavg') ? round(sys_getloadavg()[0] * 100 / max(1, (int) shell_exec('nproc 2>/dev/null') ?: 1), 1) : null,
-                'ram_percent' => round($memoryUsed / max(1, $memoryPeak) * 100, 1),
+                // shortcut: utilization needs a platform metrics source; report unknown until one is available.
+                'cpu_percent' => null,
+                'ram_percent' => null,
                 'ram_used_mb' => round($memoryUsed / (1024 * 1024), 1),
                 'ram_total_mb' => null,
                 'disk_percent' => $health['metrics']['disk_usage_percent'] ?? null,
