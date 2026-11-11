@@ -13,7 +13,7 @@ class PublicContentTest extends TestCase
     {
         parent::setUp();
         $this->withoutVite();
-        config(['app.key' => 'base64:'.base64_encode(str_repeat('a', 32)), 'session.driver' => 'array', 'cache.default' => 'array',
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('a', 32)), 'session.driver' => 'array', 'cache.default' => 'array', 'public_content.rate_limit_store' => 'array',
             'database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:', 'database.connections.sqlite.url' => null]);
         DB::listen(fn () => $this->fail('Public guides must not query the database.'));
     }
@@ -34,8 +34,9 @@ class PublicContentTest extends TestCase
             $this->assertSame('website', $xpath->query('//meta[@property="og:type"]')->item(0)->getAttribute('content'));
             $this->assertStringEndsWith('/social-card.png', $xpath->query('//meta[@property="og:image"]')->item(0)->getAttribute('content'));
             $schema = json_decode($xpath->query('//script[@type="application/ld+json"]')->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
-            $this->assertSame('SoftwareApplication', $schema['@type']);
-            $this->assertSame('SMART CASSAVAS', $schema['name']);
+            $application = collect($schema['@graph'])->firstWhere('@type', 'SoftwareApplication');
+            $this->assertNotNull($application);
+            $this->assertSame('SMART CASSAVAS', $application['name']);
             $this->get($path, ['Accept' => 'text/markdown'])->assertOk()->assertHeader('Vary', 'Accept')
                 ->assertHeader('Content-Type', 'text/markdown; charset=utf-8')->assertSee('SMART CASSAVAS');
         }
@@ -77,10 +78,10 @@ class PublicContentTest extends TestCase
         }
         $response = $this->get('/sitemap.xml')->assertOk()->assertHeader('Content-Type', 'application/xml; charset=utf-8');
         $xml = simplexml_load_string($response->getContent());
-        $this->assertCount(count(PublicContent::PAGES), $xml->url);
+        $this->assertCount(count(PublicContent::PAGES) + 1, $xml->url);
         foreach ($xml->url as $url) {
-            $this->assertContains(basename((string) $url->loc), PublicContent::PAGES);
-            $this->assertSame('2026-10-27', (string) $url->lastmod);
+            $this->assertContains(basename((string) $url->loc), [...PublicContent::PAGES, 'cli.md']);
+            $this->assertSame(config('public_content.updated_at'), (string) $url->lastmod);
         }
         $spec = json_decode(file_get_contents(public_path('openapi.json')), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('3.1.0', $spec['openapi']);
@@ -97,7 +98,6 @@ class PublicContentTest extends TestCase
 
     public function test_versioned_guide_documents_errors_and_throttles(): void
     {
-        config(['public_content.rate_limit_store' => 'array']);
         $this->getJson('/api/v1/public/guides/home')->assertOk()
             ->assertHeader('RateLimit-Policy', '"public-guide";q=60;w=60')
             ->assertJsonPath('page', 'home')

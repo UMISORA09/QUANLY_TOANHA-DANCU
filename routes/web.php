@@ -62,9 +62,10 @@ Route::get('/', [PublicContentController::class, 'show'])->name('public.root');
 Route::get('/home', [PublicContentController::class, 'show'])->name('public.home');
 Route::redirect('/index.html', '/home', 308);
 Route::get('/{page}', [PublicContentController::class, 'show'])
-    ->where('page', 'about|contact|privacy|docs|mcp')->name('public.page');
+    ->where('page', 'about|contact|privacy|docs|mcp|cli')->name('public.page');
 Route::get('/{page}.md', [PublicContentController::class, 'markdown'])
-    ->where('page', 'home|about|contact|privacy|docs|mcp');
+    ->where('page', 'home|about|contact|privacy|docs|mcp|cli');
+Route::get('/api/v1/public/cli', [PublicContentController::class, 'readCliInfo']);
 Route::get('/api/v1/public/guides/{page}', [PublicContentController::class, 'guide']);
 Route::get('/sitemap.xml', [PublicContentController::class, 'sitemap']);
 Route::get('/.well-known/mcp', [PublicContentController::class, 'mcpDiscovery']);

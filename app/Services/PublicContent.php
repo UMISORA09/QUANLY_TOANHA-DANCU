@@ -8,7 +8,7 @@ use Symfony\Component\HttpFoundation\AcceptHeader;
 
 class PublicContent
 {
-    public const PAGES = ['home', 'about', 'contact', 'privacy', 'docs', 'mcp'];
+    public const PAGES = ['home', 'about', 'contact', 'privacy', 'docs', 'mcp', 'cli'];
 
     public function markdown(string $page): string
     {
@@ -24,7 +24,7 @@ class PublicContent
         $paragraphs = preg_split('/\R\s*\R/', trim($markdown));
 
         return [
-            'title' => ltrim($paragraphs[0], '# ').($page === 'home' ? '' : ' | SMART CASSAVAS'),
+            'title' => ltrim($paragraphs[0], '# ').(str_contains($paragraphs[0], 'SMART CASSAVAS') ? '' : ' | SMART CASSAVAS'),
             'description' => Str::limit($paragraphs[1], 250),
             'canonical' => config('public_content.url').'/'.$page,
             'html' => Str::markdown($markdown, ['html_input' => 'strip', 'allow_unsafe_links' => false]),
