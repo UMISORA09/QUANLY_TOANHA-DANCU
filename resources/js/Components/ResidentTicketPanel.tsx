@@ -198,7 +198,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     title: '',
     category_id: '',
     location: '',
-    priority: 'MEDIUM',
+
     preferred_service_time: '',
     description: '',
     apartment_id: '',
@@ -250,7 +250,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [editFormData, setEditFormData] = useState({
     title: '',
     location: '',
-    priority: 'MEDIUM',
+
     preferred_service_time: '',
     description: '',
     version: 1,
@@ -466,7 +466,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       dataPayload.append('title', formData.title.trim());
       dataPayload.append('category_id', formData.category_id);
       dataPayload.append('location', formData.location.trim());
-      dataPayload.append('priority', formData.priority);
+
       dataPayload.append('description', formData.description.trim());
 
       if (formData.apartment_id) {
@@ -490,7 +490,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
           title: '',
           category_id: categories[0]?.id || '',
           location: '',
-          priority: 'MEDIUM',
+
           preferred_service_time: '',
           description: '',
           apartment_id: apartments[0]?.id || '',
@@ -515,7 +515,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       title: '',
       category_id: categories[0]?.id || '',
       location: '',
-      priority: 'MEDIUM',
+
       preferred_service_time: '',
       description: '',
       apartment_id: apartments[0]?.id || '',
@@ -601,7 +601,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     setEditFormData({
       title: detailTicket.title || '',
       location: detailTicket.location || '',
-      priority: detailTicket.priority || 'MEDIUM',
+
       preferred_service_time: detailTicket.preferred_service_time
         ? detailTicket.preferred_service_time.substring(0, 16)
         : '',
@@ -626,7 +626,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       const res = await api.updateResidentTicket(detailTicket.id, {
         title: editFormData.title.trim(),
         location: editFormData.location.trim(),
-        priority: editFormData.priority,
+
         preferred_service_time: editFormData.preferred_service_time || null,
         description: editFormData.description.trim(),
         version: editFormData.version,
@@ -943,15 +943,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     )}
                   </div>
 
-                  {/* Mức độ khẩn cấp (Priority) */}
-                  <div>
-                    <label htmlFor="ticket-priority-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                      Mức độ khẩn cấp
-                    </label>
-                    <div className="relative">
-                      <CustomSelect variant="feature" overlay buttonClassName="min-h-11 text-sm" id="ticket-priority-select" value={formData.priority} onChange={(value) => setFormData({ ...formData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
-                    </div>
-                  </div>
+                  <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">Ban quản lý sẽ xác nhận mức độ ưu tiên khi tiếp nhận yêu cầu.</p>
 
                   {/* Ngày mong muốn tiếp nhận (Chỉ chọn ngày tháng năm, không chọn giờ) */}
                   <div>
@@ -1742,12 +1734,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-neutral-800 mb-1">Mức độ ưu tiên</label>
-                  <div className="relative">
-                    <CustomSelect variant="feature" overlay buttonClassName="min-h-11 text-sm" label="Ưu tiên yêu cầu" value={editFormData.priority} onChange={(value) => setEditFormData({ ...editFormData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
-                  </div>
-                </div>
+                <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">Mức độ ưu tiên do ban quản lý xác nhận.</p>
               </div>
 
               <div>
