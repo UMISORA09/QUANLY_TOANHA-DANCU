@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
 import { TicketRating } from './TicketRating';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -197,7 +198,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     title: '',
     category_id: '',
     location: '',
-    priority: 'MEDIUM',
+
     preferred_service_time: '',
     description: '',
     apartment_id: '',
@@ -249,7 +250,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   const [editFormData, setEditFormData] = useState({
     title: '',
     location: '',
-    priority: 'MEDIUM',
+
     preferred_service_time: '',
     description: '',
     version: 1,
@@ -465,7 +466,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       dataPayload.append('title', formData.title.trim());
       dataPayload.append('category_id', formData.category_id);
       dataPayload.append('location', formData.location.trim());
-      dataPayload.append('priority', formData.priority);
+
       dataPayload.append('description', formData.description.trim());
 
       if (formData.apartment_id) {
@@ -489,7 +490,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
           title: '',
           category_id: categories[0]?.id || '',
           location: '',
-          priority: 'MEDIUM',
+
           preferred_service_time: '',
           description: '',
           apartment_id: apartments[0]?.id || '',
@@ -514,7 +515,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       title: '',
       category_id: categories[0]?.id || '',
       location: '',
-      priority: 'MEDIUM',
+
       preferred_service_time: '',
       description: '',
       apartment_id: apartments[0]?.id || '',
@@ -600,7 +601,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
     setEditFormData({
       title: detailTicket.title || '',
       location: detailTicket.location || '',
-      priority: detailTicket.priority || 'MEDIUM',
+
       preferred_service_time: detailTicket.preferred_service_time
         ? detailTicket.preferred_service_time.substring(0, 16)
         : '',
@@ -625,7 +626,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
       const res = await api.updateResidentTicket(detailTicket.id, {
         title: editFormData.title.trim(),
         location: editFormData.location.trim(),
-        priority: editFormData.priority,
+
         preferred_service_time: editFormData.preferred_service_time || null,
         description: editFormData.description.trim(),
         version: editFormData.version,
@@ -649,7 +650,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
   useTicketNotificationRefresh(() => { void fetchTickets(); if (selectedTicketId && viewMode === 'detail' && !isCreateModalOpen && !isCancelModalOpen && !isConfirmModalOpen && !isReopenModalOpen && !isEditModalOpen && !removeImageId) void fetchTicketDetail(selectedTicketId); });
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="feature-controls max-w-6xl mx-auto space-y-8">
       {/* Toast Notification */}
       {toast && (
         <div
@@ -796,7 +797,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: FORM BÁO CÁO SỰ CỐ MỚI (POPUP GIỮA MÀN HÌNH) ================= */}
       {isCreateModalOpen && (
-        <TicketDialog open={isCreateModalOpen} title="Gửi yêu cầu báo cáo sự cố" busy={isSubmitting} onClose={() => setIsCreateModalOpen(false)} footer={
+        <TicketDialog variant="feature" open={isCreateModalOpen} title="Gửi yêu cầu báo cáo sự cố" busy={isSubmitting} onClose={() => setIsCreateModalOpen(false)} footer={
 <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-5 pb-4 pt-3">
                 <button
                   id="ticket-close-create-btn"
@@ -859,7 +860,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Căn hộ / Tòa nhà <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-apartment-select" value={formData.apartment_id} onChange={(value) => setFormData({ ...formData, apartment_id: value })} placeholder="Chọn căn hộ đang cư trú" options={apartments.map((apt) => ({ value: apt.id, label: `Căn ${apt.apartment_number} ${apt.block_name || ''}` }))} />
+                      <CustomSelect variant="feature" overlay buttonClassName="min-h-11 text-sm" id="ticket-apartment-select" value={formData.apartment_id} onChange={(value) => setFormData({ ...formData, apartment_id: value })} placeholder="Chọn căn hộ đang cư trú" options={apartments.map((apt) => ({ value: apt.id, label: `Căn ${apt.apartment_number} ${apt.block_name || ''}` }))} />
                     </div>
                   </div>
                 </div>
@@ -901,7 +902,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                       Phân loại sự cố <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-category-select" value={formData.category_id} onChange={(value) => setFormData({ ...formData, category_id: value })} options={categories.map((c) => ({ value: c.id, label: c.category_name }))} placeholder="Chọn danh mục sự cố" />
+                      <CustomSelect variant="feature" overlay buttonClassName="min-h-11 text-sm" id="ticket-category-select" value={formData.category_id} onChange={(value) => setFormData({ ...formData, category_id: value })} options={categories.map((c) => ({ value: c.id, label: c.category_name }))} placeholder="Chọn danh mục sự cố" />
                     </div>
                     {formErrors.category_id && (
                       <p className="text-[11px] text-rose-600 font-medium mt-1">{formErrors.category_id}</p>
@@ -942,15 +943,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     )}
                   </div>
 
-                  {/* Mức độ khẩn cấp (Priority) */}
-                  <div>
-                    <label htmlFor="ticket-priority-select" className="block text-xs font-bold text-neutral-800 mb-1.5">
-                      Mức độ khẩn cấp
-                    </label>
-                    <div className="relative">
-                      <CustomSelect overlay buttonClassName="min-h-11 text-sm" id="ticket-priority-select" value={formData.priority} onChange={(value) => setFormData({ ...formData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
-                    </div>
-                  </div>
+                  <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">Ban quản lý sẽ xác nhận mức độ ưu tiên khi tiếp nhận yêu cầu.</p>
 
                   {/* Ngày mong muốn tiếp nhận (Chỉ chọn ngày tháng năm, không chọn giờ) */}
                   <div>
@@ -1139,14 +1132,14 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
               {/* Status Filter */}
               <div className="relative">
-                <CustomSelect overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-status-filter" label="Trạng thái yêu cầu" value={statusFilter} onChange={(value) => { setStatusFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả trạng thái' }, ...Object.entries(STATUS_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
+                <CustomSelect variant="feature" overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-status-filter" label="Trạng thái yêu cầu" value={statusFilter} onChange={(value) => { setStatusFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả trạng thái' }, ...Object.entries(STATUS_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
               </div>
 
               {/* Category Filter */}
               <div className="relative">
-                <CustomSelect overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
+                <CustomSelect variant="feature" overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-category-filter" label="Loại sự cố" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả loại sự cố' }, ...categories.map((c) => ({ value: c.id, label: c.category_name }))]} />
               </div>
-              <CustomSelect overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-priority-filter" label="Mức độ ưu tiên" value={priorityFilter} onChange={(value) => { setPriorityFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả mức độ' }, ...Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
+              <CustomSelect variant="feature" overlay buttonClassName="min-h-11 text-sm border-slate-200 shadow-2xs" id="ticket-priority-filter" label="Mức độ ưu tiên" value={priorityFilter} onChange={(value) => { setPriorityFilter(value); setCurrentPage(1); }} options={[{ value: 'ALL', label: 'Tất cả mức độ' }, ...Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))]} />
             </div>
 
             {/* Reset / Reload helper */}
@@ -1557,7 +1550,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: HỦY TICKET ================= */}
       {isCancelModalOpen && (
-        <TicketDialog open={isCancelModalOpen} title="Hủy yêu cầu" busy={isCancelling} onClose={() => setIsCancelModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
+        <TicketDialog variant="feature" open={isCancelModalOpen} title="Hủy yêu cầu" busy={isCancelling} onClose={() => setIsCancelModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
                 disabled={isCancelling}
@@ -1599,7 +1592,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: XÁC NHẬN HOÀN TẤT ================= */}
       {isConfirmModalOpen && (
-        <TicketDialog open={isConfirmModalOpen} title="Xác nhận nghiệm thu" busy={isConfirming} onClose={() => setIsConfirmModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
+        <TicketDialog variant="feature" open={isConfirmModalOpen} title="Xác nhận nghiệm thu" busy={isConfirming} onClose={() => setIsConfirmModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
                 disabled={isConfirming}
@@ -1641,7 +1634,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
 
       {/* ================= MODAL: CHƯA KHẮC PHỤC XONG (REOPEN) ================= */}
       {isReopenModalOpen && (
-        <TicketDialog open={isReopenModalOpen} title="Phản hồi chưa đạt" busy={isReopening} onClose={() => setIsReopenModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
+        <TicketDialog variant="feature" open={isReopenModalOpen} title="Phản hồi chưa đạt" busy={isReopening} onClose={() => setIsReopenModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
               <button
                 type="button"
                 disabled={isReopening}
@@ -1681,7 +1674,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         </TicketDialog>
       )}
 
-      <TicketDialog open={versionConflict} title="Yêu cầu đã được cập nhật" busy={refreshingConflict} onClose={() => { setVersionConflict(false); setIsEditModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setRemoveImageId(null); }}>
+      <TicketDialog variant="feature" open={versionConflict} title="Yêu cầu đã được cập nhật" busy={refreshingConflict} onClose={() => { setVersionConflict(false); setIsEditModalOpen(false); setIsCancelModalOpen(false); setIsConfirmModalOpen(false); setIsReopenModalOpen(false); setRemoveImageId(null); }}>
         <div className="space-y-3 text-sm">
           <p role="alert">Nội dung đang nhập được giữ nguyên. Hãy xem bản mới trước khi thao tác lại.</p>
           {refreshingConflict && <p role="status">Đang tải bản mới…</p>}
@@ -1692,7 +1685,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         </div>
       </TicketDialog>
       {/* ================= MODAL: CHỈNH SỬA TICKET ================= */}
-      <TicketDialog open={!!removeImageId} title="Bỏ ảnh sự cố" busy={imageBusy} onClose={() => setRemoveImageId(null)}><p className="text-sm">Bạn muốn bỏ ảnh này khỏi yêu cầu?</p><div className="mt-4 flex justify-end gap-2"><button type="button" disabled={imageBusy} className="rounded-xl border px-4 py-2 cursor-pointer" onClick={() => setRemoveImageId(null)}>Đóng</button><button type="button" disabled={imageBusy} className="rounded-xl bg-rose-600 px-4 py-2 text-white cursor-pointer" onClick={async () => {
+      <TicketDialog variant="feature" open={!!removeImageId} title="Bỏ ảnh sự cố" busy={imageBusy} onClose={() => setRemoveImageId(null)}><p className="text-sm">Bạn muốn bỏ ảnh này khỏi yêu cầu?</p><div className="mt-4 flex justify-end gap-2"><button type="button" disabled={imageBusy} className="rounded-xl border px-4 py-2 cursor-pointer" onClick={() => setRemoveImageId(null)}>Đóng</button><button type="button" disabled={imageBusy} className="rounded-xl bg-rose-600 px-4 py-2 text-white cursor-pointer" onClick={async () => {
         if (!detailTicket || !removeImageId || imageBusy) return;
         setImageBusy(true);
         try { const res = await api.removeTicketImage(detailTicket.id, removeImageId, detailTicket.version); setDetailTicket(res.data); setRemoveImageId(null); showToast('Đã bỏ ảnh.'); }
@@ -1700,7 +1693,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         finally { setImageBusy(false); }
       }}>Bỏ ảnh</button></div></TicketDialog>
       {isEditModalOpen && (
-        <TicketDialog open={isEditModalOpen} title="Sửa yêu cầu" busy={isUpdating} onClose={() => setIsEditModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
+        <TicketDialog variant="feature" open={isEditModalOpen} title="Sửa yêu cầu" busy={isUpdating} onClose={() => setIsEditModalOpen(false)} footer={<div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-neutral-200 px-5 pb-4 pt-3">
                 <button
                   type="button"
                   disabled={isUpdating}
@@ -1741,12 +1734,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-neutral-800 mb-1">Mức độ ưu tiên</label>
-                  <div className="relative">
-                    <CustomSelect overlay buttonClassName="min-h-11 text-sm" label="Ưu tiên yêu cầu" value={editFormData.priority} onChange={(value) => setEditFormData({ ...editFormData, priority: value })} options={Object.entries(PRIORITY_CONFIG).map(([value, item]) => ({ value, label: item.label }))} />
-                  </div>
-                </div>
+                <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">Mức độ ưu tiên do ban quản lý xác nhận.</p>
               </div>
 
               <div>
@@ -1777,7 +1765,7 @@ export const ResidentTicketPanel: React.FC<ResidentTicketPanelProps> = ({
         </TicketDialog>
       )}
 
-      <TicketDialog open={!!previewImage} title="Xem ảnh sự cố" onClose={() => setPreviewImage(null)}>
+      <TicketDialog variant="feature" open={!!previewImage} title="Xem ảnh sự cố" onClose={() => setPreviewImage(null)}>
         {previewImage && <img src={previewImage} alt="Ảnh sự cố phóng to" className="max-h-[70dvh] w-full rounded-xl object-contain" />}
       </TicketDialog>
     </div>

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-for (const width of [1280, 390]) {
+for (const width of [375, 768, 1440]) {
   test(`MOCKED F13: đánh giá Ticket, giữ bản nhập khi lỗi và đọc lại (${width}px)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'resident', name: 'Cư dân QA' })); localStorage.setItem('smart_cassavas_token', 'qa-csat'); });
@@ -55,7 +55,7 @@ for (const width of [1280, 390]) {
   });
 }
 
-for (const width of [1280, 390]) {
+for (const width of [375, 768, 1440]) {
   test(`MOCKED F13: GET cũ không ghi đè đánh giá gửi thành công (${width}px)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'resident', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-review'); });

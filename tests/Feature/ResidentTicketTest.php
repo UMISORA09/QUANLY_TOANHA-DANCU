@@ -357,6 +357,19 @@ class ResidentTicketTest extends TestCase
         }
     }
 
+    public function test_resident_cannot_set_priority_on_create_or_update(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $payload = ['title' => 'Kiểm tra phân loại sự cố', 'description' => 'Yêu cầu ban quản lý kiểm tra vòi nước.', 'location' => 'Phòng bếp', 'category_id' => $this->categoryId, 'apartment_id' => $this->apartmentId];
+        foreach (['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as $priority) {
+            $this->postJson('/api/v1/resident/tickets', [...$payload, 'priority' => $priority])->assertUnprocessable()->assertJsonValidationErrors('priority');
+        }
+        $created = $this->postJson('/api/v1/resident/tickets', $payload)->assertCreated()->assertJsonPath('data.priority', 'MEDIUM')->assertJsonPath('data.status', 'NEW');
+        $id = $created->json('data.id');
+        $this->patchJson('/api/v1/resident/tickets/'.$id, [...$payload, 'version' => 1, 'priority' => 'URGENT'])->assertUnprocessable()->assertJsonValidationErrors('priority');
+        $this->assertDatabaseHas('tickets', ['id' => $id, 'priority' => 'MEDIUM', 'version' => 1]);
+    }
+
     public function test_resident_can_create_ticket_successfully(): void
     {
         $payload = [
@@ -364,7 +377,7 @@ class ResidentTicketTest extends TestCase
             'description' => 'Vòi nước bị rỉ nước liên tục dưới gầm tủ bếp, cần kỹ thuật hỗ trợ kiểm tra van.',
             'category_id' => $this->categoryId,
             'location' => 'Khu vực bếp nấu',
-            'priority' => 'HIGH',
+
             'apartment_id' => $this->apartmentId,
         ];
 
@@ -375,7 +388,7 @@ class ResidentTicketTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.title', 'Rò rỉ vòi nước bồn rửa chén')
             ->assertJsonPath('data.status', 'NEW')
-            ->assertJsonPath('data.priority', 'HIGH')
+            ->assertJsonPath('data.priority', 'MEDIUM')
             ->assertJsonPath('data.location', 'Khu vực bếp nấu')
             ->assertJsonPath('data.version', 1);
 
@@ -409,7 +422,7 @@ class ResidentTicketTest extends TestCase
                 'description' => 'Có viên gạch bị nứt góc nguy hiểm khi bước ra ban công.',
                 'category_id' => $this->categoryId,
                 'location' => 'Ban công phòng khách',
-                'priority' => 'MEDIUM',
+
                 'apartment_id' => $this->apartmentId,
                 'attachments' => [$file1, $file2],
             ]);
@@ -522,13 +535,14 @@ class ResidentTicketTest extends TestCase
                 'title' => 'Tiêu đề đã được bổ sung',
                 'description' => 'Mô tả bổ sung chi tiết hơn',
                 'location' => 'Phòng khách cạnh cửa sổ',
-                'priority' => 'HIGH',
+
                 'version' => 1,
             ]);
 
         $response->assertOk()
             ->assertJsonPath('data.title', 'Tiêu đề đã được bổ sung')
-            ->assertJsonPath('data.version', 2);
+            ->assertJsonPath('data.version', 2)
+            ->assertJsonPath('data.priority', 'LOW');
 
         $this->assertDatabaseHas('ticket_history', [
             'ticket_id' => $ticket->id,

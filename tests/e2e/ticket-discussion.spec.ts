@@ -123,8 +123,8 @@ test('MOCKED: dừng polling khi ẩn tab, tải ngay khi quay lại và dừng 
   const stopped = store.reads; await page.clock.fastForward(30000); expect(store.reads).toBe(stopped);
 });
 
-test('MOCKED: đóng Ticket khi đang nhập giữ nội dung nhưng khóa gửi, mobile không tràn ngang và có bàn phím', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+for (const width of [375, 768, 1440]) test(`MOCKED: đóng Ticket khi đang nhập giữ nội dung nhưng khóa gửi, mobile không tràn ngang và có bàn phím ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
   const store = state(); await setup(page, store);
   const field = page.getByLabel('Nội dung trao đổi', { exact: true });
   await field.fill('Bản nháp trước khi yêu cầu được đóng');
