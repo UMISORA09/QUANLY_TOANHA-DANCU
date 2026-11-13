@@ -2441,7 +2441,7 @@ class ApiService {
 
   // ================= F12: HÒM THƯ GÓP Ý & PHÂN TÍCH CẢM XÚC =================
   async getResidentSuggestionBoxes(): Promise<{ success: boolean; data: SuggestionBoxItem[] }> {
-    return this.request('/resident/suggestion-boxes');
+    return this.request('/resident/suggestion-boxes', { cache: 'no-store' });
   }
 
   async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string; replayed?: boolean }> {
