@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\AmenityBookingPaymentService;
 use App\Services\AmenityConflictException;
+use App\Services\AmenityGalleryService;
 use App\Services\AmenityService;
 use App\Services\ResidentAmenityBookingService;
 use App\Services\Search\BookingCodeSearch;
@@ -14,7 +15,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Controller Quản lý Tiện ích & Slot theo Kiến trúc Tinh gọn (Lightweight Architecture)
@@ -23,7 +26,8 @@ use InvalidArgumentException;
 class AmenityController extends Controller
 {
     public function __construct(
-        public AmenityService $amenityService
+        public AmenityService $amenityService,
+        public AmenityGalleryService $gallery
     ) {}
 
     /**
@@ -396,9 +400,28 @@ class AmenityController extends Controller
     /**
      * Tạo mới tiện ích
      */
+    protected function extractAmenityPayload(Request $request): array
+    {
+        if (! $request->has('payload')) {
+            return $this->extractPayload($request);
+        }
+        $validated = $request->validate(['payload' => 'required|json|max:65535']);
+        $data = json_decode($validated['payload'], true);
+        if (! is_array($data)) {
+            throw ValidationException::withMessages(['payload' => 'Dữ liệu tiện ích không hợp lệ.']);
+        }
+
+        return $data;
+    }
+
+    public function galleryImage(Request $request, string $disk, string $file): StreamedResponse
+    {
+        return $this->gallery->image($request, $disk, $file);
+    }
+
     public function createAmenity(Request $request): JsonResponse
     {
-        $data = $this->extractPayload($request);
+        $data = $this->extractAmenityPayload($request);
         $validated = validator($data, [
             'category_id' => 'required|string',
             'block_id' => 'nullable|string',
@@ -414,11 +437,13 @@ class AmenityController extends Controller
             'rules_and_regulations' => 'nullable|string',
             'cover_image_url' => 'nullable|string|max:500',
             'gallery_images' => 'nullable|array',
+            'gallery_images.*' => 'string|max:1000',
             'is_active' => 'nullable|boolean',
         ])->validate();
 
         try {
-            $created = $this->amenityService->createAmenity($validated);
+            $files = $request->validate(['gallery_files' => 'sometimes|array|max:5'])['gallery_files'] ?? [];
+            $created = $this->gallery->persist($validated, $files, null, fn (array $payload): array => $this->amenityService->createAmenity($payload));
 
             return response()->json($created, 201);
         } catch (InvalidArgumentException $e) {
@@ -431,7 +456,7 @@ class AmenityController extends Controller
      */
     public function updateAmenity(Request $request, string $id): JsonResponse
     {
-        $data = $this->extractPayload($request);
+        $data = $this->extractAmenityPayload($request);
         $validated = validator($data, [
             'updated_at' => 'required|date',
             'category_id' => 'sometimes|required|string',
@@ -448,11 +473,13 @@ class AmenityController extends Controller
             'rules_and_regulations' => 'nullable|string',
             'cover_image_url' => 'nullable|string|max:500',
             'gallery_images' => 'nullable|array',
+            'gallery_images.*' => 'string|max:1000',
             'is_active' => 'nullable|boolean',
         ])->validate();
 
         try {
-            $updated = $this->amenityService->updateAmenity($id, $validated);
+            $files = $request->validate(['gallery_files' => 'sometimes|array|max:5'])['gallery_files'] ?? [];
+            $updated = $this->gallery->persist($validated, $files, $id, fn (array $payload): array => $this->amenityService->updateAmenity($id, $payload));
 
             return response()->json($updated);
         } catch (AmenityConflictException $e) {

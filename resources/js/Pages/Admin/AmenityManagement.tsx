@@ -1,3 +1,4 @@
+import { AmenityGalleryImage } from '../../Components/Admin/AmenityGalleryImage';
 import { CustomSelect } from '../../Components/Common/CustomSelect';
 import { Button as AstryxButton } from '@astryxdesign/core/Button';
 import { Badge as AstryxBadge } from '@astryxdesign/core/Badge';
@@ -1314,14 +1315,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                         key={idx}
                         className="rounded-lg overflow-hidden border border-neutral-200 aspect-video bg-neutral-200"
                       >
-                        <img
-                          src={imgUrl}
-                          alt={`Gallery ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
+                        <AmenityGalleryImage url={imgUrl} name={`Ảnh bộ sưu tập ${idx + 1}`} className="w-full h-full object-cover" />
                       </div>
                     ))}
                   </div>

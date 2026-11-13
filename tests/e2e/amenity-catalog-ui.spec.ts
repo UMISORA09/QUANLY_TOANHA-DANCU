@@ -254,3 +254,37 @@ for (const width of [375, 768, 1440]) {
     await expect(dialog).toHaveCount(0);
   });
 }
+
+for (const width of [375, 768, 1440]) test('F1 gallery: cover URL, local files, retry and validation ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const state = configurationFixture(); await setupConfiguration(page, state);
+  let writes = 0;
+  await page.route('**/api/v1/admin/amenities', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    writes++; const body = route.request().postDataBuffer()!.toString();
+    const data = JSON.parse(body.match(/name="payload"\r\n\r\n([\s\S]*?)\r\n--/)![1]);
+    expect(data.cover_image_url).toBe('https://example.test/cover.jpg'); expect(data.gallery_images).toEqual([]);
+    expect(body).toContain('name="gallery_files[]"'); expect(body).toContain('filename="photo.png"');
+    if (writes === 1) return route.fulfill({ status: 503, json: { message: 'Không lưu được ảnh QA' } });
+    return route.fulfill({ status: 201, json: { ...state.amenity, ...data, id: 'gallery-created' } });
+  });
+  await page.getByRole('button', { name: 'Thêm tiện ích', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Cấu hình tiện ích', exact: true });
+  await dialog.getByRole('button', { name: 'Danh mục tiện ích', exact: true }).click();
+  await page.getByRole('option', { name: /Điện|Thể thao|Danh mục QA/ }).first().click();
+  await dialog.getByLabel('Tên tiện ích', { exact: true }).fill('Ảnh tiện ích QA');
+  await dialog.getByLabel('Mã tiện ích', { exact: true }).fill('GALLERY-QA');
+  await dialog.getByLabel('Vị trí tiện ích', { exact: true }).fill('Tầng 1');
+  await dialog.getByLabel('Ảnh đại diện từ URL', { exact: true }).fill('https://example.test/cover.jpg');
+  const picker = dialog.getByLabel('Chọn ảnh bộ sưu tập từ máy', { exact: true });
+  const png = { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4H8AAAAASUVORK5CYII=', 'base64') };
+  await picker.setInputFiles(png); await expect(dialog.getByRole('img', { name: 'Ảnh bộ sưu tập 1', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Bỏ ảnh bộ sưu tập 1', exact: true }).click(); await expect(dialog.getByRole('img', { name: 'Ảnh bộ sưu tập 1', exact: true })).toHaveCount(0);
+  await picker.setInputFiles({ name: 'bad.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
+  await expect(dialog.getByRole('alert').filter({ hasText: 'Chỉ nhận JPG' })).toBeVisible();
+  await picker.setInputFiles(png);
+  const submit = dialog.getByRole('button', { name: 'Tạo tiện ích', exact: true });
+  await submit.click(); await expect(dialog.getByRole('alert')).toContainText('Không lưu được ảnh QA');
+  await expect(dialog.getByRole('img', { name: 'Ảnh bộ sưu tập 1', exact: true })).toBeVisible();
+  await submit.click(); await expect(dialog).toHaveCount(0); expect(writes).toBe(2);
+});
