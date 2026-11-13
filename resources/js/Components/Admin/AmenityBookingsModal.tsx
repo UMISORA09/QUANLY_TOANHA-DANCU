@@ -1,3 +1,4 @@
+import { CustomSelect } from '../Common/CustomSelect';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
@@ -270,7 +271,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
   };
 
   return (
-    <dialog ref={bookingsDialog} aria-labelledby="amenity-bookings-title" onCancel={(event) => { event.preventDefault(); if (!updatingId) onClose(); }} className="booking-review-dialog amenity-booking-controls m-auto w-[calc(100%-2rem)] max-w-5xl max-h-[92vh] rounded-3xl border-0 p-0 shadow-2xl backdrop:bg-slate-950/50">
+    <dialog ref={bookingsDialog} aria-labelledby="amenity-bookings-title" onCancel={(event) => { event.preventDefault(); if (!updatingId) onClose(); }} className="feature-controls feature-dialog booking-review-dialog amenity-booking-controls m-auto w-[calc(100%-2rem)] max-w-5xl max-h-[92vh] rounded-3xl border-0 p-0 shadow-2xl backdrop:bg-slate-950/50">
       <div className="relative w-full bg-white p-4 sm:p-6 flex flex-col max-h-[92vh] overflow-y-auto text-neutral-900">
         {/* Header */}
         <div className="review-header sticky top-0 z-20 flex items-start justify-between pb-4 border-b border-neutral-200/80 gap-3">
@@ -362,22 +363,8 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <Filter className="w-3.5 h-3.5 text-neutral-400" />
-            <select aria-label="Lọc thanh toán tiện ích" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)} className="amenity-booking-select rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-1.5 text-xs"><option value="ALL">Tất cả thanh toán</option>{Object.entries(paymentStatusNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select
-              aria-label="Lọc trạng thái đăng ký"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="amenity-booking-select text-xs bg-neutral-50 border border-neutral-200 rounded-xl px-2.5 py-1.5 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-            >
-              <option value="ALL">Tất cả trạng thái</option>
-              <option value="PENDING">Chờ duyệt</option>
-              <option value="APPROVED">Đã duyệt</option>
-              <option value="CONFIRMED">Đã xác nhận</option>
-              <option value="CHECKED_IN">Đang sử dụng</option>
-              <option value="COMPLETED">Hoàn tất</option>
-              <option value="CANCELLED">Đã hủy</option>
-              <option value="REJECTED">Bị từ chối</option>
-            </select>
+            <CustomSelect variant="feature" overlay ariaLabel="Lọc thanh toán tiện ích" value={paymentFilter} onChange={setPaymentFilter} options={[{ value: 'ALL', label: 'Tất cả thanh toán' }, ...Object.entries(paymentStatusNames).map(([value, label]) => ({ value, label }))]} />
+            <CustomSelect variant="feature" overlay ariaLabel="Lọc trạng thái đăng ký" value={statusFilter} onChange={setStatusFilter} options={[['ALL', 'Tất cả trạng thái'], ['PENDING', 'Chờ duyệt'], ['APPROVED', 'Đã duyệt'], ['CONFIRMED', 'Đã xác nhận'], ['CHECKED_IN', 'Đang sử dụng'], ['COMPLETED', 'Hoàn tất'], ['CANCELLED', 'Đã hủy'], ['REJECTED', 'Bị từ chối']].map(([value, label]) => ({ value, label }))} />
             <div className="flex items-center gap-1 text-xs text-neutral-500">
               <span>Từ:</span>
               <input
@@ -611,7 +598,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
           </table>
         </div>
 
-        <dialog ref={detailDialog} aria-labelledby="amenity-detail-title" onCancel={(event) => { event.stopPropagation(); setDetailBooking(null); }} onClose={() => setDetailBooking(null)} className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50">
+        <dialog ref={detailDialog} aria-labelledby="amenity-detail-title" onCancel={(event) => { event.stopPropagation(); setDetailBooking(null); }} onClose={() => setDetailBooking(null)} className="feature-controls feature-dialog m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50">
           {detailBooking && (
             <div className="space-y-4 text-xs text-neutral-800">
               <div className="flex items-start justify-between border-b pb-3">
@@ -680,7 +667,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
           )}
         </dialog>
 
-        <dialog ref={rejectionDialog} aria-labelledby="amenity-rejection-title" onCancel={(event) => { event.stopPropagation(); if (updatingId === rejectingId) event.preventDefault(); else setRejectingId(null); }} onClose={() => setRejectingId(null)} className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50">
+        <dialog ref={rejectionDialog} aria-labelledby="amenity-rejection-title" onCancel={(event) => { event.stopPropagation(); if (updatingId === rejectingId) event.preventDefault(); else setRejectingId(null); }} onClose={() => setRejectingId(null)} className="feature-controls feature-dialog m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50">
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (rejectingId && !updatingId) void handleUpdateStatus(rejectingId, 'REJECTED', rejectionReason.trim()); }}>
             <h3 id="amenity-rejection-title" className="font-bold text-neutral-900">Từ chối đăng ký tiện ích</h3>
             <label className="block space-y-2 text-sm">Lý do từ chối<textarea required maxLength={500} value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} disabled={Boolean(updatingId)} className="w-full rounded-xl border border-neutral-200 p-3" /></label>
@@ -688,7 +675,7 @@ export const AmenityBookingsModal: React.FC<AmenityBookingsModalProps> = ({
             <div className="flex justify-end gap-2"><button type="button" disabled={Boolean(updatingId)} onClick={() => setRejectingId(null)} className="rounded-lg border px-3 py-2 text-sm">Đóng</button><button type="submit" disabled={Boolean(updatingId) || !rejectionReason.trim()} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{updatingId ? 'Đang xử lý…' : 'Xác nhận từ chối'}</button></div>
           </form>
         </dialog>
-        <dialog ref={cancellationDialog} aria-labelledby="amenity-cancellation-title" onCancel={(event) => { event.stopPropagation(); if (updatingId) event.preventDefault(); else setCancellation(null); }} onClose={() => setCancellation(null)} className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50"><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (cancellation && !updatingId) void handleUpdateStatus(cancellation.id, 'CANCELLED', cancelReason.trim()); }}><h3 id="amenity-cancellation-title" className="font-bold">Hủy đăng ký tiện ích</h3><p className="text-sm">Hủy {cancellation?.booking_code}? Chỗ đã đăng ký sẽ được giải phóng.</p>{(cancellation?.is_paid || cancellation?.payment?.received_amount || cancellation?.payment?.status === 'REPORTED') && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Cư dân đã thanh toán hoặc báo chuyển khoản. Bạn cần đối soát và xử lý hoàn tiền sau khi hủy.</p>}<label className="block space-y-2 text-sm">Lý do hủy của quản lý<textarea required maxLength={500} disabled={Boolean(updatingId)} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="w-full rounded-xl border border-neutral-200 p-3" /></label>{error && <p role="alert" data-conflict={errorStatus === 409} className="text-sm text-rose-700">{error}</p>}<div className="flex justify-end gap-2"><button type="button" disabled={Boolean(updatingId)} onClick={() => setCancellation(null)} className="rounded-xl border px-3 py-2 text-sm">Giữ đăng ký</button><button type="submit" disabled={Boolean(updatingId) || !cancelReason.trim()} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{updatingId ? 'Đang hủy…' : 'Xác nhận hủy'}</button></div></form></dialog>
+        <dialog ref={cancellationDialog} aria-labelledby="amenity-cancellation-title" onCancel={(event) => { event.stopPropagation(); if (updatingId) event.preventDefault(); else setCancellation(null); }} onClose={() => setCancellation(null)} className="feature-controls feature-dialog m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl backdrop:bg-neutral-950/50"><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (cancellation && !updatingId) void handleUpdateStatus(cancellation.id, 'CANCELLED', cancelReason.trim()); }}><h3 id="amenity-cancellation-title" className="font-bold">Hủy đăng ký tiện ích</h3><p className="text-sm">Hủy {cancellation?.booking_code}? Chỗ đã đăng ký sẽ được giải phóng.</p>{(cancellation?.is_paid || cancellation?.payment?.received_amount || cancellation?.payment?.status === 'REPORTED') && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Cư dân đã thanh toán hoặc báo chuyển khoản. Bạn cần đối soát và xử lý hoàn tiền sau khi hủy.</p>}<label className="block space-y-2 text-sm">Lý do hủy của quản lý<textarea required maxLength={500} disabled={Boolean(updatingId)} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="w-full rounded-xl border border-neutral-200 p-3" /></label>{error && <p role="alert" data-conflict={errorStatus === 409} className="text-sm text-rose-700">{error}</p>}<div className="flex justify-end gap-2"><button type="button" disabled={Boolean(updatingId)} onClick={() => setCancellation(null)} className="rounded-xl border px-3 py-2 text-sm">Giữ đăng ký</button><button type="submit" disabled={Boolean(updatingId) || !cancelReason.trim()} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">{updatingId ? 'Đang hủy…' : 'Xác nhận hủy'}</button></div></form></dialog>
         {/* Footer */}
         {paymentBooking && <AmenityPaymentDialog key={paymentBooking.id} manager booking={paymentBooking} onClose={() => setPaymentBookingId(null)} onChanged={(payment) => {
           setBookings((current) => current.map((booking) => booking.id === paymentBookingId ? { ...booking, payment } : booking));
