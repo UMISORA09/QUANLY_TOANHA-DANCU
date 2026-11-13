@@ -51,14 +51,14 @@ for (const viewport of viewports) {
       await page.getByRole('button', { name: 'Tất cả danh mục', exact: true }).click();
       await page.getByRole('button', { name: 'Thể thao', exact: true }).click();
     } else {
-      const categorySelect = page.getByRole('combobox', { name: 'Tất cả danh mục', exact: true });
-      await categorySelect.selectOption('category-qa');
+      const categorySelect = page.getByRole('button', { name: 'Tất cả danh mục', exact: true });
+      await categorySelect.click();
+      await page.getByRole('option', { name: 'Thể thao', exact: true }).click();
       await categorySelect.focus();
-      await page.keyboard.press('Space');
+      await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Home');
       await page.keyboard.press('Enter');
-      await page.keyboard.press('Tab');
-      await expect(categorySelect).toHaveValue('');
+      await expect(categorySelect).toContainText('Tất cả danh mục');
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`catalog-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
@@ -224,3 +224,33 @@ test('F1 blackout: stale deletion reloads latest and never automatically deletes
   page.once('dialog', (confirm) => confirm.accept()); await dialog.getByTitle('Xóa lịch bảo trì').click();
   await expect.poll(() => state.blackoutDeletes).toEqual([1, 2]); expect(state.deletedBlackout).toBe(true);
 });
+
+for (const width of [375, 768, 1440]) {
+  test('F1 dropdown: search Escape closes only dropdown and restores focus ' + width, async ({ page }) => {
+    await page.setViewportSize({ width, height: 812 });
+    await setupConfiguration(page, configurationFixture());
+    await page.getByTitle('Cấu hình khung giờ (Time Slots)', { exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Cấu hình Khung giờ Hoạt động', exact: true });
+    const trigger = dialog.getByRole('button', { name: 'Thứ trong tuần', exact: true });
+    await trigger.click();
+    const menu = page.getByRole('listbox');
+    await expect(menu).toBeVisible();
+    const bounds = await menu.boundingBox();
+    expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width).toBeTruthy();
+    await menu.getByPlaceholder('Tìm kiếm...').focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(menu.getByRole('option', { name: 'Chủ nhật', exact: true })).toBeFocused();
+    await menu.getByPlaceholder('Tìm kiếm...').fill('Thứ 3');
+    await page.keyboard.press('Enter');
+    await expect(trigger).toContainText('Thứ 3');
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    await trigger.click();
+    await menu.getByPlaceholder('Tìm kiếm...').focus();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  });
+}

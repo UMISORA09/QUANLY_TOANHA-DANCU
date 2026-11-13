@@ -210,7 +210,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   if (!isOpen) return null;
 
   return (
-    <dialog ref={dialog} aria-label="Quản lý danh mục tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting && !recovering) onClose(); }} className="catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
+    <dialog ref={dialog} aria-label="Quản lý danh mục tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting && !recovering) onClose(); }} className="feature-controls feature-dialog catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
       {/* Backdrop */}
       <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 

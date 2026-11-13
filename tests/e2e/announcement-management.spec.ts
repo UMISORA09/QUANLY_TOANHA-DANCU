@@ -69,12 +69,14 @@ test('MOCKED: lỗi mạng giữ bản nhập và UUID; 409 không ghi đè vers
   await expect(page.getByText(/Phiên bản máy chủ/)).toContainText('2'); await page.getByRole('button', { name: 'Giữ bản nhập và dùng phiên bản 2', exact: true }).click(); await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Bản nhập khác máy chủ'); store.conflict = false; await page.getByRole('button', { name: 'Lưu nháp', exact: true }).click(); await expect.poll(() => store.rows[0].title).toBe('Bản nhập khác máy chủ');
 });
 
-test('MOCKED: mobile combobox cuộn, tương phản, hủy giữ bản nháp và bàn phím', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 }); const store = state(); await setup(page, store, 'manager');
+for (const width of [375, 768, 1440]) test(`MOCKED: mobile combobox cuộn, tương phản, hủy giữ bản nháp và bàn phím ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 }); const store = state(); await setup(page, store, 'manager');
   const create = page.getByRole('button', { name: 'Soạn thông báo', exact: true }); expect(await create.evaluate((node) => getComputedStyle(node).color !== getComputedStyle(node).backgroundColor)).toBe(true); await create.click();
   await page.getByLabel('Tiêu đề', { exact: true }).fill('Bản nháp mobile'); await page.getByLabel('Đối tượng nhận', { exact: true }).click(); await page.getByRole('option', { name: 'Một tầng', exact: true }).click();
   await page.getByLabel('Tầng', { exact: true }).click(); const list = page.getByRole('listbox'); await expect(list).toBeVisible(); expect(await list.locator('.overflow-y-auto').evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true); await expect.poll(() => list.evaluate((node) => { const r = node.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && document.elementFromPoint(r.left + r.width / 2, r.bottom - 8)?.closest('[role=\"listbox\"]') === node; })).toBe(true); await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Đóng', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Bỏ thay đổi chưa lưu?' })).toBeVisible(); await page.getByRole('button', { name: 'Quay lại', exact: true }).click(); await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Bản nháp mobile');
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Bỏ thay đổi chưa lưu?' })).toBeVisible();
+  const confirmation = page.getByRole('dialog', { name: 'Bỏ thay đổi chưa lưu?', exact: true });
+  expect(await confirmation.evaluate(element => { const r = element.getBoundingClientRect(); return Math.abs(r.x + r.width / 2 - innerWidth / 2) < 2 && Math.abs(r.y + r.height / 2 - innerHeight / 2) < 2; })).toBe(true); await page.getByRole('button', { name: 'Quay lại', exact: true }).click(); await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Bản nháp mobile');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -89,4 +91,47 @@ test('MOCKED: người chỉ có quyền đăng không phải sửa nội dung �
   const store = state(); store.rows = [{ ...base(), actions: { edit: false, publish: true, archive: false } }]; await setup(page, store);
   await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click(); await expect(page.getByRole('button', { name: 'Sửa bài viết', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Đăng theo lịch đã lưu', exact: true }).click(); await expect.poll(() => store.rows[0].status).toBe('PUBLISHED');
+});
+
+for (const width of [375, 768, 1440]) test('MOCKED F10: Word-style toolbar and rounded controls ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await setup(page, state(), 'manager');
+  await page.getByRole('button', { name: 'Soạn thông báo', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Soạn thông báo mới', exact: true });
+  const toolbar = dialog.getByRole('group', { name: 'Định dạng nội dung', exact: true });
+  await expect(toolbar.getByRole('button')).toHaveCount(12);
+  const bold = toolbar.getByRole('button', { name: 'Đậm', exact: true });
+  await expect(bold.locator('svg')).toBeVisible();
+  await expect(bold).toHaveAttribute('title', 'Đậm');
+  expect(await bold.evaluate(element => { const box = element.getBoundingClientRect(); return box.width >= 44 && box.height >= 44 && getComputedStyle(element).borderRadius === '12px'; })).toBe(true);
+  expect(await dialog.evaluate(element => getComputedStyle(element).borderRadius)).toBe('20px');
+  const editor = dialog.getByRole('textbox', { name: 'Nội dung bảng tin', exact: true });
+  await editor.fill('Nội dung thử định dạng'); await editor.press('Control+a'); await bold.click();
+  await expect(bold).toHaveAttribute('aria-pressed', 'true');
+  await expect(editor.locator('strong')).toHaveText('Nội dung thử định dạng');
+  await toolbar.getByRole('button', { name: 'Hoàn tác', exact: true }).click();
+  await expect(editor.locator('strong')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const actionHeights = await dialog.locator('.announcement-ui__footer button').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().height));
+  expect(actionHeights).toEqual([44, 44, 44, 44]);
+});
+
+for (const width of [375, 768, 1440]) test('MOCKED F10: closing does not leak form validation into confirmation ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 }); const store = state(); await setup(page, store);
+  let previews = 0;
+  await page.route('**/api/v1/admin/announcements/preview', route => { previews++; return route.fulfill({ status: 422, json: { message: 'Nội dung trống hoặc vượt 60 KB sau khi lọc.', errors: { content_html: ['Nội dung không hợp lệ.'] } } }); });
+  const create = page.getByRole('button', { name: 'Soạn thông báo', exact: true });
+  await create.click(); await page.getByLabel('Tiêu đề', { exact: true }).fill('Giữ bản nhập QA');
+  await page.getByRole('button', { name: 'Xem trước', exact: true }).click();
+  await expect(page.getByRole('dialog').getByText('Nội dung trống hoặc vượt 60 KB sau khi lọc.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: 'Bỏ thay đổi chưa lưu?', exact: true });
+  await expect(confirm).toBeVisible(); await expect(confirm.getByRole('alert')).toHaveCount(0);
+  expect(previews).toBe(1); expect(store.ids).toEqual([]);
+  await confirm.getByRole('button', { name: 'Quay lại', exact: true }).click();
+  await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Giữ bản nhập QA');
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click();
+  await page.getByRole('button', { name: 'Xác nhận', exact: true }).click();
+  await create.click(); await expect(page.getByRole('dialog').getByRole('alert')).toHaveCount(0);
+  await expect(page.getByLabel('Tiêu đề', { exact: true })).toHaveValue('');
 });

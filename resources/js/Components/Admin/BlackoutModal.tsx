@@ -155,7 +155,7 @@ export const BlackoutModal: React.FC<BlackoutModalProps> = ({
   if (!isOpen || !amenity) return null;
 
   return (
-    <dialog ref={dialog} aria-label="Ngày Đóng cửa & Bảo trì" onCancel={(event) => { event.preventDefault(); if (!isSubmitting) onClose(); }} className="amenity-booking-controls m-auto w-[calc(100%-2rem)] max-w-2xl rounded-2xl border-0 bg-white p-0 shadow-xl backdrop:bg-neutral-950/50">
+    <dialog ref={dialog} aria-label="Ngày Đóng cửa & Bảo trì" onCancel={(event) => { event.preventDefault(); if (!isSubmitting) onClose(); }} className="feature-controls feature-dialog amenity-booking-controls m-auto w-[calc(100%-2rem)] max-w-2xl rounded-2xl border-0 bg-white p-0 shadow-xl backdrop:bg-neutral-950/50">
 
       {/* Modal Card */}
       <div className="relative w-full max-w-2xl bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 max-h-[90vh] flex flex-col">

@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, ResidentSurveyItem, ResidentSurveyDetailResponse, SurveyQuestionItem } from '../Services/api';
 import {
@@ -222,7 +223,7 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
     }
 
     return (
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="feature-controls max-w-3xl mx-auto space-y-6">
         {/* Navigation & Header */}
         <button
           onClick={handleBackToList}
@@ -268,7 +269,7 @@ export const ResidentSatisfactionSurveyPanel: React.FC = () => {
 
         {/* Survey Form */}
         {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</p>}
-        <form onSubmit={handleSubmitSurvey} className="space-y-6">
+        <form onSubmit={handleSubmitSurvey} className="feature-controls space-y-6">
           {surveyDetail.questions.map((q, idx) => {
             const hasError = !!validationErrors[q.id];
             const currentVal = answers[q.id];

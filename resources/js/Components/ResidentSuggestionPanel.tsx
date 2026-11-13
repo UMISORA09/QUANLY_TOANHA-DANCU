@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import { TicketImage } from './TicketImage';
 import { TicketDialog } from './TicketDialog';
 import { CustomSelect } from './Common/CustomSelect';
@@ -322,8 +323,19 @@ export const ResidentSuggestionPanel: React.FC = () => {
     return found ? found.label : topic;
   };
 
+  const historyDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!(selectedHistoryItem) || !historyDialog.current) return;
+    const dialog = historyDialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => { dialog.close(); document.body.style.overflow = previousOverflow; if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [selectedHistoryItem?.id]);
+
   return (
-    <div className="space-y-6">
+    <div className="feature-controls space-y-6">
       {/* Top Banner */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-teal-900 via-emerald-800 to-cyan-900 p-6 sm:p-8 text-white shadow-xl">
         <div className="relative z-10 max-w-3xl">
@@ -402,7 +414,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Hòm thư nhận */}
               <div>
-                <CustomSelect
+                <CustomSelect variant="feature"
                   label="Hòm thư tiếp nhận"
                   value={selectedBoxId}
                   onChange={setSelectedBoxId}
@@ -421,7 +433,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
 
               {/* Chủ đề */}
               <div>
-                <CustomSelect
+                <CustomSelect variant="feature"
                   label="Chủ đề góp ý"
                   value={topicCategory}
                   onChange={setTopicCategory}
@@ -794,7 +806,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
 
       {/* DETAIL MODAL FOR RESIDENT HISTORY ITEM */}
       {selectedHistoryItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <dialog ref={historyDialog}  aria-label="Chi tiết góp ý đã gửi" onCancel={(event) => { event.preventDefault(); setSelectedHistoryItem(null); }} className="feature-controls feature-dialog feature-modal-shell">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-neutral-200">
               <div>
@@ -809,7 +821,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
                 <h3 className="text-lg font-bold text-neutral-900">{selectedHistoryItem.title}</h3>
               </div>
               <button
-                onClick={() => setSelectedHistoryItem(null)}
+                aria-label="Đóng chi tiết góp ý" onClick={() => setSelectedHistoryItem(null)}
                 className="p-1 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -890,11 +902,11 @@ export const ResidentSuggestionPanel: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
 
       {/* POPUP: CẤP MÃ BẢO MẬT GÓP Ý ẨN DANH */}
-      <TicketDialog
+      <TicketDialog variant="feature"
         open={showAnonTokenModal}
         title="Gửi Góp Ý Ẩn Danh Thành Công!"
         onClose={() => setShowAnonTokenModal(false)}
