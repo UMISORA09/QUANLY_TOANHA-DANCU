@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
 import api, { type TicketRatingResponse } from '@/Services/api';
@@ -22,7 +23,7 @@ export function TicketRating({ ticketId, version }: { ticketId: string; version:
     return () => controller.abort();
   }, [ticketId, version, retry]);
 
-  return <section className="ticket-rating" aria-label="Đánh giá sau xử lý sự cố">
+  return <section className="feature-controls ticket-rating" aria-label="Đánh giá sau xử lý sự cố">
     <h3>Đánh giá sau xử lý sự cố</h3>
     {error && <div role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => setRetry(value => value + 1)}>Tải lại đánh giá</button></div>}
     {!result && !error && <p role="status">Đang tải đánh giá…</p>}
