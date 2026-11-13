@@ -117,7 +117,7 @@ export function TicketManagementPanel() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); if (busy || conflict) return; setBusy(true); setError(''); setFields({});
     try {
-      if (mode === 'workflow' && selected) { setSelected(await api.performTicketAction(selected.id, { action, version: form.version, technician_user_id: technician || undefined, reason: reason || undefined, note: reason || undefined })); }
+      if (mode === 'workflow' && selected) { setSelected(await api.performTicketAction(selected.id, { action, version: form.version, technician_user_id: technician || undefined, reason: reason || undefined, note: reason || undefined, priority: action === 'receive' ? form.priority : undefined })); }
       else if (mode === 'archive' && selected) { await api.archiveTicket(selected.id, form.version, reason); setSelected(null); }
       else if (mode === 'create') {
         const { block_id, version, preferred_service_time, ...payload } = form;
@@ -144,6 +144,7 @@ export function TicketManagementPanel() {
   const selectOptions = (data: Record<string, string>) => Object.entries(data).map(([value, label]) => ({ value, label }));
   const cannotSubmit = busy || conflict
     || (mode === 'create' && (!form.apartment_id || !form.reporter_user_id || !form.category_id))
+    || (mode === 'workflow' && action === 'receive' && !form.priority)
     || (mode === 'workflow' && action === 'assign' && !technician)
     || ((mode === 'archive' || (mode === 'workflow' && ['cancel', 'resolve'].includes(action))) && reason.trim().length < 5);
   useTicketNotificationRefresh(() => { reload(); if (selected && !mode) void open(selected.id); });
@@ -442,7 +443,7 @@ export function TicketManagementPanel() {
                     catch (err) { await fail(err); return; }
                     finally { setBusy(false); }
                   }
-                  setFields({}); setConflict(false); setMode('workflow');
+                  setFields({}); setConflict(false); if (key === 'receive') setForm({ ...blank, priority: '', version: selected.version }); setMode('workflow');
                 }}
               >
                 {label}
@@ -501,6 +502,7 @@ export function TicketManagementPanel() {
         {mode === 'workflow' ? (
           <>
             <p className="text-sm font-medium text-slate-700">Xác nhận thao tác với {selected?.ticket_number}.</p>
+            {action === 'receive' && <CustomSelect variant="feature" overlay {...selectAppearance} label="Mức độ ưu tiên" required value={form.priority} onChange={value => setForm({ ...form, priority: value })} options={selectOptions(ticketPriorities)} placeholder="Chọn mức độ ưu tiên" />}
             {action === 'assign' && (
               <CustomSelect variant="feature"
                 overlay
