@@ -10,7 +10,7 @@
   p { overflow-wrap: anywhere; }
   button:not([role='option']):not([aria-haspopup]), input:not([type='checkbox']), textarea {
     border: 1px solid #cbd5e1;
-    border-radius: vars.$radius-md;
+    border-radius: 12px;
     background: #fff;
     color: #334155;
     font-size: .875rem;
@@ -23,7 +23,8 @@
   input:not([type='checkbox']), textarea { display: block; width: 100%; margin-top: .4rem; }
   textarea { resize: vertical; }
   small, .announcement-meta { font-size: .75rem; color: #64748b; line-height: 1.6; font-weight: 400; }
-  .announcement-primary { background: #0f172a !important; border-color: #0f172a !important; color: #fff !important; &:hover { background: #1e293b !important; } }
+  .announcement-primary { background: #1e40af !important; border-color: #1e40af !important; color: #fff !important; &:hover { background: #1e3a8a !important; } }
+  .announcement-secondary { background: #fff !important; border-color: #cbd5e1 !important; color: #334155 !important; }
   .announcement-danger { background: #be123c !important; border-color: #be123c !important; color: #fff !important; &:hover { background: #9f1239 !important; } }
   .announcement-check { display: flex; align-items: center; min-height: 2.75rem; gap: .5rem; }
   &__header, &__filters, .announcement-card { border: 1px solid #e2e8f0; border-radius: vars.$radius-lg; padding: 1.25rem; background: #fff; }
@@ -35,13 +36,13 @@
   .announcement-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; > div { min-width: 0; flex: 1; } h2, p { margin-top: .45rem; } }
   &__tags { display: flex; flex-wrap: wrap; gap: .4rem; span { border-radius: vars.$radius-full; background: #eff6ff; color: #1d4ed8; padding: .2rem .6rem; font-size: .75rem; font-weight: 600; } .announcement-urgent { background: #fff1f2; color: #be123c; } }
   &__pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem; font-size: .875rem; }
-  &__footer { display: flex; flex-wrap: wrap; flex-shrink: 0; justify-content: flex-end; gap: .5rem; padding: .75rem 1.25rem; border-top: 1px solid #e2e8f0; background: #fff; margin: 0; }
+  &__footer { button { margin: 0; white-space: nowrap; height: 44px; min-height: 44px; } display: flex; flex-wrap: wrap; flex-shrink: 0; align-items: center; justify-content: flex-end; gap: .5rem; padding: .75rem 1.25rem; border-top: 1px solid #e2e8f0; background: #fff; margin: 0; }
   .announcement-error { color: #be123c; font-size: .875rem; margin-top: .4rem; }
   .announcement-success { color: #065f46; background: #ecfdf5; border-radius: vars.$radius-md; padding: .75rem; }
   .announcement-empty { text-align: center; padding: 2rem; background: #fff; border-radius: vars.$radius-lg; color: #64748b; }
   .announcement-form__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   @media (min-width: 640px) { &__filters { grid-template-columns: 2fr 1fr 1fr 1fr; } .announcement-form__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 639px) { .announcement-card { flex-direction: column; } &__footer button { flex: 1; } }
+  @media (max-width: 639px) { .announcement-card { flex-direction: column; } &__footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; button { min-width: 0; } } }
 }
 
 .announcement-editor {
@@ -50,7 +51,11 @@
   overflow: hidden;
   &__toolbar, &__link { display: flex; flex-wrap: wrap; gap: .35rem; padding: .5rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
   &__link label { min-width: 0; flex: 1; }
-  .announcement-ui &__toolbar button { padding: .35rem .5rem; font-size: .75rem; &[aria-pressed='true'] { background: #0f172a; color: #fff; border-color: #0f172a; } }
+  &__toolbar { align-items: stretch; gap: .5rem; }
+  &__tool-group { display: flex; flex-direction: column; gap: .25rem; padding-right: .5rem; border-right: 1px solid #cbd5e1; &:last-child { border-right: 0; padding-right: 0; } }
+  &__tools { display: flex; gap: .25rem; }
+  &__group-label { text-align: center; font-size: .75rem; font-weight: 500; color: #475569; }
+  .announcement-ui &__toolbar button { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; border-radius: 12px; padding: .5rem; &[aria-pressed='true'] { background: #dbeafe; color: #1e40af; border-color: #93c5fd; } }
   .tiptap { @include mix.custom-scroll-track; min-height: 12rem; max-height: 24rem; overflow-y: auto; padding: .8rem; outline-offset: -2px; }
 }
 .announcement-content, .announcement-editor .tiptap {
