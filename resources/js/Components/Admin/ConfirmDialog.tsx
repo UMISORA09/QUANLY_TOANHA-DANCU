@@ -1,7 +1,9 @@
+import { TicketDialog } from '../TicketDialog';
 import React from 'react';
 import { AlertTriangle, X, Check } from 'lucide-react';
 
 interface ConfirmDialogProps {
+  variant?: 'default' | 'feature';
   isOpen: boolean;
   title: string;
   message: string;
@@ -14,6 +16,7 @@ interface ConfirmDialogProps {
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  variant = 'default',
   isOpen,
   title,
   message,
@@ -25,6 +28,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onCancel,
 }) => {
   if (!isOpen) return null;
+
+  if (variant === 'feature') return <TicketDialog variant="feature" open={isOpen} title={title} busy={isLoading} onClose={onCancel} footer={<footer className="flex flex-wrap justify-end gap-3 border-t p-4">
+    <button type="button" disabled={isLoading} onClick={onCancel} className="border border-slate-300 bg-white px-4 text-slate-700">{cancelLabel}</button>
+    <button type="button" disabled={isLoading} onClick={onConfirm} className={`px-4 text-white ${isDangerous ? 'bg-rose-600' : 'bg-neutral-900'}`}>{isLoading ? 'Đang xử lý…' : confirmLabel}</button>
+  </footer>}><p className="text-sm text-slate-700">{message}</p></TicketDialog>;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
