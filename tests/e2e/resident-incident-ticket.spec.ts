@@ -393,8 +393,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(opener).toBeFocused();
     await page.getByRole('button', { name: 'Chỉnh sửa', exact: true }).click();
     const edit = page.getByRole('dialog', { name: 'Sửa yêu cầu', exact: true });
-    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).click();
-    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).press('Escape');
+    await expect(edit.getByLabel('Ưu tiên yêu cầu', { exact: true })).toHaveCount(0);
+    await expect(edit).toContainText('Mức độ ưu tiên do ban quản lý xác nhận.');
     await expect(edit).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(edit).toHaveCount(0);
