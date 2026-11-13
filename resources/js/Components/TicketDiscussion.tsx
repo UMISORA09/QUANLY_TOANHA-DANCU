@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import '../../css/scss/ticket-discussion.scss';
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { api, TicketComment, TicketCommentPage, TicketCommentPayload, TicketHistoryItem } from '../Services/api';
@@ -187,7 +188,7 @@ export function TicketDiscussion({ ticketId, active = true }: { ticketId: string
     } finally { if (!controller.signal.aborted) { setSending(false); sendController.current = null; } }
   };
 
-  return <section className="ticket-discussion" aria-label="Trao đổi và lịch sử xử lý Ticket">
+  return <section className="feature-controls ticket-discussion" aria-label="Trao đổi và lịch sử xử lý Ticket">
     <div className="flex flex-wrap gap-2" role="tablist" aria-label="Nội dung yêu cầu" onKeyDown={(event) => {
       if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
         event.preventDefault(); const next = event.key === 'Home' ? 'comments' : event.key === 'End' ? 'history' : tab === 'comments' ? 'history' : 'comments';
