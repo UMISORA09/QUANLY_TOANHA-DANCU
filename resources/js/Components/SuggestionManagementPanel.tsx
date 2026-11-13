@@ -1,3 +1,5 @@
+import { CustomSelect } from './Common/CustomSelect';
+import '../../css/scss/feature-controls.scss';
 import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -346,8 +348,19 @@ export const SuggestionManagementPanel: React.FC = () => {
     }
   };
 
+  const suggestionDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!(selectedSuggestion) || !suggestionDialog.current) return;
+    const dialog = suggestionDialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => { dialog.close(); document.body.style.overflow = previousOverflow; const trigger = document.getElementById(`suggestion-open-${selectedSuggestion.id}`); if (trigger) trigger.focus({ preventScroll: true }); else if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [selectedSuggestion?.id]);
+
   return (
-    <div className="space-y-6">
+    <div className="feature-controls space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -428,63 +441,15 @@ export const SuggestionManagementPanel: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={filterStatus}
-              onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
-              className="px-3 py-2.5 rounded-xl border border-neutral-300 text-xs font-medium bg-white text-neutral-700"
-            >
-              <option value="">Trạng thái: Tất cả</option>
-              <option value="RECEIVED">Chờ tiếp nhận</option>
-              <option value="REVIEWING">Đang xem xét</option>
-              <option value="ACCEPTED">Đã tiếp nhận xử lý</option>
-              <option value="RESOLVED">Đã giải quyết</option>
-              <option value="REJECTED">Từ chối</option>
-            </select>
+            <CustomSelect variant="feature" overlay ariaLabel="Trạng thái góp ý" value={filterStatus} onChange={(value) => { setFilterStatus(value); setCurrentPage(1); }} options={[['', 'Trạng thái: Tất cả'], ['RECEIVED', 'Chờ tiếp nhận'], ['REVIEWING', 'Đang xem xét'], ['ACCEPTED', 'Đã tiếp nhận xử lý'], ['RESOLVED', 'Đã giải quyết'], ['REJECTED', 'Từ chối']].map(([value, label]) => ({ value, label }))} />
 
-            <select
-              value={filterTopic}
-              onChange={(e) => { setFilterTopic(e.target.value); setCurrentPage(1); }}
-              className="px-3 py-2.5 rounded-xl border border-neutral-300 text-xs font-medium bg-white text-neutral-700"
-            >
-              <option value="">Chủ đề: Tất cả</option>
-              {Object.entries(TOPIC_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
+            <CustomSelect variant="feature" overlay ariaLabel="Chủ đề góp ý" value={filterTopic} onChange={(value) => { setFilterTopic(value); setCurrentPage(1); }} options={[{ value: '', label: 'Chủ đề: Tất cả' }, ...Object.entries(TOPIC_LABELS).map(([value, label]) => ({ value, label }))]} />
 
-            <select
-              value={filterBoxId}
-              onChange={(e) => { setFilterBoxId(e.target.value); setCurrentPage(1); }}
-              className="px-3 py-2.5 rounded-xl border border-neutral-300 text-xs font-medium bg-white text-neutral-700 max-w-[180px] truncate"
-            >
-              <option value="">Hòm thư: Tất cả</option>
-              {boxes.map((b) => (
-                <option key={b.id} value={b.id}>{b.box_name}</option>
-              ))}
-            </select>
+            <CustomSelect variant="feature" overlay ariaLabel="Hòm thư góp ý" value={filterBoxId} onChange={(value) => { setFilterBoxId(value); setCurrentPage(1); }} options={[{ value: '', label: 'Hòm thư: Tất cả' }, ...boxes.map(b => ({ value: b.id, label: b.box_name }))]} />
 
-            <select
-              value={filterSentiment}
-              onChange={(e) => { setFilterSentiment(e.target.value); setCurrentPage(1); }}
-              className="px-3 py-2.5 rounded-xl border border-neutral-300 text-xs font-medium bg-white text-neutral-700"
-            >
-              <option value="">Cảm xúc AI: Tất cả</option>
-              <option value="POSITIVE">Tích cực</option>
-              <option value="NEUTRAL">Trung tính</option>
-              <option value="NEGATIVE">Tiêu cực</option>
-              <option value="VERY_ANGRY">Bức xúc cao độ</option>
-              <option value="NOT_ANALYZED">Chưa phân tích</option>
-            </select>
+            <CustomSelect variant="feature" overlay ariaLabel="Cảm xúc góp ý" value={filterSentiment} onChange={(value) => { setFilterSentiment(value); setCurrentPage(1); }} options={[['', 'Cảm xúc AI: Tất cả'], ['POSITIVE', 'Tích cực'], ['NEUTRAL', 'Trung tính'], ['NEGATIVE', 'Tiêu cực'], ['VERY_ANGRY', 'Bức xúc cao độ'], ['NOT_ANALYZED', 'Chưa phân tích']].map(([value, label]) => ({ value, label }))} />
 
-            <select
-              value={filterAnonymous}
-              onChange={(e) => { setFilterAnonymous(e.target.value); setCurrentPage(1); }}
-              className="px-3 py-2.5 rounded-xl border border-neutral-300 text-xs font-medium bg-white text-neutral-700"
-            >
-              <option value="">Danh tính: Tất cả</option>
-              <option value="0">Có danh tính</option>
-              <option value="1">Ẩn danh</option>
-            </select>
+            <CustomSelect variant="feature" overlay ariaLabel="Danh tính góp ý" value={filterAnonymous} onChange={(value) => { setFilterAnonymous(value); setCurrentPage(1); }} options={[['', 'Danh tính: Tất cả'], ['0', 'Có danh tính'], ['1', 'Ẩn danh']].map(([value, label]) => ({ value, label }))} />
 
             <button
               type="submit"
@@ -569,7 +534,7 @@ export const SuggestionManagementPanel: React.FC = () => {
                     </td>
                     <td className="px-4 py-3.5 text-right whitespace-nowrap">
                       <button
-                        onClick={() => openDetailModal(item.id)}
+                        id={`suggestion-open-${item.id}`} onClick={() => openDetailModal(item.id)}
                         className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200 transition-colors cursor-pointer"
                       >
                         Xử lý
@@ -611,7 +576,7 @@ export const SuggestionManagementPanel: React.FC = () => {
 
       {/* DETAIL & MANAGEMENT MODAL */}
       {selectedSuggestion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <dialog ref={suggestionDialog}  aria-label="Chi tiết góp ý" onCancel={(event) => { event.preventDefault(); if (!updatingStatus && !isSubmittingReply) { detailRequest.current++; setSelectedSuggestion(null); } }} className="feature-controls feature-dialog feature-modal-shell">
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 space-y-6 shadow-2xl max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-neutral-200">
@@ -636,7 +601,7 @@ export const SuggestionManagementPanel: React.FC = () => {
                 <h3 className="text-lg font-bold text-neutral-900">{selectedSuggestion.title}</h3>
               </div>
               <button
-                onClick={() => { detailRequest.current++; setSelectedSuggestion(null); }}
+                aria-label="Đóng chi tiết góp ý" disabled={updatingStatus || isSubmittingReply} onClick={() => { detailRequest.current++; setSelectedSuggestion(null); }}
                 className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -863,15 +828,7 @@ export const SuggestionManagementPanel: React.FC = () => {
                   </label>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-neutral-500">Trạng thái sau phản hồi:</span>
-                    <select
-                      value={newStatusOnReply}
-                      onChange={(e) => setNewStatusOnReply(e.target.value)}
-                      className="px-2.5 py-1 rounded-lg border border-neutral-300 text-xs bg-white text-neutral-800 font-semibold"
-                    >
-                      <option value="RESOLVED">Đã giải quyết (RESOLVED)</option>
-                      <option value="ACCEPTED">Đã tiếp nhận (ACCEPTED)</option>
-                      <option value="REVIEWING">Đang xem xét (REVIEWING)</option>
-                    </select>
+                    <CustomSelect variant="feature" overlay ariaLabel="Trạng thái sau phản hồi" value={newStatusOnReply} onChange={(value) => { setNewStatusOnReply(value);  }} options={[['RESOLVED', 'Đã giải quyết (RESOLVED)'], ['ACCEPTED', 'Đã tiếp nhận (ACCEPTED)'], ['REVIEWING', 'Đang xem xét (REVIEWING)']].map(([value, label]) => ({ value, label }))} />
                   </div>
                 </div>
 
@@ -913,7 +870,7 @@ export const SuggestionManagementPanel: React.FC = () => {
               </form>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
     </div>
   );
