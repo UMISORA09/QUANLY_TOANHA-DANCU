@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import React, { useEffect, useRef, useState } from 'react';
 import { Copy, X } from 'lucide-react';
 import { AmenityBooking, AmenityBookingPayment, ApiError, api } from '../Services/api';

@@ -726,7 +726,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await pagination.getByRole('button', { name: 'Trước' }).click();
     await expect(page.getByRole('rowheader')).toHaveCount(15);
     await expect(page.getByRole('rowheader').first()).toHaveText('Tiện ích 16');
-    await page.getByLabel('Danh mục').selectOption('category-test');
+    await page.getByLabel('Danh mục', { exact: true }).click(); await page.getByRole('option', { name: 'BBQ', exact: true }).click();
     await expect(pagination).toContainText('Trang 1/3');
     await pagination.getByRole('button', { name: 'Sau' }).click();
     await page.getByPlaceholder('Tên tiện ích…').fill('Tiện ích 31');
@@ -741,7 +741,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await fixture(page);
     const search = page.getByPlaceholder('Tên tiện ích…');
     await search.fill('BBQ');
-    await page.getByLabel('Danh mục').selectOption('category-test');
+    await page.getByLabel('Danh mục', { exact: true }).click(); await page.getByRole('option', { name: 'BBQ', exact: true }).click();
     const toggle = page.getByRole('button', { name: 'Chuyển sang dạng bảng' });
     await toggle.focus();
     await page.keyboard.press('Enter');
@@ -749,7 +749,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await expect(table).toBeVisible();
     await expect(table.getByRole('rowheader')).toHaveText('Vườn BBQ');
     await expect(search).toHaveValue('BBQ');
-    await expect(page.getByLabel('Danh mục')).toHaveValue('category-test');
+    await expect(page.getByLabel('Danh mục', { exact: true })).toContainText('BBQ');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await search.fill('Không tồn tại');
     await expect(page.getByText('Không có tiện ích phù hợp.')).toBeVisible();
@@ -1106,8 +1106,8 @@ test('history lỗi tải nền giữ dữ liệu và chỉ nhận bộ lọc m�
   await expect(page.getByRole('alert')).toContainText('Lịch tạm thời');
   await expect(page.getByRole('article')).toContainText('BK-TEST');
   fail = false;
-  await page.getByLabel('Lọc trạng thái').selectOption('APPROVED');
-  await page.getByLabel('Lọc trạng thái').selectOption('CANCELLED');
+  await page.getByLabel('Lọc trạng thái', { exact: true }).click(); await page.getByRole('option', { name: 'Đã duyệt', exact: true }).click();
+  await page.getByLabel('Lọc trạng thái', { exact: true }).click(); await page.getByRole('option', { name: 'Đã hủy', exact: true }).click();
   await expect(page.getByRole('article').getByText('Đã hủy', { exact: true })).toBeVisible();
   await expect(page.getByRole('article').getByText('Đã duyệt', { exact: true })).toHaveCount(0);
 });
@@ -1124,7 +1124,7 @@ test('phân trang không dùng kết quả trang cũ và về trang một khi l�
   await expect(page.getByRole('article')).toContainText('BK-PAGE-1');
   await page.getByRole('button', { name: 'Sau', exact: true }).click();
   await expect(page.getByRole('article')).toContainText('BK-PAGE-2');
-  await page.getByLabel('Lọc trạng thái').selectOption('CANCELLED');
+  await page.getByLabel('Lọc trạng thái', { exact: true }).click(); await page.getByRole('option', { name: 'Đã hủy', exact: true }).click();
   await expect(page.getByRole('article')).toContainText('BK-PAGE-1');
   await expect(page.getByRole('button', { name: 'Trước', exact: true })).toBeDisabled();
 });
