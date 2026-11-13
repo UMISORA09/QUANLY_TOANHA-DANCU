@@ -123,7 +123,7 @@ const booking = { id: 'booking-test', booking_code: 'BK-TEST', amenity_id: ameni
 
 const paymentFixture = (): AmenityBookingPayment => ({ id: 'payment-test', booking_id: booking.id, reference: 'TI-TEST', amount: 200000, bank_name: 'Vietcombank', account_number: '1234567890', account_name: 'TEST RECEIVER', status: 'PENDING', expires_at: new Date(Date.now() + 15 * 60000).toISOString(), qr_url: 'https://img.vietqr.io/image/test.png', can_pay: true, can_confirm: true, refund_required: false, bank_transaction_id: null, received_amount: null, received_at: null, confirmed_at: null, review_reason: null });
 
-async function fixture(page: Page, options: { conflict?: boolean; unauthorized?: boolean; slowFirstDate?: boolean; networkError?: boolean; amenities?: typeof amenity[]; qrPayment?: boolean } = {}) {
+async function fixture(page: Page, options: { conflict?: boolean; unauthorized?: boolean; slowFirstDate?: boolean; networkError?: boolean; amenities?: typeof amenity[]; apartments?: { id: string; apartment_number: string; block_id: string; block_name: string }[]; qrPayment?: boolean } = {}) {
   let payment = paymentFixture();
   let saved: (typeof booking & { payment?: AmenityBookingPayment }) | null = null;
   let conflict = options.conflict;
@@ -145,7 +145,7 @@ async function fixture(page: Page, options: { conflict?: boolean; unauthorized?:
     if (url.pathname.endsWith('/overview')) return route.fulfill({ json: {} });
     if (url.pathname.endsWith('/amenities')) {
       if (options.networkError) return route.abort('failed');
-      return route.fulfill({ json: { apartments: [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test', block_name: 'Tòa A' }], amenities: options.amenities || [amenity], categories: [{ id: 'category-test', category_name: 'BBQ' }], today, timezone: 'Asia/Ho_Chi_Minh' } });
+      return route.fulfill({ json: { apartments: options.apartments || [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test', block_name: 'Tòa A' }], amenities: options.amenities || [amenity], categories: [{ id: 'category-test', category_name: 'BBQ' }], today, timezone: 'Asia/Ho_Chi_Minh' } });
     }
       if (url.pathname.endsWith('/amenities/search')) {
         const query = (url.searchParams.get('q') || '').toLocaleLowerCase('vi');
@@ -1195,3 +1195,22 @@ for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }
     await page.screenshot({ path: testInfo.outputPath(`history-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
   });
 }
+
+test('F2: long apartment combobox stays inside its column while resizing', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const apartments = [
+    { id: 'apt-long', apartment_number: 'A012', block_id: 'block-test', block_name: 'Tòa Sapphire (Khu A) - Cao Ốc Đẳng Cấp Với Tên Rất Dài Để Kiểm Tra' },
+    { id: 'apt-other', apartment_number: 'A1-05', block_id: 'block-test', block_name: 'Tòa Ruby' },
+  ];
+  await fixture(page, { apartments });
+  const picker = page.getByRole('button', { name: 'Căn hộ đăng ký', exact: true });
+  await picker.click(); await page.getByRole('option', { name: apartments[0].apartment_number + ' · ' + apartments[0].block_name, exact: true }).click();
+  for (const width of [1440, 1024, 768, 640, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => picker.evaluate(element => { const r = element.getBoundingClientRect(); const cell = element.closest('label')!.getBoundingClientRect(); return r.left >= cell.left - 1 && r.right <= cell.right + 1 && document.documentElement.scrollWidth <= innerWidth; })).toBe(true);
+    await expect(picker).toContainText('A012');
+    await picker.click(); const menu = page.getByRole('listbox');
+    await expect.poll(() => menu.evaluate(element => { const r = element.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; })).toBe(true);
+    await page.keyboard.press('Escape'); await expect(picker).toBeFocused();
+  }
+});
