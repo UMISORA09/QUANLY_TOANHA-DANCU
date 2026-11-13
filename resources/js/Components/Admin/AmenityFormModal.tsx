@@ -1,5 +1,6 @@
+import { AmenityGalleryImage } from './AmenityGalleryImage';
 import { CustomSelect } from '../Common/CustomSelect';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Check, Building, AlertCircle, Shield, Info, Image, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { api, Amenity, Category, BlockOption } from '../../Services/api';
 
@@ -129,7 +130,13 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
   const [rules, setRules] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
-  const [newGalleryUrl, setNewGalleryUrl] = useState('');
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [galleryError, setGalleryError] = useState('');
+  const galleryInput = useRef<HTMLInputElement>(null);
+  const galleryPreviews = useMemo(() => galleryFiles.map(file => URL.createObjectURL(file)), [galleryFiles]);
+  const allGalleryImages = [...galleryImages, ...galleryPreviews];
+  useEffect(() => () => galleryPreviews.forEach(url => URL.revokeObjectURL(url)), [galleryPreviews]);
+  useEffect(() => { setGalleryFiles([]); setGalleryError(''); }, [isOpen, amenity?.id]);
   const [isActive, setIsActive] = useState(true);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -263,7 +270,6 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
         setRules(amenity.rules_and_regulations || '');
         setCoverImageUrl(amenity.cover_image_url || '');
         setGalleryImages(Array.isArray(amenity.gallery_images) ? amenity.gallery_images : []);
-        setNewGalleryUrl('');
         setIsActive(amenity.is_active);
       } else {
         // Khởi tạo ban đầu: các ô danh mục, tên, mã, vị trí hoàn toàn TRỐNG
@@ -281,27 +287,24 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
         setRules('');
         setCoverImageUrl('');
         setGalleryImages([]);
-        setNewGalleryUrl('');
         setIsActive(true);
       }
       setErrorMessage(null);
     }
   }, [isOpen, amenity]);
 
-  const handleAddGalleryImage = () => {
-    const trimmed = newGalleryUrl.trim();
-    if (!trimmed) return;
-    if (galleryImages.includes(trimmed)) {
-      setErrorMessage('Đường dẫn ảnh này đã có trong bộ sưu tập.');
-      return;
-    }
-    setGalleryImages([...galleryImages, trimmed]);
-    setNewGalleryUrl('');
-    setErrorMessage(null);
+  const handleGalleryFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []); event.target.value = '';
+    if (!selected.length) return;
+    if (selected.some(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024)) { setGalleryError('Chỉ nhận JPG, PNG, WebP tối đa 2 MB/ảnh.'); return; }
+    if (allGalleryImages.length + selected.length > 5 || [...galleryFiles, ...selected].reduce((total, file) => total + file.size, 0) > 4 * 1024 * 1024) { setGalleryError('Tối đa 5 ảnh; tổng tệp mới không quá 4 MB.'); return; }
+    setGalleryFiles(current => [...current, ...selected]); setGalleryError('');
   };
 
   const handleRemoveGalleryImage = (idxToRemove: number) => {
-    setGalleryImages(galleryImages.filter((_, idx) => idx !== idxToRemove));
+    if (idxToRemove < galleryImages.length) setGalleryImages(galleryImages.filter((_, idx) => idx !== idxToRemove));
+    else setGalleryFiles(files => files.filter((_, idx) => idx !== idxToRemove - galleryImages.length));
+    setGalleryError('');
   };
 
   const handleReloadLatest = async () => {
@@ -370,9 +373,9 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
         await api.updateAmenity(amenity.id, {
           ...payload,
           updated_at: expectedUpdatedAt,
-        });
+        }, galleryFiles);
       } else {
-        await api.createAmenity(payload);
+        await api.createAmenity(payload, galleryFiles);
       }
       onSuccess();
       onClose();
@@ -669,11 +672,12 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Đường dẫn ảnh đại diện (Cover Image URL)
+              <label htmlFor="amenity-cover-url" className="block text-xs font-semibold text-neutral-700 mb-1">
+                Ảnh đại diện từ URL
               </label>
               <input
                 type="url"
+                id="amenity-cover-url"
                 placeholder="https://images.unsplash.com/..."
                 value={coverImageUrl}
                 onChange={(e) => setCoverImageUrl(e.target.value)}
@@ -684,47 +688,22 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
             {/* Gallery Images */}
             <div className="pt-1">
               <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Bộ sưu tập hình ảnh (Gallery Images)
+                Bộ sưu tập ảnh từ máy
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  placeholder="Nhập URL ảnh để thêm vào bộ sưu tập..."
-                  value={newGalleryUrl}
-                  onChange={(e) => setNewGalleryUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddGalleryImage();
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddGalleryImage}
-                  className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold rounded-lg flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Thêm ảnh</span>
-                </button>
-              </div>
-
-              {Array.isArray(galleryImages) && galleryImages.length > 0 ? (
-                <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {galleryImages.map((imgUrl, idx) => (
+              <input ref={galleryInput} type="file" multiple accept="image/jpeg,image/png,image/webp" aria-label="Chọn ảnh bộ sưu tập từ máy" className="sr-only" tabIndex={-1} disabled={isSubmitting} onChange={handleGalleryFiles} />
+              <button type="button" disabled={isSubmitting || allGalleryImages.length >= 5} onClick={() => galleryInput.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold"><Plus size={18} aria-hidden="true" />Chọn ảnh từ máy</button>
+              <p className="mt-2 text-xs text-slate-500">JPG, PNG, WebP · 2 MB/ảnh · Tổng tệp mới tối đa 4 MB · Tối đa 5 ảnh.</p>
+              {galleryError && <p role="alert" className="mt-2 text-sm text-rose-700">{galleryError}</p>}
+              {allGalleryImages.length > 0 ? (
+                <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {allGalleryImages.map((imgUrl, idx) => (
                     <div key={idx} className="relative group rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 aspect-video flex items-center justify-center">
-                      <img
-                        src={imgUrl}
-                        alt={`Gallery ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-neutral-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <AmenityGalleryImage url={imgUrl} name={`Ảnh bộ sưu tập ${idx + 1}`} className="w-full h-full object-cover" />
+                      <div className="absolute right-1 top-1">
                         <button
                           type="button"
+                          disabled={isSubmitting}
+                          aria-label={`Bỏ ảnh bộ sưu tập ${idx + 1}`}
                           onClick={() => handleRemoveGalleryImage(idx)}
                           className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors shadow"
                           title="Xóa ảnh này"
@@ -736,7 +715,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   ))}
                 </div>
               ) : (
-                <p className="text-[11px] text-neutral-400 mt-1">Chưa có ảnh trong gallery. Thêm các URL ảnh minh họa tiện ích tại đây.</p>
+                <p className="text-[11px] text-neutral-400 mt-1">Chưa có ảnh trong bộ sưu tập. Chọn ảnh từ máy để thêm.</p>
               )}
             </div>
           </div>

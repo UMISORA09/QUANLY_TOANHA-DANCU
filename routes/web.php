@@ -885,6 +885,8 @@ Route::get('/api/v1/meta/blocks', [AmenityController::class, 'getBlocks']);
 Route::get('/meta/blocks', [AmenityController::class, 'getBlocks']);
 
 // Smart Search Engine APIs (Full-Text, Autocomplete & AI Knowledge Hybrid Search)
+Route::get('/api/v1/admin/amenity-images/{disk}/{file}', [AmenityController::class, 'galleryImage'])->middleware('auth.bearer:strict')->name('amenities.gallery-image');
+
 Route::get('/api/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/amenities/search', [SearchController::class, 'searchAmenities'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
 Route::get('/api/v1/admin/amenity-search/metrics', [SearchController::class, 'metrics'])->middleware(['auth.bearer:strict', 'permission:AMENITY:VIEW']);
