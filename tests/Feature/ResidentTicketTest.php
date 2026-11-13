@@ -198,6 +198,23 @@ class ResidentTicketTest extends TestCase
         $this->patchJson('/api/v1/admin/tickets/'.$id, ['version' => 1, 'priority' => 'LOW'])->assertNotFound();
     }
 
+    public function test_manager_receives_ticket_and_sets_priority_atomically(): void
+    {
+        $block = DB::table('apartments')->where('id', $this->apartmentId)->value('block_id');
+        $manager = $this->ticketStaff('BUILDING_MANAGER', $block);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $id = $this->postJson('/api/v1/resident/tickets', ['title' => 'Tiếp nhận và phân loại sự cố', 'description' => 'Vòi nước bị rò rỉ cần kiểm tra.', 'location' => 'Bếp', 'category_id' => $this->categoryId])->assertCreated()->json('data.id');
+        $path = '/api/v1/admin/tickets/'.$id.'/workflow';
+        $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($manager));
+        $this->postJson($path, ['action' => 'receive', 'version' => 1])->assertUnprocessable()->assertJsonValidationErrors('priority');
+        $this->postJson($path, ['action' => 'receive', 'version' => 1, 'priority' => 'INVALID'])->assertUnprocessable();
+        $this->assertDatabaseHas('tickets', ['id' => $id, 'status' => 'NEW', 'version' => 1]);
+        $this->postJson($path, ['action' => 'receive', 'version' => 1, 'priority' => 'URGENT'])->assertOk()->assertJsonPath('priority', 'URGENT')->assertJsonPath('status', 'RECEIVED')->assertJsonPath('version', 2);
+        $this->postJson($path, ['action' => 'receive', 'version' => 1, 'priority' => 'LOW'])->assertConflict();
+        $this->assertDatabaseHas('tickets', ['id' => $id, 'priority' => 'URGENT', 'status' => 'RECEIVED', 'version' => 2]);
+        $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $id)->where('new_status', 'RECEIVED')->count());
+    }
+
     public function test_ticket_workflow_notifies_the_right_people_and_preserves_resident_acceptance(): void
     {
         $block = DB::table('apartments')->where('id', $this->apartmentId)->value('block_id');
@@ -211,7 +228,7 @@ class ResidentTicketTest extends TestCase
         $this->postJson('/api/v1/ticket-notifications/'.$notification->id.'/read')->assertNotFound();
         $path = '/api/v1/admin/tickets/'.$id;
         $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($manager));
-        $this->postJson($path.'/workflow', ['action' => 'receive', 'version' => 1])->assertOk()->assertJsonPath('status', 'RECEIVED');
+        $this->postJson($path.'/workflow', ['action' => 'receive', 'version' => 1, 'priority' => 'HIGH'])->assertOk()->assertJsonPath('status', 'RECEIVED');
         $this->postJson($path.'/workflow', ['action' => 'assign', 'version' => 2, 'technician_user_id' => $technician->id])->assertOk()->assertJsonPath('version', 3);
         $this->postJson($path.'/workflow', ['action' => 'resolve', 'version' => 3, 'note' => 'Đã kiểm tra và sửa'])->assertForbidden();
         $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($otherTech));
@@ -253,7 +270,7 @@ class ResidentTicketTest extends TestCase
                 $resident = in_array($action, ['confirm', 'reopen', 'cancel'], true);
                 $token = $resident ? $this->residentToken : (in_array($action, ['start', 'resolve'], true) ? $technicianToken : $managerToken);
                 $path = '/api/v1/'.($resident ? 'resident' : 'admin').'/tickets/'.$id.'/'.($resident ? $action : 'workflow');
-                $response = $this->withHeader('Authorization', 'Bearer '.$token)->postJson($path, ['version' => 1, 'action' => $action, 'technician_user_id' => $technician->id, 'reason' => 'Lý do kiểm thử trạng thái', 'note' => 'Ghi chú kiểm thử trạng thái']);
+                $response = $this->withHeader('Authorization', 'Bearer '.$token)->postJson($path, ['version' => 1, 'action' => $action, 'priority' => 'HIGH', 'technician_user_id' => $technician->id, 'reason' => 'Lý do kiểm thử trạng thái', 'note' => 'Ghi chú kiểm thử trạng thái']);
                 $valid = in_array($status, $allowed, true);
                 $response->assertStatus($valid ? 200 : 409);
                 $this->assertSame($valid ? 2 : 1, Ticket::findOrFail($id)->version);
@@ -274,7 +291,7 @@ class ResidentTicketTest extends TestCase
         $notifications->shouldReceive('changed')->once()->andThrow(new \RuntimeException('QA injected notification failure'));
         $this->app->instance(TicketNotificationService::class, $notifications);
         $this->withHeader('Authorization', 'Bearer '.$this->createSessionToken($admin))
-            ->postJson('/api/v1/admin/tickets/'.$id.'/workflow', ['version' => 1, 'action' => 'receive'])->assertServerError();
+            ->postJson('/api/v1/admin/tickets/'.$id.'/workflow', ['version' => 1, 'action' => 'receive', 'priority' => 'HIGH'])->assertServerError();
         $this->assertDatabaseHas('tickets', ['id' => $id, 'status' => 'NEW', 'version' => 1]);
         $this->assertSame(0, DB::table('ticket_history')->where('ticket_id', $id)->where('action_type', 'STATUS_CHANGED')->count());
         $this->assertSame(0, DB::table('audit_logs')->where('record_id', $id)->count());

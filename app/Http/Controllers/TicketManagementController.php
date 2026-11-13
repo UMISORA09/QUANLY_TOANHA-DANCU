@@ -100,7 +100,7 @@ class TicketManagementController extends Controller
 
     public function workflow(Request $request, string $id): JsonResponse
     {
-        $data = $request->validate(['version' => 'required|integer|min:1', 'action' => 'required|in:receive,assign,start,resolve,cancel', 'technician_user_id' => 'required_if:action,assign|nullable|uuid', 'note' => 'required_if:action,resolve|nullable|string|min:5|max:500', 'reason' => 'required_if:action,cancel|nullable|string|min:5|max:500']);
+        $data = $request->validate(['version' => 'required|integer|min:1', 'action' => 'required|in:receive,assign,start,resolve,cancel', 'priority' => 'required_if:action,receive|in:LOW,MEDIUM,HIGH,URGENT', 'technician_user_id' => 'required_if:action,assign|nullable|uuid', 'note' => 'required_if:action,resolve|nullable|string|min:5|max:500', 'reason' => 'required_if:action,cancel|nullable|string|min:5|max:500']);
         app(TicketWorkflowService::class)->perform($request->user(), $id, $data['action'], (int) $data['version'], $data);
 
         return response()->json($this->tickets->detail($request->user(), $id));
