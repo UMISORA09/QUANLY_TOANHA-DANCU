@@ -284,7 +284,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(page.locator('#ticket-title-input')).toBeVisible();
     await expect(page.locator('#ticket-category-select')).toBeVisible();
     await expect(page.locator('#ticket-location-input')).toBeVisible();
-    await expect(page.locator('#ticket-priority-select')).toBeVisible();
+    await expect(page.locator('#ticket-priority-select')).toHaveCount(0);
+    await expect(page.getByText('Ban quản lý sẽ xác nhận mức độ ưu tiên khi tiếp nhận yêu cầu.', { exact: true })).toBeVisible();
     await expect(page.locator('#ticket-description-textarea')).toBeVisible();
     await expect(page.locator('#ticket-submit-btn')).toBeVisible();
 
@@ -308,9 +309,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await page.click('button:has-text("Khu vực bếp")');
     await expect(page.locator('#ticket-location-input')).toHaveValue('Khu vực bếp');
 
-    // Chọn mức độ ưu tiên
-    await page.locator('#ticket-priority-select').click();
-    await page.getByRole('option', { name: 'Ưu tiên cao', exact: true }).click();
+    await expect(page.locator('#ticket-priority-select')).toHaveCount(0);
 
     // Nhập mô tả
     await page.fill(
