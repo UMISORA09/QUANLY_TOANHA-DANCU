@@ -90,6 +90,20 @@ class SmartSearchDriver implements SearchDriverInterface
      */
     protected static array $suggestMemoryCache = [];
 
+    /** @return list<array{objectID: string, type: string, input: string, synonyms: list<string>}> */
+    public static function indexSynonyms(): array
+    {
+        $records = [];
+        foreach ([...self::$synonyms, ...self::$phraseSynonyms] as $input => $synonyms) {
+            $alternatives = array_values(array_diff(array_unique($synonyms), [$input]));
+            if ($alternatives !== []) {
+                $records[] = ['objectID' => 'amenity-'.sha1($input), 'type' => 'oneWaySynonym', 'input' => $input, 'synonyms' => $alternatives];
+            }
+        }
+
+        return $records;
+    }
+
     /**
      * @param  array<string, mixed>  $config
      */
@@ -186,8 +200,9 @@ class SmartSearchDriver implements SearchDriverInterface
      *     candidate_queries?: array<int, string>
      * }  $normQuery  Truy vấn đã chuẩn hóa
      */
-    public function computeRelevanceScore(object $item, array $normQuery): float
+    public function computeRelevanceScore(object $item, array $normQuery, ?bool &$usedFuzzy = null): float
     {
+        $usedFuzzy = false;
         $normalized = $normQuery['normalized'];
         $unaccented = $normQuery['unaccented'];
         $tokens = $normQuery['unaccented_tokens'];
@@ -350,6 +365,8 @@ class SmartSearchDriver implements SearchDriverInterface
 
         // Nếu TẤT CẢ các từ tìm kiếm đều khớp trên Tên tiện ích (ví dụ "ku nghi duon" -> "khu nghi duong")
         if ($nameMinScore >= 0.70) {
+            $usedFuzzy = $nameMinScore < 1.0;
+
             return round(0.78 + ($nameAvgScore * 0.08) + $brevityBonus, 2);
         }
 
@@ -363,6 +380,8 @@ class SmartSearchDriver implements SearchDriverInterface
             if ($matchedCountOnName >= 2) {
                 $ratio = $matchedCountOnName / count($tokensToEvaluate);
                 if ($ratio >= 0.65) {
+                    $usedFuzzy = true;
+
                     return round(0.50 + ($ratio * 0.15), 2);
                 }
             }
@@ -412,6 +431,9 @@ class SmartSearchDriver implements SearchDriverInterface
             if (! empty($filters['block_id'])) {
                 $baseQuery->where('amenities.block_id', $filters['block_id']);
             }
+            if (array_key_exists('allowed_block_ids', $filters)) {
+                $baseQuery->where(fn ($query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $filters['allowed_block_ids']));
+            }
             if (isset($filters['is_active']) && $filters['is_active'] !== 'all' && $filters['is_active'] !== null) {
                 $baseQuery->where('amenities.is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0);
             }
@@ -426,6 +448,7 @@ class SmartSearchDriver implements SearchDriverInterface
                     'created_at_asc' => $baseQuery->orderBy('amenities.created_at', 'asc'),
                     default => $baseQuery->orderBy('amenities.created_at', 'desc'),
                 };
+                $baseQuery->orderBy('amenities.id');
 
                 $total = $baseQuery->count();
                 $items = $baseQuery->skip(($page - 1) * $perPage)->take($perPage)->get()->toArray();
@@ -442,9 +465,12 @@ class SmartSearchDriver implements SearchDriverInterface
             $candidates = $baseQuery->get();
 
             $scored = [];
+            $isFuzzy = (bool) $correction['is_corrected'];
             foreach ($candidates as $item) {
-                $score = $this->computeRelevanceScore($item, $normQuery);
+                $usedFuzzy = false;
+                $score = $this->computeRelevanceScore($item, $normQuery, $usedFuzzy);
                 if ($score >= 0.45) {
+                    $isFuzzy = $isFuzzy || $usedFuzzy;
                     $itemArray = (array) $item;
                     $itemArray['relevance_score'] = $score;
                     $scored[] = $itemArray;
@@ -498,17 +524,17 @@ class SmartSearchDriver implements SearchDriverInterface
                         return $lenA <=> $lenB;
                     }
 
-                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '') ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'name_asc') {
-                    return strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? '');
+                    return strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? '') ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'name_desc') {
-                    return strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? '');
+                    return strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? '') ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'price_asc') {
-                    return ($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0);
+                    return (($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0)) ?: strcmp($a['id'], $b['id']);
                 } elseif ($sort === 'price_desc') {
-                    return ($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0);
+                    return (($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0)) ?: strcmp($a['id'], $b['id']);
                 } else {
-                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '') ?: strcmp($a['id'], $b['id']);
                 }
             });
 
@@ -523,7 +549,7 @@ class SmartSearchDriver implements SearchDriverInterface
                 $perPage,
                 $elapsedMs,
                 'smart',
-                $correction['is_corrected'] || true,
+                $isFuzzy,
                 [
                     'query' => $trimmed,
                     'normalized_query' => $normQuery['normalized'],

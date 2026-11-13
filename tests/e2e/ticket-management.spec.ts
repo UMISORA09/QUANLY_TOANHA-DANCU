@@ -115,6 +115,7 @@ for (const resident of [false]) {
 
 for (const [width, height] of [[375, 812], [390, 844], [768, 1024], [1024, 768], [1440, 900]]) {
   test(`Ticket quản lý: form, combobox bàn phím và phiên bản ${width}px`, async ({ page }) => {
+    await page.clock.install();
     await page.setViewportSize({ width, height });
     await page.addInitScript(() => {
       localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'Admin QA', email: 'qa@example.test' }));
@@ -158,6 +159,7 @@ for (const [width, height] of [[375, 812], [390, 844], [768, 1024], [1024, 768],
       return rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth && document.elementFromPoint(rect.left + rect.width / 2, rect.bottom - 8)?.closest('[role="listbox"]') === element;
     })).toBe(true);
     await category.press('Home');
+    await page.clock.fastForward(100);
     await expect(page.getByRole('option', { name: 'Điện nước', exact: true })).toBeFocused();
     await category.press('End');
     const lastCategory = page.getByRole('option', { name: 'Danh mục QA 29', exact: true });
@@ -243,7 +245,9 @@ test('Ticket: chặn phân công thiếu người, giữ ghi chú khi lỗi và 
     if (path.endsWith('/workflow')) { writes++; return route.fulfill({ status: 422, json: { message: 'Chưa thể hủy yêu cầu. Vui lòng thử lại.' } }); }
     if (path.endsWith('/tickets/qa-ticket')) {
       if (route.request().method() === 'PATCH') {
-        writes++; ticket = { ...ticket, title: 'Nội dung từ người phụ trách', version: 2 };
+        writes++;
+        if (writes > 2) { expect(route.request().postDataJSON().version).toBe(2); return route.fulfill({ json: { ...ticket, ...route.request().postDataJSON(), version: 3 } }); }
+        ticket = { ...ticket, title: 'Nội dung từ người phụ trách', version: 2 };
         return route.fulfill({ status: 409, json: { message: 'Yêu cầu đã thay đổi.' } });
       }
       return route.fulfill({ json: ticket });
@@ -275,8 +279,12 @@ test('Ticket: chặn phân công thiếu người, giữ ghi chú khi lỗi và 
   await expect(edit.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Nội dung đang nhập');
   await expect(edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true })).toBeDisabled();
   expect(writes).toBe(2);
-  await edit.getByRole('button', { name: 'Xem bản mới nhất', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'TCK-QA-001', exact: true })).toContainText('Nội dung từ người phụ trách');
+  await expect(edit).toContainText('Nội dung từ người phụ trách');
+  await edit.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập', exact: true }).click();
+  await expect(edit.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Nội dung đang nhập');
+  await expect(edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true })).toBeEnabled();
+  await edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true }).click();
+  await expect(edit).not.toBeVisible(); expect(writes).toBe(3);
 });
 
 test('Ticket: tải lại ảnh lỗi HTTP, ảnh hỏng và đóng ảnh phóng to bằng bàn phím', async ({ page }) => {
@@ -355,9 +363,9 @@ test('Thông báo đầu tiên tự làm mới danh sách sau khi trước đó 
   let lists = 0;
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path.endsWith('/ticket-notifications')) {
+    if (path.endsWith('/manager/notifications')) {
       notifications++;
-      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
+      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], category_activity: notifications === 1 ? {} : { TICKET: '1:2026-11-06T09:00:00Z' }, latest_id: notifications === 1 ? null : 'notification-qa', unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
     }
     if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
     if (path.endsWith('/tickets')) { lists++; return route.fulfill({ json: { data: [], current_page: 1, last_page: 1, total: 0 } }); }
@@ -388,18 +396,19 @@ for (const actor of [
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url());
       const path = url.pathname;
-      if (path.endsWith('/ticket-notifications/notice-qa/read')) {
+      if (path.endsWith('/ticket-notifications/notice-qa/read') || path.endsWith('/manager/notifications/notice-qa/read')) {
         reads++;
         if (reads === 1) return route.fulfill({ status: 500, json: { message: 'Chưa thể đánh dấu đã đọc.' } });
         read = true;
-        return route.fulfill({ json: { success: true } });
+        return route.fulfill({ json: { success: true, unread_count: actor.role === 'resident' ? 0 : 1 } });
       }
-      if (path.endsWith('/ticket-notifications')) {
+      if (path.endsWith('/ticket-notifications') || path.endsWith('/manager/notifications')) {
         const second = url.searchParams.get('page') === '2';
-        return route.fulfill({ json: { items: second ? [{ id: 'old-qa', title: 'Thông báo sự cố cũ', body_message: 'Đã xử lý.', is_read: true, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` }] : [
-          { id: 'notice-qa', title: 'Sự cố vừa được cập nhật', body_message: 'Mở yêu cầu để xem kết quả.', is_read: read, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` },
-          { id: 'unsafe-qa', title: 'Liên kết không hợp lệ', body_message: 'QA kiểm tra liên kết.', is_read: true, deep_link_url: 'https://example.test/?tab=tickets' },
-        ], unread_count: read ? 0 : 1, page: second ? 2 : 1, total_pages: 2 } });
+        return route.fulfill({ json: { items: second ? [{ category: 'TICKET', created_at: '2026-10-19T07:00:00Z', id: 'old-qa', title: 'Thông báo sự cố cũ', body_message: 'Đã xử lý.', is_read: true, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` }] : [
+          { category: 'TICKET', created_at: '2026-10-19T09:00:00Z', id: 'notice-qa', title: 'Sự cố vừa được cập nhật', body_message: 'Mở yêu cầu để xem kết quả.', is_read: read, deep_link_url: `${actor.portal}?tab=tickets&ticket_id=qa-ticket` },
+          { category: 'TICKET', created_at: '2026-10-19T08:00:00Z', id: 'unsafe-qa', title: 'Liên kết không hợp lệ', body_message: 'QA kiểm tra liên kết.', is_read: true, deep_link_url: 'https://example.test/?tab=tickets' },
+          ...(actor.role === 'resident' ? [] : [{ id: 'amenity-qa', category: 'AMENITY_BOOKING', title: 'Thông báo tiện ích QA', body_message: 'Cần duyệt.', is_read: false, deep_link_url: '/quan-ly?tab=amenities', created_at: '2026-10-19T07:30:00Z' }]),
+        ], latest_id: 'notice-qa', unread_count: (read ? 0 : 1) + (actor.role === 'resident' ? 0 : 1), page: second ? 2 : 1, total_pages: 2 } });
       }
       if (path.endsWith('/amenity-booking-notifications') || path.endsWith('/amenity-notifications')) return route.fulfill({ json: { items: [{ id: 'amenity-qa', title: 'Thông báo tiện ích QA', message: 'Đăng ký tiện ích đã được duyệt.', category: 'AMENITY_BOOKING', isRead: false, deepLink: `${actor.portal}?tab=amenities`, timeAgo: 'Vừa xong' }], unread_count: 1, page: 1, total_pages: 1 } });
       if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
@@ -411,27 +420,103 @@ for (const actor of [
     // The feed is available even when the Ticket screen is not mounted.
     await page.goto(`${actor.portal}?tab=overview`);
     const bell = page.getByTitle('Thông báo hệ thống', { exact: true });
-    const otherUnread = actor.role === 'admin' ? 0 : 1;
+    const otherUnread = 1;
     await expect(bell).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread + 1} chưa đọc)`);
     await expect(page.getByRole('button', { name: /^Thông báo sự cố \(/ })).toHaveCount(0);
     await bell.click();
     if (otherUnread) await expect(page.getByText('Thông báo tiện ích QA', { exact: true }).last()).toBeVisible();
-    const feed = page.getByRole('region', { name: 'Thông báo sự cố', exact: true });
+    const feed = page.getByRole('region', { name: actor.role === 'resident' ? 'Thông báo sự cố' : 'Thông báo vận hành', exact: true });
     await expect(feed.getByText('Sự cố vừa được cập nhật', { exact: true })).toBeVisible();
-    await feed.getByRole('button', { name: 'Sự cố tiếp theo', exact: true }).click();
+    await feed.getByRole('button', { name: actor.role === 'resident' ? 'Sự cố tiếp theo' : 'Thông báo sau', exact: true }).click();
     await expect(feed).toContainText('Thông báo sự cố cũ');
-    await feed.getByRole('button', { name: 'Sự cố trước', exact: true }).click();
-    await feed.getByRole('button', { name: /Liên kết không hợp lệ/ }).click();
-    await expect(feed.getByRole('alert')).toContainText('Liên kết thông báo sự cố không hợp lệ');
+    await feed.getByRole('button', { name: actor.role === 'resident' ? 'Sự cố trước' : 'Thông báo trước', exact: true }).click();
+    const noticeButton = (title: string) => actor.role === 'resident' ? feed.getByRole('button', { name: new RegExp(title) }) : feed.getByRole('listitem').filter({ hasText: title }).getByRole('button', { name: 'Xem chi tiết', exact: true });
+    await noticeButton('Liên kết không hợp lệ').click();
+    await expect(feed.getByRole('alert')).toContainText(actor.role === 'resident' ? 'Liên kết thông báo sự cố không hợp lệ' : 'Liên kết thông báo không hợp lệ');
     expect(reads).toBe(0);
-    await feed.getByRole('button', { name: /Sự cố vừa được cập nhật/ }).click();
-    await expect(feed.getByRole('alert')).toContainText('Chưa thể đánh dấu đã đọc');
-    await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'overview');
+    const failedRead = page.waitForResponse((response) => response.url().endsWith('/notice-qa/read'));
+    await noticeButton('Sự cố vừa được cập nhật').click();
+    expect((await failedRead).status()).toBe(500);
+    await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'tickets');
+    await expect(page.getByText('Yêu cầu mở từ chuông', { exact: true })).toBeVisible();
     await expect(bell).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread + 1} chưa đọc)`);
-    await feed.getByRole('button', { name: /Sự cố vừa được cập nhật/ }).click();
+    expect(reads).toBe(1);
+    await page.goto(actor.portal + '?tab=overview');
+    await bell.click();
+    await noticeButton('Sự cố vừa được cập nhật').click();
     await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'tickets' && url.searchParams.get('ticket_id') === 'qa-ticket');
     await expect(page.getByText('Yêu cầu mở từ chuông', { exact: true })).toBeVisible();
     await expect(page.getByTitle('Thông báo hệ thống', { exact: true })).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread} chưa đọc)`);
     expect(reads).toBe(2);
   });
 }
+
+for (const width of [375, 1440]) {
+  test(`MOCKED: nút thêm và lưu yêu cầu có chữ tương phản ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'QA Admin' }));
+      localStorage.setItem('smart_cassavas_token', 'qa-mocked-token');
+    });
+    await page.route('**/api/**', (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [{ id: 'cat', category_name: 'Điện nước' }], blocks: [], apartments: [], residents: [], can_create: true } });
+      return route.fulfill({ json: { data: [], items: [], total: 0, current_page: 1, last_page: 1, unread_count: 0 } });
+    });
+    await page.goto('/admin?tab=tickets');
+    const create = page.getByRole('button', { name: 'Thêm yêu cầu', exact: true });
+    const colors = async (element: typeof create) => element.evaluate((node) => ({ background: getComputedStyle(node).backgroundColor, color: getComputedStyle(node).color }));
+    await expect(create).toBeVisible();
+    const normal = await colors(create);
+    expect(normal.color).toBe('rgb(255, 255, 255)');
+    expect(normal.background).not.toBe('rgb(255, 255, 255)');
+    expect(normal.background).not.toBe('rgba(0, 0, 0, 0)');
+    await create.hover();
+    await expect.poll(async () => (await colors(create)).background).not.toBe('rgb(255, 255, 255)');
+    await create.click();
+    const save = page.getByRole('button', { name: 'Lưu yêu cầu', exact: true });
+    await expect(save).toBeVisible();
+    expect((await colors(save)).color).toBe('rgb(255, 255, 255)');
+    expect((await colors(save)).background).not.toBe('rgb(255, 255, 255)');
+  });
+}
+
+for (const width of [375, 768, 1440]) test('MOCKED F8 shared UI: technician workflow keeps draft on network error ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'technician', name: 'Kỹ thuật QA' }));
+    localStorage.setItem('smart_cassavas_token', 'qa-ui-technician');
+    localStorage.setItem('smart_cassavas_user', JSON.stringify({ id: 'qa-technician', full_name: 'Kỹ thuật QA', roles: ['TECHNICIAN'], permissions: ['TICKET:VIEW', 'TICKET:UPDATE'] }));
+  });
+  let ticket = { id: 'qa-tech-ticket', ticket_number: 'TCK-TECH-QA', title: 'Sự cố được giao', description: 'Kiểm tra kỹ thuật', status: 'RECEIVED', priority: 'MEDIUM', version: 3, created_at: '2026-11-01T00:00:00Z', apartment: { apartment_number: 'QA-01' }, attachments: [], history: [], actions: { start: true } };
+  let writes = 0;
+  await page.route('**/api/**', async route => {
+    const request = route.request(); const path = new URL(request.url()).pathname;
+    if (path.endsWith('/qa-tech-ticket/workflow')) {
+      writes++; const payload = request.postDataJSON();
+      expect(payload.action).toBe('start'); expect(payload.version).toBe(3);
+      if (writes === 1) return route.fulfill({ status: 503, json: { message: 'Mất kết nối QA' } });
+      ticket = { ...ticket, status: 'IN_PROGRESS', version: 4, actions: { start: false } };
+      return route.fulfill({ json: ticket });
+    }
+    if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
+    if (path.endsWith('/tickets/qa-tech-ticket')) return route.fulfill({ json: ticket });
+    if (path.endsWith('/tickets')) return route.fulfill({ json: { data: [ticket], current_page: 1, last_page: 1, total: 1 } });
+    return route.fulfill({ json: { items: [], data: [], unread_count: 0 } });
+  });
+  await page.goto('/quan-ly?tab=tickets');
+  await expect(page.getByRole('heading', { name: 'Yêu cầu / Sự cố', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Thêm yêu cầu hộ cư dân', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
+  await page.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Bắt đầu xử lý', exact: true });
+  const notes = dialog.getByRole('textbox', { name: 'Ghi chú xử lý (không bắt buộc)', exact: true });
+  await notes.fill('Đang kiểm tra hiện trường');
+  await dialog.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Mất kết nối QA');
+  await expect(notes).toHaveValue('Đang kiểm tra hiện trường');
+  expect(writes).toBe(1);
+  expect(await dialog.evaluate(element => element.getBoundingClientRect().width <= innerWidth)).toBe(true);
+  await dialog.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  await expect(dialog).toHaveCount(0); expect(writes).toBe(2);
+});

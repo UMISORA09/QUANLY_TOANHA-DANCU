@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Laravel\Scout\Searchable;
 
 class Vehicle extends Model
 {
-    use HasFactory, HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, Searchable, SoftDeletes;
 
     protected $table = 'vehicles';
 
@@ -42,6 +43,41 @@ class Vehicle extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'deleted_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * Tên search index
+     */
+    public function searchableAs(): string
+    {
+        return 'vehicles';
+    }
+
+    /**
+     * Dữ liệu được index vào Search Engine (Meilisearch)
+     */
+    public function toSearchableArray(): array
+    {
+        $this->loadMissing(['owner', 'apartment.block']);
+
+        return [
+            'id' => (string) $this->id,
+            'apartment_id' => (string) $this->apartment_id,
+            'owner_user_id' => (string) $this->owner_user_id,
+            'license_plate' => $this->license_plate,
+            'vehicle_category' => $this->vehicle_category,
+            'brand' => $this->brand ?? '',
+            'model' => $this->model ?? '',
+            'color' => $this->color ?? '',
+            'registration_certificate_number' => $this->registration_certificate_number ?? '',
+            'owner_name' => $this->owner?->full_name ?? '',
+            'owner_phone' => $this->owner?->phone_number ?? '',
+            'apartment_number' => $this->apartment?->apartment_number ?? '',
+            'block_name' => $this->apartment?->block?->block_name ?? '',
+            'monthly_parking_fee' => (float) $this->monthly_parking_fee,
+            'is_active' => (bool) $this->is_active,
+            'created_at' => $this->created_at?->timestamp,
         ];
     }
 

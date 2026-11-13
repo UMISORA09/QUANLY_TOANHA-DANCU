@@ -11,6 +11,36 @@ use Tests\TestCase;
 
 class VercelProxyTest extends TestCase
 {
+    public function test_vercel_entrypoint_disables_persistent_mysql_even_when_environment_enables_it(): void
+    {
+        $process = new Process([
+            PHP_BINARY, '-r', <<<'PHP'
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            $_SERVER['REQUEST_URI'] = '/api/v1/resident/amenities';
+            $_SERVER['SCRIPT_FILENAME'] = $argv[1];
+            $_SERVER['HTTP_HOST'] = 'vercel-preview.example';
+            $_SERVER['HTTP_ACCEPT'] = 'application/json';
+            register_shutdown_function(function (): void {
+                fwrite(STDERR, 'PERSISTENT='.(int) config('database.connections.mysql.options.'.PDO::ATTR_PERSISTENT));
+            });
+            require $argv[1];
+            PHP,
+            base_path('api/index.php'),
+        ], base_path(), [
+            'APP_ENV' => 'production',
+            'APP_DEBUG' => 'false',
+            'DB_PERSISTENT' => 'true',
+            'APP_CONFIG_CACHE' => sys_get_temp_dir().'/vercel-persistent-test-config.php',
+            'APP_ROUTES_CACHE' => sys_get_temp_dir().'/vercel-persistent-test-routes.php',
+            'CACHE_STORE' => 'array',
+            'SESSION_DRIVER' => 'array',
+            'DB_DATABASE' => 'quanly_toanha_booking_test',
+        ]);
+        $process->mustRun();
+        $this->assertStringContainsString('PERSISTENT=0', $process->getErrorOutput());
+        $this->assertStringContainsString('Yêu cầu xác thực Bearer token.', json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR)['message']);
+    }
+
     public function test_vercel_entrypoint_preserves_the_api_prefix_for_get_and_post_requests(): void
     {
         foreach ([

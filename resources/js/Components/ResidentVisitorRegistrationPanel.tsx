@@ -180,7 +180,7 @@ const VisitorStatusFilterCombobox: React.FC<VisitorStatusFilterComboboxProps> = 
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[210px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 min-w-[210px]">
           {VISITOR_STATUS_FILTER_OPTIONS.map((opt) => {
             const isSelected = opt.id === value;
             const Icon = opt.icon;
@@ -330,7 +330,7 @@ const VisitPurposeCombobox: React.FC<VisitPurposeComboboxProps> = ({ value, onCh
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-1.5 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-1.5 text-xs space-y-0.5 min-w-[240px]">
           {VISIT_PURPOSE_OPTIONS.map((opt) => {
             const isSelected =
               opt.id === value || (opt.id === 'Khác' && isCustom && value !== 'Thăm người thân');
@@ -485,7 +485,7 @@ const ArrivalDateTimeCombobox: React.FC<ArrivalDateTimeComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-2.5 text-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-2.5 text-xs space-y-2.5 min-w-[240px]">
           <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider px-1">
             Chọn nhanh giờ đến
           </div>
@@ -605,7 +605,7 @@ const DepartureDateTimeCombobox: React.FC<DepartureDateTimeComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-2.5 text-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-100 min-w-[240px]">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-white border border-neutral-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-2.5 text-xs space-y-2.5 min-w-[240px]">
           <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider px-1">
             Thời hạn lưu trú dự kiến
           </div>

@@ -3,9 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\Search\AmenitySearchSyncState;
 use App\Services\Search\Drivers\SmartSearchDriver;
+use App\Services\Search\VietnameseDictionaryService;
+use App\Services\Search\VietnameseNormalizer;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
@@ -18,12 +22,17 @@ class SearchEngineTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['search.default' => 'smart']);
 
-        // Tự động sử dụng SQLite khi chạy trên máy trạm host ngoài container Docker
-        if (config('database.connections.mysql.host') === 'db' && ! file_exists('/.dockerenv')) {
-            config(['database.default' => 'sqlite']);
-            config(['database.connections.sqlite.database' => database_path('database.sqlite')]);
-            DB::purge();
+        $this->createBookingFixture();
+        $this->withToken($this->adminToken);
+        foreach (['Khu Nghỉ Dưỡng', 'Phòng Gym', 'Hồ Bơi', 'Sân Tennis', 'Khu BBQ', 'Phòng Gym Tòa A'] as $name) {
+            DB::table('amenities')->insert([
+                'id' => (string) Str::uuid(), 'category_id' => $this->categoryId,
+                'amenity_name' => $name, 'amenity_code' => 'SEARCH-QA-'.Str::upper(Str::random(12)),
+                'location_detail' => 'QA', 'max_capacity_per_slot' => 20, 'hourly_rate' => 0,
+                'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
         }
     }
 
@@ -53,6 +62,10 @@ class SearchEngineTest extends TestCase
      */
     public function test_can_get_amenity_autocomplete_suggestions(): void
     {
+        $user = User::factory()->create();
+        $roleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'role_id' => $roleId]);
+        $this->withToken($this->sessionToken($user));
         $firstAmenity = DB::table('amenities')->whereNull('deleted_at')->first();
         $this->assertNotNull($firstAmenity, 'Cần ít nhất 1 tiện ích trong CSDL');
 
@@ -90,7 +103,8 @@ class SearchEngineTest extends TestCase
 
         $keyword = explode(' ', $firstAmenity->amenity_name)[0] ?? 'GYM';
 
-        // Warm up
+        // Exclude dictionary initialization while keeping the measured search uncached.
+        VietnameseDictionaryService::load();
         $this->getJson('/api/v1/admin/amenities?limit=1');
 
         $startTime = microtime(true);
@@ -323,6 +337,10 @@ class SearchEngineTest extends TestCase
      */
     public function test_smart_search_api_endpoint_response_structure(): void
     {
+        $user = User::factory()->create();
+        $roleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'role_id' => $roleId]);
+        $this->withToken($this->sessionToken($user));
         $response = $this->getJson('/api/amenities/search?q='.urlencode('ku nghi duon'));
 
         $response->assertStatus(200)
@@ -358,6 +376,10 @@ class SearchEngineTest extends TestCase
      */
     public function test_smart_search_edge_cases_do_not_crash(): void
     {
+        $user = User::factory()->create();
+        $roleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'role_id' => $roleId]);
+        $this->withToken($this->sessionToken($user));
         $edgeQueries = [
             '',
             ' ',
@@ -505,14 +527,10 @@ class SearchEngineTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $responseNoPerm = $this->withHeaders([
-            'X-User-Id' => $noPermUserId,
-        ])->getJson('/api/amenities/search?q=gym');
+        $token = $this->sessionToken(User::findOrFail($noPermUserId));
+        $responseNoPerm = $this->withToken($token)->getJson('/api/amenities/search?q=gym');
 
-        $responseNoPerm->assertStatus(403)
-            ->assertJsonFragment([
-                'message' => 'Bạn không có quyền xem tiện ích (AMENITY:VIEW)',
-            ]);
+        $responseNoPerm->assertForbidden()->assertJsonPath('error', 'FORBIDDEN');
 
         // 2. Gán quyền SUPER_ADMIN cho user
         $adminRoleId = DB::table('roles')->where('role_code', 'SUPER_ADMIN')->value('id');
@@ -531,14 +549,168 @@ class SearchEngineTest extends TestCase
             'role_id' => $adminRoleId,
         ]);
 
-        $responseWithPerm = $this->withHeaders([
-            'X-User-Id' => $noPermUserId,
-        ])->getJson('/api/amenities/search?q=gym');
+        $responseWithPerm = $this->withToken($token)->getJson('/api/amenities/search?q=gym');
 
         $responseWithPerm->assertStatus(200);
 
         // Dọn dẹp
         DB::table('user_roles')->where('user_id', $noPermUserId)->delete();
+        DB::table('user_sessions')->where('user_id', $noPermUserId)->delete();
         DB::table('users')->where('id', $noPermUserId)->delete();
+    }
+
+    private function authorizeResidentSearch(): void
+    {
+        $role = DB::table('roles')->where('role_code', 'RESIDENT_OWNER')->first();
+        $roleId = $role?->id ?? (string) Str::uuid();
+        if (! $role) {
+            DB::table('roles')->insert(['id' => $roleId, 'role_code' => 'RESIDENT_OWNER', 'role_name' => 'QA resident']);
+        }
+        $permission = DB::table('permissions')->where('permission_code', 'AMENITY:VIEW')->value('id');
+        if (! DB::table('role_permissions')->where('role_id', $roleId)->where('permission_id', $permission)->exists()) {
+            DB::table('role_permissions')->insert(['id' => (string) Str::uuid(), 'role_id' => $roleId, 'permission_id' => $permission]);
+        }
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $this->residentUser->id, 'role_id' => $roleId]);
+        $this->withToken($this->residentToken);
+    }
+
+    public function test_shared_search_filters_resident_scope_before_pagination_and_counts(): void
+    {
+        $this->authorizeResidentSearch();
+        $otherBlock = (string) Str::uuid();
+        DB::table('blocks')->insert(['id' => $otherBlock, 'block_code' => 'SEARCH-'.Str::random(8), 'block_name' => 'Other building']);
+        $template = (array) DB::table('amenities')->where('id', $this->amenityId)->first();
+        foreach ([['block_id' => $otherBlock], ['is_active' => false]] as $values) {
+            DB::table('amenities')->insert([...$template, 'id' => (string) Str::uuid(), 'amenity_code' => 'SEARCH-'.Str::random(12), ...$values]);
+        }
+        $url = '/api/v1/amenities/search?'.http_build_query(['category_id' => $this->categoryId, 'limit' => 1, 'is_active' => 'all']);
+        $this->getJson($url)->assertOk()->assertJsonPath('total', 7)->assertJsonCount(1, 'data')->assertJsonPath('total_pages', 7);
+        $this->getJson($url.'&block_id='.$otherBlock)->assertForbidden();
+        DB::table('residents')->where('user_id', $this->residentUser->id)->update(['stay_end_date' => today()->subDay()]);
+        $this->getJson($url)->assertForbidden();
+    }
+
+    public function test_shared_autocomplete_hides_foreign_and_inactive_amenities(): void
+    {
+        $this->authorizeResidentSearch();
+        DB::table('amenities')->where('id', $this->amenityId)->update(['amenity_name' => 'Phòng Gym tòa A']);
+        $otherBlock = (string) Str::uuid();
+        DB::table('blocks')->insert(['id' => $otherBlock, 'block_code' => 'SEARCH-'.Str::random(8), 'block_name' => 'Other building']);
+        $template = (array) DB::table('amenities')->where('id', $this->amenityId)->first();
+        $hidden = [];
+        foreach ([['block_id' => $otherBlock], ['is_active' => false]] as $values) {
+            $hidden[] = $id = (string) Str::uuid();
+            DB::table('amenities')->insert([...$template, 'id' => $id, 'amenity_code' => 'SEARCH-'.Str::random(12), ...$values]);
+        }
+        $response = $this->getJson('/api/v1/search/suggestions?'.http_build_query(['q' => 'Gym', 'category_id' => $this->categoryId, 'limit' => 20]))
+            ->assertOk()->assertJsonPath('meta.count', 3)->assertHeader('Cache-Control', 'no-store, private');
+        $ids = array_column($response->json('suggestions'), 'id');
+        $this->assertContains($this->amenityId, $ids);
+        $this->assertEmpty(array_intersect($hidden, $ids));
+    }
+
+    public function test_shared_search_requires_apartment_selection_when_resident_has_multiple_homes(): void
+    {
+        $this->authorizeResidentSearch();
+        $other = (string) Str::uuid();
+        $apartment = (array) DB::table('apartments')->where('id', $this->apartmentId)->first();
+        DB::table('apartments')->insert([...$apartment, 'id' => $other, 'apartment_number' => 'QA-'.Str::random(8)]);
+        $residence = (array) DB::table('residents')->where('user_id', $this->residentUser->id)->first();
+        DB::table('residents')->insert([...$residence, 'id' => (string) Str::uuid(), 'apartment_id' => $other]);
+        $this->getJson('/api/v1/amenities/search')->assertUnprocessable()->assertJsonValidationErrors('apartment_id');
+        $this->getJson('/api/v1/search/suggestions?q=Gym')->assertUnprocessable()->assertJsonValidationErrors('apartment_id');
+        $this->getJson('/api/v1/amenities/search?apartment_id='.$other)->assertOk();
+        $this->getJson('/api/v1/amenities/search?apartment_id='.Str::uuid())->assertUnprocessable();
+    }
+
+    public function test_smart_search_fuzzy_metadata_matches_actual_matching(): void
+    {
+        $driver = new SmartSearchDriver;
+        $exact = $driver->search('amenities', 'Phòng Gym', ['category_id' => $this->categoryId]);
+        $this->assertFalse($exact->isFuzzy);
+        $corrected = $driver->search('amenities', 'phong gim', ['category_id' => $this->categoryId]);
+        $this->assertTrue($corrected->isFuzzy);
+    }
+
+    public function test_shared_search_cache_cannot_be_reused_after_residency_changes(): void
+    {
+        $this->authorizeResidentSearch();
+        $query = http_build_query(['category_id' => $this->categoryId, 'limit' => 100]);
+        $this->getJson('/api/v1/amenities/search?'.$query)->assertOk();
+        $otherBlock = (string) Str::uuid();
+        DB::table('blocks')->insert(['id' => $otherBlock, 'block_code' => 'SEARCH-'.Str::random(8), 'block_name' => 'Other building']);
+        DB::table('floors')->where('id', DB::table('apartments')->where('id', $this->apartmentId)->value('floor_id'))->update(['block_id' => $otherBlock]);
+        DB::table('apartments')->where('id', $this->apartmentId)->update(['block_id' => $otherBlock]);
+        foreach (['/api/amenities/search', '/api/v1/amenities/search'] as $path) {
+            $response = $this->getJson($path.'?'.$query)->assertOk()->assertJsonPath('total', 6);
+            $this->assertNotContains($this->amenityId, array_column($response->json('data'), 'id'));
+        }
+        DB::table('residents')->where('user_id', $this->residentUser->id)->update(['is_active' => false]);
+        $this->getJson('/api/v1/search/suggestions?q=Gym')->assertForbidden();
+    }
+
+    public function test_shared_autocomplete_sends_scope_and_limit_to_elasticsearch(): void
+    {
+        $this->authorizeResidentSearch();
+        config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.amenities_index' => 'amenities_test']);
+        foreach (DB::table('amenities')->pluck('id') as $id) {
+            DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], ['desired_version' => 1, 'published_version' => 1,
+                'status' => 'synced', 'created_at' => now(), 'updated_at' => now(), 'index_fingerprint' => AmenitySearchSyncState::fingerprint()]);
+        }
+        Http::fake(['*/_search' => Http::response(['hits' => ['hits' => [['_id' => $this->amenityId]], 'total' => ['value' => 1]]])]);
+        $this->getJson('/api/v1/search/suggestions?q=BBQ&limit=1')->assertOk()->assertJsonPath('suggestions.0.id', $this->amenityId);
+        Http::assertSent(fn ($request): bool => $request['size'] === 1 && in_array(['terms' => ['block_id' => [$this->blockId, '__shared__']]], $request['query']['bool']['filter'], true));
+    }
+
+    public function test_fuzzy_matching_without_spell_correction_is_reported(): void
+    {
+        $usedFuzzy = false;
+        $score = (new SmartSearchDriver)->computeRelevanceScore((object) ['amenity_name' => 'Swimming Pool', 'amenity_code' => 'QA-POOL'],
+            VietnameseNormalizer::normalize('swimmng'), $usedFuzzy);
+        $this->assertGreaterThanOrEqual(0.45, $score);
+        $this->assertTrue($usedFuzzy);
+    }
+
+    public function test_drivers_without_tenant_filter_support_fall_back_to_scoped_sql(): void
+    {
+        $this->authorizeResidentSearch();
+        DB::table('amenities')->where('id', $this->amenityId)->update(['amenity_name' => 'Phòng Gym tòa A']);
+        $foreign = ['id' => (string) Str::uuid(), 'amenity_name' => 'Foreign Gym', 'amenity_code' => 'FOREIGN', 'block_id' => (string) Str::uuid()];
+        foreach (['meilisearch', 'elasticsearch'] as $driver) {
+            config(['search.default' => $driver]);
+            Http::fake(fn ($request) => str_contains($request->url(), '_search')
+                ? Http::response(['hits' => ['hits' => [['_source' => $foreign]], 'total' => ['value' => 1]]])
+                : Http::response(['hits' => [$foreign], 'estimatedTotalHits' => 1]));
+            $result = $this->getJson('/api/v1/amenities/search?'.http_build_query(['q' => 'Gym', 'category_id' => $this->categoryId]))
+                ->assertOk()->assertJsonPath('engine', 'smart')->assertJsonPath('total', 3);
+            $this->assertContains($this->amenityId, array_column($result->json('data'), 'id'));
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_admin_read_aliases_cannot_bypass_resident_scope_or_session_checks(): void
+    {
+        $this->authorizeResidentSearch();
+        $template = (array) DB::table('amenities')->where('id', $this->amenityId)->first();
+        $block = (string) Str::uuid();
+        $outside = (string) Str::uuid();
+        DB::table('blocks')->insert(['id' => $block, 'block_code' => 'SEARCH-'.Str::random(8), 'block_name' => 'Private building']);
+        DB::table('amenities')->insert([...$template, 'id' => $outside, 'block_id' => $block, 'amenity_code' => 'PRIVATE-'.Str::random(8)]);
+        $list = '/api/v1/admin/amenities?category_id='.$this->categoryId;
+        $this->getJson($list)->assertOk()->assertJsonPath('total', 7);
+        $paths = [$list, '/api/v1/admin/amenities/'.$outside,
+            '/api/v1/admin/amenities/'.$outside.'/time-slots', '/api/v1/admin/amenities/'.$outside.'/blackouts'];
+        foreach (array_slice($paths, 1) as $path) {
+            $this->getJson($path)->assertNotFound();
+        }
+        $this->getJson('/api/v1/admin/amenities/'.$this->amenityId)->assertOk();
+        $this->getJson('/api/v1/admin/amenities/'.$this->amenityId.'/time-slots')->assertOk();
+        $this->getJson('/api/v1/admin/amenities/'.$this->amenityId.'/blackouts')->assertOk();
+        $etag = $this->getJson($list)->assertOk()->headers->get('ETag');
+        DB::table('residents')->where('user_id', $this->residentUser->id)->update(['is_active' => false]);
+        $this->withHeader('If-None-Match', $etag)->getJson($list)->assertForbidden();
+        foreach ($paths as $path) {
+            $this->withHeader('Authorization', '')->getJson($path)->assertUnauthorized();
+        }
     }
 }

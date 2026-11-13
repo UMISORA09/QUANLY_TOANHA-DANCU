@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { AmenityGalleryImage } from './AmenityGalleryImage';
+import { CustomSelect } from '../Common/CustomSelect';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Check, Building, AlertCircle, Shield, Info, Image, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { api, Amenity, Category, BlockOption } from '../../Services/api';
 
@@ -106,6 +108,16 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
   // Form states
   const [categoryId, setCategoryId] = useState('');
   const [blockId, setBlockId] = useState<string>('');
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const element = dialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    element?.showModal();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { if (element?.open) element.close(); document.body.style.overflow = previous; if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [isOpen]);
   const [amenityName, setAmenityName] = useState('');
   const [amenityCode, setAmenityCode] = useState('');
   const [locationDetail, setLocationDetail] = useState('');
@@ -118,13 +130,23 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
   const [rules, setRules] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
-  const [newGalleryUrl, setNewGalleryUrl] = useState('');
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [galleryError, setGalleryError] = useState('');
+  const galleryInput = useRef<HTMLInputElement>(null);
+  const galleryPreviews = useMemo(() => galleryFiles.map(file => URL.createObjectURL(file)), [galleryFiles]);
+  const allGalleryImages = [...galleryImages, ...galleryPreviews];
+  useEffect(() => () => galleryPreviews.forEach(url => URL.revokeObjectURL(url)), [galleryPreviews]);
+  useEffect(() => { setGalleryFiles([]); setGalleryError(''); }, [isOpen, amenity?.id]);
   const [isActive, setIsActive] = useState(true);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConflict, setIsConflict] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
+  const [latestAmenity, setLatestAmenity] = useState<Amenity | null>(null);
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(amenity?.updated_at);
+  const conflictGeneration = useRef(0);
+  useEffect(() => () => { conflictGeneration.current++; }, [isOpen, amenity?.id]);
 
   // Auto-fill preset helper based on Category & Block
   const applyCategoryPreset = (targetCatId: string, currentBlockId?: string, force = true) => {
@@ -230,6 +252,9 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      setIsConflict(false);
+      setLatestAmenity(null);
+      setExpectedUpdatedAt(amenity?.updated_at);
       if (amenity) {
         setCategoryId(amenity.category_id);
         setBlockId(amenity.block_id || '');
@@ -245,7 +270,6 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
         setRules(amenity.rules_and_regulations || '');
         setCoverImageUrl(amenity.cover_image_url || '');
         setGalleryImages(Array.isArray(amenity.gallery_images) ? amenity.gallery_images : []);
-        setNewGalleryUrl('');
         setIsActive(amenity.is_active);
       } else {
         // Khởi tạo ban đầu: các ô danh mục, tên, mã, vị trí hoàn toàn TRỐNG
@@ -263,61 +287,43 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
         setRules('');
         setCoverImageUrl('');
         setGalleryImages([]);
-        setNewGalleryUrl('');
         setIsActive(true);
       }
       setErrorMessage(null);
     }
   }, [isOpen, amenity]);
 
-  const handleAddGalleryImage = () => {
-    const trimmed = newGalleryUrl.trim();
-    if (!trimmed) return;
-    if (galleryImages.includes(trimmed)) {
-      setErrorMessage('Đường dẫn ảnh này đã có trong bộ sưu tập.');
-      return;
-    }
-    setGalleryImages([...galleryImages, trimmed]);
-    setNewGalleryUrl('');
-    setErrorMessage(null);
+  const handleGalleryFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []); event.target.value = '';
+    if (!selected.length) return;
+    if (selected.some(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024)) { setGalleryError('Chỉ nhận JPG, PNG, WebP tối đa 2 MB/ảnh.'); return; }
+    if (allGalleryImages.length + selected.length > 5 || [...galleryFiles, ...selected].reduce((total, file) => total + file.size, 0) > 4 * 1024 * 1024) { setGalleryError('Tối đa 5 ảnh; tổng tệp mới không quá 4 MB.'); return; }
+    setGalleryFiles(current => [...current, ...selected]); setGalleryError('');
   };
 
   const handleRemoveGalleryImage = (idxToRemove: number) => {
-    setGalleryImages(galleryImages.filter((_, idx) => idx !== idxToRemove));
+    if (idxToRemove < galleryImages.length) setGalleryImages(galleryImages.filter((_, idx) => idx !== idxToRemove));
+    else setGalleryFiles(files => files.filter((_, idx) => idx !== idxToRemove - galleryImages.length));
+    setGalleryError('');
   };
 
   const handleReloadLatest = async () => {
     if (!amenity?.id) return;
-    setIsReloading(true);
+    const generation = ++conflictGeneration.current;
+    setIsReloading(true); setLatestAmenity(null);
     try {
       const fresh = await api.getAmenity(amenity.id, true);
-      setCategoryId(fresh.category_id);
-      setBlockId(fresh.block_id || '');
-      setAmenityName(fresh.amenity_name);
-      setAmenityCode(fresh.amenity_code);
-      setLocationDetail(fresh.location_detail);
-      setMaxCapacity(fresh.max_capacity_per_slot);
-      setHourlyRate(Number(fresh.hourly_rate) || 0);
-      setSecurityDeposit(Number(fresh.security_deposit_required) || 0);
-      setAdvanceDays(fresh.advance_booking_days_limit);
-      setMinCancelHours(fresh.min_cancel_hours_before);
-      setRequiresApproval(fresh.requires_admin_approval);
-      setRules(fresh.rules_and_regulations || '');
-      setCoverImageUrl(fresh.cover_image_url || '');
-      setGalleryImages(Array.isArray(fresh.gallery_images) ? fresh.gallery_images : []);
-      setIsActive(fresh.is_active);
-      amenity.updated_at = fresh.updated_at;
-      setIsConflict(false);
-      setErrorMessage(null);
+      if (generation === conflictGeneration.current) setLatestAmenity(fresh);
     } catch (err: any) {
-      setErrorMessage('Không thể tải lại dữ liệu tiện ích: ' + (err.message || ''));
+      if (generation === conflictGeneration.current) setErrorMessage('Chưa tải được bản mới. Bản nhập được giữ nguyên: ' + (err.message || ''));
     } finally {
-      setIsReloading(false);
+      if (generation === conflictGeneration.current) setIsReloading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isConflict) return;
 
     if (!categoryId) {
       setErrorMessage('Vui lòng chọn danh mục tiện ích.');
@@ -366,10 +372,10 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
       if (isEdit && amenity) {
         await api.updateAmenity(amenity.id, {
           ...payload,
-          updated_at: amenity.updated_at,
-        });
+          updated_at: expectedUpdatedAt,
+        }, galleryFiles);
       } else {
-        await api.createAmenity(payload);
+        await api.createAmenity(payload, galleryFiles);
       }
       onSuccess();
       onClose();
@@ -382,6 +388,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
         msg.toLowerCase().includes('phiên bản')
       ) {
         setIsConflict(true);
+        await handleReloadLatest();
       }
     } finally {
       setIsSubmitting(false);
@@ -391,7 +398,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <dialog ref={dialog} aria-label="Cấu hình tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting) onClose(); }} className="feature-controls feature-dialog catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
       {/* Backdrop */}
       <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 
@@ -425,12 +432,21 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
 
         {/* Error Alert */}
         {errorMessage && !isConflict && (
-          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shrink-0">
+          <div role="alert" className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shrink-0">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
 
+        {isConflict && latestAmenity && <section aria-label="Bản tiện ích mới nhất" className="p-4 rounded-xl border border-amber-300 text-sm space-y-2">
+          <p>Phiên bản máy chủ: {latestAmenity.updated_at}. Nội dung đang nhập được giữ nguyên.</p>
+          <h3 className="font-bold">{latestAmenity.amenity_name}</h3>
+          <p>{latestAmenity.amenity_code} · {latestAmenity.location_detail}</p>
+          <p>Sức chứa: {latestAmenity.max_capacity_per_slot} · Giá/giờ: {latestAmenity.hourly_rate} · Cọc: {latestAmenity.security_deposit_required}</p>
+          <p>Đặt trước: {latestAmenity.advance_booking_days_limit} ngày · Hủy trước: {latestAmenity.min_cancel_hours_before} giờ · {latestAmenity.is_active ? 'Hoạt động' : 'Tạm ngưng'}</p>
+          <p className="whitespace-pre-wrap">{latestAmenity.rules_and_regulations}</p>
+          <button type="button" className="min-h-11 underline font-bold" onClick={() => { setExpectedUpdatedAt(latestAmenity.updated_at); setIsConflict(false); setErrorMessage(null); }}>Đã xem bản mới, tiếp tục sửa bản nhập</button>
+        </section>}
         {/* OCC Conflict Alert Banner */}
         {isConflict && (
           <div className="mt-3 p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0 shadow-xs animate-in fade-in">
@@ -480,35 +496,12 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                 <label className="block text-xs font-semibold text-neutral-700 mb-1">
                   Danh mục tiện ích <span className="text-rose-500">*</span>
                 </label>
-                <select
-                  required
-                  value={categoryId}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-                >
-                  <option value="">-- Chọn danh mục --</option>
-                  {(Array.isArray(categories) ? categories : []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.category_name} ({c.category_code})
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect variant="feature" overlay required ariaLabel="Danh mục tiện ích" value={categoryId} onChange={handleCategoryChange} options={[{ value: '', label: '-- Chọn danh mục --' }, ...(Array.isArray(categories) ? categories : []).map(c => ({ value: c.id, label: c.category_name + ' (' + c.category_code + ')' }))]} />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-neutral-700 mb-1">Tòa nhà trực thuộc</label>
-                <select
-                  value={blockId}
-                  onChange={(e) => handleBlockChange(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-                >
-                  <option value="">Toàn khu dân cư (Dùng chung)</option>
-                  {(Array.isArray(blocks) ? blocks : []).map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.block_name} ({b.block_code})
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect variant="feature" overlay ariaLabel="Tòa nhà tiện ích" value={blockId} onChange={handleBlockChange} options={[{ value: '', label: 'Toàn khu dân cư (Dùng chung)' }, ...(Array.isArray(blocks) ? blocks : []).map(b => ({ value: b.id, label: b.block_name + ' (' + b.block_code + ')' }))]} />
               </div>
             </div>
 
@@ -521,7 +514,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   type="text"
                   required
                   placeholder="Nhập tên tiện ích..."
-                  value={amenityName}
+                  aria-label="Tên tiện ích" value={amenityName}
                   onChange={(e) => setAmenityName(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white text-neutral-900 font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
                 />
@@ -535,7 +528,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   type="text"
                   required
                   placeholder="Mã tiện ích..."
-                  value={amenityCode}
+                  aria-label="Mã tiện ích" value={amenityCode}
                   onChange={(e) => setAmenityCode(e.target.value.toUpperCase())}
                   className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white text-neutral-900 uppercase font-mono font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
                 />
@@ -550,7 +543,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                 type="text"
                 required
                 placeholder="Nhập vị trí chi tiết..."
-                value={locationDetail}
+                aria-label="Vị trí tiện ích" value={locationDetail}
                 onChange={(e) => setLocationDetail(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white text-neutral-900 font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
@@ -679,11 +672,12 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Đường dẫn ảnh đại diện (Cover Image URL)
+              <label htmlFor="amenity-cover-url" className="block text-xs font-semibold text-neutral-700 mb-1">
+                Ảnh đại diện từ URL
               </label>
               <input
                 type="url"
+                id="amenity-cover-url"
                 placeholder="https://images.unsplash.com/..."
                 value={coverImageUrl}
                 onChange={(e) => setCoverImageUrl(e.target.value)}
@@ -694,47 +688,22 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
             {/* Gallery Images */}
             <div className="pt-1">
               <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Bộ sưu tập hình ảnh (Gallery Images)
+                Bộ sưu tập ảnh từ máy
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  placeholder="Nhập URL ảnh để thêm vào bộ sưu tập..."
-                  value={newGalleryUrl}
-                  onChange={(e) => setNewGalleryUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddGalleryImage();
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddGalleryImage}
-                  className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-semibold rounded-lg flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Thêm ảnh</span>
-                </button>
-              </div>
-
-              {Array.isArray(galleryImages) && galleryImages.length > 0 ? (
-                <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {galleryImages.map((imgUrl, idx) => (
+              <input ref={galleryInput} type="file" multiple accept="image/jpeg,image/png,image/webp" aria-label="Chọn ảnh bộ sưu tập từ máy" className="sr-only" tabIndex={-1} disabled={isSubmitting} onChange={handleGalleryFiles} />
+              <button type="button" disabled={isSubmitting || allGalleryImages.length >= 5} onClick={() => galleryInput.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold"><Plus size={18} aria-hidden="true" />Chọn ảnh từ máy</button>
+              <p className="mt-2 text-xs text-slate-500">JPG, PNG, WebP · 2 MB/ảnh · Tổng tệp mới tối đa 4 MB · Tối đa 5 ảnh.</p>
+              {galleryError && <p role="alert" className="mt-2 text-sm text-rose-700">{galleryError}</p>}
+              {allGalleryImages.length > 0 ? (
+                <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {allGalleryImages.map((imgUrl, idx) => (
                     <div key={idx} className="relative group rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100 aspect-video flex items-center justify-center">
-                      <img
-                        src={imgUrl}
-                        alt={`Gallery ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-neutral-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <AmenityGalleryImage url={imgUrl} name={`Ảnh bộ sưu tập ${idx + 1}`} className="w-full h-full object-cover" />
+                      <div className="absolute right-1 top-1">
                         <button
                           type="button"
+                          disabled={isSubmitting}
+                          aria-label={`Bỏ ảnh bộ sưu tập ${idx + 1}`}
                           onClick={() => handleRemoveGalleryImage(idx)}
                           className="p-1 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors shadow"
                           title="Xóa ảnh này"
@@ -746,7 +715,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
                   ))}
                 </div>
               ) : (
-                <p className="text-[11px] text-neutral-400 mt-1">Chưa có ảnh trong gallery. Thêm các URL ảnh minh họa tiện ích tại đây.</p>
+                <p className="text-[11px] text-neutral-400 mt-1">Chưa có ảnh trong bộ sưu tập. Chọn ảnh từ máy để thêm.</p>
               )}
             </div>
           </div>
@@ -763,7 +732,7 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isConflict || isReloading}
               className="px-5 py-2.5 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
             >
               {isSubmitting ? (
@@ -776,6 +745,6 @@ export const AmenityFormModal: React.FC<AmenityFormModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </dialog>
   );
 };

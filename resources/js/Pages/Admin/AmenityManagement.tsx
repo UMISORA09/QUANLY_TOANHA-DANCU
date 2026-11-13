@@ -1,3 +1,8 @@
+import { AmenityGalleryImage } from '../../Components/Admin/AmenityGalleryImage';
+import { CustomSelect } from '../../Components/Common/CustomSelect';
+import { Button as AstryxButton } from '@astryxdesign/core/Button';
+import { Badge as AstryxBadge } from '@astryxdesign/core/Badge';
+import '../../../css/scss/amenity-astryx.scss';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2,
@@ -45,6 +50,8 @@ import { AmenityBookingsModal } from '../../Components/Admin/AmenityBookingsModa
 import { AmenityBookingWorklist } from '../../Components/Admin/AmenityBookingWorklist';
 import { AmenityClosureDialog } from '../../Components/Admin/AmenityClosureDialog';
 import { ConfirmDialog } from '../../Components/Admin/ConfirmDialog';
+import { AmenitySearchField, highlightAmenityText } from '../../Components/Common/AmenitySearchField';
+import { AmenitySearchMetricsPanel } from '../../Components/Admin/AmenitySearchMetricsPanel';
 
 export interface AmenityManagementProps {
   embedded?: boolean;
@@ -53,9 +60,7 @@ export interface AmenityManagementProps {
 /**
  * Hiển thị văn bản (bỏ kiểu highlight)
  */
-const renderHighlightedText = (text: string | null | undefined, _query?: string): React.ReactNode => {
-  return text ?? '';
-};
+const renderHighlightedText = (text: string | null | undefined, query = ''): React.ReactNode => highlightAmenityText(text, query);
 
 const getPageNumbers = (current: number, total: number): (number | string)[] => {
   if (total <= 7) {
@@ -86,102 +91,6 @@ const getPageNumbers = (current: number, total: number): (number | string)[] => 
   return pages;
 };
 
-interface CustomSelectOption {
-  value: string;
-  label: string;
-}
-
-interface CustomSelectProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: CustomSelectOption[];
-  placeholder?: string;
-  className?: string;
-}
-
-const CustomSelect: React.FC<CustomSelectProps> = ({
-  value,
-  onChange,
-  options,
-  placeholder = 'Chọn một mục...',
-  className = '',
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const selectedOption = options.find((opt) => opt.value === value);
-
-  useEffect(() => {
-    const handlePointerDownOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handlePointerDownOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDownOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen]);
-
-  return (
-    <div ref={containerRef} className={`relative w-full ${isOpen ? 'z-50' : 'z-10'} ${className}`}>
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full px-3.5 py-2 text-xs border rounded-2xl bg-white transition-all flex items-center justify-between gap-2 shadow-2xs cursor-pointer text-left ${
-          isOpen
-            ? 'border-neutral-900 ring-2 ring-neutral-900/10'
-            : value && value !== 'all' && value !== ''
-            ? 'border-neutral-300 font-semibold text-neutral-950 bg-neutral-50/40 hover:bg-neutral-50'
-            : 'border-neutral-200 text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50/50'
-        }`}
-      >
-        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
-        <ChevronDown
-          className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform duration-200 ${
-            isOpen ? 'rotate-180 text-neutral-900' : ''
-          }`}
-        />
-      </button>
-
-      {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 min-w-[200px] bg-white/95 backdrop-blur-2xl border border-neutral-200/90 rounded-2xl shadow-xl p-1.5 space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-150">
-          {options.map((opt) => {
-            const isSelected = opt.value === value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => {
-                  onChange(opt.value);
-                  setIsOpen(false);
-                }}
-                className={`w-full px-3 py-2 text-xs rounded-xl flex items-center justify-between transition-colors text-left cursor-pointer ${
-                  isSelected
-                    ? 'bg-neutral-950 text-white font-semibold shadow-2xs'
-                    : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
-                }`}
-              >
-                <span className="truncate">{opt.label}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1.5" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
   // Lấy dữ liệu khởi tạo ngay từ L1/L2 Cache (0ms perceived latency, không bị nháy loading)
@@ -215,7 +124,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
   // Filter & pagination states
   const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebounce(searchInput, 150);
+  const debouncedSearch = useDebounce(searchInput, 300);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -391,7 +300,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       category_id: selectedCategory || undefined,
       block_id: selectedBlock || undefined,
       is_active: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
-      sort: sortOrder,
+      sort: debouncedSearch.trim() ? 'relevance' : sortOrder,
       page: currentPage,
       limit,
     };
@@ -529,7 +438,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         category_id: selectedCategory || undefined,
         block_id: selectedBlock || undefined,
         is_active: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
-        sort: sortOrder,
+        sort: debouncedSearch.trim() ? 'relevance' : sortOrder,
         page: targetPage,
         limit,
       });
@@ -701,12 +610,12 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   };
 
   return (
-    <div className={`${embedded ? 'w-full text-neutral-900' : 'min-h-screen bg-neutral-900/10 text-neutral-900 pb-16'} font-sans`}>
+    <div className={`feature-controls catalog-ui ${embedded ? 'w-full text-neutral-900' : 'min-h-screen bg-neutral-900/10 text-neutral-900 pb-16'} font-sans`}>
       {/* Toast Notification */}
       {toast && (
         <div
           role={toast.type === 'error' ? 'alert' : 'status'}
-          className={`fixed bottom-6 right-6 z-[80] px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-bottom-3 duration-200 border ${
+          className={`mb-4 flex items-center gap-2.5 rounded-2xl border px-4 py-3 text-xs font-medium sm:text-sm ${
             toast.type === 'success'
               ? 'bg-neutral-900/95 text-white border-white/10'
               : 'bg-rose-950/95 text-rose-100 border-rose-500/30'
@@ -723,7 +632,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Top Breadcrumb & Actions Bar (Only if not embedded) */}
       {!embedded && (
-        <div className="bg-white/80 backdrop-blur-xl border-b border-neutral-200/80 sticky top-0 z-20">
+        <div data-astryx-theme="neutral" data-theme="light" className="amenity-astryx-trial bg-white/80 backdrop-blur-xl border-b border-neutral-200/80 sticky top-0 z-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Breadcrumbs */}
             <div className="flex items-center gap-2 text-xs text-neutral-500">
@@ -769,36 +678,23 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={() => setIsCategoryModalOpen(true)}
-                className="px-3.5 py-2 bg-white hover:bg-neutral-50 active:scale-95 border border-neutral-200/90 text-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
-              >
-                <Tag className="w-3.5 h-3.5 text-neutral-600" />
-                <span>Quản lý danh mục</span>
-              </button>
+              <AstryxButton label="Quản lý danh mục" variant="secondary" size="lg" className="amenity-astryx-secondary" icon={<Tag className="h-4 w-4" />} onClick={() => setIsCategoryModalOpen(true)} />
 
-              <button
-                type="button"
-                onClick={handleOpenCreate}
-                className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Thêm tiện ích</span>
-              </button>
+              <AstryxButton label="Thêm tiện ích" variant="primary" size="lg" icon={<Plus className="h-4 w-4" />} onClick={handleOpenCreate} />
             </div>
           </div>
         </div>
       )}
 
       {/* Page Header */}
-      <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${embedded ? 'pt-0' : 'pt-6'} pb-4`}>
+      <div data-astryx-theme="neutral" data-theme="light" className={`amenity-astryx-trial catalog-header ${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${embedded ? 'pt-0' : 'pt-6'} pb-4`}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
                 <Sparkles className="w-3.5 h-3.5 text-sky-500" />
                 <span>PHÂN HỆ QUẢN LÝ TIỆN ÍCH</span>
+                <AstryxBadge label="Astryx · Bản thử" variant="neutral" />
               </div>
               {isSyncing && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-sky-50 text-sky-700 border border-sky-200/80 animate-in fade-in duration-200">
@@ -815,37 +711,16 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-start md:self-end">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-end">
             {embedded && (
               <>
-                <button
-                  type="button"
-                  onClick={() => setIsCategoryModalOpen(true)}
-                  className="px-3.5 py-2 bg-white hover:bg-neutral-50 active:scale-95 border border-neutral-200/90 text-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
-                >
-                  <Tag className="w-3.5 h-3.5 text-neutral-600" />
-                  <span>Quản lý danh mục</span>
-                </button>
+                <AstryxButton label="Quản lý danh mục" variant="secondary" size="lg" className="amenity-astryx-secondary" icon={<Tag className="h-4 w-4" />} onClick={() => setIsCategoryModalOpen(true)} />
 
-                <button
-                  type="button"
-                  onClick={handleOpenCreate}
-                  className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Thêm tiện ích</span>
-                </button>
+                <AstryxButton label="Thêm tiện ích" variant="primary" size="lg" icon={<Plus className="h-4 w-4" />} onClick={handleOpenCreate} />
               </>
             )}
 
-            <button
-              type="button"
-              onClick={() => fetchAmenities(true)}
-              className="p-2.5 text-slate-500 hover:text-neutral-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
-              title="Làm mới dữ liệu từ máy chủ (Bỏ qua cache)"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading || isSyncing ? 'animate-spin text-neutral-950' : ''}`} />
-            </button>
+            <AstryxButton label="Tải lại danh sách tiện ích" variant="secondary" size="lg" className="amenity-astryx-secondary" isIconOnly isLoading={loading || isSyncing} icon={<RefreshCw className="h-4 w-4" />} onClick={() => fetchAmenities(true)} tooltip="Làm mới dữ liệu từ máy chủ (Bỏ qua cache)" />
           </div>
         </div>
       </div>
@@ -853,42 +728,26 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       {/* Main Container */}
       <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} space-y-4`}>
         <AmenityBookingWorklist opening={openingBooking} onOpen={(id, code) => { const url = new URL(window.location.href); url.searchParams.set('amenity_id', id); url.searchParams.set('booking_code', code); window.history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }} />
+        {currentUser && <AmenitySearchMetricsPanel />}
         {/* Filters Bar Card */}
-        <div className="relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <div data-astryx-theme="neutral" data-theme="light" className="amenity-astryx-trial catalog-toolbar relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {/* Search Input, Clear button & Searching spinner */}
             <div className="lg:col-span-2 relative">
-              <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
+              <AmenitySearchField
                 placeholder="Tìm theo tên tiện ích hoặc mã tiện ích (VD: GYM, BƠI)..."
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={setSearchInput}
+                suggestions={amenities}
+                loading={isSearching || loading || searchInput !== debouncedSearch}
                 className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-2xl bg-white hover:bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all shadow-2xs"
               />
 
-              {/* Right Indicators: Spinner & Clear Button */}
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                {isSearching && (
-                  <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
-                )}
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={handleClearSearch}
-                    className="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer"
-                    title="Xóa từ khóa tìm kiếm"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
             </div>
 
             {/* Category Filter */}
             <div>
-              <CustomSelect
-                value={selectedCategory}
+              <CustomSelect variant="feature" overlay ariaLabel="Tất cả danh mục"                 value={selectedCategory}
                 onChange={(val) => {
                   setSelectedCategory(val);
                   setPage(1);
@@ -906,8 +765,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
             {/* Block Filter */}
             <div>
-              <CustomSelect
-                value={selectedBlock}
+              <CustomSelect variant="feature" overlay ariaLabel="Tất cả tòa nhà"                 value={selectedBlock}
                 onChange={(val) => {
                   setSelectedBlock(val);
                   setPage(1);
@@ -925,8 +783,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
             {/* Status Filter */}
             <div>
-              <CustomSelect
-                value={selectedStatus}
+              <CustomSelect variant="feature" overlay ariaLabel="Tất cả trạng thái"                 value={selectedStatus}
                 onChange={(val) => {
                   setSelectedStatus(val);
                   setPage(1);
@@ -962,7 +819,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         </div>
 
         {/* Data Table Card */}
-        <div className="relative z-10 bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+        <div className="catalog-table relative z-10 bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           {/* Table Container - Duy trì chiều cao tối thiểu để không bao giờ bị giật khung cuộn (Scroll Jump) khi đổi trang */}
           <div className="overflow-x-auto table-scrollbar min-h-[640px]">
             <table className="w-full text-left border-collapse text-xs">
@@ -1267,18 +1124,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Items per page selector */}
               <div className="flex items-center gap-1.5 border-l border-neutral-200 pl-3">
                 <span className="text-neutral-500">Mỗi trang:</span>
-                <select
-                  value={limit}
-                  onChange={(e) => {
-                    setLimit(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="px-2 py-1 rounded-lg border border-neutral-200 bg-white text-xs font-semibold text-neutral-800 focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer shadow-2xs"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
+                <CustomSelect variant="feature" overlay ariaLabel="Số dòng mỗi trang" value={limit} onChange={(value) => { setLimit(value); setPage(1); }} options={[10, 20, 50].map(value => ({ value, label: String(value) }))} />
               </div>
 
               {isChangingPage && (
@@ -1469,14 +1315,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                         key={idx}
                         className="rounded-lg overflow-hidden border border-neutral-200 aspect-video bg-neutral-200"
                       >
-                        <img
-                          src={imgUrl}
-                          alt={`Gallery ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
+                        <AmenityGalleryImage url={imgUrl} name={`Ảnh bộ sưu tập ${idx + 1}`} className="w-full h-full object-cover" />
                       </div>
                     ))}
                   </div>
@@ -1563,7 +1402,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         onChanged={() => fetchAmenities(true)}
       />
 
-      <ConfirmDialog
+      <ConfirmDialog variant="feature"
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
         message={confirmDialog.message}

@@ -54,6 +54,10 @@ class TicketBrowserFixtureTest extends TestCase
             $this->assertSame('CLOSED', $ticket->status);
             $this->assertSame(9, (int) $ticket->version);
             $this->assertSame(2, DB::table('ticket_attachments')->where('ticket_id', $ticket->id)->count());
+            $comments = DB::table('ticket_comments')->where('ticket_id', $ticket->id)->get();
+            $this->assertCount(4, $comments);
+            $this->assertCount(1, $comments->where('is_internal_staff_note', true));
+            $this->assertSame(4, DB::table('audit_logs')->where('table_name', 'ticket_comments')->whereIn('record_id', $comments->pluck('id'))->count());
             $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $ticket->id)->where('new_status', 'CLOSED')->count());
             $this->assertGreaterThan(0, DB::table('user_in_app_notifications')->whereIn('recipient_user_id', $fixture['user_ids'])->where('category', 'TICKET')->count());
         } finally {
@@ -63,6 +67,9 @@ class TicketBrowserFixtureTest extends TestCase
                 }
                 DB::table('user_in_app_notifications')->where('category', 'TICKET')->where('deep_link_url', 'like', '%'.$id.'%')->delete();
             }
+            $commentIds = DB::table('ticket_comments')->whereIn('ticket_id', $ids)->pluck('id');
+            DB::table('audit_logs')->whereIn('record_id', $commentIds)->delete();
+            DB::table('ticket_comments')->whereIn('ticket_id', $ids)->delete();
             DB::table('ticket_attachments')->whereIn('ticket_id', $ids)->delete();
             DB::table('ticket_history')->whereIn('ticket_id', $ids)->delete();
             DB::table('audit_logs')->whereIn('record_id', $ids)->delete();

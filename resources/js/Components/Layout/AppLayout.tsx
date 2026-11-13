@@ -39,7 +39,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   statusText,
   extraTopbarActions,
   onNotificationClick,
-  unreadNotificationCount = 3,
+  unreadNotificationCount = ['manager', 'admin', 'dev'].includes(role) ? 0 : 3,
   onHelpClick,
   hideTopbar = false,
   hideBrandHeader = false,

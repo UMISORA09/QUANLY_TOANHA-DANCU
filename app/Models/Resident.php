@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Laravel\Scout\Searchable;
 
 class Resident extends Model
 {
-    use HasFactory, HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, Searchable, SoftDeletes;
 
     protected $table = 'residents';
 
@@ -38,6 +39,43 @@ class Resident extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'deleted_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * Tên search index
+     */
+    public function searchableAs(): string
+    {
+        return 'residents';
+    }
+
+    /**
+     * Dữ liệu được index vào Search Engine (Meilisearch)
+     */
+    public function toSearchableArray(): array
+    {
+        $this->loadMissing(['user', 'apartment.block']);
+
+        return [
+            'id' => (string) $this->id,
+            'user_id' => (string) $this->user_id,
+            'apartment_id' => (string) $this->apartment_id,
+            'resident_type' => $this->resident_type,
+            'is_head_of_household' => (bool) $this->is_head_of_household,
+            'is_active' => (bool) $this->is_active,
+            'gender' => $this->user?->gender,
+            'full_name' => $this->user?->full_name ?? '',
+            'phone_number' => $this->user?->phone_number ?? '',
+            'national_id_number' => $this->user?->national_id_number ?? '',
+            'apartment_number' => $this->apartment?->apartment_number ?? '',
+            'block_name' => $this->apartment?->block?->block_name ?? '',
+            'block_code' => $this->apartment?->block?->block_code ?? '',
+            'occupation' => $this->occupation ?? '',
+            'vehicle_count' => (int) $this->vehicle_count,
+            'stay_start_date' => $this->stay_start_date?->format('Y-m-d'),
+            'stay_end_date' => $this->stay_end_date?->format('Y-m-d'),
+            'created_at' => $this->created_at?->timestamp,
         ];
     }
 

@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Test deployment selection
-        run: node --test tests/Unit/VercelDeploymentResolver.test.mjs
+        run: node --test tests/Unit/VercelDeploymentResolver.test.mjs tests/Unit/AmenitySearchSync.test.mjs tests/Unit/ProductionDatabaseConfig.test.mjs
       - name: Resolve deployment from Git Integration
         id: deployment
         env:
@@ -259,16 +259,30 @@ jobs:
           PROD_DB_DATABASE: ${{ secrets.PROD_DB_DATABASE }}
           PROD_DB_USERNAME: ${{ secrets.PROD_DB_USERNAME }}
           PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_DB_PORT: ${{ secrets.PROD_DB_PORT || '3306' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          if ([ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" != "not_configured" ]) || ([ -n "$PROD_DB_HOST" ] && [ "$PROD_DB_HOST" != "not_configured" ] && [ -n "$PROD_DB_PASSWORD" ] && [ "$PROD_DB_PASSWORD" != "not_configured" ]); then
+          if [ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" != "not_configured" ]; then
+            if [[ "$DATABASE_URL" != mysql://* ]]; then
+              echo "::error ::Production DATABASE_URL must use the mysql scheme."
+              exit 1
+            fi
             echo "configured=true" >> $GITHUB_OUTPUT
-            echo "✅ Production database secrets configured."
           else
-            echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::error ::Production database credentials are missing. Manual production deployment is blocked."
-            exit 1
+            for field in PROD_DB_HOST PROD_DB_DATABASE PROD_DB_USERNAME PROD_DB_PASSWORD; do
+              if [ -z "${!field}" ] || [ "${!field}" = "not_configured" ]; then
+                echo "configured=false" >> $GITHUB_OUTPUT
+                echo "::error ::Required Production database setting is missing: $field."
+                exit 1
+              fi
+            done
+            if ! [[ "$PROD_DB_PORT" =~ ^[0-9]{1,5}$ ]] || [ "$((10#$PROD_DB_PORT))" -lt 1 ] || [ "$((10#$PROD_DB_PORT))" -gt 65535 ]; then
+              echo "::error ::Production database port is invalid."
+              exit 1
+            fi
+            echo "configured=true" >> $GITHUB_OUTPUT
           fi
+          echo "Production database configuration is present; TLS connectivity is checked before migration."
 
       - name: Setup PHP for Migration
         if: steps.check-db-config.outputs.configured == 'true'
@@ -293,7 +307,11 @@ jobs:
           DB_USERNAME: ${{ secrets.PROD_DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MYSQL_ATTR_SSL_CA: ${{ github.workspace }}/config/aiven-ca.pem
+          DB_PERSISTENT: 'false'
         run: |
+          test -r "$MYSQL_ATTR_SSL_CA"
+          php artisan migrate:status --no-interaction
           echo "Executing incremental migrations on Production Database..."
           php artisan migrate --force --no-interaction
           echo "✅ Production database migrations executed safely."

@@ -2,6 +2,11 @@
 
 use App\Services\AmenityBookingPaymentService;
 use App\Services\Freshness\FreshnessService;
+use App\Services\Search\AnnouncementSearch;
+use App\Services\Search\BookingCodeSearch;
+use App\Services\Search\SuggestionSearch;
+use App\Services\Search\SurveySearch;
+use App\Services\Search\TicketSearch;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -16,3 +21,29 @@ Schedule::call(function (FreshnessService $freshness) {
 
 Schedule::call(fn () => app(AmenityBookingPaymentService::class)->expire())
     ->everyMinute()->name('amenity-payment-expiry')->withoutOverlapping();
+
+Schedule::command('queue:work database --queue=amenity-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('amenity-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => config('search.default') === 'elasticsearch');
+
+Schedule::command('announcements:cleanup-uploads')->hourly()->withoutOverlapping();
+
+Schedule::command('queue:work database --queue=booking-code-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('booking-code-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => BookingCodeSearch::enabled());
+
+Schedule::command('queue:work database --queue=ticket-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('ticket-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => TicketSearch::enabled());
+
+Schedule::command('queue:work database --queue=announcement-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('announcement-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => AnnouncementSearch::enabled());
+
+Schedule::command('queue:work database --queue=suggestion-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('suggestion-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => SuggestionSearch::enabled());
+
+Schedule::command('queue:work database --queue=survey-search --stop-when-empty --max-jobs=10 --max-time=45 --tries=5 --timeout=25')
+    ->everyMinute()->name('survey-search-sync')->withoutOverlapping()
+    ->when(fn (): bool => SurveySearch::enabled());

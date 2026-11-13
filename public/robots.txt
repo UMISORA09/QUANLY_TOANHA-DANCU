@@ -1,2 +1,9 @@
 User-agent: *
-Disallow:
+Disallow: /api/
+Disallow: /admin
+Disallow: /quan-ly
+Disallow: /cu-dan
+Disallow: /le-tan
+Disallow: /ky-thuat
+Disallow: /dev
+Sitemap: https://quanly-toanha-dancu.vercel.app/sitemap.xml

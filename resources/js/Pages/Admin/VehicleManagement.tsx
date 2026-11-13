@@ -41,6 +41,7 @@ import vehicleApi, {
 } from '../../Services/vehicleApi';
 import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
 import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
+import { CustomSelect, SelectOption } from '../../Components/Common/CustomSelect';
 
 interface ResidentComboboxProps {
   value: string;
@@ -203,7 +204,7 @@ const ResidentCombobox: React.FC<ResidentComboboxProps> = ({
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col">
           {/* Ô tìm kiếm nhanh với debounce và loading indicator */}
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
@@ -391,7 +392,7 @@ const ApartmentCombobox: React.FC<ApartmentComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col">
           {/* Ô tìm kiếm nhanh */}
           <div className="p-2 border-b border-slate-100 bg-slate-50/90">
             <div className="relative">
@@ -539,7 +540,7 @@ const CategoryCombobox: React.FC<CategoryComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col p-1 text-xs space-y-0.5">
           {VEHICLE_CATEGORIES.map((cat) => {
             const isSelected = cat.value === value;
             const CatIcon = cat.icon;
@@ -1223,56 +1224,61 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
           </div>
 
           {/* Loại xe filter */}
-          <div>
-            <select
+          <div className="w-48">
+            <CustomSelect
               value={filterCategory}
-              onChange={(e) => {
-                setFilterCategory(e.target.value);
+              onChange={(val) => {
+                setFilterCategory(val);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-            >
-              <option value="">Tất cả loại xe</option>
-              <option value="MOTORBIKE">Xe máy (Motorbike)</option>
-              <option value="CAR">Ô tô (Car)</option>
-              <option value="E_SCOOTER">Xe điện (E-Scooter)</option>
-              <option value="BICYCLE">Xe đạp (Bicycle)</option>
-            </select>
+              options={[
+                { value: '', label: 'Tất cả loại xe' },
+                { value: 'MOTORBIKE', label: 'Xe máy (Motorbike)' },
+                { value: 'CAR', label: 'Ô tô (Car)' },
+                { value: 'E_SCOOTER', label: 'Xe điện (E-Scooter)' },
+                { value: 'BICYCLE', label: 'Xe đạp (Bicycle)' },
+              ]}
+              placeholder="Tất cả loại xe"
+              searchable={false}
+            />
           </div>
 
           {/* Căn hộ filter */}
-          <div>
-            <select
+          <div className="w-44">
+            <CustomSelect
               value={filterApartmentId}
-              onChange={(e) => {
-                setFilterApartmentId(e.target.value);
+              onChange={(val) => {
+                setFilterApartmentId(val);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-            >
-              <option value="">Tất cả căn hộ</option>
-              {apartments.map((apt) => (
-                <option key={apt.id} value={apt.id}>
-                  {apt.apartment_number}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: 'Tất cả căn hộ' },
+                ...apartments.map((apt) => ({
+                  value: apt.id,
+                  label: `Căn ${apt.apartment_number}`,
+                })),
+              ]}
+              placeholder="Tất cả căn hộ"
+              searchable={true}
+            />
           </div>
 
           {/* Trạng thái filter */}
-          <div>
-            <select
+          <div className="w-44">
+            <CustomSelect
               value={filterStatus}
-              onChange={(e) => {
-                setFilterStatus(e.target.value);
+              onChange={(val) => {
+                setFilterStatus(val);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-            >
-              <option value="">Tất cả trạng thái</option>
-              <option value="1">Đang hoạt động</option>
-              <option value="0">Tạm dừng</option>
-            </select>
+              options={[
+                { value: '', label: 'Tất cả trạng thái' },
+                { value: '1', label: 'Đang hoạt động' },
+                { value: '0', label: 'Tạm dừng' },
+              ]}
+              placeholder="Tất cả trạng thái"
+              searchable={false}
+            />
           </div>
         </div>
       </div>

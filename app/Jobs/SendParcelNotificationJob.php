@@ -120,10 +120,7 @@ class SendParcelNotificationJob implements ShouldQueue
             $phone = trim($parcel->recipient_phone);
             $resident = Resident::where('apartment_id', $parcel->apartment_id)
                 ->where('is_active', true)
-                ->where(function ($q) use ($phone) {
-                    $q->where('phone_number', $phone)
-                        ->orWhereHas('user', fn ($uq) => $uq->where('phone_number', $phone));
-                })
+                ->whereHas('user', fn ($uq) => $uq->where('phone_number', $phone))
                 ->with('user:id,full_name,email,phone_number')
                 ->first();
 

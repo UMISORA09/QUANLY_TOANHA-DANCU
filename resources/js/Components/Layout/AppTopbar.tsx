@@ -9,8 +9,10 @@ import {
   Layers,
   Sparkles,
   ExternalLink,
+  Search,
 } from 'lucide-react';
 import { UserRole, QUICK_PORTALS } from './navigationConfig';
+import { GlobalSearchModal } from '../Common/GlobalSearchModal';
 
 export interface AppTopbarProps {
   isSidebarCollapsed: boolean;
@@ -35,13 +37,26 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
   statusText,
   extraActions,
   onNotificationClick,
-  unreadNotificationCount = 3,
+  unreadNotificationCount = ['manager', 'admin', 'dev'].includes(portalRole || userRole) ? 0 : 3,
   onHelpClick,
   showPortalSwitcher = false,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<string>('');
   const [isPortalDropdownOpen, setIsPortalDropdownOpen] = useState<boolean>(false);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState<boolean>(false);
+
+  // Global Shortcut Ctrl + K / Cmd + K để kích hoạt OmniSearch
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // ĐẢM BẢO QUYỀN ADMIN: Kiểm tra cả prop và session lưu trong localStorage
   // Khi Admin di chuyển vào Cổng Lễ Tân, Cổng Cư Dân, hay Cổng Quản Lý,
@@ -196,6 +211,22 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
 
         {/* ================= RIGHT SECTION ================= */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* OmniSearch Quick Trigger (Ctrl + K) */}
+          <button
+            type="button"
+            onClick={() => setIsSearchModalOpen(true)}
+            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-slate-200/90 text-slate-600 hover:text-slate-900 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-all cursor-pointer group active:scale-95"
+            title="Tìm kiếm toàn hệ thống (Ctrl + K)"
+          >
+            <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 group-hover:text-sky-600 transition-colors" />
+            <span className="hidden md:inline text-xs font-medium text-slate-500 group-hover:text-slate-800">
+              Tìm kiếm...
+            </span>
+            <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.2 rounded bg-white text-[10px] font-mono font-bold text-slate-400 border border-slate-200/90 shadow-2xs">
+              Ctrl K
+            </kbd>
+          </button>
+
           {/* Extra Custom Action Slot (Zoom control, Refresh button, 3D model, Apartment badge, etc.) */}
           {extraActions && <div className="flex items-center gap-1.5 sm:gap-2">{extraActions}</div>}
 
@@ -338,12 +369,17 @@ export const AppTopbar: React.FC<AppTopbarProps> = ({
             >
               <Bell className="w-4 h-4 group-hover:scale-110 transition-transform" />
               {unreadNotificationCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white animate-pulse" />
+                <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>
               )}
             </button>
           </div>
         </div>
       </div>
+
+      <GlobalSearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+      />
     </header>
   );
 };

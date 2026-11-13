@@ -25,7 +25,7 @@ test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư
       const args = ['exec', '-i', process.env.TICKET_REAL_API_CONTAINER!, 'curl', '--silent', '--show-error', '--max-time', '45', '--request', incoming.method(), '--header', `Authorization: ${incoming.headers().authorization || ''}`, '--header', 'Accept: application/json'];
       if (incoming.headers()['content-type']) args.push('--header', `Content-Type: ${incoming.headers()['content-type']}`);
       const body = incoming.postDataBuffer(); if (body) args.push('--data-binary', '@-');
-      args.push('--write-out', '\n%{http_code}', `http://127.0.0.1:9038${url.pathname}${url.search}`);
+      args.push('--write-out', '\n%{http_code}', `http://127.0.0.1:${process.env.TICKET_REAL_API_PORT || '9038'}${url.pathname}${url.search}`);
       const output = await new Promise<Buffer>((resolve, reject) => {
         const child = execFile('docker', args, { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => error ? reject(new Error('QA HTTP transport failed')) : resolve(stdout));
         child.stdin?.end(body || undefined);
@@ -52,6 +52,18 @@ test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư
     const id = (await response.json()).data.id;
     const admin = await actor('admin', fixture.admin_token);
     await admin.goto(`${base}/admin?tab=tickets&ticket_id=${id}`);
+    await resident.goto(`${base}/cu-dan?tab=tickets&ticket_id=${id}`);
+    await resident.getByLabel('Nội dung trao đổi', { exact: true }).fill('Cư dân bổ sung: nước vẫn đang rò rỉ.');
+    await resident.getByRole('button', { name: 'Gửi bình luận', exact: true }).click();
+    await expect(admin.getByText('Cư dân bổ sung: nước vẫn đang rò rỉ.', { exact: true })).toBeVisible();
+    await admin.getByLabel('Nội dung trao đổi', { exact: true }).fill('Ghi chú riêng QA: chuẩn bị van dự phòng.');
+    await admin.getByLabel('Ghi chú nội bộ', { exact: true }).check();
+    await admin.getByRole('button', { name: 'Gửi bình luận', exact: true }).click();
+    await expect(admin.getByText('Ghi chú riêng QA: chuẩn bị van dự phòng.', { exact: true })).toBeVisible();
+    await admin.getByLabel('Nội dung trao đổi', { exact: true }).fill('Ban quản lý đã nhận thông tin bổ sung.');
+    await admin.getByRole('button', { name: 'Gửi bình luận', exact: true }).click();
+    await expect(resident.getByText('Ban quản lý đã nhận thông tin bổ sung.', { exact: true })).toBeVisible();
+    await expect(resident.getByText('Ghi chú riêng QA: chuẩn bị van dự phòng.', { exact: true })).toHaveCount(0);
     await admin.getByRole('button', { name: 'Tiếp nhận', exact: true }).click();
     await admin.getByRole('dialog', { name: 'Tiếp nhận', exact: true }).getByRole('button', { name: 'Tiếp nhận', exact: true }).click();
     await admin.getByRole('button', { name: 'Phân công kỹ thuật', exact: true }).click();
@@ -66,6 +78,10 @@ test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư
     const tech = await actor('technician', fixture.technician_token);
     const techUrl = `${base}/quan-ly?tab=tickets&ticket_id=${id}`;
     await tech.goto(techUrl);
+    await expect(tech.getByText('Ghi chú riêng QA: chuẩn bị van dự phòng.', { exact: true })).toBeVisible();
+    await tech.getByLabel('Nội dung trao đổi', { exact: true }).fill('Kỹ thuật sẽ đến kiểm tra trong ca trực.');
+    await tech.getByRole('button', { name: 'Gửi bình luận', exact: true }).click();
+    await expect(resident.getByText('Kỹ thuật sẽ đến kiểm tra trong ca trực.', { exact: true })).toBeVisible();
     await expect(tech.getByRole('button', { name: 'Thêm yêu cầu', exact: true })).toHaveCount(0);
     await tech.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
     await tech.getByRole('dialog', { name: 'Bắt đầu xử lý' }).getByRole('button', { name: 'Bắt đầu xử lý' }).click();
@@ -90,5 +106,6 @@ test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư
     await resident.getByRole('button', { name: 'Xác nhận hoàn thành', exact: true }).click();
     await expect(resident.getByRole('dialog', { name: 'Xác nhận nghiệm thu' })).toHaveCount(0);
     await expect(resident.getByRole('button', { name: 'Xác nhận đã sửa xong', exact: true })).toHaveCount(0);
+    await expect(resident.getByLabel('Nội dung trao đổi', { exact: true })).toBeDisabled();
   } finally { for (const context of contexts) await context.close(); }
 });

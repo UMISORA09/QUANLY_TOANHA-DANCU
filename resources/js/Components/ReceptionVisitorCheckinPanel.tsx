@@ -747,7 +747,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
 
                   {/* Dropdown Menu Popup (Chuẩn 100% Ảnh 2) */}
                   {isStatusDropdownOpen && (
-                    <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[220px] animate-in fade-in zoom-in-95 duration-100">
+                    <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[220px]">
                       {statusOptions.map((opt) => {
                         const isSelected = statusFilter === opt.id;
                         return (
@@ -811,7 +811,7 @@ export const ReceptionVisitorCheckinPanel: React.FC<ReceptionVisitorCheckinPanel
             </button>
 
             {isPerPageDropdownOpen && (
-              <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[140px] animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 space-y-1 min-w-[140px]">
                 {[10, 15, 25, 50].map((limit) => {
                   const isSelected = perPage === limit;
                   return (
