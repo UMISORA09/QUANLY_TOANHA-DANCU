@@ -21,7 +21,7 @@ class ResidentUpdateTicketRequest extends FormRequest
             'title' => 'required|string|max:200',
             'description' => 'required|string|min:5',
             'location' => 'required|string|max:255',
-            'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT',
+            'priority' => 'prohibited',
             'preferred_service_time' => 'nullable|date',
             'version' => 'required|integer|min:1',
             'updated_at' => 'nullable|date',
@@ -40,7 +40,7 @@ class ResidentUpdateTicketRequest extends FormRequest
             'description.min' => 'Mô tả chi tiết phải có ít nhất 5 ký tự.',
             'location.required' => 'Vị trí xảy ra sự cố không được để trống.',
             'location.max' => 'Vị trí sự cố không được vượt quá 255 ký tự.',
-            'priority.in' => 'Mức độ khẩn cấp không hợp lệ (LOW, MEDIUM, HIGH, URGENT).',
+            'priority.prohibited' => 'Mức độ ưu tiên do ban quản lý xác nhận khi tiếp nhận yêu cầu.',
         ];
     }
 }

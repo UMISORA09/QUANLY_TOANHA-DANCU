@@ -7,6 +7,7 @@ use App\Models\TicketCategory;
 use App\Models\TicketHistory;
 use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\Search\TicketSearch;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -80,6 +81,7 @@ class ResidentTicketService
                 'apartment:id,apartment_number,block_id',
                 'apartment.block:id,block_name,block_code',
                 'attachments',
+                'rating',
             ]);
 
         // 1. Lọc theo trạng thái
@@ -105,12 +107,7 @@ class ResidentTicketService
         // 4. Tìm kiếm từ khóa (Mã ticket, tiêu đề, vị trí)
         if (! empty($filters['search'])) {
             $keyword = trim((string) $filters['search']);
-            $query->where(function ($q) use ($keyword) {
-                $q->where('ticket_number', 'like', "%{$keyword}%")
-                    ->orWhere('title', 'like', "%{$keyword}%")
-                    ->orWhere('location', 'like', "%{$keyword}%")
-                    ->orWhere('description', 'like', "%{$keyword}%");
-            });
+            app(TicketSearch::class)->filter($query, $keyword, includeDescription: true);
         }
 
         $perPage = min(max((int) ($filters['per_page'] ?? 15), 5), 50);
@@ -176,10 +173,7 @@ class ResidentTicketService
             ]);
         }
 
-        // Xác định mức độ khẩn cấp (priority)
-        $priority = ! empty($data['priority']) && in_array(strtoupper((string) $data['priority']), self::VALID_PRIORITIES, true)
-            ? strtoupper((string) $data['priority'])
-            : ($category->default_priority ?: 'MEDIUM');
+        $priority = 'MEDIUM';
 
         $now = Carbon::now();
         $slaDeadline = $now->copy()->addHours($category->sla_resolution_time_hours ?: 24);
@@ -300,10 +294,6 @@ class ResidentTicketService
             $ticket->title = trim((string) $data['title']);
             $ticket->description = trim((string) $data['description']);
             $ticket->location = trim((string) ($data['location'] ?? $ticket->location));
-
-            if (! empty($data['priority']) && in_array(strtoupper((string) $data['priority']), self::VALID_PRIORITIES, true)) {
-                $ticket->priority = strtoupper((string) $data['priority']);
-            }
 
             if (array_key_exists('preferred_service_time', $data)) {
                 $ticket->preferred_service_time = ! empty($data['preferred_service_time'])

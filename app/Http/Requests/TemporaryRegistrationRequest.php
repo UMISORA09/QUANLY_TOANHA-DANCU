@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Resident;
+use App\Models\TemporaryRegistration;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -9,7 +11,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 class TemporaryRegistrationRequest extends FormRequest
 {
     /**
-     * Xác thực quyền người dùng: Yêu cầu quyền Quản trị viên (SUPER_ADMIN hoặc BUILDING_MANAGER)
+     * Xác thực quyền người dùng: Quản trị viên (SUPER_ADMIN, BUILDING_MANAGER) hoặc Cư dân có quan hệ cư trú hợp lệ
      */
     public function authorize(): bool
     {
@@ -19,12 +21,179 @@ class TemporaryRegistrationRequest extends FormRequest
             return false;
         }
 
-        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+        // 1. Quản trị viên có toàn quyền
+        if ($this->isUserAdmin($user)) {
             return true;
         }
 
-        if (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'BUILDING_MANAGER'])) {
+        // 2. Cư dân phải có hồ sơ lưu trú hoạt động hoặc có role cư dân
+        $isResident = Resident::where('user_id', $user->id)
+            ->where('is_active', true)
+            ->exists()
+            || (method_exists($user, 'hasRole') && $user->hasRole(['RESIDENT_OWNER', 'RESIDENT_MEMBER']));
+
+        if (! $isResident) {
+            return false;
+        }
+
+        // 3. Phân quyền theo thao tác
+        if ($this->isMethod('post')) {
+            $aptId = $this->input('apartment_id');
+            $resId = $this->input('resident_id');
+
+            if ($aptId || $resId) {
+                if (! $this->canResidentAccess($user, $aptId, $resId)) {
+                    return false;
+                }
+            }
+        }
+
+        if ($this->isMethod('put') || $this->isMethod('patch')) {
+            $registrationId = (string) ($this->route('id') ?? $this->route('temporary_registration') ?? '');
+            if ($registrationId !== '') {
+                $registration = TemporaryRegistration::find($registrationId);
+                if ($registration && ! $this->canResidentModify($user, $registration)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Chuẩn bị dữ liệu trước khi xác thực (Tự động điền cho cư dân nếu thiếu ID hợp lệ)
+     */
+    protected function prepareForValidation(): void
+    {
+        $user = $this->user();
+        if ($user && ! $this->isUserAdmin($user) && $this->isMethod('post')) {
+            // Tự động gán apartment_id nếu cư dân chỉ ở 1 căn hộ
+            if (! $this->has('apartment_id') || empty($this->input('apartment_id'))) {
+                $userApartmentId = Resident::where('user_id', $user->id)
+                    ->where('is_active', true)
+                    ->value('apartment_id');
+                if ($userApartmentId) {
+                    $this->merge(['apartment_id' => $userApartmentId]);
+                }
+            }
+
+            // Tự động gán resident_id của chính người dùng trong căn hộ đó nếu chưa truyền
+            if (! $this->has('resident_id') || empty($this->input('resident_id'))) {
+                $aptId = $this->input('apartment_id');
+                if ($aptId) {
+                    $residentId = Resident::where('user_id', $user->id)
+                        ->where('apartment_id', $aptId)
+                        ->where('is_active', true)
+                        ->value('id');
+                    if ($residentId) {
+                        $this->merge(['resident_id' => $residentId]);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Kiểm tra người dùng có quyền quản trị hay không
+     */
+    protected function isUserAdmin(mixed $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
+            || (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'BUILDING_MANAGER']));
+    }
+
+    /**
+     * Kiểm tra cư dân có quyền đăng ký cho căn hộ và cư dân được chọn
+     */
+    protected function canResidentAccess(mixed $user, ?string $apartmentId, ?string $residentId): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (! $apartmentId && ! $residentId) {
             return true;
+        }
+
+        // 1. Kiểm tra căn hộ: user phải có quan hệ cư trú active tại apartment_id
+        if ($apartmentId) {
+            $userResident = Resident::where('user_id', $user->id)
+                ->where('apartment_id', $apartmentId)
+                ->where('is_active', true)
+                ->first();
+
+            if (! $userResident) {
+                return false;
+            }
+
+            // 2. Kiểm tra resident_id
+            if ($residentId) {
+                $targetResident = Resident::where('id', $residentId)->first();
+                if ($targetResident) {
+                    // Đăng ký cho chính mình
+                    $isSelf = ((string) $targetResident->user_id === (string) $user->id)
+                        || ((string) $targetResident->id === (string) $userResident->id);
+
+                    if ($isSelf) {
+                        return true;
+                    }
+
+                    // Đăng ký cho thành viên cùng hộ gia đình (chỉ chủ hộ hoặc chủ sở hữu)
+                    $isHeadOrOwner = (bool) $userResident->is_head_of_household
+                        || $userResident->resident_type === 'OWNER'
+                        || (method_exists($user, 'hasRole') && $user->hasRole('RESIDENT_OWNER'));
+
+                    if ($isHeadOrOwner && (string) $targetResident->apartment_id === (string) $apartmentId && (bool) $targetResident->is_active) {
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return true;
+    }
+
+    /**
+     * Kiểm tra cư dân có quyền chỉnh sửa hồ sơ
+     */
+    protected function canResidentModify(mixed $user, TemporaryRegistration $registration): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        $registration->loadMissing('resident');
+
+        if ($registration->resident && (string) $registration->resident->user_id === (string) $user->id) {
+            return true;
+        }
+
+        $userResident = Resident::where('user_id', $user->id)
+            ->where('apartment_id', $registration->apartment_id)
+            ->where('is_active', true)
+            ->first();
+
+        if ($userResident) {
+            $isHeadOrOwner = (bool) $userResident->is_head_of_household
+                || $userResident->resident_type === 'OWNER'
+                || (method_exists($user, 'hasRole') && $user->hasRole('RESIDENT_OWNER'));
+
+            if ($isHeadOrOwner) {
+                return true;
+            }
+
+            if ((string) $registration->resident_id === (string) $userResident->id) {
+                return true;
+            }
         }
 
         return false;

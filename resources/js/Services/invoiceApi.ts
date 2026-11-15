@@ -794,7 +794,7 @@ export const invoiceApi = {
         if (params?.status) query.append('status', params.status);
         if (params?.report_type) query.append('report_type', params.report_type);
 
-        const res = await fetch(`/api/v1/reports/financial/preview?${query.toString()}`, {
+        const res = await fetch(`/reports/financial/preview?${query.toString()}`, {
             headers: getAuthHeaders(),
         });
 
@@ -818,7 +818,7 @@ export const invoiceApi = {
         if (params?.status) query.append('status', params.status);
         if (params?.report_type) query.append('report_type', params.report_type);
 
-        return `/api/v1/reports/financial/export-excel?${query.toString()}`;
+        return `/reports/financial/export-excel?${query.toString()}`;
     },
 
     /**
@@ -838,6 +838,6 @@ export const invoiceApi = {
         if (params?.report_type) query.append('report_type', params.report_type);
         if (params?.auto_print) query.append('auto_print', '1');
 
-        return `/api/v1/reports/financial/export-pdf?${query.toString()}`;
+        return `/reports/financial/export-pdf?${query.toString()}`;
     },
 };

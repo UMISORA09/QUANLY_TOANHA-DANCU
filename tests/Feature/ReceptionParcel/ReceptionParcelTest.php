@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class ReceptionParcelTest extends TestCase
@@ -716,5 +717,177 @@ class ReceptionParcelTest extends TestCase
         $this->assertContains($overdueGhn->id, $overdueItems);
         $this->assertNotContains($pendingGhn->id, $overdueItems);
         $this->assertNotContains($expiringGhn->id, $overdueItems);
+    }
+
+    /**
+     * BUG-01 Test: Yêu cầu chưa xác thực (Unauthenticated) bị từ chối 401
+     */
+    public function test_unauthenticated_requests_to_parcel_apis_are_rejected(): void
+    {
+        $resGet = $this->getJson('/api/v1/reception/parcels');
+        $resGet->assertStatus(401);
+
+        $resPost = $this->postJson('/api/v1/reception/parcels', [
+            'tracking_number' => 'UNAUTH123',
+            'courier_company' => 'Shopee Express',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Test',
+            'recipient_phone' => '0901234567',
+        ]);
+        $resPost->assertStatus(401);
+    }
+
+    /**
+     * BUG-01 Test: Cư dân chỉ xem được danh sách bưu phẩm của căn hộ mình, không xem được bưu phẩm căn hộ khác
+     */
+    public function test_resident_only_sees_parcels_of_own_apartment(): void
+    {
+        $apartmentA = $this->apartment;
+        $apartmentB = $this->getOrCreateApartment('APT-OTHER-'.Str::random(4));
+
+        $parcelA = Parcel::create([
+            'tracking_number' => 'PARCEL_A_'.Str::random(6),
+            'courier_company' => 'Shopee Express',
+            'apartment_id' => $apartmentA->id,
+            'recipient_name' => 'Cư dân Căn A',
+            'recipient_phone' => $this->resident->phone_number,
+            'parcel_photo_url' => 'https://example.com/a.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '111111',
+            'pickup_qr_code' => 'PKG-A-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        $parcelB = Parcel::create([
+            'tracking_number' => 'PARCEL_B_'.Str::random(6),
+            'courier_company' => 'Lazada Express',
+            'apartment_id' => $apartmentB->id,
+            'recipient_name' => 'Cư dân Căn B',
+            'recipient_phone' => '0988888888',
+            'parcel_photo_url' => 'https://example.com/b.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '222222',
+            'pickup_qr_code' => 'PKG-B-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        // Cư dân A lấy danh sách bưu phẩm
+        $res = $this->actingAs($this->resident)
+            ->getJson('/api/v1/reception/parcels');
+
+        $res->assertStatus(200);
+        $ids = collect($res->json('data'))->pluck('id')->all();
+        $this->assertContains($parcelA->id, $ids);
+        $this->assertNotContains($parcelB->id, $ids);
+
+        // Thử lọc cố tình sang apartment_id của căn B
+        $resFiltered = $this->actingAs($this->resident)
+            ->getJson('/api/v1/reception/parcels?apartment_id='.$apartmentB->id);
+        $resFiltered->assertStatus(200);
+        $filteredIds = collect($resFiltered->json('data'))->pluck('id')->all();
+        $this->assertNotContains($parcelB->id, $filteredIds);
+    }
+
+    /**
+     * BUG-01 Test: Cư dân không thể xem chi tiết bưu phẩm (kèm mã PIN/QR) của căn hộ khác
+     */
+    public function test_resident_cannot_view_details_of_parcel_from_other_apartment(): void
+    {
+        $apartmentB = $this->getOrCreateApartment('APT-OTHER-'.Str::random(4));
+        $parcelB = Parcel::create([
+            'tracking_number' => 'PARCEL_SECRET_'.Str::random(6),
+            'courier_company' => 'Lazada Express',
+            'apartment_id' => $apartmentB->id,
+            'recipient_name' => 'Cư dân Căn B',
+            'recipient_phone' => '0988888888',
+            'parcel_photo_url' => 'https://example.com/secret.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '999888',
+            'pickup_qr_code' => 'PKG-SEC-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        // Cư dân A cố tình gọi show parcel của căn B
+        $response = $this->actingAs($this->resident)
+            ->getJson('/api/v1/reception/parcels/'.$parcelB->id);
+
+        $response->assertStatus(403);
+        $response->assertJson([
+            'success' => false,
+        ]);
+    }
+
+    /**
+     * BUG-01 Test: Cư dân bị từ chối 403 khi thực hiện các quyền của nhân viên (store, update, delete, lookup, search)
+     */
+    public function test_resident_cannot_perform_staff_only_actions(): void
+    {
+        $parcel = Parcel::create([
+            'tracking_number' => 'PARCEL_STAFF_'.Str::random(6),
+            'courier_company' => 'Shopee',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Tester',
+            'recipient_phone' => '0901234567',
+            'parcel_photo_url' => 'https://example.com/staff.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '123456',
+            'pickup_qr_code' => 'PKG-TST-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        // Store
+        $resStore = $this->actingAs($this->resident)->postJson('/api/v1/reception/parcels', [
+            'tracking_number' => 'SPX'.rand(100000, 999999),
+            'courier_company' => 'Shopee',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Tester',
+            'recipient_phone' => '0901234567',
+        ]);
+        $resStore->assertStatus(403);
+
+        // Update
+        $resUpdate = $this->actingAs($this->resident)->putJson('/api/v1/reception/parcels/'.$parcel->id, [
+            'notes' => 'Hack note',
+        ]);
+        $resUpdate->assertStatus(403);
+
+        // Delete
+        $resDelete = $this->actingAs($this->resident)->deleteJson('/api/v1/reception/parcels/'.$parcel->id);
+        $resDelete->assertStatus(403);
+
+        // Lookup
+        $resLookup = $this->actingAs($this->resident)->getJson('/api/v1/reception/parcels/lookup?code=123456');
+        $resLookup->assertStatus(403);
+
+        // Search recipients
+        $resSearchRec = $this->actingAs($this->resident)->getJson('/api/v1/reception/parcels/recipients/search?search=test');
+        $resSearchRec->assertStatus(403);
+
+        // Search apartments
+        $resSearchApt = $this->actingAs($this->resident)->getJson('/api/v1/reception/parcels/apartments/search?search=test');
+        $resSearchApt->assertStatus(403);
+    }
+
+    /**
+     * BUG-01 Test: receiveParcel từ chối nếu không xác định được nhân viên (không fallback nhân viên ngẫu nhiên)
+     */
+    public function test_receive_parcel_rejects_without_staff_identity_and_does_not_fallback(): void
+    {
+        $this->expectException(HttpException::class);
+
+        $this->service->receiveParcel(
+            data: [
+                'tracking_number' => 'NO_STAFF_'.Str::random(6),
+                'courier_company' => 'SPX',
+                'apartment_id' => $this->apartment->id,
+                'recipient_name' => 'Test',
+                'recipient_phone' => '0901234567',
+            ],
+            staffUser: null
+        );
     }
 }

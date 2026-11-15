@@ -136,7 +136,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   useEffect(() => {
     setMode(initialMode);
     setErrorMessage(null);
-    if (initialRole && ROLE_DEMOS[initialRole]) {
+    if (import.meta.env.DEV && initialRole && ROLE_DEMOS[initialRole]) {
       setSelectedRole(initialRole);
       setLoginIdentifier(ROLE_DEMOS[initialRole].email);
       setPassword('123567');
@@ -159,6 +159,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   const handleSelectRole = (roleKey: UserRole) => {
+    if (!import.meta.env.DEV) return;
     setSelectedRole(roleKey);
     const demo = ROLE_DEMOS[roleKey];
     setLoginIdentifier(demo.email);
@@ -201,24 +202,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setTimeout(() => {
           setSubmitSuccess(false);
           if (onSuccess) {
-            const role = (res.user?.roles?.[0]?.toLowerCase().includes('admin') ? 'admin' : (res.user?.roles?.[0] || selectedRole || 'resident')) as UserRole;
+            const role = res.user.roles[0] as UserRole;
             onSuccess(role, res.user?.email || res.user?.username || loginIdentifier, res.user);
           }
           onClose();
         }, 500);
       } catch (err: any) {
-        if (selectedRole || loginIdentifier.includes('letan') || loginIdentifier.includes('admin') || loginIdentifier.includes('quanly')) {
-          const fallbackRole = (selectedRole || (loginIdentifier.includes('letan') ? 'receptionist' : loginIdentifier.includes('admin') ? 'admin' : 'manager')) as UserRole;
-          setSubmitSuccess(true);
-          setTimeout(() => {
-            setSubmitSuccess(false);
-            if (onSuccess) {
-              onSuccess(fallbackRole, loginIdentifier);
-            }
-            onClose();
-          }, 500);
-          return;
-        }
         setErrorMessage(err.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản và mật khẩu.');
       } finally {
         setIsSubmitting(false);
@@ -226,17 +215,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    setTimeout(() => {
+    try {
+      const result = await api.register({ full_name: fullName, email, phone_number: phoneNumber,
+        password, apartment_number: apartmentNumber, resident_type: residentType });
+      setErrorMessage(result.message || 'Đăng ký đã tiếp nhận. Vui lòng đăng nhập bằng tài khoản được cấp.');
+      setMode('login');
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Không thể đăng ký. Vui lòng thử lại.');
+    } finally {
       setIsSubmitting(false);
-      setSubmitSuccess(true);
-      setTimeout(() => {
-        setSubmitSuccess(false);
-        if (onSuccess) {
-          onSuccess(selectedRole || 'resident', loginIdentifier || email || phoneNumber);
-        }
-        onClose();
-      }, 1200);
-    }, 700);
+    }
   };
 
   const handleForgotPassword = (e: React.FormEvent) => {
@@ -336,7 +324,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {mode === 'login' && !isForgotPwOpen && (
           <div className="mt-6">
             {/* Quick Access Role Header */}
-            <div className="pt-4 border-t border-neutral-200/80">
+            {import.meta.env.DEV && <div className="pt-4 border-t border-neutral-200/80">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] font-bold tracking-wider text-neutral-800 uppercase">
                   TRUY CẬP NHANH
@@ -399,10 +387,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <p className="text-[11px] text-neutral-400 mt-2.5 font-normal">
                 Chọn một vai trò để vào thẳng khu vực làm việc.
               </p>
-            </div>
+            </div>}
 
             {/* Divider */}
-            <div className="border-t border-neutral-200/80 my-5" />
+            {import.meta.env.DEV && <div className="border-t border-neutral-200/80 my-5" />}
 
             {/* Login Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -416,7 +404,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     value={loginIdentifier}
                     onChange={(e) => setLoginIdentifier(e.target.value)}
-                    placeholder="admin@cassavas.vn hoặc 0900000001"
+                    placeholder="Nhập email hoặc số điện thoại"
                     className="w-full px-3 py-2.5 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                   />
                 </div>
@@ -427,9 +415,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <label className="block text-xs font-semibold text-neutral-900">
                     Mật khẩu
                   </label>
-                  <span className="text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded font-mono">
+                  {import.meta.env.DEV && <span className="text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded font-mono">
                     MK mẫu: 123567
-                  </span>
+                  </span>}
                 </div>
                 <div className="relative">
                   <input
@@ -437,7 +425,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Nhập 123567"
+                    placeholder="Nhập mật khẩu"
                     className="w-full px-3 py-2.5 pr-10 glass-input rounded-md text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                   />
                   <button

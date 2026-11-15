@@ -2,17 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\RbacService;
 use App\Services\ResidentVisitorService;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class ResidentPortalController extends Controller
 {
@@ -254,72 +250,6 @@ class ResidentPortalController extends Controller
     }
 
     /**
-     * Tạo yêu cầu phản ánh / sửa chữa kỹ thuật mới từ Cư Dân.
-     */
-    public function createTicket(Request $request): JsonResponse
-    {
-        $request->merge($this->getRequestData($request));
-
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'category_id' => 'nullable|string',
-            'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT',
-            'preferred_service_time' => 'nullable|date',
-            'apartment_id' => 'nullable|uuid',
-        ]);
-
-        $userId = $request->user()->id;
-        $apartments = app(DatabaseResidentAmenityBookingRepository::class)->apartments($userId);
-        abort_if($apartments->isEmpty(), 403, 'Bạn chưa có hồ sơ cư trú còn hiệu lực.');
-        $apartmentId = $validated['apartment_id'] ?? ($apartments->count() === 1 ? $apartments->first()->id : null);
-        if (! $apartments->contains('id', $apartmentId)) {
-            throw ValidationException::withMessages(['apartment_id' => 'Vui lòng chọn căn hộ bạn đang cư trú.']);
-        }
-
-        $categoryId = $validated['category_id'] ?? null;
-        if (! $categoryId) {
-            $cat = DB::table('ticket_categories')->first();
-            $categoryId = $cat?->id;
-        }
-        if (! $categoryId || ! DB::table('ticket_categories')->where('id', $categoryId)->exists()) {
-            throw ValidationException::withMessages(['category_id' => 'Danh mục sự cố không hợp lệ.']);
-        }
-
-        $ticketId = (string) Str::uuid();
-        $ticketNumber = 'TICKET-'.Str::upper(Str::random(12));
-        $now = Carbon::now();
-
-        DB::table('tickets')->insert([
-            'id' => $ticketId,
-            'ticket_number' => $ticketNumber,
-            'category_id' => $categoryId,
-            'apartment_id' => $apartmentId,
-            'creator_user_id' => $userId,
-            'title' => $validated['title'],
-            'description' => $validated['description'],
-            'priority' => $validated['priority'] ?? 'MEDIUM',
-            'status' => 'NEW',
-            'preferred_service_time' => ! empty($validated['preferred_service_time']) ? Carbon::parse($validated['preferred_service_time']) : null,
-            'sla_deadline' => $now->copy()->addHours(24),
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-
-        $newTicket = DB::table('tickets')
-            ->leftJoin('ticket_categories', 'tickets.category_id', '=', 'ticket_categories.id')
-            ->where('tickets.id', $ticketId)
-            ->select('tickets.*', 'ticket_categories.category_name', 'ticket_categories.category_code')
-            ->first();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Gửi yêu cầu hỗ trợ kỹ thuật thành công!',
-            'ticket' => $newTicket,
-        ], 201);
-    }
-
-    /**
      * Đăng ký khách viếng thăm & cấp thẻ QR Pass.
      */
     public function createVisitor(Request $request): JsonResponse
@@ -333,19 +263,10 @@ class ResidentPortalController extends Controller
             'expected_arrival_time' => 'required|date',
             'vehicle_license_plate' => 'nullable|string|max:50',
             'apartment_id' => 'nullable|string',
-            'user_id' => 'nullable|string',
         ]);
 
-        $user = $request->user() ?? RbacService::resolveUser($request);
-        if (! $user) {
-            $userId = $validated['user_id'] ?? null;
-            if ($userId) {
-                $user = User::find($userId) ?? DB::table('users')->where('id', $userId)->first();
-            }
-            if (! $user) {
-                $user = DB::table('users')->where('email', 'nguyenvanan@cassavas.vn')->first();
-            }
-        }
+        $user = RbacService::resolveUser($request);
+        abort_unless($user, 401);
 
         $result = app(ResidentVisitorService::class)->createVisitor($user, $validated);
 
@@ -358,29 +279,18 @@ class ResidentPortalController extends Controller
     }
 
     /**
-     * Thanh toán trực tuyến hóa đơn (Mô phỏng VietQR/VNPAY).
+     * Chặn thanh toán giả cho tới khi hóa đơn có đối soát giao dịch thực tế.
      */
     public function payInvoice(Request $request, string $id): JsonResponse
     {
-        $invoice = DB::table('invoices')->where('id', $id)->first();
-        if (! $invoice) {
-            return response()->json(['detail' => 'Hóa đơn không tồn tại!'], 404);
-        }
-
-        $now = Carbon::now();
-        DB::table('invoices')->where('id', $id)->update([
-            'status' => 'PAID',
-            'paid_amount' => $invoice->total_amount,
-            'remaining_balance' => 0.00,
-            'updated_at' => $now,
-        ]);
-
-        $updated = DB::table('invoices')->where('id', $id)->first();
+        $user = $request->user();
+        abort_unless($user, 401);
+        $invoice = DB::table('invoices')->where('id', $id)->where('resident_user_id', $user->id)->whereNull('deleted_at')->first();
+        abort_unless($invoice, 404);
 
         return response()->json([
-            'success' => true,
-            'message' => 'Thanh toán hóa đơn thành công!',
-            'invoice' => $updated,
-        ]);
+            'success' => false,
+            'message' => 'Thanh toán hóa đơn trực tuyến chưa có đối soát giao dịch. Vui lòng liên hệ ban quản lý; hóa đơn chưa được ghi nhận đã thanh toán.',
+        ], 409);
     }
 }

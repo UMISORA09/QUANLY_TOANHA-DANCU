@@ -31,7 +31,7 @@ const DEMO_ROLES: Array<{
   email: string;
   pass: string;
   icon: any;
-}> = [
+}> = import.meta.env.DEV ? [
   {
     role: 'admin',
     title: 'Admin / IT',
@@ -64,7 +64,7 @@ const DEMO_ROLES: Array<{
     pass: '123567',
     icon: Users,
   },
-];
+] : [];
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess }) => {
   const [identifier, setIdentifier] = useState('');
@@ -85,6 +85,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
   };
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     try {
       const urlRole = new URLSearchParams(window.location.search).get('role');
       if (urlRole) {
@@ -218,7 +219,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
             </div>
 
             {/* Quick Demo Selector */}
-            <div className="mb-6">
+            {import.meta.env.DEV && <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -263,7 +264,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                   );
                 })}
               </div>
-            </div>
+            </div>}
 
             {/* Feedback Alerts */}
             {errorMessage && (

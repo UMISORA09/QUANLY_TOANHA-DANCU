@@ -1,6 +1,116 @@
 import { test, expect, Page } from '@playwright/test';
 import type { AmenityBookingPayment } from '../../resources/js/Services/api';
 
+for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`MOCKED E2E F4 manager review visual ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.addInitScript(() => {
+      localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'Quản lý QA' }));
+      localStorage.setItem('smart_cassavas_token', 'test-admin-token');
+    });
+    await page.route('**/api/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/amenity-booking-worklist')) return route.fulfill({ json: {
+        items: [{ ...booking, resident_name: 'Cư dân QA', amenity_name: 'Vườn BBQ' }],
+        counts: { PENDING: 2, REPORTED: 1, REVIEW: 0 }, page: Number(url.searchParams.get('page') || 1), total_pages: 2,
+      } });
+      if (url.pathname.endsWith('/amenities/amenity-test')) return route.fulfill({ json: amenity });
+      if (url.pathname.endsWith('/bookings')) return route.fulfill({ json: [
+        { ...booking, resident_name: 'Cư dân QA', resident_phone: '0900000000' },
+        { ...booking, id: 'payment-booking', booking_code: 'BK-PAY', resident_name: 'Cư dân thanh toán', status: 'APPROVED', payment: { ...paymentFixture(), status: 'REPORTED' } },
+      ] });
+      if (url.pathname.endsWith('/amenities')) return route.fulfill({ json: { items: [], total: 0, page: 1, total_pages: 1 } });
+      return route.fulfill({ json: [] });
+    });
+    await page.goto('/quan-ly?tab=amenities');
+    const worklist = page.getByRole('region', { name: 'Công việc đăng ký tiện ích' });
+    await expect(worklist.getByRole('button', { name: 'Chờ duyệt (2)', exact: true })).toBeVisible();
+    await worklist.getByRole('button', { name: 'Công việc sau' }).click();
+    await expect(worklist.getByText('2/2', { exact: true })).toBeVisible();
+    await worklist.getByRole('button', { name: 'Công việc trước' }).click();
+    await expect(worklist.getByText('1/2', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`worklist-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    await worklist.getByRole('button', { name: 'Mở đăng ký', exact: true }).click();
+    const list = page.getByRole('dialog', { name: /Thông tin đặt chỗ/ });
+    await expect(list.getByRole('cell', { name: 'BK-TEST', exact: true })).toBeVisible();
+    const table = list.getByRole('region', { name: 'Bảng đăng ký tiện ích' });
+    expect(await table.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    expect(await list.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`bookings-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    await list.getByRole('button', { name: 'Chi tiết', exact: true }).click();
+    const detail = page.getByRole('dialog', { name: /Chi tiết đặt chỗ: BK-TEST/ });
+    await expect(detail).toContainText('Cư dân QA');
+    await page.screenshot({ path: testInfo.outputPath(`detail-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    if (process.env.UI_AUDIT_PHASE === 'before') await detail.getByRole('button', { name: 'Đóng', exact: true }).click();
+    else await page.keyboard.press('Escape');
+    await expect(detail).not.toBeVisible();
+    await expect(list).toBeVisible();
+    if (process.env.UI_AUDIT_PHASE !== 'before') await expect(list.getByRole('button', { name: 'Chi tiết', exact: true })).toBeFocused();
+    await list.getByRole('button', { name: 'Từ chối', exact: true }).click();
+    const rejection = page.getByRole('dialog', { name: 'Từ chối đăng ký tiện ích' });
+    await rejection.getByLabel('Lý do từ chối').fill('Bảo trì đột xuất');
+    await expect(rejection.getByRole('button', { name: 'Xác nhận từ chối' })).toBeEnabled();
+    await page.screenshot({ path: testInfo.outputPath(`rejection-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    if (process.env.UI_AUDIT_PHASE === 'before') await rejection.getByRole('button', { name: 'Đóng', exact: true }).click();
+    else await page.keyboard.press('Escape');
+    await expect(list).toBeVisible();
+    if (process.env.UI_AUDIT_PHASE !== 'before') await expect(list.getByRole('button', { name: 'Từ chối', exact: true })).toBeFocused();
+    await expect(list.getByPlaceholder('Tìm mã booking, cư dân, căn hộ...')).toHaveValue('BK-TEST');
+    await list.getByRole('button', { name: 'Hủy', exact: true }).click();
+    const cancellation = page.getByRole('dialog', { name: 'Hủy đăng ký tiện ích', exact: true });
+    if (process.env.UI_AUDIT_PHASE === 'before') await cancellation.getByRole('button', { name: 'Giữ đăng ký' }).click();
+    else await page.keyboard.press('Escape');
+    await expect(cancellation).not.toBeVisible();
+    await expect(list).toBeVisible();
+    if (process.env.UI_AUDIT_PHASE !== 'before') await expect(list.getByRole('button', { name: 'Hủy', exact: true })).toBeFocused();
+    await list.getByPlaceholder('Tìm mã booking, cư dân, căn hộ...').fill('BK-PAY');
+    await list.getByRole('button', { name: 'Đối soát', exact: true }).click();
+    const payment = page.getByRole('dialog', { name: 'Đối soát thanh toán tiện ích' });
+    await expect(payment.getByLabel('Mã giao dịch ngân hàng')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`payment-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    if (process.env.UI_AUDIT_PHASE === 'before') await payment.getByRole('button', { name: 'Đóng', exact: true }).click();
+    else await page.keyboard.press('Escape');
+    await expect(payment).not.toBeVisible();
+    await expect(list).toBeVisible();
+    if (process.env.UI_AUDIT_PHASE !== 'before') await expect(list.getByRole('button', { name: 'Đối soát', exact: true })).toBeFocused();
+  });
+}
+
+for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`MOCKED E2E F3 slot states visual ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await fixture(page);
+    await page.route('**/availability?**', (route) => route.fulfill({ json: { slots: [
+      availableSlot,
+      { ...availableSlot, slot_id: 'full', start_time: '12:00', end_time: '13:00', available: false, reason: 'Khung giờ đã hết chỗ.', remaining_bookings: 0, remaining_attendees: 0 },
+      { ...availableSlot, slot_id: 'maintenance', start_time: '14:00', end_time: '15:00', available: false, reason: 'Bảo trì: Vệ sinh định kỳ.' },
+      { ...availableSlot, slot_id: 'past', start_time: '07:00', end_time: '08:00', available: false, reason: 'Khung giờ đã qua.' },
+    ] } }));
+    await page.getByRole('button', { name: /Vườn BBQ/ }).click();
+    const dialog = page.getByRole('dialog', { name: /Đăng ký tiện ích/ });
+    await expect(dialog.getByRole('button', { name: /12:00.*13:00/ })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: /14:00.*15:00/ })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: /07:00.*08:00/ })).toBeDisabled();
+    const available = dialog.getByRole('button', { name: /10:00.*11:30/ });
+    await expect(available).toContainText('Còn 2 lượt · 4 chỗ');
+    await available.click();
+    await expect(available).toHaveAttribute('aria-pressed', 'true');
+    if (process.env.UI_AUDIT_PHASE !== 'before') {
+      await expect(available).toContainText('Đang chọn');
+      await expect(dialog.getByRole('button', { name: /14:00.*15:00/ })).toHaveAttribute('data-state', 'maintenance');
+      await expect(dialog.getByRole('button', { name: /12:00.*13:00/ })).toHaveAttribute('data-state', 'unavailable');
+      await available.focus();
+      await page.keyboard.press('Space');
+      await expect(available).toBeFocused();
+    }
+    await available.scrollIntoViewIfNeeded();
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`slots-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+  });
+}
+
 const today = '2026-10-05';
 const amenity = {
   id: 'amenity-test', category_id: 'category-test', block_id: 'block-test', amenity_name: 'Vườn BBQ',
@@ -37,6 +147,13 @@ async function fixture(page: Page, options: { conflict?: boolean; unauthorized?:
       if (options.networkError) return route.abort('failed');
       return route.fulfill({ json: { apartments: [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test', block_name: 'Tòa A' }], amenities: options.amenities || [amenity], categories: [{ id: 'category-test', category_name: 'BBQ' }], today, timezone: 'Asia/Ho_Chi_Minh' } });
     }
+      if (url.pathname.endsWith('/amenities/search')) {
+        const query = (url.searchParams.get('q') || '').toLocaleLowerCase('vi');
+        const items = (options.amenities || [amenity]).filter((item) => item.amenity_name.toLocaleLowerCase('vi').includes(query));
+        const page = Number(url.searchParams.get('page') || 1);
+        return route.fulfill({ json: { items: items.slice((page - 1) * 15, page * 15), total: items.length, page, limit: 15, total_pages: Math.max(1, Math.ceil(items.length / 15)) } });
+      }
+      if (url.pathname.endsWith(`/amenities/${amenity.id}`)) return route.fulfill({ json: amenity });
     if (url.pathname.endsWith('/availability')) {
       const date = url.searchParams.get('date');
       if (options.slowFirstDate && date === today) await new Promise((resolve) => setTimeout(resolve, 500));
@@ -137,7 +254,7 @@ test('quản lý tìm đơn chờ duyệt và duyệt để mở thanh toán QR'
   await page.getByRole('button', { name: 'Duyệt', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Đã duyệt đăng ký tiện ích thành công.' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: /Thông tin đặt chỗ/ }).getByRole('button', { name: 'Chờ duyệt (0)', exact: true })).toBeVisible();
-  await page.getByLabel('Lọc trạng thái đăng ký').selectOption('APPROVED');
+  await page.getByLabel('Lọc trạng thái đăng ký').click(); await page.getByRole('option', { name: 'Đã duyệt', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: 'BK-TEST' })).toContainText('Chờ thanh toán');
 });
 
@@ -152,22 +269,27 @@ test('quản lý nhận đăng ký mới ở tab khác và mở đúng đơn t�
   });
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/notice-test/read')) { read = true; return route.fulfill({ json: { success: true } }); }
-    if (url.pathname.endsWith('/amenity-booking-notifications')) {
+    if (url.pathname.endsWith('/notice-test/read')) { read = true; return route.fulfill({ json: { unread_count: 0 } }); }
+    if (url.pathname.endsWith('/manager/notifications')) {
       polls++;
-      return route.fulfill({ json: { items: arrived ? [{ ...notice, isRead: read }] : [], unread_count: arrived && !read ? 1 : 0 } });
+      return route.fulfill({ json: { items: arrived ? [{ ...notice, body_message: notice.message, deep_link_url: notice.deepLink, is_read: read, created_at: '2026-10-19T09:00:00Z' }] : [], latest_id: arrived ? notice.id : null, unread_count: arrived && !read ? 1 : 0, page: 1, total_pages: 1 } });
     }
     if (url.pathname.endsWith('/amenities/amenity-test')) return route.fulfill({ json: amenity });
     if (url.pathname.endsWith('/bookings')) return route.fulfill({ json: [{ ...booking, resident_name: 'Cư dân QA' }, { ...booking, id: 'other-booking', booking_code: 'BK-OTHER', resident_name: 'Người khác' }] });
     if (url.pathname.endsWith('/amenities')) return route.fulfill({ json: { items: [], total: 0, page: 1, limit: 10, total_pages: 1 } });
     return route.fulfill({ json: [] });
   });
+  await page.clock.install();
   await page.goto('/quan-ly');
   await expect.poll(() => polls).toBeGreaterThan(0);
   arrived = true;
   const alert = page.getByRole('status').filter({ hasText: notice.title });
-  await expect(alert).toBeVisible({ timeout: 12000 });
-  await alert.getByRole('button', { name: 'Xem đăng ký', exact: true }).click();
+  await page.clock.fastForward(15000);
+  await expect(page.getByTitle('Thông báo hệ thống', { exact: true })).toHaveAttribute('aria-label', 'Thông báo hệ thống (1 chưa đọc)');
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Thông báo vận hành' })).toHaveCount(0);
+  await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
+  await page.getByRole('region', { name: 'Thông báo vận hành' }).getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
   await expect(page).toHaveURL(/tab=amenities.*amenity_id=amenity-test.*booking_code=BK-TEST/);
   await expect(page.getByPlaceholder('Tìm mã booking, cư dân, căn hộ...')).toHaveValue('BK-TEST');
   await expect(page.getByRole('cell', { name: 'BK-TEST', exact: true })).toBeVisible();
@@ -198,7 +320,7 @@ test('quản lý đối soát tiền thực nhận và xác nhận thủ công',
   });
   await page.goto('/quan-ly?tab=amenities');
   await page.getByRole('button', { name: 'Duyệt đăng ký', exact: true }).click();
-  await page.getByLabel('Lọc thanh toán tiện ích').selectOption('REPORTED');
+  await page.getByLabel('Lọc thanh toán tiện ích').click(); await page.getByRole('option', { name: 'Chờ đối soát', exact: true }).click();
   await page.getByRole('button', { name: 'Đối soát', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Đối soát thanh toán tiện ích' });
   await expect(dialog).toBeVisible();
@@ -213,7 +335,7 @@ test('quản lý đối soát tiền thực nhận và xác nhận thủ công',
   await dialog.getByRole('button', { name: 'Xác nhận nhận tiền' }).click();
   await expect(dialog.getByRole('status').filter({ hasText: /^Đã thanh toán$/ })).toBeVisible();
   await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
-  await page.getByLabel('Lọc thanh toán tiện ích').selectOption('PAID');
+  await page.getByLabel('Lọc thanh toán tiện ích').click(); await page.getByRole('option', { name: 'Đã thanh toán', exact: true }).click();
   await expect(page.getByRole('cell', { name: 'Đã duyệt Đã thanh toán' })).toBeVisible();
 });
 
@@ -284,14 +406,14 @@ test(`cư dân nhận thông báo duyệt và mở đúng QR từ cổng cư dâ
 }
 
 test('quản lý xem được thông báo cũ và lọc chưa đọc', async ({ page }) => {
-  const old = { id: 'old-notice', title: 'Đăng ký cũ chưa đọc', message: 'Cần duyệt', category: 'AMENITY_BOOKING', isRead: false, deepLink: '/quan-ly?tab=amenities', timeAgo: '1 ngày trước' };
+  const old = { id: 'old-notice', title: 'Đăng ký cũ chưa đọc', body_message: 'Cần duyệt', category: 'AMENITY_BOOKING', is_read: false, deep_link_url: '/quan-ly?tab=amenities', created_at: '2026-10-18T09:00:00Z' };
   await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'Quản lý QA' })); localStorage.setItem('smart_cassavas_token', 'test-admin-token'); });
   await page.route('**/api/**', (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/amenity-booking-notifications')) {
+    if (url.pathname.endsWith('/manager/notifications')) {
       const filtered = url.searchParams.get('unread') === '1';
       const second = url.searchParams.get('page') === '2';
-      return route.fulfill({ json: { items: filtered || second ? [old] : Array.from({ length: 20 }, (_, i) => ({ ...old, id: 'new-' + i, title: 'Thông báo đã đọc ' + i, isRead: true })), latest_unread: old, unread_count: 1, page: second ? 2 : 1, total_pages: filtered ? 1 : 2 } });
+      return route.fulfill({ json: { items: filtered || second ? [old] : Array.from({ length: 15 }, (_, i) => ({ ...old, id: 'new-' + i, title: 'Thông báo đã đọc ' + i, is_read: true })), latest_unread: old, unread_count: 1, page: second ? 2 : 1, total_pages: filtered ? 1 : 2 } });
     }
     return route.fulfill({ json: [] });
   });
@@ -299,7 +421,7 @@ test('quản lý xem được thông báo cũ và lọc chưa đọc', async ({ 
   await page.getByTitle('Thông báo hệ thống', { exact: true }).click();
   await page.getByRole('button', { name: 'Thông báo sau', exact: true }).click();
   await expect(page.getByText(old.title, { exact: true }).last()).toBeVisible();
-  await page.getByLabel('Chỉ thông báo tiện ích chưa đọc').check();
+  await page.getByLabel('Chỉ thông báo chưa đọc').check();
   await expect(page.getByRole('button', { name: 'Thông báo sau', exact: true })).toBeDisabled();
 });
 
@@ -390,8 +512,10 @@ test('bảng đăng ký cuộn được và mở lại dùng cache rồi cập n
   await table.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
   expect(await table.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   const picker = page.getByLabel('Lọc thanh toán tiện ích');
-  expect(await picker.evaluate((element) => getComputedStyle(element, '::picker(select)').borderRadius)).toBe('16px');
-  await picker.selectOption('ALL');
+  await picker.click();
+  const menu = page.getByRole('listbox');
+  expect(await menu.evaluate(element => getComputedStyle(element).borderRadius)).toBe('12px');
+  await page.getByRole('option', { name: 'Tất cả thanh toán', exact: true }).click();
   await page.getByRole('button', { name: 'Đóng danh sách đăng ký' }).click();
   await page.getByRole('button', { name: 'Duyệt đăng ký', exact: true }).click();
   await expect(page.getByRole('cell').filter({ hasText: 'Cư dân QA' })).toBeVisible({ timeout: 1000 });
@@ -604,7 +728,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await pagination.getByRole('button', { name: 'Trước' }).click();
     await expect(page.getByRole('rowheader')).toHaveCount(15);
     await expect(page.getByRole('rowheader').first()).toHaveText('Tiện ích 16');
-    await page.getByLabel('Danh mục').selectOption('category-test');
+    await page.getByLabel('Danh mục', { exact: true }).click(); await page.getByRole('option', { name: 'BBQ', exact: true }).click();
     await expect(pagination).toContainText('Trang 1/3');
     await pagination.getByRole('button', { name: 'Sau' }).click();
     await page.getByPlaceholder('Tên tiện ích…').fill('Tiện ích 31');
@@ -619,7 +743,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await fixture(page);
     const search = page.getByPlaceholder('Tên tiện ích…');
     await search.fill('BBQ');
-    await page.getByLabel('Danh mục').selectOption('category-test');
+    await page.getByLabel('Danh mục', { exact: true }).click(); await page.getByRole('option', { name: 'BBQ', exact: true }).click();
     const toggle = page.getByRole('button', { name: 'Chuyển sang dạng bảng' });
     await toggle.focus();
     await page.keyboard.press('Enter');
@@ -627,7 +751,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await expect(table).toBeVisible();
     await expect(table.getByRole('rowheader')).toHaveText('Vườn BBQ');
     await expect(search).toHaveValue('BBQ');
-    await expect(page.getByLabel('Danh mục')).toHaveValue('category-test');
+    await expect(page.getByLabel('Danh mục', { exact: true })).toContainText('BBQ');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await search.fill('Không tồn tại');
     await expect(page.getByText('Không có tiện ích phù hợp.')).toBeVisible();
@@ -853,7 +977,7 @@ test('catalog lỗi tải nền giữ form, ghi chú và cho thử lại', async
   await chooseSlot(page);
   await page.getByLabel('Ghi chú', { exact: true }).fill('Giữ ghi chú');
   let fail = true;
-  await page.route('**/resident/amenities', (route) => fail ? route.fulfill({ status: 503, json: { message: 'Catalog tạm thời không khả dụng' } }) : route.fulfill({ json: { apartments: [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test' }], amenities: [amenity], categories: [], today, timezone: 'Asia/Ho_Chi_Minh' } }));
+  await page.route('**/resident/amenities?metadata_only=1', (route) => fail ? route.fulfill({ status: 503, json: { message: 'Catalog tạm thời không khả dụng' } }) : route.fulfill({ json: { apartments: [{ id: 'apartment-test', apartment_number: 'A-101', block_id: 'block-test' }], amenities: [amenity], categories: [], today, timezone: 'Asia/Ho_Chi_Minh' } }));
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   const dialog = page.getByRole('dialog', { name: /Đăng ký tiện ích/ });
   await expect(dialog.getByRole('alert')).toContainText('Catalog tạm thời');
@@ -885,12 +1009,52 @@ test('giờ slot thay đổi cùng mức phí yêu cầu chọn và xác nhận 
   expect(posts).toBe(1);
 });
 
+for (const width of [1366, 390]) {
+  test(`tìm kiếm server bỏ phản hồi cũ, chọn gợi ý bằng bàn phím và chặn hết phiên ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await fixture(page);
+    await expect(page.locator('.booking-amenity')).toHaveCount(1);
+    let releaseOld: (() => void) | undefined;
+    let oldReturned = false;
+    const latest = { ...amenity, amenity_name: 'Phòng Gym QA', amenity_code: 'GYM-QA' };
+    await page.route('**/resident/amenities/search?*', async (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get('apartment_id')).toBe('apartment-test');
+      const query = url.searchParams.get('q');
+      if (query === 'expired') return route.fulfill({ status: 401, json: { message: 'Unauthorized' } });
+      if (query === 'old') {
+        await new Promise<void>((resolve) => { releaseOld = resolve; });
+        await route.fulfill({ json: { items: [amenity], total: 1, page: 1, total_pages: 1, limit: 15 } });
+        oldReturned = true;
+        return;
+      }
+      return route.fulfill({ json: { items: [latest], total: 1, page: 1, total_pages: 1, limit: 15, is_corrected: true, applied_query: 'phong gym' } });
+    });
+    const input = page.getByRole('combobox', { name: 'Tìm tiện ích', exact: true });
+    await input.fill('old');
+    await expect.poll(() => Boolean(releaseOld)).toBe(true);
+    await input.fill('phong gim');
+    await expect(page.locator('.booking-amenity')).toContainText('Phòng Gym QA');
+    releaseOld!();
+    await expect.poll(() => oldReturned).toBe(true);
+    await expect(page.locator('.booking-amenity')).toContainText('Phòng Gym QA');
+    await expect(page.getByText('Kết quả cho “phong gym”.')).toBeVisible();
+    await input.press('ArrowDown'); await input.press('Enter');
+    await expect(input).toHaveValue('Phòng Gym QA');
+    await expect(page.getByRole('listbox', { name: 'Tiện ích gợi ý' })).not.toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await input.fill('expired');
+    await expect(page.getByRole('alert')).toContainText('Phiên đăng nhập đã hết hạn');
+    await expect(page.locator('.booking-amenity')).toHaveCount(0);
+  });
+}
+
 test('nội quy thay đổi trước xác nhận yêu cầu đọc lại, không gửi POST', async ({ page }) => {
   await fixture(page);
   await chooseSlot(page);
   let posts = 0;
   page.on('request', (request) => { if (request.method() === 'POST') posts += 1; });
-  await page.route('**/resident/amenities', (route) => route.fulfill({ json: { apartments: [{ id: 'apartment-test', block_id: 'block-test' }], amenities: [{ ...amenity, rules_and_regulations: 'Nội quy vừa cập nhật.' }], categories: [], today, timezone: 'Asia/Ho_Chi_Minh' } }));
+  await page.route(`**/resident/amenities/${amenity.id}?*`, (route) => route.fulfill({ json: { ...amenity, rules_and_regulations: 'Nội quy vừa cập nhật.' } }));
   await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'nội quy vừa thay đổi' })).toBeVisible();
   await expect(page.getByRole('checkbox')).not.toBeChecked();
@@ -944,8 +1108,8 @@ test('history lỗi tải nền giữ dữ liệu và chỉ nhận bộ lọc m�
   await expect(page.getByRole('alert')).toContainText('Lịch tạm thời');
   await expect(page.getByRole('article')).toContainText('BK-TEST');
   fail = false;
-  await page.getByLabel('Lọc trạng thái').selectOption('APPROVED');
-  await page.getByLabel('Lọc trạng thái').selectOption('CANCELLED');
+  await page.getByLabel('Lọc trạng thái', { exact: true }).click(); await page.getByRole('option', { name: 'Đã duyệt', exact: true }).click();
+  await page.getByLabel('Lọc trạng thái', { exact: true }).click(); await page.getByRole('option', { name: 'Đã hủy', exact: true }).click();
   await expect(page.getByRole('article').getByText('Đã hủy', { exact: true })).toBeVisible();
   await expect(page.getByRole('article').getByText('Đã duyệt', { exact: true })).toHaveCount(0);
 });
@@ -962,7 +1126,7 @@ test('phân trang không dùng kết quả trang cũ và về trang một khi l�
   await expect(page.getByRole('article')).toContainText('BK-PAGE-1');
   await page.getByRole('button', { name: 'Sau', exact: true }).click();
   await expect(page.getByRole('article')).toContainText('BK-PAGE-2');
-  await page.getByLabel('Lọc trạng thái').selectOption('CANCELLED');
+  await page.getByLabel('Lọc trạng thái', { exact: true }).click(); await page.getByRole('option', { name: 'Đã hủy', exact: true }).click();
   await expect(page.getByRole('article')).toContainText('BK-PAGE-1');
   await expect(page.getByRole('button', { name: 'Trước', exact: true })).toBeDisabled();
 });
@@ -971,7 +1135,7 @@ test('thay đổi tiện ích khác cập nhật catalog nhưng không tải l�
   let catalogs = 0;
   let availability = 0;
   page.on('request', (request) => {
-    if (request.url().endsWith('/resident/amenities')) catalogs += 1;
+    if (new URL(request.url()).pathname.endsWith('/resident/amenities')) catalogs += 1;
     if (request.url().includes('/availability?')) availability += 1;
   });
   await fixture(page);
@@ -1009,3 +1173,27 @@ test('hủy chưa xác định kết quả khóa xác nhận và giữ lý do kh
   await expect(confirmation.getByRole('button', { name: 'Xác nhận hủy', exact: true })).toBeEnabled();
   await expect(confirmation.getByLabel('Lý do hủy (không bắt buộc)')).toHaveValue('Giữ lý do khi thử lại');
 });
+
+for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`MOCKED E2E F2 resident booking visual ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await fixture(page);
+    await expect(page.getByRole('button', { name: /Vườn BBQ/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`catalog-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    if (process.env.UI_AUDIT_PHASE !== 'before') {
+      await page.getByPlaceholder('Tên tiện ích…').fill('Không tồn tại QA');
+      await expect(page.getByText('Không có tiện ích phù hợp.', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Xóa bộ lọc', exact: true }).click();
+      await expect(page.getByRole('button', { name: /Vườn BBQ/ })).toBeVisible();
+    }
+    await chooseSlot(page);
+    await page.screenshot({ path: testInfo.outputPath(`registration-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+    await page.getByRole('button', { name: 'Xác nhận đăng ký', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Đăng ký thành công' })).toBeVisible();
+    await page.getByRole('button', { name: 'Xem lịch của tôi', exact: true }).click();
+    await expect(page.getByText('BK-TEST', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`history-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
+  });
+}

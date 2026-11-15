@@ -37,7 +37,7 @@ class ServicePricingManagementTest extends TestCase
             ['user_id' => $adminUser->id, 'role_id' => $role->id],
             ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
         );
-        $this->adminToken = 'smart_token_'.$adminUser->id.'_pricing';
+        $this->adminToken = $this->issueTestBearerToken($adminUser);
 
         // Chạy seeder nạp dữ liệu mẫu biểu giá nếu chưa có
         if (ServicePricingConfig::count() === 0) {

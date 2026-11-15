@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\Search\BookingCodeSearch;
 use App\Services\Search\SearchCacheService;
+use App\Services\Search\SearchManager;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -19,17 +21,36 @@ class ResidentAmenityBookingService
     public function __construct(public DatabaseResidentAmenityBookingRepository $repository, public AmenityBookingPaymentService $payments) {}
 
     /** @return array{apartments: Collection, amenities: Collection, categories: Collection, today: string, timezone: string} */
-    public function catalog(User $user): array
+    public function catalog(User $user, bool $includeAmenities = true): array
     {
         $apartments = $this->repository->apartments($user->id);
-        $amenities = $apartments->isEmpty() ? collect() : $this->repository->amenities($apartments->pluck('block_id')->all());
+        $amenities = $apartments->isEmpty() || ! $includeAmenities ? collect() : $this->repository->amenities($apartments->pluck('block_id')->all());
 
         return [
             'apartments' => $apartments,
             'amenities' => $amenities,
-            'categories' => $amenities->map(fn (object $amenity): array => ['id' => $amenity->category_id, 'category_name' => $amenity->category_name])->unique('id')->values(),
+            'categories' => $apartments->isEmpty() ? collect() : $this->repository->categories($apartments->pluck('block_id')->all()),
             'today' => today()->toDateString(),
             'timezone' => config('app.timezone'),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function search(User $user, string $query, ?string $apartmentId, ?string $categoryId, int $page = 1, int $limit = 15): array
+    {
+        $apartment = $this->apartment($user, $apartmentId);
+        $result = app(SearchManager::class)->search('amenities', $query, [
+            'allowed_block_ids' => [$apartment->block_id], 'is_active' => true, 'category_id' => $categoryId,
+        ], ['page' => $page, 'per_page' => $limit, 'cache_context' => $user->id, 'request_kind' => $limit === 5 ? 'resident_suggestions' : 'resident_search']);
+
+        return [
+            'items' => array_map(fn ($item): array => app(AmenityService::class)->formatAmenityDto((object) $item), $result->items),
+            'total' => $result->total, 'page' => $result->page, 'limit' => $result->perPage, 'total_pages' => $result->getTotalPages(),
+            'applied_query' => $result->extra['applied_query'] ?? $result->extra['corrected_query'] ?? $query,
+            'corrected_query' => $result->extra['corrected_query'] ?? $query,
+            'is_corrected' => $result->extra['is_corrected'] ?? (($result->extra['corrected_query'] ?? $query) !== $query),
+            'engine' => $result->engine, 'fallback_reason' => $result->extra['fallback_reason'] ?? null,
+            'search_time_ms' => round($result->searchTimeMs, 2),
         ];
     }
 
@@ -56,6 +77,18 @@ class ResidentAmenityBookingService
         abort_unless($amenity && ! $amenity->deleted_at && (! $amenity->block_id || $amenity->block_id === $apartment->block_id), 404, 'Không tìm thấy tiện ích được phép đăng ký.');
 
         return $amenity;
+    }
+
+    /** @return array<string, mixed> */
+    public function amenityDetail(User $user, string $id, ?string $apartmentId): array
+    {
+        $apartment = $this->apartment($user, $apartmentId);
+        $amenity = $this->accessibleAmenity($id, $apartment);
+        abort_unless($amenity->is_active, 409, 'Tiện ích hiện đang tạm ngưng hoạt động.');
+        $amenity->category_name = DB::table('amenity_categories')->where('id', $amenity->category_id)->value('category_name');
+        $amenity->block_name = $amenity->block_id ? $apartment->block_name : null;
+
+        return app(AmenityService::class)->formatAmenityDto($amenity);
     }
 
     private function validateDate(object $amenity, string $date): Carbon
@@ -155,6 +188,7 @@ class ResidentAmenityBookingService
                 'resident_notes' => $data['resident_notes'] ?? null, 'created_at' => now(), 'updated_at' => now(),
             ]);
             $this->payments->initialize((array) DB::table('amenity_bookings')->where('id', $id)->first());
+            app(BookingCodeSearch::class)->queue($id);
             $booking = $this->detail($user, $id, true);
             $this->audit($user, $id, 'INSERT', null, $booking, $request);
             $this->notifyManagers($amenity->id, $booking['booking_code'], 'Đăng ký tiện ích mới · '.$amenity->amenity_name,
@@ -244,9 +278,20 @@ class ResidentAmenityBookingService
 
     public function notifyManagers(string $amenityId, string $bookingCode, string $title, string $message): void
     {
+        $blockId = $amenityId !== '' ? DB::table('amenities')->where('id', $amenityId)->value('block_id') : null;
+        if ($bookingCode !== '') {
+            $blockId = DB::table('amenity_bookings as b')->join('apartments as a', 'a.id', '=', 'b.apartment_id')->where('b.booking_code', $bookingCode)->value('a.block_id') ?? $blockId;
+        }
         $recipients = User::query()->where('status', 'ACTIVE')->whereHas('roles', function (Builder $roles): void {
             $roles->whereIn('role_code', ['SUPER_ADMIN', 'SUPER_ADMI'])
                 ->orWhereHas('permissions', fn (Builder $permissions): Builder => $permissions->where('permission_code', 'AMENITY:UPDATE'));
+        })->get()->filter(function (User $user) use ($amenityId, $blockId): bool {
+            if ($user->isSuperAdmin()) {
+                return true;
+            }
+            $profile = DB::table('staff_profiles')->where('user_id', $user->id)->first();
+
+            return $user->hasRole('BUILDING_MANAGER') && $profile && $amenityId !== '' && $profile->assigned_block_id !== null && $profile->assigned_block_id === $blockId;
         })->pluck('id');
         $rows = $recipients->map(fn (string $id): array => [
             'id' => (string) Str::uuid(), 'recipient_user_id' => $id,
@@ -272,7 +317,8 @@ class ResidentAmenityBookingService
     /** @param array{page?: int|string, unread?: bool|string} $data */
     public function notifications(User $user, string $category, array $data): array
     {
-        $query = DB::table('user_in_app_notifications')->where('recipient_user_id', $user->id)->where('category', $category);
+        $query = $category === 'AMENITY_BOOKING' ? app(ManagerNotificationService::class)->inbox($user)->where('category', $category)
+            : DB::table('user_in_app_notifications')->where('recipient_user_id', $user->id)->where('category', $category);
         $unread = (clone $query)->where('is_read', 0)->count();
         $latest = (clone $query)->where('is_read', 0)->orderByDesc('created_at')->orderByDesc('id')->first();
         if (filter_var($data['unread'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
@@ -293,7 +339,8 @@ class ResidentAmenityBookingService
 
     public function readNotification(User $user, string $category, string $id): void
     {
-        $query = DB::table('user_in_app_notifications')->where('id', $id)->where('recipient_user_id', $user->id)->where('category', $category);
+        $query = $category === 'AMENITY_BOOKING' ? app(ManagerNotificationService::class)->inbox($user)->where('category', $category)->where('id', $id)
+            : DB::table('user_in_app_notifications')->where('id', $id)->where('recipient_user_id', $user->id)->where('category', $category);
         abort_unless((clone $query)->exists(), 404);
         $query->where('is_read', 0)->update(['is_read' => 1, 'read_at' => now()]);
     }

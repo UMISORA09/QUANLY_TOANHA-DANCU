@@ -15,6 +15,7 @@ class AiVectorSearchService
      * @param  string|null  $buildingId  Scope tòa nhà (block_id) để bảo vệ phân quyền
      * @param  array<string>  $allowedCategories  Danh mục được phép tra cứu
      * @param  int  $limit  Số chunks trả về cho AI Assistant context
+     * @param  array<string>|null  $allowedBlockIds  Phạm vi đã xác thực; null dành cho quản trị toàn khu.
      * @return array<int, array{chunk_id: string, document_id: string, document_title: string, content: string, score: float, category: string, block_id: ?string}>
      */
     public function hybridSearch(
@@ -22,7 +23,8 @@ class AiVectorSearchService
         ?array $queryVector = null,
         ?string $buildingId = null,
         array $allowedCategories = [],
-        int $limit = 5
+        int $limit = 5,
+        ?array $allowedBlockIds = null
     ): array {
         $startTime = microtime(true);
         $cleanQuery = trim($query);
@@ -44,6 +46,11 @@ class AiVectorSearchService
                 $q->where('ai_knowledge_documents.block_id', $buildingId)
                     ->orWhereNull('ai_knowledge_documents.block_id'); // Tài liệu chung toàn khu
             });
+        }
+
+        if ($allowedBlockIds !== null) {
+            $qb->where(fn ($q) => $q->whereNull('ai_knowledge_documents.block_id')
+                ->orWhereIn('ai_knowledge_documents.block_id', $allowedBlockIds));
         }
 
         if (! empty($allowedCategories)) {

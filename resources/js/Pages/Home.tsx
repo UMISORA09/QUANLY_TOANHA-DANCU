@@ -2166,18 +2166,18 @@ export const Home: React.FC<HomeProps> = ({
               <h4 className="text-xs font-bold text-neutral-900 tracking-wide">Chính sách</h4>
               <ul className="space-y-2 text-xs text-neutral-600">
                 <li>
-                  <a href="#" className="hover:text-neutral-950 transition-colors">
+                  <a href="/privacy" className="hover:text-neutral-950 transition-colors">
                     Bảo mật
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-neutral-950 transition-colors">
-                    Điều khoản
+                  <a href="/about" className="hover:text-neutral-950 transition-colors">
+                    Giới thiệu
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-neutral-950 transition-colors">
-                    Hỗ trợ
+                  <a href="/docs" className="hover:text-neutral-950 transition-colors">
+                    Tài liệu
                   </a>
                 </li>
               </ul>
@@ -2187,9 +2187,9 @@ export const Home: React.FC<HomeProps> = ({
             <div className="md:col-span-3 space-y-3">
               <h4 className="text-xs font-bold text-neutral-900 tracking-wide">Liên hệ</h4>
               <ul className="space-y-2 text-xs text-neutral-600">
-                <li className="font-mono text-neutral-900">support@smartcassavas.vn</li>
-                <li>Thứ 2 — Thứ 6, 08:00 — 17:30</li>
-                <li className="text-neutral-400">Hotline: 1900 6868 (Miễn phí)</li>
+                <li><a href="/contact" className="hover:text-neutral-950 transition-colors">Liên hệ ban quản lý</a></li>
+                <li>Qua kênh đã xác nhận của tòa nhà</li>
+                <li className="text-neutral-400">Không chia sẻ mật khẩu hoặc mã OTP</li>
               </ul>
             </div>
 
