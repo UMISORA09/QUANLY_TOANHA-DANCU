@@ -47,7 +47,8 @@ import {
   Car,
   History,
   CreditCard,
-  Banknote
+  Banknote,
+  Mail
 } from 'lucide-react';
 import { PageLoadingFallback } from '../Components/Common/PageLoadingFallback';
 import { ticketStatuses } from '../Components/TicketManagementPanel';
@@ -337,6 +338,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       if (tabParam === 'buildings') return 'blocks';
       if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
       if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'meter_readings';
+      if (tabParam === 'debt_reminders' || tabParam === 'debt-reminders' || tabParam === 'email_nhac_no' || tabParam === 'email-nhac-no' || tabParam === 'nhac_no') return 'email_nhac_no';
       if (tabParam === 'schedules' || tabParam === 'shifts' || tabParam === 'xep-ca' || tabParam === 'lich-truc') return 'schedules';
       return tabParam;
     }
@@ -345,6 +347,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     if (initialTab && initialTab !== 'overview') {
       if (initialTab === 'pricing' || initialTab === 'don_gia') return 'pricing_configs';
       if (initialTab === 'metering' || initialTab === 'meter-readings' || initialTab === 'chot-chi-so' || initialTab === 'chot_chi_so') return 'meter_readings';
+      if (initialTab === 'debt_reminders' || initialTab === 'debt-reminders' || initialTab === 'email_nhac_no' || initialTab === 'email-nhac-no' || initialTab === 'nhac_no') return 'email_nhac_no';
       if (initialTab === 'schedules' || initialTab === 'shifts' || initialTab === 'xep-ca' || initialTab === 'lich-truc') return 'schedules';
       return initialTab;
     }
@@ -554,6 +557,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'invoices', label: 'Quản lý Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
         { id: 'invoice_generation', label: 'Sinh Hóa đơn Tự động', icon: Layers, badge: 'Auto' },
         { id: 'payment_history', label: 'Lịch sử Giao dịch', icon: History, badge: null },
+        { id: 'email_nhac_no', label: 'Email nhắc nợ', icon: Mail, badge: 'Tự động' },
         { id: 'thu_tien_gach_no', label: 'Thu Tiền & Gạch Nợ (CN8)', icon: Banknote, badge: 'Gạch Nợ' },
         { id: 'financial_reports', label: 'Báo cáo Tài chính', icon: FileSpreadsheet, badge: 'Excel/PDF' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
@@ -778,6 +782,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: 'invoice_generation' }, '', `${basePath}/sinh-hoa-don`);
     } else if (normalizedId === 'payment_history' || normalizedId === 'lich_su_giao_dich') {
       window.history.pushState({ tab: 'payment_history' }, '', `${basePath}/lich-su-giao-dich`);
+    } else if (normalizedId === 'email_nhac_no' || normalizedId === 'debt_reminders' || normalizedId === 'nhac_no') {
+      window.history.pushState({ tab: 'debt_reminders' }, '', `${basePath}/email-nhac-no`);
     } else if (normalizedId === 'thu_tien_gach_no' || normalizedId === 'payment_collection' || normalizedId === 'thu_tien' || normalizedId === 'revenue_analytics' || normalizedId === 'thong_ke_doanh_thu') {
       window.history.pushState({ tab: 'thu_tien_gach_no' }, '', `${basePath}/thu-tien-gach-no`);
     } else if (normalizedId === 'financial_reports' || normalizedId === 'bao_cao_tai_chinh') {

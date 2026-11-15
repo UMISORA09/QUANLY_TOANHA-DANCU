@@ -66,7 +66,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     if (item.id === 'amenities') {
       return role === 'resident' || can('AMENITY:VIEW');
     }
-    if (item.id === 'billing') {
+    if (item.id === 'billing' || item.id === 'debt_reminders' || item.id === 'email_nhac_no') {
       return can('INVOICE:VIEW');
     }
     if (item.id === 'tickets') {
@@ -221,7 +221,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               const isActive =
                 activeItemId === item.id ||
                 (item.id === 'meter_readings' && (activeItemId === 'metering' || activeItemId === 'chot_chi_so')) ||
-                (item.id === 'pricing_configs' && (activeItemId === 'pricing' || activeItemId === 'don_gia'));
+                (item.id === 'pricing_configs' && (activeItemId === 'pricing' || activeItemId === 'don_gia')) ||
+                (item.id === 'debt_reminders' && (activeItemId === 'email_nhac_no' || activeItemId === 'debt_reminders' || activeItemId === 'nhac_no')) ||
+                (item.id === 'email_nhac_no' && (activeItemId === 'email_nhac_no' || activeItemId === 'debt_reminders' || activeItemId === 'nhac_no'));
 
               return (
                 <div key={item.id} className="relative group">

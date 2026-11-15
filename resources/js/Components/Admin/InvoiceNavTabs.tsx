@@ -5,13 +5,15 @@ import {
     History,
     TrendingUp,
     FileSpreadsheet,
-    ArrowRight
+    ArrowRight,
+    Mail
 } from 'lucide-react';
 
 export type InvoiceTabKey =
     | 'invoices'
     | 'invoice_generation'
     | 'payment_history'
+    | 'debt_reminders'
     | 'revenue_analytics'
     | 'financial_reports';
 
@@ -57,6 +59,14 @@ export const InvoiceNavTabs: React.FC<InvoiceNavTabsProps> = ({
             icon: History,
             badge: null,
             color: 'emerald',
+        },
+        {
+            id: 'debt_reminders',
+            label: 'Email Nhắc Nợ',
+            subLabel: 'Mẫu mail, gửi hàng loạt & log',
+            icon: Mail,
+            badge: 'Tự động',
+            color: 'rose',
         },
         {
             id: 'revenue_analytics',

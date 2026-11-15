@@ -251,6 +251,12 @@ const App: React.FC = () => {
     currentPath === '/admin/tam-tru' ||
     currentPath.startsWith('/admin/temporary-registrations');
 
+  const isDebtReminderAdminPath =
+    currentPath === '/admin/email-nhac-no' ||
+    currentPath === '/admin/debt-reminders' ||
+    currentPath.startsWith('/admin/email-nhac-no') ||
+    currentPath.startsWith('/admin/debt-reminders');
+
   const isUnifiedAdminDevPath =
     !isAmenityPath &&
     (currentPath === '/admin' ||
@@ -297,6 +303,8 @@ const App: React.FC = () => {
       ? 'residents'
       : isTemporaryRegistrationAdminPath
       ? 'temporary_registrations'
+      : isDebtReminderAdminPath
+      ? 'debt_reminders'
       : (urlTab || 'overview');
 
     return (

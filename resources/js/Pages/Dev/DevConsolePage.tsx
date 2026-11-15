@@ -22,6 +22,7 @@ import { TicketManagementPanel } from '../../Components/TicketManagementPanel';
 import { ManagerNotificationCenter, useManagerNotifications } from '../../Components/ManagerNotificationCenter';
 
 const AnnouncementManagement = lazy(() => import('../../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
+const DebtReminderManagement = lazy(() => import('../Admin/DebtReminderManagement').then(m => ({ default: m.DebtReminderManagement })));
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -183,6 +184,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
               {activeTab === 'temporary_registrations' && 'Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)'}
+              {activeTab === 'debt_reminders' && 'Email Nhắc Nợ Tự Động'}
               {activeTab === 'cicd' && 'Hệ Thống Tự Động Hóa CI/CD & DevOps Pipeline'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -513,6 +515,13 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {/* TAB 5: CI/CD & DEVOPS */}
         {activeTab === 'tickets' && <TicketManagementPanel />}
         {activeTab === 'news' && <Suspense fallback={<p role="status">Đang mở bảng tin…</p>}><AnnouncementManagement /></Suspense>}
+        {activeTab === 'debt_reminders' && (
+          <div className="space-y-6">
+            <Suspense fallback={<div className="p-8 text-center text-slate-500 font-medium">Đang tải phân hệ Email Nhắc Nợ...</div>}>
+              <DebtReminderManagement onBackToList={() => setActiveTab('overview')} onNavigateTab={(tab) => setActiveTab(tab)} />
+            </Suspense>
+          </div>
+        )}
         {activeTab === 'cicd' && (
           <div className="space-y-6">
             <CicdDashboard userRole="admin" />

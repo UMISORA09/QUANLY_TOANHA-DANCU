@@ -325,7 +325,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-neutral-200 focus:border-neutral-950 focus:ring-2 focus:ring-neutral-950/10 rounded-xl text-sm text-neutral-900 placeholder-neutral-400 transition-all outline-none"
+                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-neutral-200 focus:border-neutral-950 focus:ring-2 focus:ring-neutral-950/10 rounded-xl text-sm text-neutral-900 placeholder-neutral-400 transition-all outline-none [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
                   />
                   <button
                     type="button"
