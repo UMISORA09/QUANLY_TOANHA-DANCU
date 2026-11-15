@@ -14,7 +14,8 @@ class SendDebtRemindersCommand extends Command
      */
     protected $signature = 'invoices:send-debt-reminders
                             {--overdue-only : Chỉ gửi nhắc nợ cho các hóa đơn đã quá hạn}
-                            {--days-before-due=3 : Số ngày trước khi đến hạn để gửi nhắc nợ}';
+                            {--days-before-due=3 : Số ngày trước khi đến hạn để gửi nhắc nợ}
+                            {--min-days-overdue=0 : Số ngày quá hạn tối thiểu để gửi nhắc nợ}';
 
     /**
      * The console command description.
@@ -30,10 +31,11 @@ class SendDebtRemindersCommand extends Command
     {
         $overdueOnly = (bool) $this->option('overdue-only');
         $daysBeforeDue = (int) $this->option('days-before-due');
+        $minDaysOverdue = (int) $this->option('min-days-overdue');
 
         $this->info('Đang quét danh sách hóa đơn cần nhắc nợ...');
 
-        $dispatchedCount = $reminderService->autoDispatchScheduledReminders($overdueOnly, $daysBeforeDue);
+        $dispatchedCount = $reminderService->autoDispatchScheduledReminders($overdueOnly, $daysBeforeDue, $minDaysOverdue);
 
         $this->info("Hoàn tất! Đã đưa {$dispatchedCount} email nhắc nợ vào hàng đợi Queue để xử lý nền.");
 

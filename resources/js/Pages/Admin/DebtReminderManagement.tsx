@@ -36,6 +36,7 @@ import {
     Radio
 } from 'lucide-react';
 import { invoiceApi } from '../../Services/invoiceApi';
+import { api } from '../../Services/api';
 import { useRealtimeSync } from '../../Hooks/useRealtimeSync';
 
 interface BlockOption {
@@ -107,24 +108,19 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
 
     // Tải danh sách khối
     useEffect(() => {
+        let active = true;
         const fetchBlocks = async () => {
             try {
-                const token = localStorage.getItem('auth_token') || 'smart_token_admin_demo';
-                const res = await fetch('/api/v1/blocks', {
-                    headers: {
-                        Accept: 'application/json',
-                        Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
-                    },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setBlocks(data.data || []);
+                const data = await api.getBlocks();
+                if (active) {
+                    setBlocks(data || []);
                 }
             } catch (err) {
                 console.error('Lỗi tải danh sách khối:', err);
             }
         };
         fetchBlocks();
+        return () => { active = false; };
     }, []);
 
     // Tải dữ liệu nhật ký & KPI
@@ -276,7 +272,11 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
 
     // Xuất CSV
     const handleExportCsv = () => {
-        if (logs.length === 0) {
+        const targetLogs = selectedLogIds.length > 0
+            ? logs.filter((l) => selectedLogIds.includes(l.id))
+            : logs;
+
+        if (targetLogs.length === 0) {
             showToast('error', 'Không có dữ liệu để xuất CSV');
             return;
         }
@@ -297,7 +297,7 @@ export const DebtReminderManagement: React.FC<DebtReminderManagementProps> = ({
             'Chi Tiết Lỗi',
         ];
 
-        const rows = logs.map((log, index) => [
+        const rows = targetLogs.map((log, index) => [
             index + 1,
             log.invoice?.invoice_number || 'N/A',
             log.apartment?.apartment_number || log.invoice?.apartment?.apartment_number || 'N/A',
