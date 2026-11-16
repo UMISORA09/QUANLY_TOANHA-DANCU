@@ -51,14 +51,14 @@ for (const viewport of viewports) {
       await page.getByRole('button', { name: 'Tất cả danh mục', exact: true }).click();
       await page.getByRole('button', { name: 'Thể thao', exact: true }).click();
     } else {
-      const categorySelect = page.getByRole('combobox', { name: 'Tất cả danh mục', exact: true });
-      await categorySelect.selectOption('category-qa');
+      const categorySelect = page.getByRole('button', { name: 'Tất cả danh mục', exact: true });
+      await categorySelect.click();
+      await page.getByRole('option', { name: 'Thể thao', exact: true }).click();
       await categorySelect.focus();
-      await page.keyboard.press('Space');
+      await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Home');
       await page.keyboard.press('Enter');
-      await page.keyboard.press('Tab');
-      await expect(categorySelect).toHaveValue('');
+      await expect(categorySelect).toContainText('Tất cả danh mục');
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`catalog-${process.env.UI_AUDIT_PHASE || 'after'}.png`) });
@@ -223,4 +223,68 @@ test('F1 blackout: stale deletion reloads latest and never automatically deletes
   expect(state.blackoutDeletes).toEqual([1]); expect(state.deletedBlackout).toBe(false); await expect(reason).toHaveValue('Lý do chưa gửi');
   page.once('dialog', (confirm) => confirm.accept()); await dialog.getByTitle('Xóa lịch bảo trì').click();
   await expect.poll(() => state.blackoutDeletes).toEqual([1, 2]); expect(state.deletedBlackout).toBe(true);
+});
+
+for (const width of [375, 768, 1440]) {
+  test('F1 dropdown: search Escape closes only dropdown and restores focus ' + width, async ({ page }) => {
+    await page.setViewportSize({ width, height: 812 });
+    await setupConfiguration(page, configurationFixture());
+    await page.getByTitle('Cấu hình khung giờ (Time Slots)', { exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Cấu hình Khung giờ Hoạt động', exact: true });
+    const trigger = dialog.getByRole('button', { name: 'Thứ trong tuần', exact: true });
+    await trigger.click();
+    const menu = page.getByRole('listbox');
+    await expect(menu).toBeVisible();
+    const bounds = await menu.boundingBox();
+    expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width).toBeTruthy();
+    await menu.getByPlaceholder('Tìm kiếm...').focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(menu.getByRole('option', { name: 'Chủ nhật', exact: true })).toBeFocused();
+    await menu.getByPlaceholder('Tìm kiếm...').fill('Thứ 3');
+    await page.keyboard.press('Enter');
+    await expect(trigger).toContainText('Thứ 3');
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    await trigger.click();
+    await menu.getByPlaceholder('Tìm kiếm...').focus();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  });
+}
+
+for (const width of [375, 768, 1440]) test('F1 gallery: cover URL, local files, retry and validation ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const state = configurationFixture(); await setupConfiguration(page, state);
+  let writes = 0;
+  await page.route('**/api/v1/admin/amenities', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    writes++; const body = route.request().postDataBuffer()!.toString();
+    const data = JSON.parse(body.match(/name="payload"\r\n\r\n([\s\S]*?)\r\n--/)![1]);
+    expect(data.cover_image_url).toBe('https://example.test/cover.jpg'); expect(data.gallery_images).toEqual([]);
+    expect(body).toContain('name="gallery_files[]"'); expect(body).toContain('filename="photo.png"');
+    if (writes === 1) return route.fulfill({ status: 503, json: { message: 'Không lưu được ảnh QA' } });
+    return route.fulfill({ status: 201, json: { ...state.amenity, ...data, id: 'gallery-created' } });
+  });
+  await page.getByRole('button', { name: 'Thêm tiện ích', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Cấu hình tiện ích', exact: true });
+  await dialog.getByRole('button', { name: 'Danh mục tiện ích', exact: true }).click();
+  await page.getByRole('option', { name: /Điện|Thể thao|Danh mục QA/ }).first().click();
+  await dialog.getByLabel('Tên tiện ích', { exact: true }).fill('Ảnh tiện ích QA');
+  await dialog.getByLabel('Mã tiện ích', { exact: true }).fill('GALLERY-QA');
+  await dialog.getByLabel('Vị trí tiện ích', { exact: true }).fill('Tầng 1');
+  await dialog.getByLabel('Ảnh đại diện từ URL', { exact: true }).fill('https://example.test/cover.jpg');
+  const picker = dialog.getByLabel('Chọn ảnh bộ sưu tập từ máy', { exact: true });
+  const png = { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4H8AAAAASUVORK5CYII=', 'base64') };
+  await picker.setInputFiles(png); await expect(dialog.getByRole('img', { name: 'Ảnh bộ sưu tập 1', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Bỏ ảnh bộ sưu tập 1', exact: true }).click(); await expect(dialog.getByRole('img', { name: 'Ảnh bộ sưu tập 1', exact: true })).toHaveCount(0);
+  await picker.setInputFiles({ name: 'bad.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
+  await expect(dialog.getByRole('alert').filter({ hasText: 'Chỉ nhận JPG' })).toBeVisible();
+  await picker.setInputFiles(png);
+  const submit = dialog.getByRole('button', { name: 'Tạo tiện ích', exact: true });
+  await submit.click(); await expect(dialog.getByRole('alert')).toContainText('Không lưu được ảnh QA');
+  await expect(dialog.getByRole('img', { name: 'Ảnh bộ sưu tập 1', exact: true })).toBeVisible();
+  await submit.click(); await expect(dialog).toHaveCount(0); expect(writes).toBe(2);
 });

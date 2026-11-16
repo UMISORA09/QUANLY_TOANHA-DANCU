@@ -35,7 +35,7 @@ class RealtimeStreamController extends Controller
         $authorized = [];
         foreach ($requested as $ch) {
             $normalized = str_starts_with($ch, 'quoc-tin.') ? $ch : QuocTinRealtimeService::getChannelForModule($ch);
-            if (QuocTinRealtimeService::isUserAuthorizedForChannel($user, $normalized)) {
+            if (QuocTinRealtimeService::isUserAuthorizedForSseChannel($user, $normalized)) {
                 $authorized[] = $normalized;
             }
         }
@@ -48,12 +48,21 @@ class RealtimeStreamController extends Controller
      */
     public function stream(Request $request): StreamedResponse|JsonResponse
     {
-        $user = RbacService::resolveUser($request);
+        $user = $request->user() ?: RbacService::resolveUser($request);
         if (! $user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthenticated',
+                'message' => 'Yêu cầu xác thực Bearer token.',
+                'error' => 'UNAUTHORIZED',
             ], 401);
+        }
+
+        if (isset($user->status) && $user->status !== 'ACTIVE') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.',
+                'error' => 'ACCOUNT_LOCKED',
+            ], 403);
         }
 
         $authorizedChannels = $this->getAuthorizedChannels($request, $user);
@@ -73,7 +82,7 @@ class RealtimeStreamController extends Controller
             session_write_close();
         }
 
-        return response()->stream(function () use ($authorizedChannels, $sinceId, $sinceMs) {
+        return response()->stream(function () use ($authorizedChannels, $sinceId, $sinceMs, $user) {
             if (session_status() === PHP_SESSION_ACTIVE) {
                 @session_write_close();
             }
@@ -110,9 +119,9 @@ class RealtimeStreamController extends Controller
             $lastEventId = $sinceId;
             $hasEmittedEvents = false;
 
-            // Catch-up initial missed events
+            // Catch-up initial missed events (áp dụng Server-side Event Filtering theo $user)
             if ($sinceId > 0 || $sinceMs > 0) {
-                $backlog = QuocTinRealtimeService::getEvents($authorizedChannels, $sinceId, $sinceMs, 50);
+                $backlog = QuocTinRealtimeService::getEvents($authorizedChannels, $sinceId, $sinceMs, 50, $user);
                 if (! empty($backlog)) {
                     foreach ($backlog as $ev) {
                         echo "id: {$ev['id']}\nevent: QuocTinEvent\ndata: ".json_encode($ev, JSON_UNESCAPED_UNICODE)."\n\n";
@@ -135,8 +144,8 @@ class RealtimeStreamController extends Controller
                         break;
                     }
 
-                    // Query new events since $lastEventId
-                    $newEvents = QuocTinRealtimeService::getEvents($authorizedChannels, $lastEventId, 0, 20);
+                    // Query new events since $lastEventId (áp dụng Server-side Event Filtering theo $user)
+                    $newEvents = QuocTinRealtimeService::getEvents($authorizedChannels, $lastEventId, 0, 20, $user);
                     if (! empty($newEvents)) {
                         foreach ($newEvents as $ev) {
                             echo "id: {$ev['id']}\nevent: QuocTinEvent\ndata: ".json_encode($ev, JSON_UNESCAPED_UNICODE)."\n\n";
@@ -175,12 +184,21 @@ class RealtimeStreamController extends Controller
         if (session_status() === PHP_SESSION_ACTIVE) {
             @session_write_close();
         }
-        $user = RbacService::resolveUser($request);
+        $user = $request->user() ?: RbacService::resolveUser($request);
         if (! $user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthenticated',
+                'message' => 'Yêu cầu xác thực Bearer token.',
+                'error' => 'UNAUTHORIZED',
             ], 401);
+        }
+
+        if (isset($user->status) && $user->status !== 'ACTIVE') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.',
+                'error' => 'ACCOUNT_LOCKED',
+            ], 403);
         }
 
         $authorizedChannels = $this->getAuthorizedChannels($request, $user);
@@ -195,7 +213,7 @@ class RealtimeStreamController extends Controller
         $sinceMs = (int) $request->input('since_ms', 0);
         $limit = min((int) $request->input('limit', 50), 100);
 
-        $events = QuocTinRealtimeService::getEvents($authorizedChannels, $sinceId, $sinceMs, $limit);
+        $events = QuocTinRealtimeService::getEvents($authorizedChannels, $sinceId, $sinceMs, $limit, $user);
 
         return response()->json([
             'success' => true,
@@ -210,6 +228,25 @@ class RealtimeStreamController extends Controller
      */
     public function cooldown(Request $request): JsonResponse
     {
+        $user = $request->user() ?: RbacService::resolveUser($request);
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Yêu cầu xác thực Bearer token.',
+                'error' => 'UNAUTHORIZED',
+            ], 401);
+        }
+
+        if (isset($user->status) && $user->status !== 'ACTIVE') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.',
+                'error' => 'ACCOUNT_LOCKED',
+            ], 403);
+        }
+
+        $isStaff = QuocTinRealtimeService::isStaffUser($user);
+
         $modulesParam = $request->input('modules', $request->input('module', 'all'));
         $modules = $modulesParam === 'all'
             ? ['rbac', 'residents', 'temporary_registrations', 'account_provisioning', 'vehicles', 'rfid_cards']
@@ -224,8 +261,9 @@ class RealtimeStreamController extends Controller
                 'cooldown_until' => $cd['cooldown_until'] ?? null,
                 'retry_after' => (int) ($cd['retry_after'] ?? 0),
                 'cooldown_seconds' => (int) ($cd['cooldown_seconds'] ?? 0),
-                'actor_id' => $cd['actor_id'] ?? null,
-                'action' => $cd['action'] ?? null,
+                // Chỉ nhân viên vận hành mới được xem actor_id và action nội bộ
+                'actor_id' => $isStaff ? ($cd['actor_id'] ?? null) : null,
+                'action' => $isStaff ? ($cd['action'] ?? null) : null,
             ];
         }
 

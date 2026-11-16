@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Laravel\Scout\Searchable;
 
 class Parcel extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, Searchable;
 
     protected $table = 'parcels';
 
@@ -47,6 +48,41 @@ class Parcel extends Model
             'collected_at' => 'datetime',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * Tên search index
+     */
+    public function searchableAs(): string
+    {
+        return 'parcels';
+    }
+
+    /**
+     * Dữ liệu được index vào Search Engine (Meilisearch)
+     * TUYỆT ĐỐI KHÔNG index mã PIN (pickup_pin_code) và mã QR nhận hàng (pickup_qr_code)
+     */
+    public function toSearchableArray(): array
+    {
+        $this->loadMissing(['apartment.block', 'recipientUser']);
+
+        return [
+            'id' => (string) $this->id,
+            'tracking_number' => $this->tracking_number,
+            'courier_company' => $this->courier_company,
+            'apartment_id' => (string) $this->apartment_id,
+            'recipient_user_id' => (string) $this->recipient_user_id,
+            'recipient_name' => $this->recipient_name,
+            'recipient_phone' => $this->recipient_phone ?? '',
+            'stored_location_type' => $this->stored_location_type,
+            'locker_compartment_id' => $this->locker_compartment_id ? (string) $this->locker_compartment_id : null,
+            'status' => $this->status,
+            'apartment_number' => $this->apartment?->apartment_number ?? '',
+            'block_name' => $this->apartment?->block?->block_name ?? '',
+            'received_at' => $this->received_at?->timestamp,
+            'collected_at' => $this->collected_at?->timestamp,
+            'created_at' => $this->created_at?->timestamp,
         ];
     }
 

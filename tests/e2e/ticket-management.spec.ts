@@ -480,3 +480,74 @@ for (const width of [375, 1440]) {
     expect((await colors(save)).background).not.toBe('rgb(255, 255, 255)');
   });
 }
+
+for (const width of [375, 768, 1440]) test('MOCKED F8 shared UI: technician workflow keeps draft on network error ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'technician', name: 'Kỹ thuật QA' }));
+    localStorage.setItem('smart_cassavas_token', 'qa-ui-technician');
+    localStorage.setItem('smart_cassavas_user', JSON.stringify({ id: 'qa-technician', full_name: 'Kỹ thuật QA', roles: ['TECHNICIAN'], permissions: ['TICKET:VIEW', 'TICKET:UPDATE'] }));
+  });
+  let ticket = { id: 'qa-tech-ticket', ticket_number: 'TCK-TECH-QA', title: 'Sự cố được giao', description: 'Kiểm tra kỹ thuật', status: 'RECEIVED', priority: 'MEDIUM', version: 3, created_at: '2026-11-01T00:00:00Z', apartment: { apartment_number: 'QA-01' }, attachments: [], history: [], actions: { start: true } };
+  let writes = 0;
+  await page.route('**/api/**', async route => {
+    const request = route.request(); const path = new URL(request.url()).pathname;
+    if (path.endsWith('/qa-tech-ticket/workflow')) {
+      writes++; const payload = request.postDataJSON();
+      expect(payload.action).toBe('start'); expect(payload.version).toBe(3);
+      if (writes === 1) return route.fulfill({ status: 503, json: { message: 'Mất kết nối QA' } });
+      ticket = { ...ticket, status: 'IN_PROGRESS', version: 4, actions: { start: false } };
+      return route.fulfill({ json: ticket });
+    }
+    if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
+    if (path.endsWith('/tickets/qa-tech-ticket')) return route.fulfill({ json: ticket });
+    if (path.endsWith('/tickets')) return route.fulfill({ json: { data: [ticket], current_page: 1, last_page: 1, total: 1 } });
+    return route.fulfill({ json: { items: [], data: [], unread_count: 0 } });
+  });
+  await page.goto('/quan-ly?tab=tickets');
+  await expect(page.getByRole('heading', { name: 'Yêu cầu / Sự cố', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Thêm yêu cầu hộ cư dân', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
+  await page.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Bắt đầu xử lý', exact: true });
+  const notes = dialog.getByRole('textbox', { name: 'Ghi chú xử lý (không bắt buộc)', exact: true });
+  await notes.fill('Đang kiểm tra hiện trường');
+  await dialog.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Mất kết nối QA');
+  await expect(notes).toHaveValue('Đang kiểm tra hiện trường');
+  expect(writes).toBe(1);
+  expect(await dialog.evaluate(element => element.getBoundingClientRect().width <= innerWidth)).toBe(true);
+  await dialog.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  await expect(dialog).toHaveCount(0); expect(writes).toBe(2);
+});
+
+for (const width of [375, 768, 1440]) test('Manager receives ticket with explicit priority and preserves it after network failure ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-receive'); });
+  let ticket = { id: 'qa-receive', ticket_number: 'TCK-RECEIVE', title: 'Sự cố QA', description: 'Cần tiếp nhận', status: 'NEW', priority: 'MEDIUM', version: 1, attachments: [], history: [], actions: { receive: true } };
+  let writes = 0;
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/qa-receive/workflow')) {
+      writes++; expect(route.request().postDataJSON()).toMatchObject({ action: 'receive', priority: 'HIGH', version: 1 });
+      if (writes === 1) return route.fulfill({ status: 503, json: { message: 'Mất kết nối QA' } });
+      ticket = { ...ticket, status: 'RECEIVED', priority: 'HIGH', version: 2, actions: { receive: false } };
+      return route.fulfill({ json: ticket });
+    }
+    if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
+    if (path.endsWith('/tickets/qa-receive')) return route.fulfill({ json: ticket });
+    if (path.endsWith('/tickets')) return route.fulfill({ json: { data: [ticket], current_page: 1, last_page: 1, total: 1 } });
+    return route.fulfill({ json: { items: [], data: [], unread_count: 0 } });
+  });
+  await page.goto('/quan-ly?tab=tickets');
+  await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
+  await page.getByRole('button', { name: 'Tiếp nhận', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Tiếp nhận', exact: true });
+  const submit = dialog.getByRole('button', { name: 'Tiếp nhận', exact: true });
+  await expect(submit).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Mức độ ưu tiên', exact: true }).click();
+  await page.getByRole('option', { name: 'Cao', exact: true }).click();
+  await submit.click(); await expect(dialog).toContainText('Mất kết nối QA');
+  await expect(dialog.getByRole('button', { name: 'Mức độ ưu tiên', exact: true })).toContainText('Cao');
+  await submit.click(); await expect(dialog).toHaveCount(0); expect(writes).toBe(2);
+});

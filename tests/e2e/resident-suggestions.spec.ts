@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-for (const width of [1280, 390]) {
+for (const width of [375, 768, 1440]) {
   test(`MOCKED F12: nhãn, bàn phím, giữ bản nhập và mã ẩn danh (${width}px)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.addInitScript(() => {
@@ -49,7 +49,8 @@ for (const width of [1280, 390]) {
   });
 }
 
-test('F12 manager: 409 automatically reloads detail and preserves unsent reply', async ({ page }) => {
+for (const width of [375, 768, 1440]) test(`F12 manager: 409 automatically reloads detail and preserves unsent reply ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
   await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-token'); });
   let item = { id: 'qa-suggestion', title: 'Góp ý QA', content: 'Nội dung góp ý', content_text: 'Nội dung góp ý', topic_category: 'OTHER', status: 'RECEIVED', version: 1, is_anonymous: true, created_at: '2026-11-01T00:00:00Z', official_response_text: '' };
   let writes = 0; let reads = 0;
@@ -67,7 +68,19 @@ test('F12 manager: 409 automatically reloads detail and preserves unsent reply',
     return route.fulfill({ json: { data: [], items: [], unread_count: 0 } });
   });
   await page.goto('/quan-ly?tab=feedback');
-  await page.getByText('Góp ý QA', { exact: true }).click();
+  const status = page.getByRole('button', { name: 'Trạng thái góp ý', exact: true });
+  await status.click();
+  const menu = page.getByRole('listbox');
+  expect(await menu.evaluate(element => getComputedStyle(element).borderRadius)).toBe('12px');
+  await page.getByRole('option', { name: 'Chờ tiếp nhận', exact: true }).click();
+  const open = page.getByRole('button', { name: 'Xử lý', exact: true });
+  await open.click();
+  const dialog = page.getByRole('dialog', { name: 'Chi tiết góp ý', exact: true });
+  const replyStatus = dialog.getByRole('button', { name: 'Trạng thái sau phản hồi', exact: true });
+  await replyStatus.click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await expect(replyStatus).toBeFocused();
   const reply = page.getByPlaceholder('Nhập nội dung phản hồi chính thức gửi tới cư dân (văn minh, chuẩn mực, nêu rõ giải pháp hoặc tiến độ xử lý)...');
   await reply.fill('Bản trả lời đang soạn');
   const submit = page.getByRole('button', { name: 'Lưu & Gửi phản hồi chính thức' });
@@ -77,4 +90,28 @@ test('F12 manager: 409 automatically reloads detail and preserves unsent reply',
   expect(reads).toBe(2); expect(writes).toBe(1);
   await page.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập' }).click();
   await submit.click(); await expect.poll(() => writes).toBe(2);
+  await expect(submit).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(open).toBeFocused();
+});
+
+for (const mode of ['empty', 'network']) test('F12: unavailable boxes show a useful message and retry preserves draft ' + mode, async ({ page }) => {
+  await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'resident', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-boxes'); });
+  let ready = false;
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/resident/suggestion-boxes')) return route.fulfill(ready ? { json: { success: true, data: [{ id: 'qa-box', box_name: 'Hòm thư toàn khu QA', description: '', block: null }] } } : mode === 'empty' ? { json: { success: true, data: [] } } : { status: 503, json: { message: 'Chưa tải được hòm thư QA' } });
+    return route.fulfill({ json: { data: [], items: [], unread_count: 0, pagination: { total: 0 } } });
+  });
+  await page.goto('/cu-dan?tab=feedback');
+  const box = page.getByRole('button', { name: 'Hòm thư tiếp nhận', exact: true });
+  await expect(box).toBeDisabled();
+  const submit = page.getByRole('button', { name: 'Gửi ý kiến góp ý', exact: true }); await expect(submit).toBeDisabled();
+  const title = page.getByPlaceholder('VD: Đề xuất bổ sung thêm thùng rác phân loại tại sảnh thang máy Block A');
+  await title.fill('Bản nhập cần giữ QA');
+  ready = true;
+  await page.getByRole('button', { name: mode === 'empty' ? 'Tải lại hòm thư' : 'Thử tải lại hòm thư', exact: true }).click();
+  await expect(box).toBeEnabled(); await expect(box).toContainText('Hòm thư toàn khu QA');
+  await expect(title).toHaveValue('Bản nhập cần giữ QA'); await expect(submit).toBeEnabled();
 });

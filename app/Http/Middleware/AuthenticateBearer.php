@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use Carbon\Carbon;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,6 +20,21 @@ class AuthenticateBearer
         $authHeader = $request->header('Authorization');
 
         if (! $authHeader || ! str_starts_with($authHeader, 'Bearer ')) {
+            if ($mode !== 'strict') {
+                $existingUser = $request->user() ?: (Auth::check() ? Auth::user() : null);
+                if ($existingUser) {
+                    if ($existingUser->status !== 'ACTIVE') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.',
+                            'error' => 'ACCOUNT_LOCKED',
+                        ], 403);
+                    }
+
+                    return $next($request);
+                }
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Yêu cầu xác thực Bearer token.',
@@ -34,6 +50,28 @@ class AuthenticateBearer
                 'message' => 'Token xác thực không hợp lệ.',
                 'error' => 'UNAUTHORIZED',
             ], 401);
+        }
+
+        $session = DB::table('user_sessions')
+            ->where('refresh_token_hash', hash('sha256', $token))
+            ->first();
+
+        if ($session) {
+            if ($session->is_revoked) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phiên đăng nhập đã bị thu hồi.',
+                    'error' => 'TOKEN_REVOKED',
+                ], 401);
+            }
+
+            if ($session->expires_at && Carbon::parse($session->expires_at)->isPast()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phiên đăng nhập đã hết hạn.',
+                    'error' => 'TOKEN_EXPIRED',
+                ], 401);
+            }
         }
 
         $user = self::resolveSessionUser($token);

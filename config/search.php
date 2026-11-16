@@ -8,7 +8,7 @@ return [
     | Default Search Driver
     |--------------------------------------------------------------------------
     |
-    | Supported drivers: "smart", "database", "meilisearch", "elasticsearch"
+    | Supported drivers: "smart", "database", "elasticsearch"
     |
     */
     'default' => $driver === 'algolia' ? 'smart' : $driver,
@@ -46,6 +46,12 @@ return [
             'tickets_index' => env('ELASTICSEARCH_TICKETS_INDEX', 'cassavas_tickets_v1'),
             'booking_codes_index' => env('ELASTICSEARCH_BOOKING_CODES_INDEX', 'cassavas_booking_codes_v1'),
             'amenities_index' => env('ELASTICSEARCH_AMENITIES_INDEX', 'cassavas_amenities_v1'),
+            'residents_index' => env('ELASTICSEARCH_RESIDENTS_INDEX', 'cassavas_residents_v1'),
+            'temporary_registrations_index' => env('ELASTICSEARCH_TEMPORARY_REGISTRATIONS_INDEX', 'cassavas_temporary_registrations_v1'),
+            'vehicles_index' => env('ELASTICSEARCH_VEHICLES_INDEX', 'cassavas_vehicles_v1'),
+            'access_cards_index' => env('ELASTICSEARCH_ACCESS_CARDS_INDEX', 'cassavas_access_cards_v1'),
+            'visitors_index' => env('ELASTICSEARCH_VISITORS_INDEX', 'cassavas_visitors_v1'),
+            'parcels_index' => env('ELASTICSEARCH_PARCELS_INDEX', 'cassavas_parcels_v1'),
             'hosts' => explode(',', env('ELASTICSEARCH_HOSTS', 'http://127.0.0.1:9200')),
             'api_key' => env('ELASTICSEARCH_API_KEY'),
             'username' => env('ELASTICSEARCH_USER', null),

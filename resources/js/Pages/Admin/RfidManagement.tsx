@@ -1611,15 +1611,15 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
   const getCardTypeBadge = (type: string) => {
     switch (type) {
       case 'RESIDENT_ALL_ACCESS':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Toàn Quyền</span>;
+        return <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Toàn Quyền</span>;
       case 'ELEVATOR_ONLY':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">Thang Máy</span>;
+        return <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">Thang Máy</span>;
       case 'PARKING_ONLY':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">Gửi Xe</span>;
+        return <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">Gửi Xe</span>;
       case 'VISITOR_PASS':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">Khách Thăm</span>;
+        return <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">Khách Thăm</span>;
       default:
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">{type}</span>;
+        return <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">{type}</span>;
     }
   };
 
@@ -1882,7 +1882,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider font-mono">
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider font-mono whitespace-nowrap">
                 <th className="py-3 px-4">Mã Thẻ (UID & Mặt Thẻ)</th>
                 <th className="py-3 px-4">Loại Thẻ</th>
                 <th className="py-3 px-4">Cư Dân Sở Hữu</th>
@@ -1917,7 +1917,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                   return (
                     <tr key={card.id} className="hover:bg-slate-50/70 transition">
                       {/* UID & Card Number */}
-                      <td className="py-3 px-4 font-mono">
+                      <td className="py-3 px-4 font-mono whitespace-nowrap">
                         <div className="font-extrabold text-slate-900 tracking-wider text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-300 inline-block">
                           {card.card_number}
                         </div>
@@ -1929,12 +1929,12 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                       </td>
 
                       {/* Loại Thẻ */}
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {getCardTypeBadge(card.card_type)}
                       </td>
 
                       {/* Cư Dân */}
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {card.assigned_user ? (
                           <div>
                             <div className="font-semibold text-slate-900 flex items-center gap-1">
@@ -1953,7 +1953,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                       </td>
 
                       {/* Căn Hộ */}
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {card.assigned_apartment ? (
                           <div className="flex items-center gap-1.5 font-semibold text-slate-800">
                             <Building className="w-3.5 h-3.5 text-slate-400" />
@@ -1965,7 +1965,7 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                       </td>
 
                       {/* Ngày Cấp & Hạn */}
-                      <td className="py-3 px-4 text-slate-600">
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
                         <div>Cấp: <span className="font-medium text-slate-700">{card.issued_date}</span></div>
                         <div className="text-slate-400 text-[11px] mt-0.5">
                           {card.expiry_date ? `Hạn: ${card.expiry_date}` : 'Vô thời hạn'}
@@ -1973,17 +1973,17 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                       </td>
 
                       {/* Tiền Cọc */}
-                      <td className="py-3 px-4 font-semibold text-slate-900">
+                      <td className="py-3 px-4 font-semibold text-slate-900 whitespace-nowrap">
                         {new Intl.NumberFormat('vi-VN').format(Number(card.deposit_fee || 0))} đ
                       </td>
 
                       {/* Trạng Thái */}
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         {getStatusBadge(card.status)}
                       </td>
 
                       {/* Thao Tác */}
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* Toggle Active / Lock Button */}
                           <button

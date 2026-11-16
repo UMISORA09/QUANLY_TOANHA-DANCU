@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import { useNotificationDetailOpened } from '../Hooks/useNotificationDetailOpened';
 import { TicketRating } from './TicketRating';
 import React, { useCallback, useEffect, useState, useRef } from 'react';
@@ -116,7 +117,7 @@ export function TicketManagementPanel() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); if (busy || conflict) return; setBusy(true); setError(''); setFields({});
     try {
-      if (mode === 'workflow' && selected) { setSelected(await api.performTicketAction(selected.id, { action, version: form.version, technician_user_id: technician || undefined, reason: reason || undefined, note: reason || undefined })); }
+      if (mode === 'workflow' && selected) { setSelected(await api.performTicketAction(selected.id, { action, version: form.version, technician_user_id: technician || undefined, reason: reason || undefined, note: reason || undefined, priority: action === 'receive' ? form.priority : undefined })); }
       else if (mode === 'archive' && selected) { await api.archiveTicket(selected.id, form.version, reason); setSelected(null); }
       else if (mode === 'create') {
         const { block_id, version, preferred_service_time, ...payload } = form;
@@ -143,11 +144,12 @@ export function TicketManagementPanel() {
   const selectOptions = (data: Record<string, string>) => Object.entries(data).map(([value, label]) => ({ value, label }));
   const cannotSubmit = busy || conflict
     || (mode === 'create' && (!form.apartment_id || !form.reporter_user_id || !form.category_id))
+    || (mode === 'workflow' && action === 'receive' && !form.priority)
     || (mode === 'workflow' && action === 'assign' && !technician)
     || ((mode === 'archive' || (mode === 'workflow' && ['cancel', 'resolve'].includes(action))) && reason.trim().length < 5);
   useTicketNotificationRefresh(() => { reload(); if (selected && !mode) void open(selected.id); });
 
-  return <section className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6 lg:p-8">
+  return <section className="feature-controls mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6 lg:p-8">
 
     {/* Page Header */}
     <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/60 to-blue-50/40 p-6 sm:p-8 shadow-xs">
@@ -203,7 +205,7 @@ export function TicketManagementPanel() {
       {filtersOpen && (
         <div id="ticket-management-filters" className="grid gap-3.5 border-t border-slate-100 pt-4 sm:grid-cols-2 2xl:grid-cols-4">
           {(['status', 'priority', 'category_id', 'block_id'] as const).map((key) => (
-            <CustomSelect
+            <CustomSelect variant="feature"
               overlay
               {...selectAppearance}
               key={key}
@@ -326,7 +328,7 @@ export function TicketManagementPanel() {
     </nav>
 
     {/* Detail Dialog */}
-    <TicketDialog open={!!selected && !mode && !removeImageId} title={selected?.ticket_number || 'Chi tiết yêu cầu'} busy={busy} onClose={() => setSelected(null)}>
+    <TicketDialog variant="feature" open={!!selected && !mode && !removeImageId} title={selected?.ticket_number || 'Chi tiết yêu cầu'} busy={busy} onClose={() => setSelected(null)}>
       {selected && (
         <div className="space-y-5">
           {error && <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-semibold text-rose-700">{error}</p>}
@@ -441,7 +443,7 @@ export function TicketManagementPanel() {
                     catch (err) { await fail(err); return; }
                     finally { setBusy(false); }
                   }
-                  setFields({}); setConflict(false); setMode('workflow');
+                  setFields({}); setConflict(false); if (key === 'receive') setForm({ ...blank, priority: '', version: selected.version }); setMode('workflow');
                 }}
               >
                 {label}
@@ -456,7 +458,7 @@ export function TicketManagementPanel() {
     </TicketDialog>
 
     {/* Form Modals (Workflow / Create / Edit / Archive) */}
-    <TicketDialog
+    <TicketDialog variant="feature"
       open={!!mode}
       title={mode === 'workflow' ? workflowLabels[action] : mode === 'create' ? 'Thêm yêu cầu hộ cư dân' : mode === 'archive' ? 'Lưu trữ yêu cầu' : 'Sửa / Phân loại yêu cầu'}
       busy={busy}
@@ -500,8 +502,9 @@ export function TicketManagementPanel() {
         {mode === 'workflow' ? (
           <>
             <p className="text-sm font-medium text-slate-700">Xác nhận thao tác với {selected?.ticket_number}.</p>
+            {action === 'receive' && <CustomSelect variant="feature" overlay {...selectAppearance} label="Mức độ ưu tiên" required value={form.priority} onChange={value => setForm({ ...form, priority: value })} options={selectOptions(ticketPriorities)} placeholder="Chọn mức độ ưu tiên" />}
             {action === 'assign' && (
-              <CustomSelect
+              <CustomSelect variant="feature"
                 overlay
                 {...selectAppearance}
                 label="Kỹ thuật viên"
@@ -543,9 +546,9 @@ export function TicketManagementPanel() {
             {mode === 'create' && <p className="text-xs text-slate-500">Chọn tòa nhà, căn hộ và cư dân cần hỗ trợ. Các trường có dấu * là bắt buộc.</p>}
             {mode === 'create' && (
               <div className="grid gap-3.5 sm:grid-cols-2">
-                <CustomSelect overlay {...selectAppearance} label="Tòa nhà" required value={form.block_id} onChange={(value) => setForm({ ...form, block_id: value, apartment_id: '', reporter_user_id: '' })} options={options?.blocks.map((b) => ({ value: b.id, label: b.block_name })) || []} />
-                <CustomSelect overlay {...selectAppearance} label="Căn hộ" required disabled={!form.block_id} value={form.apartment_id} onChange={(value) => setForm({ ...form, apartment_id: value, reporter_user_id: '' })} options={options?.apartments.filter((a) => a.block_id === form.block_id).map((a) => ({ value: a.id, label: a.apartment_number })) || []} />
-                <CustomSelect overlay {...selectAppearance} label="Người báo" required disabled={!form.apartment_id} value={form.reporter_user_id} onChange={(value) => setForm({ ...form, reporter_user_id: value })} options={options?.residents.filter((r) => r.apartment_id === form.apartment_id).map((r) => ({ value: r.id, label: r.full_name })) || []} />
+                <CustomSelect variant="feature" overlay {...selectAppearance} label="Tòa nhà" required value={form.block_id} onChange={(value) => setForm({ ...form, block_id: value, apartment_id: '', reporter_user_id: '' })} options={options?.blocks.map((b) => ({ value: b.id, label: b.block_name })) || []} />
+                <CustomSelect variant="feature" overlay {...selectAppearance} label="Căn hộ" required disabled={!form.block_id} value={form.apartment_id} onChange={(value) => setForm({ ...form, apartment_id: value, reporter_user_id: '' })} options={options?.apartments.filter((a) => a.block_id === form.block_id).map((a) => ({ value: a.id, label: a.apartment_number })) || []} />
+                <CustomSelect variant="feature" overlay {...selectAppearance} label="Người báo" required disabled={!form.apartment_id} value={form.reporter_user_id} onChange={(value) => setForm({ ...form, reporter_user_id: value })} options={options?.residents.filter((r) => r.apartment_id === form.apartment_id).map((r) => ({ value: r.id, label: r.full_name })) || []} />
               </div>
             )}
             {(mode === 'create' || selected?.status === 'NEW') && (
@@ -560,8 +563,8 @@ export function TicketManagementPanel() {
               </>
             )}
             <div className="grid gap-3.5 sm:grid-cols-2">
-              <CustomSelect overlay {...selectAppearance} label="Danh mục" required value={form.category_id} onChange={(value) => setForm({ ...form, category_id: value })} options={options?.categories.map((c) => ({ value: c.id, label: c.category_name })) || []} />
-              <CustomSelect overlay {...selectAppearance} label="Mức độ ưu tiên" value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={selectOptions(ticketPriorities)} />
+              <CustomSelect variant="feature" overlay {...selectAppearance} label="Danh mục" required value={form.category_id} onChange={(value) => setForm({ ...form, category_id: value })} options={options?.categories.map((c) => ({ value: c.id, label: c.category_name })) || []} />
+              <CustomSelect variant="feature" overlay {...selectAppearance} label="Mức độ ưu tiên" value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={selectOptions(ticketPriorities)} />
             </div>
             {Object.entries(fields).filter(([key]) => !['title', 'location', 'description'].includes(key)).map(([key, errors]) => (
               <p key={key} className="text-xs text-rose-700">{errors[0]}</p>
@@ -572,7 +575,7 @@ export function TicketManagementPanel() {
     </TicketDialog>
 
     {/* Remove Image Confirmation Dialog */}
-    <TicketDialog open={!!removeImageId} title="Bỏ ảnh sự cố" busy={busy} onClose={() => setRemoveImageId(null)}>
+    <TicketDialog variant="feature" open={!!removeImageId} title="Bỏ ảnh sự cố" busy={busy} onClose={() => setRemoveImageId(null)}>
       {error && <p role="alert" className="mb-3 text-xs font-semibold text-rose-700">{error}</p>}
       <p className="text-sm text-slate-700">Bạn muốn bỏ ảnh này khỏi yêu cầu? Ảnh đã bỏ không thể khôi phục từ màn hình này.</p>
       <div className="mt-5 flex justify-end gap-2.5">
@@ -604,7 +607,7 @@ export function TicketManagementPanel() {
     </TicketDialog>
 
     {/* Image Preview Dialog */}
-    <TicketDialog open={!!preview} title="Ảnh sự cố" onClose={() => setPreview('')}>
+    <TicketDialog variant="feature" open={!!preview} title="Ảnh sự cố" onClose={() => setPreview('')}>
       <img src={preview} alt="Ảnh sự cố phóng to" className="max-h-[70vh] w-full object-contain rounded-xl" />
     </TicketDialog>
   </section>;

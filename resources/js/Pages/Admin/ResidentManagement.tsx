@@ -35,6 +35,7 @@ import api, {
 } from '../../Services/api';
 import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
 import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
+import { CustomSelect, SelectOption } from '../../Components/Common/CustomSelect';
 
 interface ResidentManagementProps {
   embedded?: boolean;
@@ -619,67 +620,78 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
 
           {/* Apartment Filter */}
           <div>
-            <select
+            <CustomSelect
               value={apartmentFilter}
-              onChange={(e) => {
-                setApartmentFilter(e.target.value);
+              onChange={(val) => {
+                setApartmentFilter(val);
                 setPage(1);
               }}
-              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-slate-700"
-            >
-              <option value="">-- Tất cả căn hộ --</option>
-              {apartments.map((apt) => (
-                <option key={apt.id} value={apt.id}>
-                  Căn {apt.apartment_number} {apt.head_of_household?.user?.full_name ? `(${apt.head_of_household.user.full_name})` : ''}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: '', label: '-- Tất cả căn hộ --' },
+                ...apartments.map((apt) => ({
+                  value: apt.id,
+                  label: `Căn ${apt.apartment_number} ${apt.head_of_household?.user?.full_name ? `(${apt.head_of_household.user.full_name})` : ''}`,
+                })),
+              ]}
+              placeholder="-- Tất cả căn hộ --"
+              searchable={true}
+            />
           </div>
 
           {/* Resident Type Filter */}
           <div>
-            <select
+            <CustomSelect
               value={typeFilter}
-              onChange={(e) => {
-                setTypeFilter(e.target.value);
+              onChange={(val) => {
+                setTypeFilter(val);
                 setPage(1);
               }}
-              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-slate-700"
-            >
-              <option value="">-- Loại cư dân --</option>
-              <option value="OWNER">Chủ sở hữu (OWNER)</option>
-              <option value="TENANT">Người thuê (TENANT)</option>
-              <option value="FAMILY_MEMBER">Thành viên (FAMILY_MEMBER)</option>
-            </select>
+              options={[
+                { value: '', label: '-- Loại cư dân --' },
+                { value: 'OWNER', label: 'Chủ sở hữu (OWNER)' },
+                { value: 'TENANT', label: 'Người thuê (TENANT)' },
+                { value: 'FAMILY_MEMBER', label: 'Thành viên (FAMILY_MEMBER)' },
+              ]}
+              placeholder="-- Loại cư dân --"
+              searchable={false}
+            />
           </div>
 
           {/* Head of Household & Status Filter */}
           <div className="flex gap-2">
-            <select
-              value={headFilter}
-              onChange={(e) => {
-                setHeadFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-1/2 px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-slate-700"
-            >
-              <option value="">-- Vai trò --</option>
-              <option value="1">👑 Chủ hộ</option>
-              <option value="0">Thành viên</option>
-            </select>
+            <div className="w-1/2">
+              <CustomSelect
+                value={headFilter}
+                onChange={(val) => {
+                  setHeadFilter(val);
+                  setPage(1);
+                }}
+                options={[
+                  { value: '', label: '-- Vai trò --' },
+                  { value: '1', label: '👑 Chủ hộ' },
+                  { value: '0', label: 'Thành viên' },
+                ]}
+                placeholder="-- Vai trò --"
+                searchable={false}
+              />
+            </div>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-1/2 px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-slate-700"
-            >
-              <option value="">-- Trạng thái --</option>
-              <option value="1">Đang ở (Active)</option>
-              <option value="0">Đã rời (Inactive)</option>
-            </select>
+            <div className="w-1/2">
+              <CustomSelect
+                value={statusFilter}
+                onChange={(val) => {
+                  setStatusFilter(val);
+                  setPage(1);
+                }}
+                options={[
+                  { value: '', label: '-- Trạng thái --' },
+                  { value: '1', label: 'Đang ở (Active)' },
+                  { value: '0', label: 'Đã rời (Inactive)' },
+                ]}
+                placeholder="-- Trạng thái --"
+                searchable={false}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1022,20 +1034,21 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Căn Hộ <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <CustomSelect
                   value={formApartmentId}
-                  onChange={(e) => setFormApartmentId(e.target.value)}
+                  onChange={(val) => setFormApartmentId(val)}
                   disabled={!!editingResident}
-                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 bg-white disabled:bg-slate-100 text-slate-800"
-                  required
-                >
-                  <option value="">-- Chọn căn hộ --</option>
-                  {apartments.map((apt) => (
-                    <option key={apt.id} value={apt.id}>
-                      Căn {apt.apartment_number} {apt.head_of_household?.user?.full_name ? `(Chủ hộ: ${apt.head_of_household.user.full_name})` : '(Chưa có chủ hộ)'}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: '-- Chọn căn hộ --' },
+                    ...apartments.map((apt) => ({
+                      value: apt.id,
+                      label: `Căn ${apt.apartment_number} ${apt.head_of_household?.user?.full_name ? `(Chủ hộ: ${apt.head_of_household.user.full_name})` : '(Chưa có chủ hộ)'}`,
+                    })),
+                  ]}
+                  placeholder="-- Chọn căn hộ --"
+                  overlay={true}
+                  searchable={true}
+                />
               </div>
 
               {/* Select or Search User (Only when creating) */}
@@ -1113,34 +1126,40 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Loại Cư Dân <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <CustomSelect
                     value={formResidentType}
-                    onChange={(e) => setFormResidentType(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 bg-white"
-                  >
-                    <option value="OWNER">Chủ sở hữu (OWNER)</option>
-                    <option value="TENANT">Người thuê (TENANT)</option>
-                    <option value="FAMILY_MEMBER">Thành viên hộ (FAMILY_MEMBER)</option>
-                  </select>
+                    onChange={(val) => setFormResidentType(val)}
+                    options={[
+                      { value: 'OWNER', label: 'Chủ sở hữu (OWNER)' },
+                      { value: 'TENANT', label: 'Người thuê (TENANT)' },
+                      { value: 'FAMILY_MEMBER', label: 'Thành viên hộ (FAMILY_MEMBER)' },
+                    ]}
+                    placeholder="Chọn loại cư dân"
+                    overlay={true}
+                    searchable={false}
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Quan hệ với Chủ Hộ
                   </label>
-                  <select
+                  <CustomSelect
                     value={formIsHead ? 'SELF' : formRelation}
-                    onChange={(e) => setFormRelation(e.target.value)}
+                    onChange={(val) => setFormRelation(val)}
                     disabled={formIsHead}
-                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 bg-white disabled:bg-slate-100 text-slate-800"
-                  >
-                    <option value="SELF">Bản thân (Chủ hộ)</option>
-                    <option value="SPOUSE">Vợ / Chồng (SPOUSE)</option>
-                    <option value="CHILD">Con cái (CHILD)</option>
-                    <option value="PARENT">Bố / Mẹ (PARENT)</option>
-                    <option value="TENANT">Khách thuê (TENANT)</option>
-                    <option value="MAID">Người giúp việc (MAID)</option>
-                  </select>
+                    options={[
+                      { value: 'SELF', label: 'Bản thân (Chủ hộ)' },
+                      { value: 'SPOUSE', label: 'Vợ / Chồng (SPOUSE)' },
+                      { value: 'CHILD', label: 'Con cái (CHILD)' },
+                      { value: 'PARENT', label: 'Bố / Mẹ (PARENT)' },
+                      { value: 'TENANT', label: 'Khách thuê (TENANT)' },
+                      { value: 'MAID', label: 'Người giúp việc (MAID)' },
+                    ]}
+                    placeholder="Chọn quan hệ"
+                    overlay={true}
+                    searchable={false}
+                  />
                 </div>
               </div>
 
@@ -1210,14 +1229,17 @@ export const ResidentManagement: React.FC<ResidentManagementProps> = ({ embedded
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Trạng thái hoạt động
                   </label>
-                  <select
+                  <CustomSelect
                     value={formIsActive ? '1' : '0'}
-                    onChange={(e) => setFormIsActive(e.target.value === '1')}
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 bg-white"
-                  >
-                    <option value="1">Đang cư trú (Active)</option>
-                    <option value="0">Đã rời đi (Inactive)</option>
-                  </select>
+                    onChange={(val) => setFormIsActive(val === '1')}
+                    options={[
+                      { value: '1', label: 'Đang cư trú (Active)' },
+                      { value: '0', label: 'Đã rời đi (Inactive)' },
+                    ]}
+                    placeholder="Chọn trạng thái"
+                    overlay={true}
+                    searchable={false}
+                  />
                 </div>
               </div>
 

@@ -81,14 +81,26 @@ class WebPushService
         // 2. Kiểm tra cấu hình VAPID trong môi trường thực tế
         $vapid = $this->getVapidConfig();
         if (! $this->isVapidConfigured()) {
-            Log::info("WebPushService: VAPID keys chưa được cấu hình. Gửi push mô phỏng cho subscription {$subscription->id}.");
+            if (app()->environment('testing')) {
+                Log::info("WebPushService: [TESTING] VAPID keys chưa được cấu hình. Gửi push mô phỏng cho subscription {$subscription->id}.");
 
-            $subscription->update(['last_used_at' => Carbon::now()]);
+                $subscription->update(['last_used_at' => Carbon::now()]);
+
+                return [
+                    'success' => true,
+                    'status_code' => 200,
+                    'error' => null,
+                    'simulated' => true,
+                ];
+            }
+
+            Log::warning("WebPushService: VAPID keys chưa được cấu hình. Không thể gửi Web Push thực tế cho subscription {$subscription->id}.");
 
             return [
-                'success' => true,
-                'status_code' => 200,
-                'error' => null,
+                'success' => false,
+                'status_code' => 503,
+                'error' => 'Khóa VAPID chưa được cấu hình trên máy chủ.',
+                'simulated' => false,
             ];
         }
 
