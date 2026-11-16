@@ -7,7 +7,9 @@ use App\Models\MeterReading;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class InvoiceManagementService
 {
@@ -22,7 +24,6 @@ class InvoiceManagementService
             'apartment.block',
             'apartment.floor',
             'residentUser',
-            'items',
             'batch',
         ]);
 
@@ -63,7 +64,6 @@ class InvoiceManagementService
 
         // Phân loại số lượng theo trạng thái
         $counts = [
-            'DRAFT' => (clone $query)->where('status', 'DRAFT')->count(),
             'ISSUED' => (clone $query)->where('status', 'ISSUED')->where('due_date', '>=', $now)->count(),
             'PARTIAL' => (clone $query)->where('status', 'PARTIAL')->where('due_date', '>=', $now)->count(),
             'PAID' => (clone $query)->where('status', 'PAID')->count(),
@@ -301,9 +301,19 @@ class InvoiceManagementService
             try {
                 $this->cancelInvoice($id, $reason);
                 $cancelledCount++;
-            } catch (\Throwable $e) {
+            } catch (\DomainException $e) {
                 $failedCount++;
                 $errors[] = $e->getMessage();
+            } catch (ModelNotFoundException) {
+                $failedCount++;
+                $errors[] = 'Không tìm thấy hóa đơn.';
+            } catch (\Throwable $e) {
+                $failedCount++;
+                Log::error("Lỗi hệ thống khi hủy hóa đơn {$id}: ".$e->getMessage(), [
+                    'invoice_id' => $id,
+                    'exception' => $e,
+                ]);
+                $errors[] = 'Không thể hủy hóa đơn.';
             }
         }
 
