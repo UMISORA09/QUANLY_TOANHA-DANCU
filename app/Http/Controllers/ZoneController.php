@@ -24,10 +24,25 @@ class ZoneController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Block::query()
-                ->searchKeyword($request->input('search'))
-                ->filterStatus($request->input('status'))
-                ->orderBy('created_at', 'desc');
+            $query = Block::query();
+
+            if ($request->filled('search')) {
+                $search = trim((string) $request->input('search'));
+                $query->where(function ($q) use ($search) {
+                    $q->where('block_code', 'like', "%{$search}%")
+                        ->orWhere('block_name', 'like', "%{$search}%")
+                        ->orWhere('address_line', 'like', "%{$search}%");
+                });
+            }
+
+            if ($request->filled('status')) {
+                $status = strtoupper(trim((string) $request->input('status')));
+                if ($status !== 'ALL') {
+                    $query->where('status', $status);
+                }
+            }
+
+            $query->orderBy('created_at', 'desc');
 
             if ($request->has('per_page')) {
                 $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
@@ -47,9 +62,12 @@ class ZoneController extends Controller
                 'actual_floors_count' => (int) DB::table('floors')->whereNull('deleted_at')->count(),
             ];
 
+            $rawItems = $zones instanceof LengthAwarePaginator ? $zones->items() : $zones;
+            $formattedItems = collect($rawItems)->map(fn ($b) => $this->formatZone($b))->values()->all();
+
             return response()->json([
                 'success' => true,
-                'data' => $zones instanceof LengthAwarePaginator ? $zones->items() : $zones,
+                'data' => $formattedItems,
                 'pagination' => $zones instanceof LengthAwarePaginator ? [
                     'current_page' => $zones->currentPage(),
                     'last_page' => $zones->lastPage(),
@@ -101,7 +119,7 @@ class ZoneController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Thêm mới khối tòa nhà '{$block->block_name}' thành công.",
-                'data' => $block,
+                'data' => $this->formatZone($block),
             ], 201);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@store] Lỗi tạo khối nhà: '.$e->getMessage(), [
@@ -133,7 +151,7 @@ class ZoneController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $block,
+            'data' => $this->formatZone($block),
         ], 200);
     }
 
@@ -184,7 +202,7 @@ class ZoneController extends Controller
                     'success' => false,
                     'message' => 'Dữ liệu đã bị thay đổi bởi người khác trong lúc bạn đang thao tác. Vui lòng tải lại dữ liệu mới nhất trước khi lưu.',
                     'conflict' => true,
-                    'current_data' => $block->fresh(),
+                    'current_data' => $this->formatZone($block->fresh()),
                 ], 409);
             }
 
@@ -218,7 +236,7 @@ class ZoneController extends Controller
                     'success' => false,
                     'message' => 'Dữ liệu đã bị thay đổi bởi người khác trong lúc bạn đang thao tác. Vui lòng tải lại dữ liệu mới nhất trước khi lưu.',
                     'conflict' => true,
-                    'current_data' => Block::find($block->id),
+                    'current_data' => $this->formatZone(Block::find($block->id)),
                 ], 409);
             }
 
@@ -227,7 +245,7 @@ class ZoneController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Cập nhật khối tòa nhà '{$freshBlock->block_name}' thành công.",
-                'data' => $freshBlock,
+                'data' => $this->formatZone($freshBlock),
             ], 200);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@update] Lỗi cập nhật khối nhà: '.$e->getMessage(), [
@@ -276,5 +294,30 @@ class ZoneController extends Controller
                 'message' => 'Không thể xóa khối tòa nhà. Vui lòng kiểm tra lại ràng buộc dữ liệu liên quan.',
             ], 500);
         }
+    }
+
+    /**
+     * Danh sách công khai các khối tòa nhà (không cần đăng nhập).
+     */
+    public function publicIndex(Request $request): JsonResponse
+    {
+        return $this->index($request);
+    }
+
+    /**
+     * Định dạng dữ liệu khối tòa nhà tương thích cả Block và Zone alias.
+     */
+    protected function formatZone(Block $block): array
+    {
+        $data = $block->toArray();
+        $data['zone_code'] = $block->block_code;
+        $data['zone_name'] = $block->block_name;
+        $data['floor_count'] = (int) $block->total_floors;
+        $data['basement_count'] = (int) $block->total_basements;
+        $data['total_apartments'] = (int) $block->total_apartments;
+        $data['apartment_count'] = (int) $block->total_apartments;
+        $data['version'] = (int) $block->version;
+
+        return $data;
     }
 }

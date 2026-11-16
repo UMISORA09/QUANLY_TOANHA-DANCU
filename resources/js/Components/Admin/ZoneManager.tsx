@@ -15,7 +15,6 @@ import {
   Home,
   Clock,
   Filter,
-  ShieldAlert,
   Info,
   ChevronLeft,
   ChevronRight,
@@ -86,7 +85,7 @@ export const ZoneManager: React.FC = () => {
   const [deletingZone, setDeletingZone] = useState<ZoneItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  // Toast thông báo mượt mà
+  // Toast thông báo
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
 
   const showToast = (type: 'success' | 'error' | 'warning' | 'info', message: string) => {
@@ -263,14 +262,14 @@ export const ZoneManager: React.FC = () => {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-xl border text-sm font-medium transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${
+            className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${
               toast.type === 'success'
-                ? 'bg-emerald-500/90 border-emerald-400/50 text-white shadow-emerald-500/20'
+                ? 'bg-emerald-600 border-emerald-500 text-white'
                 : toast.type === 'error'
-                ? 'bg-rose-500/90 border-rose-400/50 text-white shadow-rose-500/20'
+                ? 'bg-rose-600 border-rose-500 text-white'
                 : toast.type === 'warning'
-                ? 'bg-amber-500/90 border-amber-400/50 text-white shadow-amber-500/20'
-                : 'bg-sky-500/90 border-sky-400/50 text-white shadow-sky-500/20'
+                ? 'bg-amber-600 border-amber-500 text-white'
+                : 'bg-sky-600 border-sky-500 text-white'
             }`}
           >
             {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 shrink-0" />}
@@ -289,10 +288,10 @@ export const ZoneManager: React.FC = () => {
             <Building2 className="w-4 h-4" />
             <span>BAN QUẢN LÝ TÒA NHÀ (MANAGER) · KHÔNG GIAN VẬN HÀNH</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white tracking-tight mt-1">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
             Quản Lý Khối Tòa Nhà & Phân Khu (Block/Zone)
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Phân hệ nghiệp vụ Ban Quản Lý: Kiểm soát danh mục khối nhà (Block A, Block B,...), số tầng và căn hộ vận hành.
           </p>
         </div>
@@ -303,7 +302,7 @@ export const ZoneManager: React.FC = () => {
             onClick={() => {
               window.location.href = '/quan-ly?tab=buildings';
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/70 hover:bg-white dark:bg-slate-800/70 dark:hover:bg-slate-800 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-800/60 text-xs font-bold shadow-xs hover:shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-sky-700 border border-sky-200 text-xs font-bold shadow-xs transition-all cursor-pointer"
             title="Chuyển sang xem toàn bộ danh mục Khối & Căn hộ"
           >
             <Building className="w-3.5 h-3.5" />
@@ -315,17 +314,17 @@ export const ZoneManager: React.FC = () => {
             type="button"
             onClick={() => fetchZones(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/40 hover:bg-white/70 dark:bg-slate-800/40 dark:hover:bg-slate-800/70 text-slate-700 dark:text-slate-200 border border-white/40 dark:border-slate-700/50 backdrop-blur-md text-xs font-semibold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50"
             title="Tải lại dữ liệu"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-600' : ''}`} />
             <span className="hidden sm:inline">Làm mới</span>
           </button>
 
           <button
             type="button"
             onClick={handleOpenCreate}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs sm:text-sm font-semibold shadow-xs hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Thêm Khối Nhà Mới</span>
@@ -333,18 +332,18 @@ export const ZoneManager: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= 4 THẺ STATS GLASSMORPHISM ================= */}
+      {/* ================= 5 THẺ STATS MOTIF CHUẨN ================= */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
         {/* Thẻ 1: Tổng khối tòa nhà */}
-        <div className="p-4 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl border border-white/60 dark:border-slate-700/50 shadow-lg shadow-slate-200/30 dark:shadow-none hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
+        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>Tổng khối tòa nhà</span>
-            <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+            <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
               <Building2 className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-neutral-900 dark:text-white font-mono">
+            <span className="text-2xl font-black text-slate-900 font-mono">
               {stats.total_zones}
             </span>
             <span className="text-xs text-slate-400">khối</span>
@@ -352,15 +351,15 @@ export const ZoneManager: React.FC = () => {
         </div>
 
         {/* Thẻ 2: Đang hoạt động */}
-        <div className="p-4 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl border border-white/60 dark:border-slate-700/50 shadow-lg shadow-slate-200/30 dark:shadow-none hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
+        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>Đang hoạt động</span>
-            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+            <span className="text-2xl font-black text-emerald-600 font-mono">
               {stats.active_zones}
             </span>
             <span className="text-xs text-slate-400">khối</span>
@@ -368,15 +367,15 @@ export const ZoneManager: React.FC = () => {
         </div>
 
         {/* Thẻ 3: Đang bảo trì */}
-        <div className="p-4 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl border border-white/60 dark:border-slate-700/50 shadow-lg shadow-slate-200/30 dark:shadow-none hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
+        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>Đang bảo trì</span>
-            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
+            <span className="text-2xl font-black text-amber-600 font-mono">
               {stats.maintenance_zones}
             </span>
             <span className="text-xs text-slate-400">khối</span>
@@ -384,15 +383,15 @@ export const ZoneManager: React.FC = () => {
         </div>
 
         {/* Thẻ 4: Tổng số tầng */}
-        <div className="p-4 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl border border-white/60 dark:border-slate-700/50 shadow-lg shadow-slate-200/30 dark:shadow-none hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
+        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>Tổng số tầng</span>
-            <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+            <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
               <Layers className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+            <span className="text-2xl font-black text-sky-600 font-mono">
               {stats.total_floors}
             </span>
             <span className="text-xs text-slate-400">tầng nổi</span>
@@ -400,15 +399,15 @@ export const ZoneManager: React.FC = () => {
         </div>
 
         {/* Thẻ 5: Tổng số căn hộ */}
-        <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl border border-white/60 dark:border-slate-700/50 shadow-lg shadow-slate-200/30 dark:shadow-none hover:-translate-y-0.5 transition-all">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
+        <div className="col-span-2 lg:col-span-1 p-4 rounded-xl bg-white border border-slate-200 shadow-xs hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>Tổng căn hộ</span>
-            <div className="p-1.5 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400">
+            <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
               <Home className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-violet-600 dark:text-violet-400 font-mono">
+            <span className="text-2xl font-black text-slate-900 font-mono">
               {stats.total_apartments}
             </span>
             <span className="text-xs text-slate-400">căn</span>
@@ -417,7 +416,7 @@ export const ZoneManager: React.FC = () => {
       </div>
 
       {/* ================= THANH TÌM KIẾM & BỘ LỌC ================= */}
-      <div className="p-4 rounded-2xl bg-white/30 dark:bg-slate-800/30 backdrop-blur-md border border-white/40 dark:border-slate-700/40 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Input Tìm Kiếm */}
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -425,8 +424,8 @@ export const ZoneManager: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm theo mã (BK-A) hoặc tên..."
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-white/60 dark:bg-slate-900/60 border border-white/60 dark:border-slate-700/60 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+            placeholder="Tìm theo mã (BLOCK_A) hoặc tên..."
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
           />
         </div>
 
@@ -436,7 +435,7 @@ export const ZoneManager: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full sm:w-auto px-3 py-2 text-xs rounded-xl bg-white/60 dark:bg-slate-900/60 border border-white/60 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+            className="w-full sm:w-auto px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 text-slate-700 focus:outline-none focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 cursor-pointer"
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="ACTIVE">Đang hoạt động</option>
@@ -446,12 +445,12 @@ export const ZoneManager: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= BẢNG DANH SÁCH GLASSMORPHISM ================= */}
-      <div className="relative overflow-hidden rounded-3xl bg-white/30 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-slate-700/40 shadow-xl">
+      {/* ================= BẢNG DANH SÁCH MOTIF CHUẨN ================= */}
+      <div className="relative overflow-hidden rounded-xl bg-white border border-slate-200 shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-white/40 dark:border-slate-700/50 bg-white/40 dark:bg-slate-800/40 text-[11px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase font-bold text-slate-500 tracking-wider">
                 <th className="py-3.5 px-4">Mã Khối</th>
                 <th className="py-3.5 px-4">Tên Khối Tòa Nhà</th>
                 <th className="py-3.5 px-4 text-center">Số Tầng</th>
@@ -463,12 +462,12 @@ export const ZoneManager: React.FC = () => {
                 <th className="py-3.5 px-4 text-right">Thao Tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/20 dark:divide-slate-800/60 text-xs">
+            <tbody className="divide-y divide-slate-200 text-xs">
               {isLoading ? (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-3">
-                      <RefreshCw className="w-6 h-6 animate-spin text-sky-500" />
+                      <RefreshCw className="w-6 h-6 animate-spin text-sky-600" />
                       <span>Đang tải danh sách khối tòa nhà...</span>
                     </div>
                   </td>
@@ -477,8 +476,8 @@ export const ZoneManager: React.FC = () => {
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <Building className="w-10 h-10 text-slate-300 dark:text-slate-600" />
-                      <span className="font-medium text-slate-600 dark:text-slate-300">
+                      <Building className="w-10 h-10 text-slate-300" />
+                      <span className="font-medium text-slate-600">
                         Chưa có khối tòa nhà nào
                       </span>
                       <p className="text-xs text-slate-400">
@@ -491,18 +490,18 @@ export const ZoneManager: React.FC = () => {
                 zones.map((zone) => (
                   <tr
                     key={zone.id}
-                    className="hover:bg-white/40 dark:hover:bg-slate-800/40 transition-colors group"
+                    className="hover:bg-slate-50/80 transition-colors group"
                   >
                     {/* Mã khối */}
-                    <td className="py-3.5 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">
-                      <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/20">
+                    <td className="py-3.5 px-4 font-mono font-bold text-sky-600">
+                      <span className="px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200">
                         {zone.zone_code}
                       </span>
                     </td>
 
                     {/* Tên khối */}
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-neutral-900 dark:text-white">
+                      <div className="font-semibold text-slate-900">
                         {zone.zone_name}
                       </div>
                       {zone.description && (
@@ -513,24 +512,24 @@ export const ZoneManager: React.FC = () => {
                     </td>
 
                     {/* Số tầng */}
-                    <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-700 dark:text-slate-200">
+                    <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
                       {zone.floor_count}
                     </td>
 
                     {/* Số tầng hầm */}
-                    <td className="py-3.5 px-4 text-center font-mono text-slate-600 dark:text-slate-300">
+                    <td className="py-3.5 px-4 text-center font-mono text-slate-600">
                       {zone.basement_count}
                     </td>
 
                     {/* Tổng số căn hộ */}
-                    <td className="py-3.5 px-4 text-center font-mono font-bold text-neutral-900 dark:text-white">
+                    <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-900">
                       {zone.total_apartments}
                     </td>
 
                     {/* Hotline & Địa chỉ */}
-                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                    <td className="py-3.5 px-4 text-slate-600">
                       {zone.hotline_phone && (
-                        <div className="flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400">
+                        <div className="flex items-center gap-1.5 text-xs text-sky-600 font-mono">
                           <Phone className="w-3 h-3" />
                           <span>{zone.hotline_phone}</span>
                         </div>
@@ -550,10 +549,10 @@ export const ZoneManager: React.FC = () => {
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
                               isActive
-                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 : isMaintenance
-                                ? 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400'
-                                : 'bg-slate-500/10 text-slate-600 border-slate-500/20 dark:text-slate-400'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
                             }`}
                           >
                             <span
@@ -589,7 +588,7 @@ export const ZoneManager: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleOpenEdit(zone)}
-                          className="p-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 hover:bg-sky-50 dark:hover:bg-sky-950/40 text-slate-600 hover:text-sky-600 dark:text-slate-300 dark:hover:text-sky-400 border border-white/60 dark:border-slate-700/60 shadow-xs transition-all cursor-pointer"
+                          className="p-1.5 rounded-lg bg-white hover:bg-sky-50 text-slate-600 hover:text-sky-600 border border-slate-200 shadow-xs transition-all cursor-pointer"
                           title="Sửa thông tin"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -597,7 +596,7 @@ export const ZoneManager: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setDeletingZone(zone)}
-                          className="p-1.5 rounded-lg bg-white/60 dark:bg-slate-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 border border-white/60 dark:border-slate-700/60 shadow-xs transition-all cursor-pointer"
+                          className="p-1.5 rounded-lg bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 shadow-xs transition-all cursor-pointer"
                           title="Xóa khối nhà"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -613,8 +612,8 @@ export const ZoneManager: React.FC = () => {
 
         {/* Nút chuyển trang (Pagination Controls cho Khối Tòa Nhà) */}
         {totalZones > 0 && (
-          <div className="p-4 border-t border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-            <div className="text-slate-500 dark:text-slate-400 font-medium">
+          <div className="p-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="text-slate-500 font-medium">
               Hiển thị <strong>{zones.length}</strong> trên tổng <strong>{totalZones}</strong> khối tòa nhà (Trang {currentPage}/{totalPages})
             </div>
 
@@ -624,7 +623,7 @@ export const ZoneManager: React.FC = () => {
                   type="button"
                   onClick={() => fetchZones(false, currentPage - 1)}
                   disabled={currentPage <= 1}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                   <span>Trang trước</span>
@@ -639,7 +638,7 @@ export const ZoneManager: React.FC = () => {
                       className={`min-w-[30px] h-7 rounded-lg text-xs font-bold transition-all ${
                         p === currentPage
                           ? 'bg-sky-600 text-white shadow-xs'
-                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                          : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
                       }`}
                     >
                       {p}
@@ -651,7 +650,7 @@ export const ZoneManager: React.FC = () => {
                   type="button"
                   onClick={() => fetchZones(false, currentPage + 1)}
                   disabled={currentPage >= totalPages}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
                 >
                   <span>Trang sau</span>
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -676,25 +675,25 @@ export const ZoneManager: React.FC = () => {
         />
       )}
 
-      {/* ================= MODAL XÁC NHẬN XÓA (GLASSMORPHISM) ================= */}
+      {/* ================= MODAL XÁC NHẬN XÓA ================= */}
       {deletingZone && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/40 dark:border-slate-700/50 shadow-2xl p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-xl p-6 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+              <div className="w-12 h-12 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-neutral-900 dark:text-white">
+                <h3 className="text-base font-bold text-slate-900">
                   Xác nhận xóa Khối Tòa Nhà
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500">
                   Hành động này không thể hoàn tác nếu khối tòa nhà đã có căn hộ.
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/50 dark:border-rose-900/50 text-xs text-rose-800 dark:text-rose-300">
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
               Bạn có chắc chắn muốn xóa khối <strong>{deletingZone.zone_name}</strong> (Mã:{' '}
               <span className="font-mono font-bold">{deletingZone.zone_code}</span>)?
             </div>
@@ -704,7 +703,7 @@ export const ZoneManager: React.FC = () => {
                 type="button"
                 onClick={() => setDeletingZone(null)}
                 disabled={isDeleting}
-                className="px-4 py-2 rounded-xl bg-white/60 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 border border-slate-300 transition-all cursor-pointer"
               >
                 Hủy bỏ
               </button>
@@ -712,7 +711,7 @@ export const ZoneManager: React.FC = () => {
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white shadow-lg shadow-rose-600/25 transition-all cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
                 {isDeleting ? (
                   <>

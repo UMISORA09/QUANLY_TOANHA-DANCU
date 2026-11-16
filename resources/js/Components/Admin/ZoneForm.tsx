@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   X,
   Building,
-  Layers,
   AlertTriangle,
   RefreshCw,
   CheckCircle2,
   Phone,
   MapPin,
-  FileText,
   ShieldAlert,
 } from 'lucide-react';
 
@@ -267,27 +265,27 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-      {/* Lớp nền mờ tối ưu hiệu ứng Glassmorphism */}
+      {/* Lớp nền tối mờ đồng bộ */}
       <div
-        className="fixed inset-0 bg-slate-950/70 backdrop-blur-md transition-opacity duration-300"
+        className="fixed inset-0 bg-slate-900/60 transition-opacity duration-300"
         onClick={onClose}
       />
 
-      {/* Khung Modal phong cách Glassmorphism */}
-      <div className="relative w-full max-w-2xl bg-white/10 dark:bg-slate-900/80 backdrop-blur-2xl border border-white/20 dark:border-white/10 shadow-2xl rounded-3xl overflow-hidden z-10 my-8 transition-all duration-300 transform scale-100">
+      {/* Khung Modal chuẩn motif Slate / Sky */}
+      <div className="relative w-full max-w-2xl bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-10 my-8 transition-all duration-300">
         {/* Header Modal */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10 bg-white/5">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/25">
+            <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-sm">
               <Building className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
                 {isEditMode ? `Chỉnh Sửa: ${initialData?.zone_name}` : 'Thêm Khối Tòa Nhà Mới'}
               </h2>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 {isEditMode
-                  ? `Mã hệ thống: ${initialData?.zone_code} • Kiểm soát xung đột tự động`
+                  ? `Mã hệ thống: ${initialData?.zone_code} • Kiểm soát xung đột phiên bản`
                   : 'Khai báo thông số quy hoạch khối tòa nhà trong khu chung cư'}
               </p>
             </div>
@@ -295,7 +293,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -305,19 +303,19 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
         <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
           {/* CẢNH BÁO OPTIMISTIC LOCKING: HTTP 409 CONFLICT */}
           {conflictMessage && (
-            <div className="p-4 rounded-2xl bg-amber-500/20 border border-amber-500/40 backdrop-blur-md text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-shake">
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-sm font-bold text-amber-300">Cảnh báo xung đột dữ liệu (HTTP 409)</h4>
-                  <p className="text-xs text-amber-200/90 mt-0.5">{conflictMessage}</p>
+                  <h4 className="text-sm font-bold text-amber-900">Cảnh báo xung đột dữ liệu (HTTP 409)</h4>
+                  <p className="text-xs text-amber-800 mt-0.5">{conflictMessage}</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleReloadLatestData}
                 disabled={isReloading}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-all shadow-md shadow-amber-500/20 flex-shrink-0"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-xs shrink-0"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isReloading ? 'animate-spin' : ''}`} />
                 {isReloading ? 'Đang nạp...' : 'Tải lại dữ liệu mới'}
@@ -327,8 +325,8 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
           {/* Lỗi chung nếu có */}
           {fieldErrors.global && (
-            <div className="p-3.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-medium flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-rose-400" />
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
               {fieldErrors.global}
             </div>
           )}
@@ -336,8 +334,8 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Trường 1: Mã Khối Nhà (zone_code) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
-                Mã Khối / Block Code <span className="text-rose-400">*</span>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                Mã Khối / Block Code <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
@@ -345,15 +343,15 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
                 value={formData.zone_code}
                 onChange={handleChange}
                 placeholder="VD: BLOCK_A, TOWER_1..."
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-white/5 border ${
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-white border ${
                   fieldErrors.zone_code
-                    ? 'border-rose-500/80 focus:ring-rose-500/30'
-                    : 'border-white/10 focus:border-sky-400/80 focus:ring-sky-400/20'
-                } text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-4 backdrop-blur-md transition-all uppercase`}
+                    ? 'border-rose-300 focus:ring-rose-500/20 focus:border-rose-500'
+                    : 'border-slate-300 focus:border-sky-500 focus:ring-sky-500/20'
+                } text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 transition-all font-mono uppercase`}
               />
               {/* Lỗi HTTP 422 cho zone_code */}
               {fieldErrors.zone_code && (
-                <p className="text-[11px] font-medium text-rose-400 mt-1 flex items-center gap-1">
+                <p className="text-[11px] font-medium text-rose-600 mt-1 flex items-center gap-1">
                   <span>•</span> {fieldErrors.zone_code}
                 </p>
               )}
@@ -361,8 +359,8 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
             {/* Trường 2: Tên Khối Nhà (zone_name) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
-                Tên Khối Nhà <span className="text-rose-400">*</span>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                Tên Khối Nhà <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
@@ -370,15 +368,15 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
                 value={formData.zone_name}
                 onChange={handleChange}
                 placeholder="VD: Tòa Nhà A - Ruby Tower"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-white/5 border ${
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-white border ${
                   fieldErrors.zone_name
-                    ? 'border-rose-500/80 focus:ring-rose-500/30'
-                    : 'border-white/10 focus:border-sky-400/80 focus:ring-sky-400/20'
-                } text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-4 backdrop-blur-md transition-all`}
+                    ? 'border-rose-300 focus:ring-rose-500/20 focus:border-rose-500'
+                    : 'border-slate-300 focus:border-sky-500 focus:ring-sky-500/20'
+                } text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 transition-all`}
               />
               {/* Lỗi HTTP 422 cho zone_name */}
               {fieldErrors.zone_name && (
-                <p className="text-[11px] font-medium text-rose-400 mt-1 flex items-center gap-1">
+                <p className="text-[11px] font-medium text-rose-600 mt-1 flex items-center gap-1">
                   <span>•</span> {fieldErrors.zone_name}
                 </p>
               )}
@@ -386,8 +384,8 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
             {/* Trường 3: Số Tầng Nổi (floor_count - bắt buộc > 0) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
-                Số Tầng Nổi (floor_count &gt; 0) <span className="text-rose-400">*</span>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                Số Tầng Nổi (floor_count &gt; 0) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
@@ -395,15 +393,15 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
                 min="1"
                 value={formData.floor_count}
                 onChange={handleChange}
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-white/5 border ${
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-white border ${
                   fieldErrors.floor_count
-                    ? 'border-rose-500/80 focus:ring-rose-500/30'
-                    : 'border-white/10 focus:border-sky-400/80 focus:ring-sky-400/20'
-                } text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-4 backdrop-blur-md transition-all`}
+                    ? 'border-rose-300 focus:ring-rose-500/20 focus:border-rose-500'
+                    : 'border-slate-300 focus:border-sky-500 focus:ring-sky-500/20'
+                } text-slate-900 placeholder-slate-400 text-sm font-mono focus:outline-none focus:ring-2 transition-all`}
               />
               {/* Lỗi HTTP 422 cho floor_count */}
               {fieldErrors.floor_count && (
-                <p className="text-[11px] font-medium text-rose-400 mt-1 flex items-center gap-1">
+                <p className="text-[11px] font-medium text-rose-600 mt-1 flex items-center gap-1">
                   <span>•</span> {fieldErrors.floor_count}
                 </p>
               )}
@@ -411,7 +409,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
             {/* Trường 4: Số Tầng Hầm (basement_count) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Số Tầng Hầm (basement_count)
               </label>
               <input
@@ -420,13 +418,13 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
                 min="0"
                 value={formData.basement_count}
                 onChange={handleChange}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-sky-400/80 focus:ring-4 focus:ring-sky-400/20 backdrop-blur-md transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm font-mono focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all"
               />
             </div>
 
             {/* Trường 5: Tổng số căn hộ (total_apartments) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Tổng Số Căn Hộ Dự Kiến
               </label>
               <input
@@ -435,20 +433,20 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
                 min="0"
                 value={formData.total_apartments}
                 onChange={handleChange}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-sky-400/80 focus:ring-4 focus:ring-sky-400/20 backdrop-blur-md transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm font-mono focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all"
               />
             </div>
 
             {/* Trường 6: Trạng thái (status) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Trạng Thái Hoạt Động
               </label>
               <select
                 name="status"
                 value={formData.status}
                 onChange={handleChange}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-white/10 text-white text-sm focus:outline-none focus:border-sky-400/80 focus:ring-4 focus:ring-sky-400/20 backdrop-blur-md transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all"
               >
                 <option value="ACTIVE">🟢 Đang Hoạt Động (ACTIVE)</option>
                 <option value="MAINTENANCE">🟡 Đang Bảo Trì (MAINTENANCE)</option>
@@ -458,7 +456,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
             {/* Trường 7: Hotline Liên Hệ (hotline_phone) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Hotline Khối Tòa Nhà
               </label>
               <div className="relative">
@@ -468,7 +466,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
                   value={formData.hotline_phone}
                   onChange={handleChange}
                   placeholder="VD: 1900-1122-01"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-400 text-sm focus:outline-none focus:border-sky-400/80 focus:ring-4 focus:ring-sky-400/20 backdrop-blur-md transition-all"
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 placeholder-slate-400 text-sm font-mono focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all"
                 />
                 <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               </div>
@@ -476,7 +474,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
             {/* Trường 8: Vị Trí / Địa Chỉ (address_line) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Vị Trí / Địa Chỉ Trong Dự Án
               </label>
               <div className="relative">
@@ -486,7 +484,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
                   value={formData.address_line}
                   onChange={handleChange}
                   placeholder="VD: Mặt đường chính, view công viên..."
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-400 text-sm focus:outline-none focus:border-sky-400/80 focus:ring-4 focus:ring-sky-400/20 backdrop-blur-md transition-all"
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all"
                 />
                 <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               </div>
@@ -495,7 +493,7 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
 
           {/* Trường 9: Mô tả / Ghi chú kỹ thuật (description) */}
           <div>
-            <label className="block text-xs font-semibold text-slate-200 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               Mô Tả Chi Tiết / Tiện Ích Khối Đế
             </label>
             <textarea
@@ -504,24 +502,24 @@ export const ZoneForm: React.FC<ZoneFormProps> = ({
               value={formData.description}
               onChange={handleChange}
               placeholder="Thông tin đặc điểm kiến trúc, tiện ích sảnh, thang máy..."
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-400 text-sm focus:outline-none focus:border-sky-400/80 focus:ring-4 focus:ring-sky-400/20 backdrop-blur-md transition-all resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all resize-none"
             />
           </div>
 
           {/* Nút thao tác dưới Form */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/10 border border-white/10 transition-colors"
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-300 transition-colors"
             >
               Hủy Bỏ
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 shadow-lg shadow-sky-500/25 transition-all transform active:scale-95 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-sm transition-all transform active:scale-95 disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>

@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             ! app()->environment('production') &&
             filter_var(env('SEED_DEMO_DATA', true), FILTER_VALIDATE_BOOLEAN)
         ) {
+            $this->call(ZoneSeeder::class);
             $this->call(SharedDemoDataSeeder::class);
             $this->call(TicketDiscussionSeeder::class);
             $this->call(AnnouncementSeeder::class);

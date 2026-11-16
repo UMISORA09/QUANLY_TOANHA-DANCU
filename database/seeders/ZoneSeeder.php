@@ -79,7 +79,7 @@ class ZoneSeeder extends Seeder
                 Block::create(array_merge($zoneData, [
                     'id' => (string) Str::uuid(),
                     'ai_features_enabled' => true,
-                    'metadata' => ['seeded_by' => 'ZoneSeeder'],
+                    'metadata' => json_encode(['seeded_by' => 'ZoneSeeder']),
                     'version' => 1,
                 ]));
             } else {
