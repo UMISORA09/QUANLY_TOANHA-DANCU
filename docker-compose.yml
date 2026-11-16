@@ -27,7 +27,7 @@ services:
       - CACHE_STORE=file
       - PHP_CLI_SERVER_WORKERS=8
       - QUEUE_CONNECTION=sync
-      - SEARCH_DRIVER=${SEARCH_DRIVER:-smart}
+      - SEARCH_DRIVER=${SEARCH_DRIVER:-elasticsearch}
       - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
       - REDIS_CLIENT=phpredis
       - REDIS_HOST=redis
@@ -46,6 +46,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     networks:
       - cassavas_network
@@ -73,7 +75,7 @@ services:
       - DB_DATABASE=quanly_toanha
       - DB_USERNAME=root
       - DB_PASSWORD=123567
-      - SEARCH_DRIVER=${SEARCH_DRIVER:-smart}
+      - SEARCH_DRIVER=${SEARCH_DRIVER:-elasticsearch}
       - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
       - CACHE_STORE=redis
       - REDIS_CLIENT=phpredis
@@ -87,6 +89,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     networks:
       - cassavas_network
@@ -147,9 +151,12 @@ services:
     networks:
       - cassavas_network
 
+  # Khoi dong cung ca nhom bang docker compose up -d, khong can --profile search.
+  # Trinh duyet/host: http://localhost:9200; trong container: http://elasticsearch:9200.
+  # Chi dung local: tat xac thuc va chi mo cong 9200 tren loopback.
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.5.6
-    profiles: ["search"]
+    restart: unless-stopped
     ports:
       - "127.0.0.1:9200:9200"
     environment:
@@ -159,7 +166,7 @@ services:
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health"]
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s'"]
       interval: 10s
       timeout: 5s
       retries: 15
