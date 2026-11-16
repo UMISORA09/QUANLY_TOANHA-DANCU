@@ -9,7 +9,7 @@ export interface PricingTier {
 }
 
 export type BillingType = 'TIERED_USAGE' | 'FIXED_MONTHLY' | 'UNIT_PRICE_USAGE';
-export type MeterType = 'ELECTRICITY' | 'COLD_WATER' | 'HOT_WATER' | 'GAS' | null;
+export type MeterType = 'ELECTRICITY' | 'WATER' | 'COLD_WATER' | 'HOT_WATER' | 'GAS' | null;
 
 export interface ServicePricingConfig {
     id: string;
@@ -117,17 +117,19 @@ class ServicePricingApiService {
         return data;
     }
 
-    async getPricingConfigs(params?: { search?: string; billing_type?: string; meter_type?: string; is_active?: boolean }): Promise<{ success: boolean; data: ServicePricingConfig[]; total: number }> {
+    async getPricingConfigs(params?: { search?: string; billing_type?: string; meter_type?: string; is_active?: boolean; page?: number; per_page?: number }): Promise<{ success: boolean; data: ServicePricingConfig[]; meta?: any; total: number }> {
         const query = new URLSearchParams();
         if (params?.search) query.append('search', params.search);
         if (params?.billing_type && params.billing_type !== 'ALL') query.append('billing_type', params.billing_type);
         if (params?.meter_type && params.meter_type !== 'ALL') query.append('meter_type', params.meter_type);
         if (params?.is_active !== undefined) query.append('is_active', String(params.is_active));
+        if (params?.page) query.append('page', String(params.page));
+        if (params?.per_page) query.append('per_page', String(params.per_page));
 
         const queryString = query.toString();
         const endpoint = queryString ? `?${queryString}` : '';
 
-        return this.request<{ success: boolean; data: ServicePricingConfig[]; total: number }>(endpoint, {
+        return this.request<{ success: boolean; data: ServicePricingConfig[]; meta?: any; total: number }>(endpoint, {
             method: 'GET',
         });
     }

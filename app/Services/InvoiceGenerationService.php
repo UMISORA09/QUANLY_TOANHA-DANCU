@@ -38,7 +38,7 @@ class InvoiceGenerationService
 
         $apartments = $this->getTargetApartments($blockId);
 
-        $pricingConfigs = $this->loadPricingConfigs();
+        $pricingConfigs = $this->loadPricingConfigs($billingPeriod);
 
         $previewItems = [];
         $totalEstimatedSubtotal = 0.0;
@@ -149,7 +149,7 @@ class InvoiceGenerationService
         $customNotes = $params['notes'] ?? null;
 
         $apartments = $this->getTargetApartments($blockId);
-        $pricingConfigs = $this->loadPricingConfigs();
+        $pricingConfigs = $this->loadPricingConfigs($billingPeriod);
 
         $batchNumber = 'INV-BATCH-'.str_replace('-', '', $billingPeriod).'-'.($blockId ? Str::upper(substr($blockId, 0, 8)) : 'ALL').'-'.Str::upper(Str::random(4));
 
@@ -393,23 +393,37 @@ class InvoiceGenerationService
      *
      * @return array<string, ?ServicePricingConfig>
      */
-    private function loadPricingConfigs(): array
+    private function loadPricingConfigs(?string $billingPeriod = null): array
     {
+        $targetDate = $billingPeriod ? Carbon::parse($billingPeriod.'-01')->endOfMonth()->toDateString() : now()->toDateString();
+
         return [
             'ELECTRICITY' => ServicePricingConfig::with('tiers')
                 ->where('meter_type', 'ELECTRICITY')
                 ->where('is_active', true)
+                ->where(function ($query) use ($targetDate) {
+                    $query->whereNull('effective_to_date')
+                        ->orWhere('effective_to_date', '>=', $targetDate);
+                })
                 ->latest('effective_from_date')
                 ->first(),
 
             'WATER' => ServicePricingConfig::with('tiers')
-                ->where('meter_type', 'WATER')
+                ->whereIn('meter_type', ['WATER', 'COLD_WATER'])
                 ->where('is_active', true)
+                ->where(function ($query) use ($targetDate) {
+                    $query->whereNull('effective_to_date')
+                        ->orWhere('effective_to_date', '>=', $targetDate);
+                })
                 ->latest('effective_from_date')
                 ->first(),
 
             'MANAGEMENT_FEE' => ServicePricingConfig::where('service_code', 'MANAGEMENT_FEE')
                 ->where('is_active', true)
+                ->where(function ($query) use ($targetDate) {
+                    $query->whereNull('effective_to_date')
+                        ->orWhere('effective_to_date', '>=', $targetDate);
+                })
                 ->latest('effective_from_date')
                 ->first(),
         ];
@@ -475,7 +489,7 @@ class InvoiceGenerationService
         // 2. Tiền Nước
         $waterReading = MeterReading::where('apartment_id', $apartment->id)
             ->where('billing_cycle', $billingPeriod)
-            ->whereHas('meter', fn ($q) => $q->where('meter_type', 'WATER'))
+            ->whereHas('meter', fn ($q) => $q->whereIn('meter_type', ['WATER', 'COLD_WATER']))
             ->latest('created_at')
             ->first();
 
