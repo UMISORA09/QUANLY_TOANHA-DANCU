@@ -48,6 +48,19 @@ class ReceptionVisitorCheckinTest extends TestCase
 
         // 4. Tạo căn hộ mẫu
         $this->apartment = $this->getOrCreateApartment('APT-REC-'.Str::random(4));
+
+        // 5. Gán cư dân vào căn hộ mẫu để đảm bảo quan hệ căn hộ hợp lệ cho Module 6 & 7
+        DB::table('residents')->insert([
+            'id' => (string) Str::uuid(),
+            'user_id' => $this->resident->id,
+            'apartment_id' => $this->apartment->id,
+            'resident_type' => 'OWNER',
+            'is_head_of_household' => 1,
+            'stay_start_date' => now()->subMonths(3)->toDateString(),
+            'is_active' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     protected function getOrCreateApartment(string $code): Apartment
@@ -57,7 +70,7 @@ class ReceptionVisitorCheckinTest extends TestCase
             $blockId = (string) Str::uuid();
             DB::table('blocks')->insert([
                 'id' => $blockId,
-                'block_code' => 'BLK_REC_'.Str::random(4),
+                'block_code' => 'BLK_REC_'.Str::random(6),
                 'block_name' => 'Tòa Tháp Recept',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -76,15 +89,19 @@ class ReceptionVisitorCheckinTest extends TestCase
             ]);
         }
 
-        return Apartment::create([
-            'apartment_number' => $code,
-            'block_id' => $blockId,
-            'floor_id' => $floorId,
-            'status' => 'OCCUPIED',
-            'room_type' => '2BR',
-            'gross_floor_area_sqm' => 85.0,
-            'net_usable_area_sqm' => 80.0,
-        ]);
+        return Apartment::firstOrCreate(
+            [
+                'apartment_number' => $code,
+                'block_id' => $blockId,
+            ],
+            [
+                'floor_id' => $floorId,
+                'status' => 'OCCUPIED',
+                'room_type' => '2BR',
+                'gross_floor_area_sqm' => 85.0,
+                'net_usable_area_sqm' => 80.0,
+            ]
+        );
     }
 
     protected function createStaffUser(string $roleCode): array
@@ -180,10 +197,10 @@ class ReceptionVisitorCheckinTest extends TestCase
 
     protected function createVisitorRegistration(array $overrides = []): VisitorRegistration
     {
-        $code = strtoupper(Str::random(8));
+        $code = strtoupper(Str::random(12));
 
         return VisitorRegistration::create(array_merge([
-            'registration_code' => 'VR-2026-'.rand(10000, 99999),
+            'registration_code' => 'VR-2026-'.strtoupper(Str::random(10)),
             'host_resident_user_id' => $this->resident->id,
             'apartment_id' => $this->apartment->id,
             'visitor_name' => 'Khách Test '.Str::random(4),

@@ -538,9 +538,20 @@ class ResidentCreateTest extends TestCase
         echo 'Response body: '.json_encode($body, JSON_UNESCAPED_UNICODE).PHP_EOL;
         echo '============================================================'.PHP_EOL;
 
-        // Kiểm tra xem database constraint uq_resident_apt có chặn duplicate không
-        // Nếu MySQL chặn: response sẽ là 500 do QueryException Duplicate Entry (hoặc 409/422 nếu có catch)
-        $this->assertTrue(in_array($status, [409, 422, 500], true), "Actual HTTP status: {$status}");
+        // Sau khi sửa BUG-M2-02, nhân khẩu đã soft-delete được khôi phục thành công với HTTP 201 Created
+        $this->assertSame(201, $status, 'Sau khi sửa BUG-M2-02, phải trả về 201 và khôi phục nhân khẩu.');
+        $response->assertJson([
+            'success' => true,
+            'message' => 'Thêm cư dân vào căn hộ thành công.',
+        ]);
+
+        // Xác nhận bản ghi cũ được khôi phục, deleted_at = null
+        $refreshedResident = Resident::find($resident->id);
+        $this->assertNotNull($refreshedResident, 'Bản ghi cũ phải được khôi phục và tìm thấy qua find()');
+        $this->assertNull($refreshedResident->deleted_at, 'Trường deleted_at phải được set về null');
+
+        // Xác nhận ID bản ghi không thay đổi và tổng số bản ghi vẫn bằng 1
+        $this->assertEquals($resident->id, $response->json('data.id'), 'ID bản ghi trả về phải trùng với ID bản ghi cũ');
 
         // Tổng số record (bao gồm trashed) không được vượt quá 1 nếu unique constraint chặn, hoặc báo cáo chính xác
         $totalRecordsIncludingTrashed = Resident::withTrashed()

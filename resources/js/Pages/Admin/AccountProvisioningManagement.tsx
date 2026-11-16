@@ -398,7 +398,7 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
       'Họ và tên,Email,Số điện thoại,Số CCCD,Giới tính,Vai trò\n' +
       'Nguyễn Văn A,nguyenvana@example.com,0912345678,079123456789,MALE,RECEPTIONIST\n' +
       'Trần Thị B,tranthib@example.com,0987654321,079987654321,FEMALE,TECHNICIAN\n' +
-      'Lê Quốc C,lequocc@example.com,0934567890,079345678901,MALE,SECURITY\n';
+      'Lê Quốc C,lequocc@example.com,0934567890,079345678901,MALE,SECURITY_GUARD\n';
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -838,7 +838,7 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                     { value: 'RECEPTIONIST', label: 'Nhân Viên Lễ Tân' },
                     { value: 'TECHNICIAN', label: 'Nhân Viên Kỹ Thuật' },
                     { value: 'ACCOUNTANT', label: 'Nhân Viên Kế Toán' },
-                    { value: 'SECURITY', label: 'Nhân Viên An Ninh' },
+                    { value: 'SECURITY_GUARD', label: 'Nhân Viên An Ninh' },
                     { value: 'BUILDING_MANAGER', label: 'Ban Quản Lý Tòa Nhà' },
                     { value: 'RESIDENT_OWNER', label: 'Cư Dân / Chủ Hộ' },
                   ]}
@@ -1300,7 +1300,7 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                     { value: 'RECEPTIONIST', label: 'Nhân Viên Lễ Tân' },
                     { value: 'TECHNICIAN', label: 'Nhân Viên Kỹ Thuật' },
                     { value: 'ACCOUNTANT', label: 'Nhân Viên Kế Toán' },
-                    { value: 'SECURITY', label: 'Nhân Viên An Ninh' },
+                    { value: 'SECURITY_GUARD', label: 'Nhân Viên An Ninh' },
                     { value: 'BUILDING_MANAGER', label: 'Ban Quản Lý Tòa Nhà' },
                     { value: 'RESIDENT_OWNER', label: 'Cư Dân / Chủ Hộ' },
                   ]}

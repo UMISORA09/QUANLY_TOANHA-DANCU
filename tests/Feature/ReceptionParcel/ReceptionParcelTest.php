@@ -44,6 +44,14 @@ class ReceptionParcelTest extends TestCase
         $this->resident = $this->createResidentUser($this->apartment);
     }
 
+    public function actingAs($user, $driver = null)
+    {
+        $token = $this->issueTestBearerToken($user);
+        $this->withHeader('Authorization', 'Bearer '.$token);
+
+        return parent::actingAs($user, $driver);
+    }
+
     protected function getOrCreateApartment(string $code): Apartment
     {
         $blockId = DB::table('blocks')->value('id');
@@ -518,7 +526,8 @@ class ReceptionParcelTest extends TestCase
             'received_by_staff_id' => $this->receptionist->id,
         ]);
 
-        $response = $this->actingAs($this->receptionist)->deleteJson("/api/v1/reception/parcels/{$parcel->id}");
+        [$manager] = $this->createStaffUser('BUILDING_MANAGER');
+        $response = $this->actingAs($manager)->deleteJson("/api/v1/reception/parcels/{$parcel->id}");
 
         $response->assertStatus(200);
         $this->assertDatabaseMissing('parcels', [
@@ -551,7 +560,8 @@ class ReceptionParcelTest extends TestCase
             'collected_at' => now(),
         ]);
 
-        $response = $this->actingAs($this->receptionist)->deleteJson("/api/v1/reception/parcels/{$deliveredParcel->id}");
+        [$manager] = $this->createStaffUser('BUILDING_MANAGER');
+        $response = $this->actingAs($manager)->deleteJson("/api/v1/reception/parcels/{$deliveredParcel->id}");
 
         $response->assertStatus(422);
         $this->assertDatabaseHas('parcels', [

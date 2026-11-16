@@ -2465,7 +2465,474 @@ class RealtimeSyncTest extends TestCase
             'assigned_at' => now(),
         ]);
 
-        $this->assertTrue($callbackParcels($adminTester), 'Callback parcels thực tế phải trả true cho Admin');
+        $this->assertFalse($callbackParcels($adminTester), 'Callback parcels thực tế phải trả false cho Admin khi thiếu quyền PARCEL:VIEW (theo chính sách Least Privilege BUG-M8-01)');
         $this->assertTrue($callbackVisitors($adminTester), 'Callback visitors thực tế phải trả true cho Admin');
+    }
+
+    /**
+     * BUG-M12-01 - Test 1: Kênh vehicles cô lập nghiêm ngặt theo căn hộ được cấp quyền
+     */
+    public function test_bug_m12_01_vehicles_events_are_isolated_by_authorized_apartment(): void
+    {
+        $aptAId = $this->createApartmentForExpirationTest();
+        $aptBId = $this->createApartmentForExpirationTest();
+
+        $resA = $this->createResidentUserWithSession([$aptAId]);
+        $residentUserA = $resA['user'];
+
+        $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'CREATED', (string) Str::uuid(), [
+            'apartment_id' => $aptAId,
+            'vehicle_category' => 'MOTORBIKE',
+            'is_active' => true,
+            'license_plate' => '29A-11111',
+        ]);
+        QuocTinRealtimeService::emit('vehicles', 'invoice_item', 'SYNCED', (string) Str::uuid(), [
+            'apartment_id' => $aptAId,
+        ]);
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'CREATED', (string) Str::uuid(), [
+            'apartment_id' => $aptBId,
+            'vehicle_category' => 'CAR',
+            'is_active' => true,
+            'license_plate' => '30B-99999',
+        ]);
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'APPROVED', (string) Str::uuid(), [
+            'apartment_id' => $aptBId,
+            'license_plate' => '30B-88888',
+        ]);
+
+        $eventsForA = QuocTinRealtimeService::getEvents(['quoc-tin.vehicles'], $lastIdBefore, 0, 50, $residentUserA);
+
+        $this->assertCount(2, $eventsForA, 'Cư dân A chỉ được nhận đúng 2 sự kiện vehicles thuộc căn hộ A');
+        foreach ($eventsForA as $ev) {
+            $this->assertSame($aptAId, $ev['apartment_id']);
+            $this->assertSame('vehicles', $ev['module']);
+        }
+
+        $plates = collect($eventsForA)->pluck('license_plate')->filter()->values()->toArray();
+        $this->assertSame(['29A-11111'], $plates);
+    }
+
+    /**
+     * BUG-M12-01 - Test 2: Kênh residents cô lập nghiêm ngặt theo căn hộ được cấp quyền
+     */
+    public function test_bug_m12_01_residents_events_are_isolated_by_authorized_apartment(): void
+    {
+        $aptAId = $this->createApartmentForExpirationTest();
+        $aptBId = $this->createApartmentForExpirationTest();
+
+        $resA = $this->createResidentUserWithSession([$aptAId]);
+        $residentUserA = $resA['user'];
+
+        $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
+
+        $resEntityA = (string) Str::uuid();
+        $resEntityB = (string) Str::uuid();
+
+        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', $resEntityA, [
+            'apartment_id' => $aptAId,
+            'user_id' => $residentUserA->id,
+            'is_head_of_household' => true,
+        ]);
+
+        QuocTinRealtimeService::emit('residents', 'resident', 'CREATED', $resEntityB, [
+            'apartment_id' => $aptBId,
+            'user_id' => (string) Str::uuid(),
+            'is_head_of_household' => true,
+        ]);
+
+        $eventsForA = QuocTinRealtimeService::getEvents(['quoc-tin.residents'], $lastIdBefore, 0, 50, $residentUserA);
+
+        $this->assertCount(1, $eventsForA, 'Cư dân A chỉ được nhận sự kiện residents của căn hộ A');
+        $this->assertSame($resEntityA, $eventsForA[0]['entity_id']);
+        $this->assertSame($aptAId, $eventsForA[0]['apartment_id']);
+        $this->assertTrue((bool) $eventsForA[0]['is_head_of_household']);
+
+        $entityIds = collect($eventsForA)->pluck('entity_id')->toArray();
+        $this->assertNotContains($resEntityB, $entityIds, 'Tuyệt đối không rò rỉ thông tin nhân khẩu căn hộ B sang cư dân A');
+    }
+
+    /**
+     * BUG-M12-01 - Test 3: Kênh temporary-registrations cô lập nghiêm ngặt theo căn hộ được cấp quyền
+     */
+    public function test_bug_m12_01_temporary_registrations_events_are_isolated_by_authorized_apartment(): void
+    {
+        $aptAId = $this->createApartmentForExpirationTest();
+        $aptBId = $this->createApartmentForExpirationTest();
+
+        $resA = $this->createResidentUserWithSession([$aptAId]);
+        $residentUserA = $resA['user'];
+
+        $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
+
+        $tempAId = (string) Str::uuid();
+        $tempBId = (string) Str::uuid();
+
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'APPROVED', $tempAId, [
+            'apartment_id' => $aptAId,
+            'police_status' => 'APPROVED',
+            'registration_type' => 'TEMPORARY_STAY',
+        ]);
+
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'REJECTED', $tempBId, [
+            'apartment_id' => $aptBId,
+            'police_status' => 'REJECTED',
+            'registration_type' => 'TEMPORARY_ABSENCE',
+        ]);
+
+        $eventsForA = QuocTinRealtimeService::getEvents(['quoc-tin.temporary-registrations'], $lastIdBefore, 0, 50, $residentUserA);
+
+        $this->assertCount(1, $eventsForA, 'Cư dân A chỉ được nhận sự kiện tạm trú/tạm vắng của căn hộ A');
+        $this->assertSame($tempAId, $eventsForA[0]['entity_id']);
+        $this->assertSame($aptAId, $eventsForA[0]['apartment_id']);
+        $this->assertSame('APPROVED', $eventsForA[0]['police_status']);
+        $this->assertSame('TEMPORARY_STAY', $eventsForA[0]['registration_type']);
+
+        $entityIds = collect($eventsForA)->pluck('entity_id')->toArray();
+        $this->assertNotContains($tempBId, $entityIds, 'Tuyệt đối không rò rỉ hồ sơ tạm trú/tạm vắng của căn hộ B');
+    }
+
+    /**
+     * BUG-M12-01 - Test 4: Người dùng nhiều căn hộ nhận đủ sự kiện các căn được phép, bỏ qua căn hộ hết hạn/pointer/của người khác
+     */
+    public function test_bug_m12_01_multi_apartment_resident_receives_all_authorized_apartments_across_all_three_modules(): void
+    {
+        $aptAId = $this->createApartmentForExpirationTest();
+        $aptBId = $this->createApartmentForExpirationTest();
+        $aptCId = $this->createApartmentForExpirationTest();
+        $aptExpiredId = $this->createApartmentForExpirationTest();
+
+        $multiRes = $this->createResidentUserWithSession([$aptAId, $aptCId]);
+        $multiUser = $multiRes['user'];
+
+        // Căn D đã hết hạn cư trú từ hôm qua
+        DB::table('residents')->insert([
+            'id' => (string) Str::uuid(),
+            'apartment_id' => $aptExpiredId,
+            'user_id' => $multiUser->id,
+            'stay_start_date' => Carbon::now('Asia/Ho_Chi_Minh')->subMonths(6)->toDateString(),
+            'stay_end_date' => Carbon::now('Asia/Ho_Chi_Minh')->subDay()->toDateString(),
+            'is_active' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Căn E chỉ có stale current_resident_user_id pointer
+        $aptPointerId = $this->createApartmentForExpirationTest([
+            'current_resident_user_id' => $multiUser->id,
+        ]);
+
+        $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
+
+        foreach ([$aptAId, $aptBId, $aptCId, $aptExpiredId, $aptPointerId] as $aptId) {
+            QuocTinRealtimeService::emit('vehicles', 'vehicle', 'CREATED', (string) Str::uuid(), [
+                'apartment_id' => $aptId,
+                'license_plate' => 'VEH-'.$aptId,
+            ]);
+            QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', (string) Str::uuid(), [
+                'apartment_id' => $aptId,
+            ]);
+            QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'SUBMITTED', (string) Str::uuid(), [
+                'apartment_id' => $aptId,
+            ]);
+        }
+
+        $events = QuocTinRealtimeService::getEvents(
+            ['quoc-tin.vehicles', 'quoc-tin.residents', 'quoc-tin.temporary-registrations'],
+            $lastIdBefore,
+            0,
+            50,
+            $multiUser
+        );
+
+        $this->assertCount(6, $events, 'Cư dân 2 căn hợp lệ (A, C) phải nhận đủ 6 sự kiện trên 3 kênh và loại bỏ hoàn toàn B, D (hết hạn), E (pointer)');
+
+        $receivedApts = collect($events)->pluck('apartment_id')->unique()->values()->toArray();
+        $this->assertContains($aptAId, $receivedApts);
+        $this->assertContains($aptCId, $receivedApts);
+        $this->assertNotContains($aptBId, $receivedApts);
+        $this->assertNotContains($aptExpiredId, $receivedApts);
+        $this->assertNotContains($aptPointerId, $receivedApts);
+    }
+
+    /**
+     * BUG-M12-01 - Test 5: Cư dân không có căn hộ (hoặc đã hết hạn) không nhận bất kỳ event nào từ 3 module
+     */
+    public function test_bug_m12_01_user_without_authorized_apartments_receives_no_vehicle_resident_or_temp_reg_events(): void
+    {
+        $aptTargetId = $this->createApartmentForExpirationTest();
+        $noAptRes = $this->createResidentUserWithSession([]);
+        $noAptUser = $noAptRes['user'];
+
+        $expiredRes = $this->createResidentUserWithSession([]);
+        $expiredUser = $expiredRes['user'];
+        DB::table('residents')->insert([
+            'id' => (string) Str::uuid(),
+            'apartment_id' => $aptTargetId,
+            'user_id' => $expiredUser->id,
+            'stay_start_date' => Carbon::now('Asia/Ho_Chi_Minh')->subMonths(6)->toDateString(),
+            'stay_end_date' => Carbon::now('Asia/Ho_Chi_Minh')->subDay()->toDateString(),
+            'is_active' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'CREATED', (string) Str::uuid(), [
+            'apartment_id' => $aptTargetId,
+            'license_plate' => '51F-77777',
+        ]);
+        QuocTinRealtimeService::emit('residents', 'resident', 'CREATED', (string) Str::uuid(), [
+            'apartment_id' => $aptTargetId,
+        ]);
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'APPROVED', (string) Str::uuid(), [
+            'apartment_id' => $aptTargetId,
+            'police_status' => 'APPROVED',
+        ]);
+
+        $channels = ['quoc-tin.vehicles', 'quoc-tin.residents', 'quoc-tin.temporary-registrations'];
+
+        $this->assertEmpty(QuocTinRealtimeService::getEvents($channels, $lastIdBefore, 0, 50, $noAptUser));
+        $this->assertEmpty(QuocTinRealtimeService::getEvents($channels, $lastIdBefore, 0, 50, $expiredUser));
+    }
+
+    /**
+     * BUG-M12-01 - Test 6: Payload thiếu hoặc có apartment_id không hợp lệ/giả mạo tuyệt đối không rò rỉ dữ liệu
+     */
+    public function test_bug_m12_01_missing_or_invalid_apartment_id_never_leaks_events(): void
+    {
+        $aptAId = $this->createApartmentForExpirationTest();
+        $aptBId = $this->createApartmentForExpirationTest();
+
+        $resA = $this->createResidentUserWithSession([$aptAId]);
+        $residentUserA = $resA['user'];
+
+        $resB = $this->createResidentUserWithSession([$aptBId]);
+        $residentUserB = $resB['user'];
+
+        // Tạo bản ghi thật ở DB cho cả căn hộ A và căn hộ B
+        $vehicleA = Vehicle::create([
+            'apartment_id' => $aptAId,
+            'owner_user_id' => $residentUserA->id,
+            'license_plate' => '29M1-'.rand(10000, 99999),
+            'vehicle_category' => 'MOTORBIKE',
+            'monthly_parking_fee' => 120000,
+            'is_active' => 1,
+        ]);
+        $vehicleB = Vehicle::create([
+            'apartment_id' => $aptBId,
+            'owner_user_id' => $residentUserB->id,
+            'license_plate' => '30M2-'.rand(10000, 99999),
+            'vehicle_category' => 'CAR',
+            'monthly_parking_fee' => 1200000,
+            'is_active' => 1,
+        ]);
+
+        $residentRecA = Resident::where('apartment_id', $aptAId)->where('user_id', $residentUserA->id)->firstOrFail();
+        $residentRecB = Resident::where('apartment_id', $aptBId)->where('user_id', $residentUserB->id)->firstOrFail();
+
+        $tempRegA = TemporaryRegistration::create([
+            'resident_id' => $residentRecA->id,
+            'apartment_id' => $aptAId,
+            'registration_type' => 'TEMPORARY_STAY',
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addMonths(2)->toDateString(),
+            'reason' => 'Test M12 Apt A',
+            'police_status' => 'PENDING',
+        ]);
+        $tempRegB = TemporaryRegistration::create([
+            'resident_id' => $residentRecB->id,
+            'apartment_id' => $aptBId,
+            'registration_type' => 'TEMPORARY_ABSENCE',
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addMonths(2)->toDateString(),
+            'reason' => 'Test M12 Apt B',
+            'police_status' => 'PENDING',
+        ]);
+
+        $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
+
+        // 1. Missing apartment_id + entity_id không tồn tại -> phải bị chặn
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'UPDATED', 'non-existent-veh-id');
+        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', 'non-existent-res-id');
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'DELETED', 'non-existent-temp-id');
+
+        // 2. Missing apartment_id + entity_id thật thuộc căn B -> tra cứu DB ra B -> phải bị chặn với User A
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'UPDATED', $vehicleB->id);
+        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', $residentRecB->id);
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'UPDATED', $tempRegB->id);
+
+        // 3. Missing apartment_id + entity_id thật thuộc căn A -> tra cứu DB ra A -> chỉ User A nhận, User B không nhận
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'UPDATED', $vehicleA->id);
+        QuocTinRealtimeService::emit('residents', 'resident', 'UPDATED', $residentRecA->id);
+        QuocTinRealtimeService::emit('temporary-registrations', 'temporary_registration', 'UPDATED', $tempRegA->id);
+
+        $channels = ['quoc-tin.vehicles', 'quoc-tin.residents', 'quoc-tin.temporary-registrations'];
+
+        $eventsA = QuocTinRealtimeService::getEvents($channels, $lastIdBefore, 0, 50, $residentUserA);
+        $this->assertCount(3, $eventsA, 'User A chỉ nhận 3 sự kiện resolve được về căn A; mọi sự kiện orphan hoặc thuộc căn B phải bị loại bỏ');
+        $entityIdsA = collect($eventsA)->pluck('entity_id')->toArray();
+        $this->assertContains($vehicleA->id, $entityIdsA);
+        $this->assertContains($residentRecA->id, $entityIdsA);
+        $this->assertContains($tempRegA->id, $entityIdsA);
+        $this->assertNotContains($vehicleB->id, $entityIdsA);
+        $this->assertNotContains($residentRecB->id, $entityIdsA);
+        $this->assertNotContains($tempRegB->id, $entityIdsA);
+
+        $eventsB = QuocTinRealtimeService::getEvents($channels, $lastIdBefore, 0, 50, $residentUserB);
+        $this->assertCount(3, $eventsB);
+        $entityIdsB = collect($eventsB)->pluck('entity_id')->toArray();
+        $this->assertContains($vehicleB->id, $entityIdsB);
+        $this->assertNotContains($vehicleA->id, $entityIdsB);
+
+        // 4. Payload có apartment_id không hợp lệ hoặc mâu thuẫn channel/module -> fail-closed toàn bộ kể cả khi entity_id là của A
+        $malformedEvents = [
+            ['channel' => 'quoc-tin.vehicles', 'module' => 'vehicles', 'entity_id' => $vehicleA->id, 'apartment_id' => ''],
+            ['channel' => 'quoc-tin.residents', 'module' => 'residents', 'entity_id' => $residentRecA->id, 'apartment_id' => '   '],
+            ['channel' => 'quoc-tin.temporary-registrations', 'module' => 'temporary-registrations', 'entity_id' => $tempRegA->id, 'apartment_id' => 'invalid-uuid'],
+            ['channel' => 'quoc-tin.vehicles', 'module' => 'vehicles', 'entity_id' => $vehicleA->id, 'apartment_id' => [$aptAId]],
+            ['channel' => 'quoc-tin.vehicles', 'module' => 'vehicles', 'entity_id' => $vehicleA->id, 'apartment_id' => true],
+            ['channel' => 'quoc-tin.rfid-cards', 'module' => 'vehicles', 'entity_id' => $vehicleA->id, 'apartment_id' => $aptAId],
+            ['channel' => 'quoc-tin.unknown-module', 'module' => 'unknown_module', 'entity_id' => $vehicleA->id, 'apartment_id' => $aptAId],
+        ];
+
+        $this->assertEmpty(
+            QuocTinRealtimeService::filterEventsForResident($malformedEvents, $residentUserA),
+            'Mọi payload thiếu hợp lệ, sai định dạng apartment_id, mâu thuẫn module hoặc kênh lạ phải bị từ chối tuyệt đối'
+        );
+    }
+
+    /**
+     * BUG-M12-01 - Test 7: Emission thực tế từ Services, quyền Staff/Admin và lớp bảo vệ SSE/Polling vẫn nguyên vẹn
+     */
+    public function test_bug_m12_01_end_to_end_service_emissions_staff_visibility_and_sse_guard_remain_intact(): void
+    {
+        $aptAId = $this->createApartmentForExpirationTest();
+        $aptBId = $this->createApartmentForExpirationTest();
+
+        $resA = $this->createResidentUserWithSession([$aptAId]);
+        $residentUserA = $resA['user'];
+
+        $extraUserA = User::create([
+            'username' => 'm12_extra_a_'.Str::random(6),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'm12_extra_a_'.Str::random(6).'@cassavas.vn',
+            'password_hash' => Hash::make('password123'),
+            'full_name' => 'Extra Resident A',
+            'status' => 'ACTIVE',
+        ]);
+        $extraUserB = User::create([
+            'username' => 'm12_extra_b_'.Str::random(6),
+            'phone_number' => '09'.rand(10000000, 99999999),
+            'email' => 'm12_extra_b_'.Str::random(6).'@cassavas.vn',
+            'password_hash' => Hash::make('password123'),
+            'full_name' => 'Extra Resident B',
+            'status' => 'ACTIVE',
+        ]);
+
+        $lastIdBefore = DB::table('realtime_sync_events')->max('id') ?? 0;
+
+        // 1. Trigger ResidentService, VehicleService và TemporaryRegistrationService thực tế cho cả 2 căn hộ
+        $residentService = app(ResidentService::class);
+        $createdResA = $residentService->create([
+            'apartment_id' => $aptAId,
+            'user_id' => $extraUserA->id,
+            'resident_type' => 'TENANT',
+            'is_head_of_household' => false,
+            'stay_start_date' => now()->toDateString(),
+            'relationship_to_head' => 'CHILD',
+        ]);
+        $createdResB = $residentService->create([
+            'apartment_id' => $aptBId,
+            'user_id' => $extraUserB->id,
+            'resident_type' => 'TENANT',
+            'is_head_of_household' => false,
+            'stay_start_date' => now()->toDateString(),
+            'relationship_to_head' => 'CHILD',
+        ]);
+
+        $vehicleService = app(VehicleService::class);
+        ['vehicle' => $createdVehA] = $vehicleService->createVehicle([
+            'apartment_id' => $aptAId,
+            'owner_user_id' => $residentUserA->id,
+            'license_plate' => '29E1-'.rand(10000, 99999),
+            'vehicle_category' => 'MOTORBIKE',
+            'monthly_parking_fee' => 120000,
+        ], $this->adminUser->id);
+        ['vehicle' => $createdVehB] = $vehicleService->createVehicle([
+            'apartment_id' => $aptBId,
+            'owner_user_id' => $extraUserB->id,
+            'license_plate' => '30E2-'.rand(10000, 99999),
+            'vehicle_category' => 'CAR',
+            'monthly_parking_fee' => 1200000,
+        ], $this->adminUser->id);
+
+        $tempService = app(TemporaryRegistrationService::class);
+        $createdTempA = $tempService->create([
+            'resident_id' => $createdResA->id,
+            'apartment_id' => $aptAId,
+            'registration_type' => 'TEMPORARY_STAY',
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addMonths(1)->toDateString(),
+            'reason' => 'End to end M12 Apt A',
+        ]);
+        $createdTempB = $tempService->create([
+            'resident_id' => $createdResB->id,
+            'apartment_id' => $aptBId,
+            'registration_type' => 'TEMPORARY_STAY',
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addMonths(1)->toDateString(),
+            'reason' => 'End to end M12 Apt B',
+        ]);
+        // Hard-delete temp B (emit DELETED không kèm apartment_id) cũng không được rò rỉ
+        $tempService->delete($createdTempB->id);
+
+        // Phát thêm 1 parcel căn A để kiểm tra mixed channel polling
+        QuocTinRealtimeService::emit('parcels', 'parcel', 'CREATED', (string) Str::uuid(), [
+            'apartment_id' => $aptAId,
+            'tracking_number' => 'M12-PARCEL-A',
+        ]);
+
+        $channels = ['quoc-tin.vehicles', 'quoc-tin.residents', 'quoc-tin.temporary-registrations'];
+
+        // 2. Cư dân A chỉ nhận sự kiện thuộc căn A (kể cả vehicle + invoice_item SYNCED)
+        $residentEventsA = QuocTinRealtimeService::getEvents($channels, $lastIdBefore, 0, 50, $residentUserA);
+        $this->assertNotEmpty($residentEventsA);
+        foreach ($residentEventsA as $ev) {
+            $this->assertSame($aptAId, $ev['apartment_id'], 'Mọi sự kiện trả về cho cư dân A phải thuộc căn hộ A');
+        }
+        $residentEntityIdsA = collect($residentEventsA)->pluck('entity_id')->toArray();
+        $this->assertContains($createdResA->id, $residentEntityIdsA);
+        $this->assertContains($createdVehA->id, $residentEntityIdsA);
+        $this->assertContains($createdTempA->id, $residentEntityIdsA);
+        $this->assertNotContains($createdResB->id, $residentEntityIdsA);
+        $this->assertNotContains($createdVehB->id, $residentEntityIdsA);
+        $this->assertNotContains($createdTempB->id, $residentEntityIdsA);
+
+        // 3. Nhân viên Admin vẫn nhận toàn bộ sự kiện của cả căn A và căn B
+        $staffEvents = QuocTinRealtimeService::getEvents($channels, $lastIdBefore, 0, 50, $this->adminUser);
+        $staffEntityIds = collect($staffEvents)->pluck('entity_id')->toArray();
+        $this->assertContains($createdVehA->id, $staffEntityIds);
+        $this->assertContains($createdVehB->id, $staffEntityIds);
+        $this->assertContains($createdResA->id, $staffEntityIds);
+        $this->assertContains($createdResB->id, $staffEntityIds);
+        $this->assertContains($createdTempA->id, $staffEntityIds);
+        $this->assertContains($createdTempB->id, $staffEntityIds);
+
+        // 4. Lớp SSE/Polling endpoint vẫn từ chối 403 với cư dân xin subscribe trực tiếp kênh admin, và chỉ trả parcels lọc theo căn khi request hỗn hợp
+        $this->getJson('/api/v1/realtime/events?channels=quoc-tin.vehicles', $resA['headers'])->assertStatus(403);
+        $this->getJson('/api/v1/realtime/events?channels=quoc-tin.residents', $resA['headers'])->assertStatus(403);
+        $this->getJson('/api/v1/realtime/events?channels=quoc-tin.temporary-registrations', $resA['headers'])->assertStatus(403);
+
+        $mixedResp = $this->getJson(
+            "/api/v1/realtime/events?channels=quoc-tin.parcels,quoc-tin.vehicles&since_id={$lastIdBefore}",
+            $resA['headers']
+        );
+        $mixedResp->assertStatus(200);
+        $mixedChannels = collect($mixedResp->json('events'))->pluck('channel')->unique()->values()->toArray();
+        $this->assertSame(['quoc-tin.parcels'], $mixedChannels);
     }
 }

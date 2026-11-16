@@ -749,12 +749,15 @@ class ReceptionParcelService
      * Danh sách role được phép thao tác nghiệp vụ bưu phẩm
      */
     public const ALLOWED_STAFF_ROLES = [
-        'RECEPTIONIST',
-        'SECURITY_GUARD',
+        'ADMIN',
         'BUILDING_MANAGER',
         'MANAGER',
-        'ADMIN',
+        'RECEPTIONIST',
+        'SECURITY',
+        'SECURITY_GUARD',
+        'STAFF',
         'SUPER_ADMIN',
+        'SUPER_ADMI',
     ];
 
     /**
@@ -810,6 +813,21 @@ class ReceptionParcelService
 
     /**
      * Kiểm tra quyền nhân viên lễ tân / bảo vệ / quản lý thực hiện nghiệp vụ bưu phẩm
+     *
+     * Chỉ SUPER_ADMIN / SUPER_ADMI được phép bypass permission.
+     * Mọi vai trò nhân viên khác (RECEPTIONIST, SECURITY_GUARD, BUILDING_MANAGER...)
+     * bắt buộc phải có permission tương ứng với hành động:
+     * - 'view', 'lookup': PARCEL:VIEW
+     * - 'receive': PARCEL:RECEIVE
+     * - 'create': PARCEL:CREATE
+     * - 'checkout', 'handover': PARCEL:CHECKOUT
+     * - 'update': PARCEL:UPDATE
+     * - 'delete': PARCEL:DELETE
+     *
+     * Áp dụng nguyên tắc Fail-Closed (Default Deny): Bất kỳ hành động không xác định nào
+     * sẽ bị từ chối với HTTP 403, không fallback về quyền xem.
+     * Quyền tổng hợp RECEPTION:OPERATE tuyệt đối không được bypass các permission nghiệp vụ chuyên biệt.
+     * Cư dân thông thường bị chặn với HTTP 403.
      */
     public function assertStaffAuthorized(?object $user, string $action = 'checkout'): void
     {
@@ -817,42 +835,74 @@ class ReceptionParcelService
             abort(401, 'Yêu cầu đăng nhập tài khoản nhân viên để thực hiện thao tác.');
         }
 
-        // 1. Kiểm tra qua method hasRole nếu có trên User model
-        if (method_exists($user, 'hasRole')) {
-            foreach (self::ALLOWED_STAFF_ROLES as $role) {
-                if ($user->hasRole($role)) {
-                    return;
-                }
-            }
-        }
-
-        // 2. Kiểm tra trực tiếp bảng user_roles join roles
-        $userRoles = DB::table('user_roles')
-            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
-            ->where('user_roles.user_id', $user->id)
-            ->pluck('roles.role_code')
-            ->toArray();
-
-        foreach (self::ALLOWED_STAFF_ROLES as $role) {
-            if (in_array($role, $userRoles, true)) {
-                return;
-            }
-        }
-
-        // 3. Kiểm tra permission cụ thể qua RbacService
-        $permCode = match ($action) {
-            'checkout', 'handover' => 'PARCEL:CHECKOUT',
-            'receive', 'create' => 'PARCEL:RECEIVE',
-            'update' => 'PARCEL:UPDATE',
-            'delete' => 'PARCEL:DELETE',
-            default => 'PARCEL:VIEW',
-        };
-
-        if (RbacService::hasPermission($user, $permCode) || RbacService::hasPermission($user, 'RECEPTION:OPERATE')) {
+        // 1. Quản trị viên cấp cao (SUPER_ADMIN / SUPER_ADMI) được phép bypass toàn bộ permission
+        if (
+            (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
+            (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('SUPER_ADMI')))
+        ) {
             return;
         }
 
-        abort(403, 'Bạn không có quyền thực hiện nghiệp vụ này.');
+        // Lấy danh sách mã vai trò (role_code) của người dùng
+        $userRoles = [];
+        if (method_exists($user, 'roles')) {
+            $userRoles = $user->roles()->pluck('role_code')->map(fn ($r): string => strtoupper(trim((string) $r)))->toArray();
+        }
+        if (empty($userRoles) && ! empty($user->id)) {
+            $userRoles = DB::table('user_roles')
+                ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+                ->where('user_roles.user_id', $user->id)
+                ->whereNull('roles.deleted_at')
+                ->pluck('roles.role_code')
+                ->map(fn ($r): string => strtoupper(trim((string) $r)))
+                ->toArray();
+        }
+
+        if (in_array('SUPER_ADMIN', $userRoles, true) || in_array('SUPER_ADMI', $userRoles, true)) {
+            return;
+        }
+
+        // 2. Bắt buộc thuộc nhóm vai trò nhân viên hợp lệ (không cho phép cư dân thông thường thao tác)
+        $isStaff = false;
+        foreach (self::ALLOWED_STAFF_ROLES as $role) {
+            if (in_array(strtoupper($role), $userRoles, true)) {
+                $isStaff = true;
+                break;
+            }
+            if (method_exists($user, 'hasRole') && $user->hasRole($role)) {
+                $isStaff = true;
+                break;
+            }
+        }
+
+        if (! $isStaff) {
+            abort(403, 'Bạn không có quyền thực hiện nghiệp vụ nhân viên bưu phẩm.');
+        }
+
+        // 3. Đối với nhân viên, BẮT BUỘC kiểm tra permission tương ứng với hành động nghiệp vụ.
+        // Role nhân viên (RECEPTIONIST, SECURITY_GUARD, BUILDING_MANAGER...) KHÔNG ĐƯỢC bypass permission.
+        $permissionMap = [
+            'view' => 'PARCEL:VIEW',
+            'lookup' => 'PARCEL:VIEW',
+            'receive' => 'PARCEL:RECEIVE',
+            'create' => 'PARCEL:CREATE',
+            'checkout' => 'PARCEL:CHECKOUT',
+            'handover' => 'PARCEL:CHECKOUT',
+            'update' => 'PARCEL:UPDATE',
+            'delete' => 'PARCEL:DELETE',
+        ];
+
+        // Fail-Closed: Từ chối ngay lập tức nếu action không nằm trong danh sách được định nghĩa
+        if (! isset($permissionMap[$action])) {
+            abort(403, 'Hành động nghiệp vụ không hợp lệ hoặc chưa được phân quyền.');
+        }
+
+        $permCode = $permissionMap[$action];
+
+        // Kiểm tra duy nhất permission tương ứng, không cho phép quyền tổng hợp RECEPTION:OPERATE bypass
+        if (! RbacService::hasPermission($user, $permCode)) {
+            abort(403, 'Bạn không có quyền '.$permCode.' để thực hiện nghiệp vụ này.');
+        }
     }
 
     /**
@@ -986,7 +1036,7 @@ class ReceptionParcelService
      */
     public function lookupParcel(string $code, ?object $staffUser = null): ?array
     {
-        $this->assertStaffAuthorized($staffUser, 'checkout');
+        $this->assertStaffAuthorized($staffUser, 'lookup');
 
         $clean = trim($code);
         if ($clean === '') {
@@ -1115,7 +1165,6 @@ class ReceptionParcelService
                 entityId: $parcel->id,
                 extra: [
                     'tracking_number' => $parcel->tracking_number,
-                    'pickup_pin_code' => $parcel->pickup_pin_code,
                     'recipient_name' => $parcel->recipient_name,
                     'recipient_phone' => $parcel->recipient_phone,
                     'apartment_number' => $parcel->apartment?->apartment_number,

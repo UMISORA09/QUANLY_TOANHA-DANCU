@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -16,43 +15,74 @@ class ReceptionVisitorService
         'RECEPTIONIST',
         'SECURITY_GUARD',
         'BUILDING_MANAGER',
+        'MANAGER',
         'ADMIN',
+        'STAFF',
         'SUPER_ADMIN',
         'SUPER_ADMI',
     ];
 
     /**
      * Kiểm tra quyền nhân viên lễ tân/bảo vệ/quản lý
+     *
+     * Chỉ SUPER_ADMIN / SUPER_ADMI được phép bypass permission.
+     * Mọi vai trò nhân viên khác (RECEPTIONIST, SECURITY_GUARD, BUILDING_MANAGER...)
+     * bắt buộc phải có permission tương ứng:
+     * - 'view': VISITOR:VIEW
+     * - 'checkin': VISITOR:CHECKIN
      */
-    public function assertStaffAuthorized(object $user, string $action = 'view'): void
+    public function assertStaffAuthorized(?object $user, string $action = 'view'): void
     {
         if (! $user) {
             abort(401, 'Yêu cầu đăng nhập tài khoản nhân viên để thực hiện thao tác.');
         }
 
-        // 1. Kiểm tra qua method hasRole nếu có trên User model
-        if (method_exists($user, 'hasRole')) {
-            foreach (self::ALLOWED_STAFF_ROLES as $role) {
-                if ($user->hasRole($role)) {
-                    return;
-                }
-            }
+        // 1. Quản trị viên cấp cao (SUPER_ADMIN / SUPER_ADMI) được phép bypass toàn bộ permission
+        if (
+            (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
+            (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('SUPER_ADMI')))
+        ) {
+            return;
         }
 
-        // 2. Kiểm tra trực tiếp bảng user_roles join roles
-        $userRoles = DB::table('user_roles')
-            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
-            ->where('user_roles.user_id', $user->id)
-            ->pluck('roles.role_code')
-            ->toArray();
+        // Lấy danh sách mã vai trò (role_code) của người dùng
+        $userRoles = [];
+        if (method_exists($user, 'roles')) {
+            $userRoles = $user->roles()->pluck('role_code')->map(fn ($r): string => strtoupper(trim((string) $r)))->toArray();
+        }
+        if (empty($userRoles) && ! empty($user->id)) {
+            $userRoles = DB::table('user_roles')
+                ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+                ->where('user_roles.user_id', $user->id)
+                ->whereNull('roles.deleted_at')
+                ->pluck('roles.role_code')
+                ->map(fn ($r): string => strtoupper(trim((string) $r)))
+                ->toArray();
+        }
 
+        if (in_array('SUPER_ADMIN', $userRoles, true) || in_array('SUPER_ADMI', $userRoles, true)) {
+            return;
+        }
+
+        // 2. Bắt buộc thuộc nhóm vai trò nhân viên hợp lệ (không cho phép cư dân thông thường truy cập)
+        $isStaff = false;
         foreach (self::ALLOWED_STAFF_ROLES as $role) {
-            if (in_array($role, $userRoles, true)) {
-                return;
+            if (in_array(strtoupper($role), $userRoles, true)) {
+                $isStaff = true;
+                break;
+            }
+            if (method_exists($user, 'hasRole') && $user->hasRole($role)) {
+                $isStaff = true;
+                break;
             }
         }
 
-        // 3. Kiểm tra permission cụ thể
+        if (! $isStaff) {
+            abort(403, 'Bạn không có quyền thực hiện nghiệp vụ lễ tân/bảo vệ tra cứu & check-in khách.');
+        }
+
+        // 3. Đối với nhân viên, BẮT BUỘC kiểm tra permission tương ứng với hành động nghiệp vụ.
+        // Role nhân viên (RECEPTIONIST, SECURITY_GUARD...) KHÔNG ĐƯỢC bypass permission.
         $permCode = $action === 'checkin' ? 'VISITOR:CHECKIN' : 'VISITOR:VIEW';
         if (RbacService::hasPermission($user, $permCode)) {
             return;

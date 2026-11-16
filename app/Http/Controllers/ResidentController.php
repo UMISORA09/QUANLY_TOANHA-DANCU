@@ -18,9 +18,9 @@ class ResidentController extends Controller
     ) {}
 
     /**
-     * Kiểm tra quyền quản trị của người dùng hiện tại
+     * Kiểm tra quyền quản trị của người dùng hiện tại theo action-level RBAC permission
      */
-    protected function checkAdminAuthorization(Request $request): ?JsonResponse
+    protected function checkAdminAuthorization(Request $request, ?string $requiredPermission = null): ?JsonResponse
     {
         $user = $request->user();
 
@@ -32,10 +32,19 @@ class ResidentController extends Controller
             ], Response::HTTP_UNAUTHORIZED);
         }
 
-        $isAdmin = (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
-            || (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'BUILDING_MANAGER']));
+        if (strtoupper((string) ($user->status ?? '')) !== 'ACTIVE') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản không ở trạng thái hoạt động hoặc đã bị khóa.',
+                'error' => 'FORBIDDEN',
+            ], Response::HTTP_FORBIDDEN);
+        }
 
-        if (! $isAdmin) {
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return null;
+        }
+
+        if (empty($requiredPermission) || ! (method_exists($user, 'hasPermission') && $user->hasPermission($requiredPermission))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Bạn không có quyền quản trị để thực hiện thao tác này.',
@@ -51,7 +60,7 @@ class ResidentController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, 'RESIDENT:VIEW')) {
             return $authError;
         }
 
@@ -74,7 +83,7 @@ class ResidentController extends Controller
      */
     public function show(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, 'RESIDENT:VIEW')) {
             return $authError;
         }
 
@@ -99,6 +108,10 @@ class ResidentController extends Controller
      */
     public function store(ResidentRequest $request): JsonResponse
     {
+        if ($authError = $this->checkAdminAuthorization($request, 'RESIDENT:CREATE')) {
+            return $authError;
+        }
+
         $resident = $this->residentService->create($request->validated());
 
         return response()->json([
@@ -113,6 +126,10 @@ class ResidentController extends Controller
      */
     public function update(ResidentRequest $request, string $id): JsonResponse
     {
+        if ($authError = $this->checkAdminAuthorization($request, 'RESIDENT:UPDATE')) {
+            return $authError;
+        }
+
         try {
             $resident = $this->residentService->update($id, $request->validated());
 
@@ -141,7 +158,7 @@ class ResidentController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, 'RESIDENT:DELETE')) {
             return $authError;
         }
 
@@ -172,7 +189,7 @@ class ResidentController extends Controller
      */
     public function apartments(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, 'RESIDENT:VIEW')) {
             return $authError;
         }
 

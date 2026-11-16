@@ -621,7 +621,6 @@ class VehicleManagementTest extends TestCase
         $newPlate = '29A-'.rand(10000, 99999);
         $updatePayload = [
             'license_plate' => $newPlate,
-            'monthly_parking_fee' => 150000.00,
         ];
 
         $response = $this->withHeaders($this->authHeaders())
@@ -633,9 +632,16 @@ class VehicleManagementTest extends TestCase
                 'data' => [
                     'id' => $vehicleId,
                     'license_plate' => $newPlate,
-                    'monthly_parking_fee' => 150000.00,
+                    'monthly_parking_fee' => 120000.00,
                 ],
             ]);
+
+        $updatedVehicle = DB::table('vehicles')
+            ->where('id', $vehicleId)
+            ->first();
+
+        $this->assertNotNull($updatedVehicle);
+        $this->assertEquals(120000.00, (float) $updatedVehicle->monthly_parking_fee);
 
         $currentPeriod = Carbon::now()->format('Y-m');
         $invoice = DB::table('invoices')
@@ -651,7 +657,7 @@ class VehicleManagementTest extends TestCase
             ->first();
 
         $this->assertNotNull($item);
-        $this->assertEquals(150000.00, (float) $item->unit_price);
-        $this->assertEquals(165000.00, (float) $item->total_line_amount); // 150k + 10% VAT
+        $this->assertEquals(120000.00, (float) $item->unit_price);
+        $this->assertEquals(132000.00, (float) $item->total_line_amount); // 120k + 10% VAT
     }
 }

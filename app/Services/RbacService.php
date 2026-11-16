@@ -19,11 +19,15 @@ class RbacService
      */
     public static function resolveUser(Request $request): ?object
     {
-        $user = $request->user() ?? Auth::user();
         $token = trim((string) $request->bearerToken());
-        if (! $user && $token !== '') {
+        if ($token !== '') {
             $user = AuthenticateBearer::resolveSessionUser($token);
+            if ($user) {
+                return $user->status === 'ACTIVE' ? $user : null;
+            }
         }
+
+        $user = $request->user() ?? Auth::user();
 
         return $user?->status === 'ACTIVE' ? $user : null;
     }
@@ -41,24 +45,66 @@ class RbacService
             return $user->hasPermission($permissionCode);
         }
 
-        // 1. Kiểm tra vai trò SUPER_ADMIN / ADMIN (Có toàn quyền)
-        $roleCodes = DB::table('user_roles')
+        if (empty($user->id)) {
+            return false;
+        }
+
+        // 1. Chỉ lấy các vai trò đang hoạt động (chưa bị soft-delete)
+        $activeRoles = DB::table('user_roles')
             ->join('roles', 'user_roles.role_id', '=', 'roles.id')
             ->where('user_roles.user_id', $user->id)
-            ->pluck('roles.role_code')
+            ->whereNull('roles.deleted_at')
+            ->select('roles.id', 'roles.role_code')
+            ->get();
+
+        $roleCodes = $activeRoles
+            ->pluck('role_code')
+            ->map(fn ($code): string => strtoupper(trim((string) $code)))
             ->toArray();
 
         if (in_array('SUPER_ADMIN', $roleCodes, true) || in_array('SUPER_ADMI', $roleCodes, true)) {
             return true;
         }
 
-        // 2. Kiểm tra quyền cụ thể qua bảng role_permissions
-        return DB::table('user_roles')
-            ->join('role_permissions', 'user_roles.role_id', '=', 'role_permissions.role_id')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_roles.user_id', $user->id)
-            ->where('permissions.permission_code', $permissionCode)
-            ->exists();
+        // 2. Tôn trọng precedence của vai trò tùy chỉnh CUSTOM_USER_% (nếu còn hiệu lực)
+        $customRole = $activeRoles->first(
+            fn ($role): bool => str_starts_with(strtoupper(trim((string) $role->role_code)), 'CUSTOM_USER_')
+        );
+
+        if ($customRole) {
+            $allPerms = DB::table('role_permissions')
+                ->join('roles', 'role_permissions.role_id', '=', 'roles.id')
+                ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
+                ->where('role_permissions.role_id', $customRole->id)
+                ->whereNull('roles.deleted_at')
+                ->pluck('permissions.permission_code')
+                ->unique()
+                ->values()
+                ->toArray();
+        } else {
+            $allPerms = DB::table('user_roles')
+                ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+                ->join('role_permissions', 'user_roles.role_id', '=', 'role_permissions.role_id')
+                ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
+                ->where('user_roles.user_id', $user->id)
+                ->whereNull('roles.deleted_at')
+                ->pluck('permissions.permission_code')
+                ->unique()
+                ->values()
+                ->toArray();
+        }
+
+        $target = strtoupper(trim($permissionCode));
+
+        if (in_array($target, $allPerms, true)) {
+            return true;
+        }
+
+        if ($target === 'SPECIAL') {
+            return in_array('SPECIAL', $allPerms, true) || in_array('SYSTEM:SPECIAL', $allPerms, true);
+        }
+
+        return false;
     }
 
     /**

@@ -166,6 +166,7 @@ class ResidentPortalController extends Controller
         $visitors = (clone $visitorsQuery)
             ->select([
                 'id',
+                'host_resident_user_id',
                 'visitor_name',
                 'visitor_phone as phone_number',
                 'visitor_national_id as id_card_number',
@@ -179,7 +180,18 @@ class ResidentPortalController extends Controller
             ])
             ->orderBy('expected_arrival_time', 'desc')
             ->limit(10)
-            ->get();
+            ->get()
+            ->map(function ($item) use ($user) {
+                // BUG-M6-04: Không để lộ CCCD và mã QR Pass riêng của khách do thành viên khác cùng căn hộ đăng ký
+                $isOwner = isset($item->host_resident_user_id) && (string) $item->host_resident_user_id === (string) $user->id;
+                if (! $isOwner) {
+                    $item->id_card_number = null;
+                    $item->qr_pass_code = null;
+                }
+                unset($item->host_resident_user_id);
+
+                return $item;
+            });
 
         // 6. Danh sách các Tiện ích khả dụng (Cache-Aside pattern cho master data)
         $availableAmenities = Cache::remember('portal:amenities:available', 600, function () {

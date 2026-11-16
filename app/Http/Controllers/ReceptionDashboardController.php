@@ -30,7 +30,7 @@ class ReceptionDashboardController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $user = $this->resolveAuthUser($request);
+            $user = $request->user() ?? $this->resolveAuthUser($request);
             $this->dashboardService->authorizeViewer($user);
 
             $filters = [
@@ -40,13 +40,13 @@ class ReceptionDashboardController extends Controller
                 'top_limit' => (int) $request->query('top_limit', 10),
             ];
 
-            $metrics = $this->dashboardService->getDashboardMetrics($filters);
+            $metrics = $this->dashboardService->getDashboardMetrics($filters, $user);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Lấy dữ liệu Dashboard Giám sát Lễ tân thành công.',
                 'data' => $metrics,
-            ], 200);
+            ], 200, [], JSON_UNESCAPED_UNICODE);
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,

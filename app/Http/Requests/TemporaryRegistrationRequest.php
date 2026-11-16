@@ -4,9 +4,12 @@ namespace App\Http\Requests;
 
 use App\Models\Resident;
 use App\Models\TemporaryRegistration;
+use App\Services\RbacService;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class TemporaryRegistrationRequest extends FormRequest
 {
@@ -21,8 +24,10 @@ class TemporaryRegistrationRequest extends FormRequest
             return false;
         }
 
-        // 1. Quản trị viên có toàn quyền
-        if ($this->isUserAdmin($user)) {
+        $requiredPermission = $this->isMethod('post') ? 'TEMP_REG:CREATE' : 'TEMP_REG:UPDATE';
+
+        // 1. Quản trị viên có toàn quyền theo RBAC hoặc vai trò quản trị
+        if ($this->isUserAdmin($user, $requiredPermission)) {
             return true;
         }
 
@@ -67,7 +72,7 @@ class TemporaryRegistrationRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $user = $this->user();
-        if ($user && ! $this->isUserAdmin($user) && $this->isMethod('post')) {
+        if ($user && ! $this->isUserAdmin($user, 'TEMP_REG:CREATE') && $this->isMethod('post')) {
             // Tự động gán apartment_id nếu cư dân chỉ ở 1 căn hộ
             if (! $this->has('apartment_id') || empty($this->input('apartment_id'))) {
                 $userApartmentId = Resident::where('user_id', $user->id)
@@ -95,16 +100,78 @@ class TemporaryRegistrationRequest extends FormRequest
     }
 
     /**
-     * Kiểm tra người dùng có quyền quản trị hay không
+     * Kiểm tra người dùng có phải chủ hộ hoặc chủ sở hữu tại căn hộ cụ thể hay không
      */
-    protected function isUserAdmin(mixed $user): bool
+    protected function isUserHeadOrOwnerOfApartment(mixed $user, ?string $apartmentId): bool
+    {
+        if (! $user || ! $apartmentId) {
+            return false;
+        }
+
+        $userResident = Resident::where('user_id', $user->id)
+            ->where('apartment_id', $apartmentId)
+            ->where('is_active', true)
+            ->first();
+
+        if ($userResident && ((bool) $userResident->is_head_of_household || $userResident->resident_type === 'OWNER')) {
+            return true;
+        }
+
+        try {
+            if (Schema::hasTable('apartment_owners')) {
+                $isOwner = DB::table('apartment_owners')
+                    ->where('apartment_id', $apartmentId)
+                    ->where('owner_user_id', $user->id)
+                    ->where('is_current_owner', 1)
+                    ->exists();
+
+                if ($isOwner) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return false;
+    }
+
+    /**
+     * Kiểm tra người dùng có quyền quản trị theo RBAC hoặc vai trò quản trị hay không
+     */
+    protected function isUserAdmin(mixed $user, ?string $requiredPermission = null): bool
     {
         if (! $user) {
             return false;
         }
 
-        return (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
-            || (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'BUILDING_MANAGER']));
+        if (strtoupper((string) ($user->status ?? '')) !== 'ACTIVE') {
+            return false;
+        }
+
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return true;
+        }
+
+        // Kiểm tra quyền hạn RBAC cụ thể nếu được yêu cầu (chính sách fail-closed, không fallback theo Role)
+        if ($requiredPermission !== null) {
+            if (method_exists($user, 'hasPermission') && $user->hasPermission($requiredPermission)) {
+                return true;
+            }
+
+            if (class_exists(RbacService::class) && RbacService::hasPermission($user, $requiredPermission)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        return method_exists($user, 'hasPermission') && (
+            $user->hasPermission('TEMP_REG:VIEW')
+            || $user->hasPermission('TEMP_REG:CREATE')
+            || $user->hasPermission('TEMP_REG:UPDATE')
+            || $user->hasPermission('TEMP_REG:DELETE')
+            || $user->hasPermission('TEMP_REG:APPROVE')
+        );
     }
 
     /**
@@ -120,14 +187,16 @@ class TemporaryRegistrationRequest extends FormRequest
             return true;
         }
 
-        // 1. Kiểm tra căn hộ: user phải có quan hệ cư trú active tại apartment_id
+        // 1. Kiểm tra căn hộ: user phải có quan hệ cư trú active tại apartment_id hoặc là chủ sở hữu
         if ($apartmentId) {
             $userResident = Resident::where('user_id', $user->id)
                 ->where('apartment_id', $apartmentId)
                 ->where('is_active', true)
                 ->first();
 
-            if (! $userResident) {
+            $isHeadOrOwner = $this->isUserHeadOrOwnerOfApartment($user, $apartmentId);
+
+            if (! $userResident && ! $isHeadOrOwner) {
                 return false;
             }
 
@@ -137,17 +206,13 @@ class TemporaryRegistrationRequest extends FormRequest
                 if ($targetResident) {
                     // Đăng ký cho chính mình
                     $isSelf = ((string) $targetResident->user_id === (string) $user->id)
-                        || ((string) $targetResident->id === (string) $userResident->id);
+                        || ($userResident && (string) $targetResident->id === (string) $userResident->id);
 
                     if ($isSelf) {
                         return true;
                     }
 
-                    // Đăng ký cho thành viên cùng hộ gia đình (chỉ chủ hộ hoặc chủ sở hữu)
-                    $isHeadOrOwner = (bool) $userResident->is_head_of_household
-                        || $userResident->resident_type === 'OWNER'
-                        || (method_exists($user, 'hasRole') && $user->hasRole('RESIDENT_OWNER'));
-
+                    // Đăng ký cho thành viên cùng hộ gia đình (chỉ chủ hộ hoặc chủ sở hữu tại chính căn hộ này)
                     if ($isHeadOrOwner && (string) $targetResident->apartment_id === (string) $apartmentId && (bool) $targetResident->is_active) {
                         return true;
                     }
@@ -177,23 +242,18 @@ class TemporaryRegistrationRequest extends FormRequest
             return true;
         }
 
+        // Kiểm tra quyền chủ hộ hoặc chủ sở hữu tại chính căn hộ này
+        if ($this->isUserHeadOrOwnerOfApartment($user, (string) $registration->apartment_id)) {
+            return true;
+        }
+
         $userResident = Resident::where('user_id', $user->id)
             ->where('apartment_id', $registration->apartment_id)
             ->where('is_active', true)
             ->first();
 
-        if ($userResident) {
-            $isHeadOrOwner = (bool) $userResident->is_head_of_household
-                || $userResident->resident_type === 'OWNER'
-                || (method_exists($user, 'hasRole') && $user->hasRole('RESIDENT_OWNER'));
-
-            if ($isHeadOrOwner) {
-                return true;
-            }
-
-            if ((string) $registration->resident_id === (string) $userResident->id) {
-                return true;
-            }
+        if ($userResident && (string) $registration->resident_id === (string) $userResident->id) {
+            return true;
         }
 
         return false;

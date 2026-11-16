@@ -39,6 +39,38 @@ class ReceptionDashboardTest extends TestCase
         // 1. Tạo nhân viên Lễ tân có quyền
         [$this->receptionist, $this->receptionistToken] = $this->createStaffUser('RECEPTIONIST');
 
+        $parcelPermId = DB::table('permissions')->where('permission_code', 'PARCEL:VIEW')->value('id');
+        if (! $parcelPermId) {
+            $parcelPermId = (string) Str::uuid();
+            DB::table('permissions')->insert([
+                'id' => $parcelPermId,
+                'module' => 'PARCEL',
+                'permission_code' => 'PARCEL:VIEW',
+                'permission_name' => 'Xem bưu phẩm',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        $visitorPermId = DB::table('permissions')->where('permission_code', 'VISITOR:VIEW')->value('id');
+        if (! $visitorPermId) {
+            $visitorPermId = (string) Str::uuid();
+            DB::table('permissions')->insert([
+                'id' => $visitorPermId,
+                'module' => 'VISITOR',
+                'permission_code' => 'VISITOR:VIEW',
+                'permission_name' => 'Xem khách',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        $receptionistRoleId = DB::table('roles')->where('role_code', 'RECEPTIONIST')->value('id');
+        if ($receptionistRoleId) {
+            DB::table('role_permissions')->insertOrIgnore([
+                ['role_id' => $receptionistRoleId, 'permission_id' => $parcelPermId],
+                ['role_id' => $receptionistRoleId, 'permission_id' => $visitorPermId],
+            ]);
+        }
+
         // 2. Tạo cư dân thông thường (không có quyền nhân viên)
         [$this->resident, $this->residentToken] = $this->createResidentUser('resident_dash_');
 
@@ -218,7 +250,7 @@ class ReceptionDashboardTest extends TestCase
             'received_by_staff_id' => $this->receptionist->id,
         ]);
 
-        $metrics = $this->service->getDashboardMetrics(['preset' => 'today']);
+        $metrics = $this->service->getDashboardMetrics(['preset' => 'today'], $this->receptionist);
         $parcels = $metrics['kpis']['parcels'];
 
         // Kiểm tra
@@ -261,7 +293,7 @@ class ReceptionDashboardTest extends TestCase
             'received_by_staff_id' => $this->receptionist->id,
         ]);
 
-        $metrics = $this->service->getDashboardMetrics(['preset' => 'today']);
+        $metrics = $this->service->getDashboardMetrics(['preset' => 'today'], $this->receptionist);
         $parcels = $metrics['kpis']['parcels'];
 
         $this->assertGreaterThanOrEqual(1, $parcels['overdue_parcels']);
@@ -327,7 +359,7 @@ class ReceptionDashboardTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $metrics = $this->service->getDashboardMetrics(['preset' => 'today']);
+        $metrics = $this->service->getDashboardMetrics(['preset' => 'today'], $this->receptionist);
         $visitors = $metrics['kpis']['visitors'];
 
         // Khách 1 đang ở trong tòa

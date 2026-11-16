@@ -31,6 +31,9 @@ class Vehicle extends Model
         'is_active',
         'approved_by',
         'approved_at',
+        'rejection_reason',
+        'rejected_by',
+        'rejected_at',
     ];
 
     protected function casts(): array
@@ -40,6 +43,7 @@ class Vehicle extends Model
             'has_electric_charging_subscription' => 'boolean',
             'is_active' => 'boolean',
             'approved_at' => 'datetime',
+            'rejected_at' => 'datetime',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'deleted_at' => 'datetime',
@@ -103,5 +107,13 @@ class Vehicle extends Model
     public function approver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /**
+     * Người từ chối đăng ký phương tiện (quản lý / admin)
+     */
+    public function rejecter(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 }

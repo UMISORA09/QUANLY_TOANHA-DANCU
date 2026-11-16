@@ -158,25 +158,25 @@ class ResidentService
         $userId = $data['user_id'];
         $isHead = ! empty($data['is_head_of_household']);
 
-        // 1. Kiểm tra cư dân đã tồn tại trong căn hộ chưa bằng index seek siêu nhẹ (không hydrate model)
-        $alreadyExists = Resident::where('apartment_id', $apartmentId)
+        // 1. Kiểm tra cư dân đã tồn tại và đang hoạt động trong căn hộ chưa
+        $alreadyActive = Resident::where('apartment_id', $apartmentId)
             ->where('user_id', $userId)
             ->exists();
 
-        if ($alreadyExists) {
+        if ($alreadyActive) {
             throw ValidationException::withMessages([
                 'user_id' => 'Người dùng này đã được đăng ký cư trú tại căn hộ này.',
             ]);
         }
 
-        // 2. Kiểm tra quy tắc Chủ hộ: Chỉ đọc user_id qua composite index idx_residents_apt_active_head
+        // 2. Kiểm tra quy tắc Chủ hộ nếu yêu cầu là chủ hộ
         if ($isHead) {
             $existingHeadUserId = Resident::where('apartment_id', $apartmentId)
                 ->where('is_active', 1)
                 ->where('is_head_of_household', 1)
                 ->value('user_id');
 
-            if ($existingHeadUserId) {
+            if ($existingHeadUserId && (string) $existingHeadUserId !== (string) $userId) {
                 $headName = User::where('id', $existingHeadUserId)->value('full_name') ?? 'Cư dân hiện tại';
                 throw ValidationException::withMessages([
                     'is_head_of_household' => "Căn hộ này đã có Chủ hộ đang hoạt động ({$headName}). Mỗi căn hộ chỉ được có duy nhất một chủ hộ.",
@@ -184,7 +184,71 @@ class ResidentService
             }
         }
 
-        $resident = DB::transaction(function () use ($data, $isHead, $apartmentId) {
+        $resident = DB::transaction(function () use ($data, $isHead, $apartmentId, $userId) {
+            // Tìm bản ghi theo cặp (apartment_id, user_id) bao gồm cả bản ghi đã xóa mềm
+            $existingRecord = Resident::withTrashed()
+                ->where('apartment_id', $apartmentId)
+                ->where('user_id', $userId)
+                ->first();
+
+            // Trường hợp A: Bản ghi đang hoạt động
+            if ($existingRecord && ! $existingRecord->trashed()) {
+                throw ValidationException::withMessages([
+                    'user_id' => 'Người dùng này đã được đăng ký cư trú tại căn hộ này.',
+                ]);
+            }
+
+            // Trường hợp B: Bản ghi đã bị xóa mềm (Soft-deleted) -> Khóa bản ghi, kiểm tra chủ hộ và khôi phục
+            if ($existingRecord && $existingRecord->trashed()) {
+                $lockedRecord = Resident::withTrashed()
+                    ->where('id', $existingRecord->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $lockedRecord || ! $lockedRecord->trashed()) {
+                    throw ValidationException::withMessages([
+                        'user_id' => 'Người dùng này đã được đăng ký cư trú tại căn hộ này.',
+                    ]);
+                }
+
+                if ($isHead) {
+                    DB::table('apartments')->where('id', $apartmentId)->lockForUpdate()->first();
+
+                    $existingHeadUserId = Resident::where('apartment_id', $apartmentId)
+                        ->where('is_active', 1)
+                        ->where('is_head_of_household', 1)
+                        ->where('id', '!=', $lockedRecord->id)
+                        ->value('user_id');
+
+                    if ($existingHeadUserId) {
+                        $headName = User::where('id', $existingHeadUserId)->value('full_name') ?? 'Cư dân hiện tại';
+                        throw ValidationException::withMessages([
+                            'is_head_of_household' => "Căn hộ này đã có Chủ hộ đang hoạt động ({$headName}). Mỗi căn hộ chỉ được có duy nhất một chủ hộ.",
+                        ]);
+                    }
+                }
+
+                $updateFields = [
+                    'resident_type' => $data['resident_type'] ?? $lockedRecord->resident_type,
+                    'is_head_of_household' => $isHead,
+                    'stay_start_date' => $data['stay_start_date'] ?? $lockedRecord->stay_start_date,
+                    'stay_end_date' => $data['stay_end_date'] ?? null,
+                    'relationship_to_head' => $data['relationship_to_head'] ?? ($isHead ? 'SELF' : $lockedRecord->relationship_to_head),
+                    'occupation' => array_key_exists('occupation', $data) ? $data['occupation'] : $lockedRecord->occupation,
+                    'vehicle_count' => array_key_exists('vehicle_count', $data) ? $data['vehicle_count'] : $lockedRecord->vehicle_count,
+                    'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true,
+                ];
+
+                $lockedRecord->fill($updateFields);
+                $lockedRecord->save();
+                $lockedRecord->restore();
+
+                Cache::forget('apartments_resident_filter');
+
+                return $lockedRecord;
+            }
+
+            // Trường hợp C: Chưa từng tồn tại bản ghi -> Tạo mới
             if ($isHead) {
                 // Khóa căn hộ để chống race condition khi 2 admin cùng thêm chủ hộ đồng thời
                 DB::table('apartments')->where('id', $apartmentId)->lockForUpdate()->first();
@@ -214,6 +278,21 @@ class ResidentService
                 $res = Resident::create($data);
             } catch (QueryException $e) {
                 if (isset($e->errorInfo[1]) && $e->errorInfo[1] == 1062) {
+                    // Nếu gặp race condition duplicate entry, kiểm tra lại bản ghi
+                    $raceRecord = Resident::withTrashed()
+                        ->where('apartment_id', $apartmentId)
+                        ->where('user_id', $userId)
+                        ->first();
+
+                    if ($raceRecord && $raceRecord->trashed()) {
+                        $raceRecord->fill($data);
+                        $raceRecord->save();
+                        $raceRecord->restore();
+                        Cache::forget('apartments_resident_filter');
+
+                        return $raceRecord;
+                    }
+
                     throw new ResidentConflictException('Cư dân này đã được thêm vào căn hộ bởi quản trị viên khác.', 409);
                 }
                 throw $e;
@@ -266,6 +345,26 @@ class ResidentService
                 throw new ResidentNotFoundException('Cư dân không tồn tại trong hệ thống.', 404);
             }
 
+            // BUG-M2-03: Kiểm tra tính hợp lệ của ngày cư trú đối chiếu với DB dưới lock (Partial Date Validation)
+            $newStartDate = array_key_exists('stay_start_date', $data)
+                ? ($data['stay_start_date'] !== null ? Carbon::parse($data['stay_start_date'])->startOfDay() : null)
+                : ($lockedResident->stay_start_date ? Carbon::parse($lockedResident->stay_start_date)->startOfDay() : null);
+
+            $newEndDate = array_key_exists('stay_end_date', $data)
+                ? ($data['stay_end_date'] !== null ? Carbon::parse($data['stay_end_date'])->startOfDay() : null)
+                : ($lockedResident->stay_end_date ? Carbon::parse($lockedResident->stay_end_date)->startOfDay() : null);
+
+            if ($newStartDate !== null && $newEndDate !== null && $newEndDate->lt($newStartDate)) {
+                $errorField = array_key_exists('stay_end_date', $data) ? 'stay_end_date' : 'stay_start_date';
+                $errorMessage = $errorField === 'stay_start_date'
+                    ? 'Ngày bắt đầu cư trú phải trước hoặc bằng ngày kết thúc cư trú.'
+                    : 'Ngày kết thúc cư trú phải sau hoặc bằng ngày bắt đầu cư trú.';
+
+                throw ValidationException::withMessages([
+                    $errorField => $errorMessage,
+                ]);
+            }
+
             // Kiểm tra Optimistic Concurrency dưới lock giao dịch
             if (! empty($data['updated_at'])) {
                 $clientTime = Carbon::parse($data['updated_at'])->timestamp;
@@ -303,20 +402,29 @@ class ResidentService
                 $newUpdatedAt = $currentUpdatedAt->copy()->addSecond();
             }
 
-            // Cập nhật an toàn với điều kiện WHERE id = ? AND updated_at = ?
-            $affected = Resident::where('id', $lockedResident->id)
-                ->where('updated_at', $currentUpdatedAt)
-                ->update(array_merge($data, ['updated_at' => $newUpdatedAt]));
+            // BUG-M2-03: Cập nhật thông qua Eloquent Model.
+            // Để bảo đảm tính nhất quán sau khi commit transaction (After-Commit Consistency):
+            // 1. Nếu scout.after_commit = true: Scout ModelObserver tự động trì hoãn đến outermost commit.
+            //    Ta lưu bằng save() bình thường để ModelObserver đảm nhiệm, không đăng ký callback thủ công.
+            // 2. Nếu scout.after_commit = false: Scout mặc định đồng bộ tức thời trong transaction.
+            //    Ta dùng withoutSyncingToSearch để tắt đồng bộ tức thời, và chủ động đăng ký DB::afterCommit().
+            $lockedResident->fill($data);
+            $lockedResident->updated_at = $newUpdatedAt;
 
-            if ($affected === 0) {
-                throw new ResidentConflictException('Thông tin cư dân đã được Admin khác cập nhật. Vui lòng tải lại dữ liệu mới nhất.', 409);
+            if (config('scout.after_commit', false)) {
+                $lockedResident->save();
+            } else {
+                Resident::withoutSyncingToSearch(function () use ($lockedResident) {
+                    $lockedResident->save();
+                });
+
+                // Đăng ký afterCommit callback chính thức của Laravel: chỉ đồng bộ khi transaction ngoài cùng commit
+                DB::afterCommit(function () use ($lockedResident) {
+                    $lockedResident->searchable();
+                });
             }
 
             Cache::forget('apartments_resident_filter');
-
-            // Cập nhật thuộc tính trên đối tượng trong bộ nhớ, không cần gọi fresh() tốn query
-            $lockedResident->fill($data);
-            $lockedResident->updated_at = $newUpdatedAt;
 
             return $lockedResident;
         });

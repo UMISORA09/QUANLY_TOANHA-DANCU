@@ -129,6 +129,15 @@ class RbacSeeder extends Seeder
             ['module' => 'VISITOR', 'permission_code' => 'VISITOR:CREATE', 'permission_name' => 'Đăng ký khách viếng thăm', 'description' => 'Khai báo thông tin khách lên căn hộ'],
             ['module' => 'VISITOR', 'permission_code' => 'VISITOR:CHECKIN', 'permission_name' => 'Lễ tân check-in khách', 'description' => 'Xác nhận và cấp thẻ ra vào cho khách'],
 
+            // PARCEL MODULE (BƯU PHẨM & GIAO NHẬN)
+            ['module' => 'PARCEL', 'permission_code' => 'PARCEL:VIEW', 'permission_name' => 'Xem danh sách bưu phẩm', 'description' => 'Tra cứu danh sách và chi tiết kiện hàng bưu phẩm toàn tòa nhà'],
+            ['module' => 'PARCEL', 'permission_code' => 'PARCEL:RECEIVE', 'permission_name' => 'Tiếp nhận bưu phẩm', 'description' => 'Nhận kiện hàng bưu phẩm mới từ shipper tại quầy lễ tân'],
+            ['module' => 'PARCEL', 'permission_code' => 'PARCEL:CREATE', 'permission_name' => 'Tạo phiếu tiếp nhận bưu phẩm', 'description' => 'Tạo mới phiếu tiếp nhận kiện hàng bưu phẩm'],
+            ['module' => 'PARCEL', 'permission_code' => 'PARCEL:CHECKOUT', 'permission_name' => 'Bàn giao bưu phẩm', 'description' => 'Xác nhận mã PIN/QR và bàn giao bưu phẩm cho cư dân'],
+            ['module' => 'PARCEL', 'permission_code' => 'PARCEL:UPDATE', 'permission_name' => 'Cập nhật bưu phẩm', 'description' => 'Chỉnh sửa thông tin kiện hàng, ảnh bưu phẩm và vị trí lưu kho'],
+            ['module' => 'PARCEL', 'permission_code' => 'PARCEL:DELETE', 'permission_name' => 'Xóa bưu phẩm', 'description' => 'Xóa hoặc hủy phiếu tiếp nhận bưu phẩm khỏi hệ thống'],
+            ['module' => 'PARCEL', 'permission_code' => 'RECEPTION:OPERATE', 'permission_name' => 'Vận hành quầy lễ tân', 'description' => 'Quyền vận hành tổng hợp toàn bộ nghiệp vụ tại quầy lễ tân'],
+
             // REPORT MODULE
             ['module' => 'REPORT', 'permission_code' => 'REPORT:VIEW', 'permission_name' => 'Xem báo cáo thống kê', 'description' => 'Xem biểu đồ doanh thu và vận hành'],
             ['module' => 'REPORT', 'permission_code' => 'REPORT:EXPORT', 'permission_name' => 'Xuất file báo cáo', 'description' => 'Xuất dữ liệu ra Excel/PDF'],
@@ -192,6 +201,31 @@ class RbacSeeder extends Seeder
             ['module' => 'USER', 'permission_code' => 'USER:UPLOAD', 'permission_name' => 'Tải lên danh sách người dùng', 'description' => 'Tải lên danh sách tài khoản hàng loạt từ tệp tin'],
             ['module' => 'USER', 'permission_code' => 'USER:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ người dùng', 'description' => 'Quyền người đặc biệt thao tác tài khoản đặc thù'],
 
+            // RESIDENT MODULE
+            ['module' => 'RESIDENT', 'permission_code' => 'RESIDENT:VIEW', 'permission_name' => 'Xem danh sách cư dân & nhân khẩu', 'description' => 'Tra cứu hồ sơ nhân khẩu và thông tin lưu trú của cư dân'],
+            ['module' => 'RESIDENT', 'permission_code' => 'RESIDENT:CREATE', 'permission_name' => 'Thêm nhân khẩu mới vào căn hộ', 'description' => 'Đăng ký cư dân và gán nhân khẩu vào căn hộ'],
+            ['module' => 'RESIDENT', 'permission_code' => 'RESIDENT:UPDATE', 'permission_name' => 'Cập nhật thông tin nhân khẩu', 'description' => 'Chỉnh sửa quan hệ chủ hộ, thời gian lưu trú và thông tin cư dân'],
+            ['module' => 'RESIDENT', 'permission_code' => 'RESIDENT:DELETE', 'permission_name' => 'Xóa nhân khẩu khỏi căn hộ', 'description' => 'Xóa mềm hoặc hủy đăng ký cư trú của nhân khẩu'],
+
+            // TEMPORARY REGISTRATION MODULE (TEMP_REG)
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:VIEW', 'permission_name' => 'Xem danh sách hồ sơ tạm trú / tạm vắng', 'description' => 'Tra cứu danh sách hồ sơ đăng ký tạm trú và tạm vắng'],
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:CREATE', 'permission_name' => 'Tạo hồ sơ tạm trú / tạm vắng', 'description' => 'Tạo mới hồ sơ đăng ký tạm trú hoặc tạm vắng'],
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:UPDATE', 'permission_name' => 'Cập nhật hồ sơ tạm trú / tạm vắng', 'description' => 'Chỉnh sửa thông tin hồ sơ tạm trú hoặc tạm vắng'],
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:DELETE', 'permission_name' => 'Xóa hồ sơ tạm trú / tạm vắng', 'description' => 'Xóa hồ sơ đăng ký tạm trú hoặc tạm vắng'],
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:APPROVE', 'permission_name' => 'Phê duyệt / Gửi Công An hồ sơ', 'description' => 'Phê duyệt, từ chối hoặc nộp hồ sơ tạm trú / tạm vắng sang Công An'],
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:DOWNLOAD', 'permission_name' => 'Tải về hồ sơ / Mẫu CT01', 'description' => 'Xuất và tải về biểu mẫu CT01 hoặc tài liệu đính kèm'],
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:UPLOAD', 'permission_name' => 'Tải lên tài liệu hồ sơ', 'description' => 'Tải lên ảnh CCCD hoặc tài liệu đính kèm hồ sơ'],
+            ['module' => 'TEMP_REG', 'permission_code' => 'TEMP_REG:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ tạm trú', 'description' => 'Quyền người đặc biệt thao tác hồ sơ tạm trú / tạm vắng'],
+
+            // RFID CARD MODULE (ACCESS CARDS)
+            ['module' => 'RFID', 'permission_code' => 'RFID:VIEW', 'permission_name' => 'Xem danh sách thẻ RFID', 'description' => 'Tra cứu danh sách thẻ ra vào thang máy, bãi đỗ xe và trạng thái thẻ'],
+            ['module' => 'RFID', 'permission_code' => 'RFID:CREATE', 'permission_name' => 'Cấp mới thẻ RFID', 'description' => 'Đăng ký và cấp mới thẻ RFID cho cư dân hoặc phương tiện'],
+            ['module' => 'RFID', 'permission_code' => 'RFID:UPDATE', 'permission_name' => 'Cập nhật thẻ RFID', 'description' => 'Chỉnh sửa thông tin thẻ, gia hạn hoặc đổi trạng thái kích hoạt/tạm khóa'],
+            ['module' => 'RFID', 'permission_code' => 'RFID:DELETE', 'permission_name' => 'Xóa / Thu hồi thẻ RFID', 'description' => 'Thu hồi vĩnh viễn hoặc xóa thẻ RFID khỏi hệ thống'],
+            ['module' => 'RFID', 'permission_code' => 'RFID:DOWNLOAD', 'permission_name' => 'Tải về danh sách thẻ RFID', 'description' => 'Xuất file Excel/CSV danh sách thẻ RFID'],
+            ['module' => 'RFID', 'permission_code' => 'RFID:UPLOAD', 'permission_name' => 'Tải lên danh sách thẻ RFID', 'description' => 'Tải lên danh sách thẻ RFID hàng loạt từ tệp tin'],
+            ['module' => 'RFID', 'permission_code' => 'RFID:SPECIAL', 'permission_name' => 'Người đặc biệt phân hệ thẻ RFID', 'description' => 'Quyền người đặc biệt thao tác thẻ RFID đặc thù'],
+
             // SYSTEM MODULE (7 CORE RBAC PERMISSIONS INCL. SPECIAL)
             ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:CREATE', 'permission_name' => 'Thêm thiết lập hệ thống', 'description' => 'Thêm mới cấu hình và tham số hệ thống'],
             ['module' => 'SYSTEM', 'permission_code' => 'SYSTEM:DELETE', 'permission_name' => 'Xóa thiết lập hệ thống', 'description' => 'Xóa cấu hình và dữ liệu hệ thống'],
@@ -224,27 +258,37 @@ class RbacSeeder extends Seeder
                 'USER:VIEW', 'USER:CREATE', 'USER:UPDATE', 'USER:ASSIGN_ROLE',
                 'ROLE:VIEW',
                 'PERMISSION:VIEW',
+                'RESIDENT:VIEW', 'RESIDENT:CREATE', 'RESIDENT:UPDATE', 'RESIDENT:DELETE',
                 'AMENITY:VIEW', 'AMENITY:CREATE', 'AMENITY:UPDATE', 'AMENITY:DELETE', 'AMENITY:CONFIG_SLOT', 'AMENITY:BOOK',
                 'INVOICE:VIEW', 'INVOICE:CREATE', 'INVOICE:UPDATE', 'INVOICE:APPROVE',
                 'TICKET:VIEW', 'TICKET:UPDATE', 'TICKET:RESOLVE',
                 'VISITOR:VIEW', 'VISITOR:CREATE', 'VISITOR:CHECKIN',
+                'PARCEL:VIEW', 'PARCEL:CREATE', 'PARCEL:RECEIVE', 'PARCEL:CHECKOUT', 'PARCEL:UPDATE', 'PARCEL:DELETE', 'RECEPTION:OPERATE',
                 'REPORT:VIEW', 'REPORT:EXPORT',
                 'VEHICLE:VIEW', 'VEHICLE:CREATE', 'VEHICLE:UPDATE', 'VEHICLE:DELETE', 'VEHICLE:APPROVE',
+                'TEMP_REG:VIEW', 'TEMP_REG:CREATE', 'TEMP_REG:UPDATE', 'TEMP_REG:DELETE', 'TEMP_REG:APPROVE',
+                'RFID:VIEW', 'RFID:CREATE', 'RFID:UPDATE', 'RFID:DELETE',
             ],
             'ACCOUNTANT' => [
                 'INVOICE:VIEW', 'INVOICE:CREATE', 'INVOICE:UPDATE', 'INVOICE:APPROVE', 'INVOICE:PAY',
                 'REPORT:VIEW', 'REPORT:EXPORT',
             ],
             'RECEPTIONIST' => [
+                'RESIDENT:VIEW',
                 'VISITOR:VIEW', 'VISITOR:CREATE', 'VISITOR:CHECKIN',
+                'PARCEL:VIEW', 'PARCEL:CREATE', 'PARCEL:RECEIVE', 'PARCEL:CHECKOUT', 'PARCEL:UPDATE', 'RECEPTION:OPERATE',
                 'TICKET:VIEW', 'TICKET:CREATE',
                 'AMENITY:VIEW',
                 'VEHICLE:VIEW', 'VEHICLE:CREATE', 'VEHICLE:UPDATE', 'VEHICLE:APPROVE',
+                'TEMP_REG:VIEW', 'TEMP_REG:CREATE', 'TEMP_REG:UPDATE',
+                'RFID:VIEW', 'RFID:CREATE', 'RFID:UPDATE',
             ],
             'SECURITY_GUARD' => [
                 'VISITOR:VIEW', 'VISITOR:CREATE', 'VISITOR:CHECKIN',
+                'PARCEL:VIEW', 'PARCEL:CHECKOUT',
                 'TICKET:VIEW', 'TICKET:CREATE',
                 'VEHICLE:VIEW', 'VEHICLE:CREATE', 'VEHICLE:UPDATE', 'VEHICLE:APPROVE',
+                'RFID:VIEW', 'RFID:UPDATE',
             ],
             'TECHNICIAN' => [
                 'TICKET:VIEW', 'TICKET:UPDATE', 'TICKET:RESOLVE',
@@ -268,6 +312,16 @@ class RbacSeeder extends Seeder
             if (! $role) {
                 continue;
             }
+
+            // Đồng bộ Least Privilege: Xóa các permissions thuộc module PARCEL không còn trong permCodes của role
+            $validPermIds = array_filter(array_map(fn ($c) => $permissionModelMap[$c]->id ?? null, $permCodes));
+            DB::table('role_permissions')
+                ->where('role_id', $role->id)
+                ->whereNotIn('permission_id', $validPermIds)
+                ->whereIn('permission_id', function ($q) {
+                    $q->select('id')->from('permissions')->where('module', 'PARCEL');
+                })
+                ->delete();
 
             foreach ($permCodes as $code) {
                 $perm = $permissionModelMap[$code] ?? null;
