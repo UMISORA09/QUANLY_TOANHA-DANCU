@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ZoneRequest;
 use App\Models\Block;
+use App\Services\BuildingStructureService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,10 @@ use Illuminate\Support\Facades\Log;
  */
 class ZoneController extends Controller
 {
+    public function __construct(
+        protected BuildingStructureService $structureService
+    ) {}
+
     /**
      * Lấy danh sách các khối tòa nhà (hỗ trợ tìm kiếm, lọc trạng thái, phân trang & thống kê).
      */
@@ -116,10 +121,13 @@ class ZoneController extends Controller
                 'version' => 1,
             ]);
 
+            $dataVersion = $this->structureService->bumpDataVersion();
+
             return response()->json([
                 'success' => true,
                 'message' => "Thêm mới khối tòa nhà '{$block->block_name}' thành công.",
                 'data' => $this->formatZone($block),
+                'data_version' => $dataVersion,
             ], 201);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@store] Lỗi tạo khối nhà: '.$e->getMessage(), [
@@ -241,11 +249,13 @@ class ZoneController extends Controller
             }
 
             $freshBlock = Block::find($block->id);
+            $dataVersion = $this->structureService->bumpDataVersion();
 
             return response()->json([
                 'success' => true,
                 'message' => "Cập nhật khối tòa nhà '{$freshBlock->block_name}' thành công.",
                 'data' => $this->formatZone($freshBlock),
+                'data_version' => $dataVersion,
             ], 200);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@update] Lỗi cập nhật khối nhà: '.$e->getMessage(), [
@@ -280,9 +290,12 @@ class ZoneController extends Controller
             $blockName = $block->block_name;
             $block->delete();
 
+            $dataVersion = $this->structureService->bumpDataVersion();
+
             return response()->json([
                 'success' => true,
                 'message' => "Đã xóa khối tòa nhà '{$blockName}' thành công.",
+                'data_version' => $dataVersion,
             ], 200);
         } catch (\Throwable $e) {
             Log::error('[ZoneController@destroy] Lỗi xóa khối nhà: '.$e->getMessage(), [

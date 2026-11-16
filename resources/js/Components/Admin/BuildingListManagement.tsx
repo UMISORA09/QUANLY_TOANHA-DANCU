@@ -2802,7 +2802,7 @@ export const BuildingListManagement: React.FC<BuildingListManagementProps> = ({
                 <button
                   type="submit"
                   disabled={isActionLoading}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   {isActionLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
                   <span>Thêm tầng</span>

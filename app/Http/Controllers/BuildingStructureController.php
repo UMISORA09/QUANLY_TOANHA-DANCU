@@ -22,10 +22,7 @@ class BuildingStructureController extends Controller
      */
     private function bumpVersion(): void
     {
-        if (! Cache::has('apartments_data_version')) {
-            Cache::forever('apartments_data_version', 1);
-        }
-        Cache::increment('apartments_data_version');
+        $this->service->bumpDataVersion();
     }
 
     /**
@@ -34,7 +31,7 @@ class BuildingStructureController extends Controller
      */
     public function getDataVersion(): JsonResponse
     {
-        $version = (int) Cache::get('apartments_data_version', 1);
+        $version = $this->service->getDataVersion();
 
         return response()->json([
             'success' => true,

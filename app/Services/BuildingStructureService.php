@@ -7,12 +7,34 @@ use App\Models\Block;
 use App\Models\Floor;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use RuntimeException;
 
 class BuildingStructureService
 {
+    /**
+     * Tăng số phiên bản dữ liệu khi có thay đổi cấu trúc tòa nhà / căn hộ / zone
+     * để làm mới bộ đệm Cache ngay lập tức và đồng bộ cross-client.
+     */
+    public function bumpDataVersion(): int
+    {
+        if (! Cache::has('apartments_data_version')) {
+            Cache::forever('apartments_data_version', 1);
+        }
+
+        return (int) Cache::increment('apartments_data_version');
+    }
+
+    /**
+     * Lấy phiên bản dữ liệu cấu trúc hiện tại
+     */
+    public function getDataVersion(): int
+    {
+        return (int) Cache::get('apartments_data_version', 1);
+    }
+
     /**
      * Lấy danh sách Khối tòa nhà kèm thống kê số tầng và căn hộ
      *
