@@ -213,6 +213,7 @@ class RevenueAnalyticsService
             'VIETQR' => 'Quét Mã VietQR',
             'VNPAY' => 'Cổng VNPAY',
             'MOMO' => 'Ví MoMo',
+            'POS' => 'Máy POS',
         ];
 
         $gatewayColors = [
@@ -221,6 +222,7 @@ class RevenueAnalyticsService
             'VIETQR' => '#8b5cf6',
             'VNPAY' => '#ef4444',
             'MOMO' => '#d946ef',
+            'POS' => '#06b6d4',
         ];
 
         $result = [];
