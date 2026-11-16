@@ -40,9 +40,9 @@ class AnnouncementMassSeeder extends Seeder
         $blocks = DB::table('blocks')->get();
         $floors = DB::table('floors')->get();
 
-        $residents = DB::table('residents')->pluck('user_id')->all();
+        $residents = array_values(array_unique(DB::table('residents')->pluck('user_id')->all()));
         if (empty($residents)) {
-            $residents = $adminUsers;
+            $residents = array_values(array_unique($adminUsers));
         }
 
         $topicsByCategory = [
@@ -235,7 +235,7 @@ class AnnouncementMassSeeder extends Seeder
             if (count($announcementsBatch) >= $batchSize) {
                 DB::table('announcements')->insert($announcementsBatch);
                 if (! empty($readsBatch)) {
-                    DB::table('announcement_reads')->insert($readsBatch);
+                    DB::table('announcement_reads')->insertOrIgnore($readsBatch);
                 }
                 $announcementsBatch = [];
                 $readsBatch = [];
@@ -245,7 +245,7 @@ class AnnouncementMassSeeder extends Seeder
         if (! empty($announcementsBatch)) {
             DB::table('announcements')->insert($announcementsBatch);
             if (! empty($readsBatch)) {
-                DB::table('announcement_reads')->insert($readsBatch);
+                DB::table('announcement_reads')->insertOrIgnore($readsBatch);
             }
         }
 
