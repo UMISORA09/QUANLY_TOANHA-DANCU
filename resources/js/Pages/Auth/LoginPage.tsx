@@ -37,7 +37,7 @@ const DEMO_ROLES: Array<{
     title: 'Admin / IT',
     badge: 'Toàn quyền',
     email: 'admin@cassavas.vn',
-    pass: '123567',
+    pass: 'Admin@123456',
     icon: ShieldCheck,
   },
   {

@@ -375,6 +375,7 @@ class MeterReadingImportExcelTest extends TestCase
                 'meter_type' => 'ELECTRICITY',
                 'billing_month_year' => '2027-05',
                 'file_name' => 'test.csv',
+                'file_url' => 'meter-import-batches/test.csv',
                 'total_records' => 1,
                 'success_records' => 1,
                 'failed_records' => 0,

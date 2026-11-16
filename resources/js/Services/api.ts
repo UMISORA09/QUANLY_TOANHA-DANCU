@@ -658,6 +658,12 @@ class ApiService {
     }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username: identifier, identifier, password }),
+      signal: AbortSignal.timeout(15000),
+    }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'TimeoutError') {
+        throw new Error('Đăng nhập phản hồi quá lâu. Vui lòng kiểm tra kết nối và thử lại.');
+      }
+      throw error;
     });
     if (!res.access_token || !res.user?.id || !Array.isArray(res.user.roles) || res.user.roles.length === 0) {
       throw new Error('Phản hồi đăng nhập không có phiên hoặc quyền hợp lệ.');
