@@ -76,6 +76,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
   // Suggestion Boxes
   const [boxes, setBoxes] = useState<SuggestionBoxItem[]>([]);
   const [isLoadingBoxes, setIsLoadingBoxes] = useState(false);
+  const [boxesError, setBoxesError] = useState('');
 
   // Form State
   const [selectedBoxId, setSelectedBoxId] = useState<string>('');
@@ -132,6 +133,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
   const loadBoxes = async () => {
     try {
       setIsLoadingBoxes(true);
+      setBoxesError('');
       const res = await api.getResidentSuggestionBoxes();
       if (res?.data) {
         setBoxes(res.data);
@@ -140,7 +142,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
         }
       }
     } catch (err) {
-      console.warn('Lỗi tải danh sách hòm thư:', err);
+      setBoxesError(err instanceof Error ? err.message : 'Không tải được hòm thư tiếp nhận. Vui lòng thử lại.');
     } finally {
       setIsLoadingBoxes(false);
     }
@@ -416,6 +418,8 @@ export const ResidentSuggestionPanel: React.FC = () => {
               <div>
                 <CustomSelect variant="feature"
                   label="Hòm thư tiếp nhận"
+                  disabled={isLoadingBoxes || !!boxesError || boxes.length === 0}
+                  placeholder={isLoadingBoxes ? 'Đang tải hòm thư…' : boxesError ? 'Chưa tải được hòm thư' : boxes.length ? 'Chọn hòm thư tiếp nhận' : 'Chưa có hòm thư tiếp nhận'}
                   value={selectedBoxId}
                   onChange={setSelectedBoxId}
                   options={boxes.map((box) => ({ value: box.id, label: `${box.box_name} ${box.block ? `(${box.block.block_name})` : '(Toàn khu)'}` }))}
@@ -423,6 +427,8 @@ export const ResidentSuggestionPanel: React.FC = () => {
                   overlay
                   buttonClassName="min-h-11 text-sm"
                 />
+                {boxesError && <p role="alert" className="mt-2 text-sm text-rose-700">{boxesError} <button type="button" onClick={() => void loadBoxes()} className="ml-2 underline">Thử tải lại hòm thư</button></p>}
+                {!isLoadingBoxes && !boxesError && boxes.length === 0 && <div role="status" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Chưa có hòm thư đang mở cho nơi bạn cư trú. Vui lòng liên hệ ban quản lý để được thiết lập. <button type="button" onClick={() => void loadBoxes()} className="underline">Tải lại hòm thư</button></div>}
                 {formErrors.box_id && <p className="mt-1.5 text-xs text-rose-600">{formErrors.box_id}</p>}
                 {boxes.find((b) => b.id === selectedBoxId)?.description && (
                   <p className="mt-1.5 text-xs text-neutral-500 italic">
@@ -578,7 +584,7 @@ export const ResidentSuggestionPanel: React.FC = () => {
           <div className="flex justify-end gap-3">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isLoadingBoxes || !!boxesError || boxes.length === 0}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? (

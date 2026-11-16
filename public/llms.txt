@@ -23,3 +23,12 @@ API JSON: gọi `GET /api/v1/public/guides/home` để lấy Markdown trong JSON
 - [SMART CASSAVAS MCP](https://quanly-toanha-dancu.vercel.app/mcp): giao thức và công cụ đọc hướng dẫn.
 - [Khám phá MCP của website](https://quanly-toanha-dancu.vercel.app/.well-known/mcp): mô tả riêng của website, không phải chứng nhận MCP Registry.
 - [Sitemap](https://quanly-toanha-dancu.vercel.app/sitemap.xml): các trang công khai có thể lập chỉ mục.
+
+## Developer resources
+
+- [SMART CASSAVAS API](https://quanly-toanha-dancu.vercel.app/docs)
+- [SMART CASSAVAS MCP Server](https://quanly-toanha-dancu.vercel.app/mcp)
+- [SMART CASSAVAS CLI](https://quanly-toanha-dancu.vercel.app/cli)
+- [CLI Markdown](https://quanly-toanha-dancu.vercel.app/cli.md)
+- [CLI metadata](https://quanly-toanha-dancu.vercel.app/api/v1/public/cli)
+- [GitHub dự án](https://github.com/UMISORA09/QUANLY_TOANHA-DANCU)

@@ -3,7 +3,7 @@
   "info": {
     "title": "SMART CASSAVAS — Public documentation API",
     "version": "1.0.0",
-    "description": "Read-only public documentation. Resident, payment and management APIs require separate authorization and are outside this specification. MCP JSON-RPC is documented at /docs. The JSON guide API is versioned in the path. Breaking changes use a new major path. Scheduled retirement is announced in /docs and through the Sunset header."
+    "description": "Read-only public documentation. Resident, payment and management APIs require separate authorization and are outside this specification. MCP JSON-RPC is documented at /docs. The JSON guide API is versioned in the path. Breaking changes use a new major path. Scheduled retirement is announced in /docs and through the Sunset header. Response schemas describe actual media types: HTML, Markdown, plain text and XML stay textual. Only public JSON operations expose strict JSON objects. The CLI is source-distributed and is not published on npm."
   },
   "servers": [
     {
@@ -29,7 +29,9 @@
               }
             }
           }
-        }
+        },
+        "description": "SMART CASSAVAS homepage. Read-only public resource; does not authorize business actions.",
+        "parameters": []
       }
     },
     "/{page}": {
@@ -50,7 +52,8 @@
                 "contact",
                 "privacy",
                 "docs",
-                "mcp"
+                "mcp",
+                "cli"
               ]
             }
           }
@@ -69,7 +72,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Read a public SMART CASSAVAS guide. Read-only public resource; does not authorize business actions."
       }
     },
     "/llms.txt": {
@@ -87,7 +91,9 @@
             }
           }
         },
-        "summary": "Read instructions for AI agents"
+        "summary": "Read instructions for AI agents",
+        "description": "Read instructions for AI agents. Read-only public resource; does not authorize business actions.",
+        "parameters": []
       }
     },
     "/sitemap.xml": {
@@ -105,7 +111,9 @@
             }
           }
         },
-        "summary": "List indexable public pages"
+        "summary": "List indexable public pages",
+        "description": "List indexable public pages. Read-only public resource; does not authorize business actions.",
+        "parameters": []
       }
     },
     "/api/v1/public/guides/{page}": {
@@ -127,26 +135,39 @@
                 "contact",
                 "privacy",
                 "docs",
-                "mcp"
+                "mcp",
+                "cli"
               ]
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Public guide",
+            "description": "Public guide as JSON.",
             "headers": {
               "RateLimit-Policy": {
-                "description": "Quota and window in seconds.",
-                "schema": {
-                  "type": "string"
-                }
+                "$ref": "#/components/headers/RateLimit-Policy"
               },
               "RateLimit": {
-                "description": "Remaining quota and seconds until reset.",
-                "schema": {
-                  "type": "string"
-                }
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
               }
             },
             "content": {
@@ -158,19 +179,31 @@
             }
           },
           "404": {
-            "description": "Unknown guide",
+            "description": "Unknown public guide.",
             "headers": {
               "RateLimit-Policy": {
-                "description": "Quota and window in seconds.",
-                "schema": {
-                  "type": "string"
-                }
+                "$ref": "#/components/headers/RateLimit-Policy"
               },
               "RateLimit": {
-                "description": "Remaining quota and seconds until reset.",
-                "schema": {
-                  "type": "string"
-                }
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
               }
             },
             "content": {
@@ -182,37 +215,116 @@
             }
           },
           "429": {
-            "description": "Request quota exceeded",
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/PublicCacheUnavailable"
+          }
+        }
+      }
+    },
+    "/.well-known/mcp": {
+      "get": {
+        "summary": "Read SMART CASSAVAS MCP discovery",
+        "description": "Read site-specific MCP discovery metadata. This is not registration or certification by an MCP registry.",
+        "operationId": "readMcpDiscovery",
+        "responses": {
+          "200": {
+            "description": "Public MCP discovery metadata.",
             "headers": {
               "RateLimit-Policy": {
-                "description": "Quota and window in seconds.",
-                "schema": {
-                  "type": "string"
-                }
+                "$ref": "#/components/headers/RateLimit-Policy"
               },
               "RateLimit": {
-                "description": "Remaining quota and seconds until reset.",
-                "schema": {
-                  "type": "string"
-                }
+                "$ref": "#/components/headers/RateLimit"
               },
-              "Retry-After": {
-                "description": "Seconds until another request may be sent.",
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1
-                }
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
               }
             },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/McpDiscovery"
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/PublicCacheUnavailable"
           }
-        }
+        },
+        "parameters": []
+      }
+    },
+    "/api/v1/public/cli": {
+      "get": {
+        "summary": "Read SMART CASSAVAS CLI metadata",
+        "description": "Read source installation instructions, commands and allowed guide slugs. No account or database health information is returned.",
+        "operationId": "readCliInfo",
+        "responses": {
+          "200": {
+            "description": "Public CLI information.",
+            "headers": {
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimit-Policy"
+              },
+              "RateLimit": {
+                "$ref": "#/components/headers/RateLimit"
+              },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliToolInfo"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/PublicCacheUnavailable"
+          }
+        },
+        "parameters": []
       }
     }
   },
@@ -240,15 +352,65 @@
             }
           }
         }
+      },
+      "RateLimited": {
+        "description": "Public request quota exceeded; do not automatically retry before Retry-After.",
+        "headers": {
+          "RateLimit-Policy": {
+            "$ref": "#/components/headers/RateLimit-Policy"
+          },
+          "RateLimit": {
+            "$ref": "#/components/headers/RateLimit"
+          },
+          "RateLimit-Limit": {
+            "$ref": "#/components/headers/RateLimit-Limit"
+          },
+          "RateLimit-Remaining": {
+            "$ref": "#/components/headers/RateLimit-Remaining"
+          },
+          "RateLimit-Reset": {
+            "$ref": "#/components/headers/RateLimit-Reset"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "X-RateLimit-Reset": {
+            "$ref": "#/components/headers/X-RateLimit-Reset"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "PublicCacheUnavailable": {
+        "description": "Rate-limit storage unavailable; the server does not bypass enforcement.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       }
     },
     "schemas": {
       "Guide": {
         "type": "object",
-        "required": [
-          "page",
-          "markdown"
-        ],
         "properties": {
           "page": {
             "type": "string",
@@ -258,31 +420,266 @@
               "contact",
               "privacy",
               "docs",
-              "mcp"
-            ]
+              "mcp",
+              "cli"
+            ],
+            "description": "Public guide slug."
+          },
+          "title": {
+            "type": "string",
+            "description": "Product and guide title."
           },
           "markdown": {
-            "type": "string"
+            "type": "string",
+            "description": "Read-only public Markdown."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date",
+            "description": "Public documentation revision date."
           }
-        }
+        },
+        "required": [
+          "page",
+          "title",
+          "markdown",
+          "updated_at"
+        ],
+        "additionalProperties": false
       },
       "Error": {
         "type": "object",
-        "required": [
-          "code",
-          "message"
-        ],
         "properties": {
           "code": {
             "type": "string",
             "enum": [
               "guide_not_found",
-              "rate_limit_exceeded"
-            ]
+              "rate_limit_exceeded",
+              "public_cache_unavailable"
+            ],
+            "description": "Stable public error code."
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable public error message."
           }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "McpDiscovery": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Public MCP service name."
+          },
+          "description": {
+            "type": "string",
+            "description": "Scope and discovery limitations."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "MCP Streamable HTTP URL."
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "streamable-http"
+            ],
+            "description": "Supported transport."
+          },
+          "protocolVersions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Supported MCP protocol versions."
+          },
+          "documentation": {
+            "type": "string",
+            "format": "uri",
+            "description": "Official documentation URL."
+          },
+          "authentication": {
+            "type": "string",
+            "description": "Public documentation only; no credentials."
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "url",
+          "transport",
+          "protocolVersions",
+          "documentation",
+          "authentication"
+        ],
+        "additionalProperties": false
+      },
+      "CliToolInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "CLI display name."
+          },
+          "command": {
+            "type": "string",
+            "description": "Source-distributed command name."
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+            "description": "Bundled CLI version."
+          },
+          "description": {
+            "type": "string",
+            "description": "Read-only scope."
+          },
+          "installation": {
+            "type": "object",
+            "properties": {
+              "repository": {
+                "type": "string",
+                "format": "uri",
+                "description": "Official source repository."
+              },
+              "local": {
+                "type": "string",
+                "description": "Command to run from a clone with Node.js."
+              },
+              "npm": {
+                "type": "null",
+                "description": "No npm package has been published."
+              },
+              "npx": {
+                "type": "null",
+                "description": "No npm registry executable is advertised."
+              }
+            },
+            "required": [
+              "repository",
+              "local",
+              "npm",
+              "npx"
+            ],
+            "additionalProperties": false
+          },
+          "commands": {
+            "type": "array",
+            "description": "Supported public commands.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Command name."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Read-only operation description."
+                },
+                "usage": {
+                  "type": "string",
+                  "description": "Command usage."
+                }
+              },
+              "required": [
+                "name",
+                "description",
+                "usage"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "pages": {
+            "type": "array",
+            "description": "Allowed public guide slugs.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "home",
+                "about",
+                "contact",
+                "privacy",
+                "docs",
+                "mcp",
+                "cli"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "command",
+          "version",
+          "description",
+          "installation",
+          "commands",
+          "pages"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "headers": {
+      "RateLimit-Policy": {
+        "description": "Structured fields per IETF draft-ietf-httpapi-ratelimit-headers-11; quota applies to the configured shared store or local instance.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RateLimit": {
+        "description": "Structured fields per IETF draft-ietf-httpapi-ratelimit-headers-11; quota applies to the configured shared store or local instance.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RateLimit-Limit": {
+        "description": "Compatibility header. Reset is seconds except X-RateLimit-Reset, which is a Unix timestamp.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RateLimit-Remaining": {
+        "description": "Compatibility header. Reset is seconds except X-RateLimit-Reset, which is a Unix timestamp.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RateLimit-Reset": {
+        "description": "Compatibility header. Reset is seconds except X-RateLimit-Reset, which is a Unix timestamp.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "X-RateLimit-Limit": {
+        "description": "Compatibility header. Reset is seconds except X-RateLimit-Reset, which is a Unix timestamp.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "X-RateLimit-Remaining": {
+        "description": "Compatibility header. Reset is seconds except X-RateLimit-Reset, which is a Unix timestamp.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "X-RateLimit-Reset": {
+        "description": "Compatibility header. Reset is seconds except X-RateLimit-Reset, which is a Unix timestamp.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Retry-After": {
+        "description": "Seconds before attempting again.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     }
