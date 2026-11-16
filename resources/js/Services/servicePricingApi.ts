@@ -69,28 +69,25 @@ class ServicePricingApiService {
     private baseUrl = '/api/v1/pricing-configs';
 
     private getAuthHeaders(): HeadersInit {
-        let token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+        let token = localStorage.getItem('smart_cassavas_token') || localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
         if (!token) {
-            const adminAuth = localStorage.getItem('admin_auth_user');
-            const userSession = localStorage.getItem('smart_user_session');
-            if (adminAuth || userSession) {
+            const sessionStr = localStorage.getItem('smartcassavas_session') || localStorage.getItem('admin_auth_user') || localStorage.getItem('smart_user_session');
+            if (sessionStr) {
                 try {
-                    const session = JSON.parse(adminAuth || userSession || '{}');
-                    token = session.token || session.access_token || 'smart_token_admin_demo';
+                    const session = JSON.parse(sessionStr);
+                    token = session.token || session.access_token;
                 } catch {
-                    token = 'smart_token_admin_demo';
+                    // ignore
                 }
-            } else {
-                token = 'smart_token_admin_demo';
             }
         }
 
-        const authToken = token || 'smart_token_admin_demo';
+        const authToken = token || '';
 
         return {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            Authorization: authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`,
+            ...(authToken ? { Authorization: authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}` } : {}),
         };
     }
 
