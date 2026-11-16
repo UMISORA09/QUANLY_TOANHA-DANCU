@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Services\Cicd\GitHubActionsService;
 use App\Services\RbacService;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -13,18 +15,35 @@ class CicdDashboardController extends Controller
         protected GitHubActionsService $cicdService
     ) {}
 
+    public function history(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'force' => ['sometimes', 'boolean'],
+        ]);
+        try {
+            $history = $this->cicdService->getHistoryPage((int) ($validated['page'] ?? 1), $request->boolean('force'));
+        } catch (RequestException $exception) {
+            return response()->json(['message' => 'Không thể đồng bộ lịch sử GitHub (HTTP '.$exception->response->status().'). Vui lòng thử lại sau.'], 502);
+        } catch (ConnectionException) {
+            return response()->json(['message' => 'Kết nối GitHub quá thời gian chờ. Vui lòng thử đồng bộ lại.'], 504);
+        }
+
+        return response()->json(['data' => $history]);
+    }
+
     /**
      * Bundle toàn bộ dữ liệu Dashboard trong 1 request (Tối ưu tốc độ cao)
      */
     public function bundle(Request $request): JsonResponse
     {
         $start = microtime(true);
-        $filters = [
+        $filters = array_filter([
             'status' => $request->query('status'),
             'branch' => $request->query('branch'),
             'workflow' => $request->query('workflow'),
             'search' => $request->query('search'),
-        ];
+        ], fn ($v) => $v !== null && $v !== '' && $v !== 'all');
 
         $data = $this->cicdService->getDashboardBundle($filters, $request->boolean('force'));
         $elapsed = round((microtime(true) - $start) * 1000, 2);
@@ -54,12 +73,12 @@ class CicdDashboardController extends Controller
      */
     public function pipelines(Request $request): JsonResponse
     {
-        $filters = [
+        $filters = array_filter([
             'status' => $request->query('status'),
             'branch' => $request->query('branch'),
             'workflow' => $request->query('workflow'),
             'search' => $request->query('search'),
-        ];
+        ], fn ($v) => $v !== null && $v !== '' && $v !== 'all');
 
         $pipelines = $this->cicdService->getPipelines($filters);
 
@@ -104,7 +123,11 @@ class CicdDashboardController extends Controller
      */
     public function jobs(string $id): JsonResponse
     {
-        $jobs = $this->cicdService->getPipelineJobs($id);
+        try {
+            $jobs = $this->cicdService->getPipelineJobs($id);
+        } catch (\Throwable) {
+            return response()->json(['message' => 'Không thể tải jobs/steps từ GitHub. Vui lòng thử lại.'], 502);
+        }
 
         return response()->json([
             'success' => true,
@@ -117,8 +140,13 @@ class CicdDashboardController extends Controller
      */
     public function logs(string $id, Request $request): JsonResponse
     {
-        $jobId = $request->query('job_id');
-        $logs = $this->cicdService->getLogs($id, $jobId);
+        $validated = $request->validate([
+            'job_id' => ['nullable', 'integer', 'min:1', 'required_with:step_number'],
+            'step_number' => ['nullable', 'integer', 'min:0'],
+        ]);
+        $jobId = isset($validated['job_id']) ? (string) $validated['job_id'] : null;
+        $stepNumber = isset($validated['step_number']) ? (int) $validated['step_number'] : null;
+        $logs = $this->cicdService->getLogs($id, $jobId, $stepNumber);
 
         return response()->json([
             'success' => true,
@@ -214,12 +242,18 @@ class CicdDashboardController extends Controller
             'workflow' => 'required|string',
             'branch' => 'nullable|string',
             'environment' => 'nullable|string',
+            'inputs' => 'nullable|array',
         ]);
+
+        $inputs = array_merge(
+            ['environment' => $validated['environment'] ?? 'development'],
+            $validated['inputs'] ?? []
+        );
 
         $result = $this->cicdService->triggerWorkflow(
             $validated['workflow'],
             $validated['branch'] ?? 'main',
-            ['environment' => $validated['environment'] ?? 'development']
+            $inputs
         );
 
         return response()->json($result);
@@ -261,7 +295,7 @@ class CicdDashboardController extends Controller
         }
 
         $validated = $request->validate([
-            'environment' => 'required|string|in:staging,production,development',
+            'environment' => 'required|string|in:staging,production,development,vercel',
             'image_tag' => 'nullable|string',
         ]);
 
@@ -286,7 +320,7 @@ class CicdDashboardController extends Controller
         }
 
         $validated = $request->validate([
-            'environment' => 'required|string|in:staging,production',
+            'environment' => 'required|string|in:staging,production,vercel',
             'target_version' => 'required|string',
         ]);
 

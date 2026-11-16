@@ -1,19 +1,19 @@
 services:
   app:
+    image: quanly_toanha-dancu-app:latest
     build:
       context: .
       dockerfile: docker/app/Dockerfile
       target: development
+    entrypoint: ["bash", "/var/www/html/docker/app/entrypoint.sh"]
     container_name: smart_cassavas_app
     restart: unless-stopped
     ports:
       - "8000:8000"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     volumes:
       - ./:/var/www/html
       - /var/www/html/node_modules
+      - php_vendor:/var/www/html/vendor
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
@@ -26,15 +26,65 @@ services:
       - DB_PASSWORD=123567
       - SESSION_DRIVER=file
       - CACHE_STORE=file
+      - PHP_CLI_SERVER_WORKERS=8
       - QUEUE_CONNECTION=sync
+      - SEARCH_DRIVER=${SEARCH_DRIVER:-smart}
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
       - REDIS_CLIENT=phpredis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - RUN_DEV_INIT=${RUN_DEV_INIT:-true}
-      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
-      - SEED_DEMO_DATA=${SEED_DEMO_DATA:-true}
+      - RUN_DEV_INIT=false
+      - RUN_MIGRATIONS=false
+      - SEED_DEMO_DATA=false
       - SEED_CLASS=${SEED_CLASS:-Database\Seeders\DatabaseSeeder}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://127.0.0.1:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cassavas_network
+
+  scheduler:
+    image: quanly_toanha-dancu-app:latest
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: development
+    entrypoint: ["bash", "/var/www/html/docker/app/entrypoint.sh"]
+    container_name: smart_cassavas_scheduler
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    volumes:
+      - ./:/var/www/html
+      - /var/www/html/node_modules
+      - /var/www/html/vendor
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=quanly_toanha
+      - DB_USERNAME=root
+      - DB_PASSWORD=123567
+      - SEARCH_DRIVER=${SEARCH_DRIVER:-smart}
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
+      - CACHE_STORE=redis
+      - REDIS_CLIENT=phpredis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RUN_DEV_INIT=false
+      - RUN_MIGRATIONS=false
+    depends_on:
+      app:
+        condition: service_started
       db:
         condition: service_healthy
       redis:
@@ -46,7 +96,7 @@ services:
     image: mysql:8.0
     container_name: smart_cassavas_db
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-name-resolve
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-name-resolve --innodb-buffer-pool-size=256M --innodb-log-buffer-size=16M --innodb-flush-log-at-trx-commit=2 --thread-cache-size=16 --table-open-cache=2000
     ports:
       - "3306:3306"
     environment:
@@ -98,7 +148,28 @@ services:
     networks:
       - cassavas_network
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.6
+    profiles: ["search"]
+    ports:
+      - "127.0.0.1:9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks:
+      - cassavas_network
+
 volumes:
+  php_vendor:
+  elasticsearch_data:
   mysql_data:
     driver: local
   redis_data:

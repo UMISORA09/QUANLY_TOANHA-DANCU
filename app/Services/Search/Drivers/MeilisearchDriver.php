@@ -12,6 +12,10 @@ class MeilisearchDriver implements SearchDriverInterface
 
     public function search(string $index, string $query, array $filters = [], array $options = []): SearchResult
     {
+        if (array_key_exists('allowed_block_ids', $filters)) {
+            return (new SmartSearchDriver($this->config))->search($index, $query, $filters, $options);
+        }
+
         $startTime = microtime(true);
         $host = rtrim($this->config['host'] ?? 'http://127.0.0.1:7700', '/');
         $key = $this->config['key'] ?? null;

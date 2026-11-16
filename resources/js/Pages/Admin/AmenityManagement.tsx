@@ -1,3 +1,8 @@
+import { AmenityGalleryImage } from '../../Components/Admin/AmenityGalleryImage';
+import { CustomSelect } from '../../Components/Common/CustomSelect';
+import { Button as AstryxButton } from '@astryxdesign/core/Button';
+import { Badge as AstryxBadge } from '@astryxdesign/core/Badge';
+import '../../../css/scss/amenity-astryx.scss';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2,
@@ -16,6 +21,7 @@ import {
   ChevronsRight,
   Loader2,
   Eye,
+  Check,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -41,7 +47,11 @@ import { CategoryModal } from '../../Components/Admin/CategoryModal';
 import { TimeSlotModal } from '../../Components/Admin/TimeSlotModal';
 import { BlackoutModal } from '../../Components/Admin/BlackoutModal';
 import { AmenityBookingsModal } from '../../Components/Admin/AmenityBookingsModal';
+import { AmenityBookingWorklist } from '../../Components/Admin/AmenityBookingWorklist';
+import { AmenityClosureDialog } from '../../Components/Admin/AmenityClosureDialog';
 import { ConfirmDialog } from '../../Components/Admin/ConfirmDialog';
+import { AmenitySearchField, highlightAmenityText } from '../../Components/Common/AmenitySearchField';
+import { AmenitySearchMetricsPanel } from '../../Components/Admin/AmenitySearchMetricsPanel';
 
 export interface AmenityManagementProps {
   embedded?: boolean;
@@ -50,32 +60,37 @@ export interface AmenityManagementProps {
 /**
  * Hiển thị văn bản (bỏ kiểu highlight)
  */
-const renderHighlightedText = (text: string | null | undefined, _query?: string): React.ReactNode => {
-  return text ?? '';
-};
+const renderHighlightedText = (text: string | null | undefined, query = ''): React.ReactNode => highlightAmenityText(text, query);
 
 const getPageNumbers = (current: number, total: number): (number | string)[] => {
-  if (total <= 5) {
+  if (total <= 7) {
     return Array.from({ length: Math.max(total, 1) }, (_, i) => i + 1);
   }
   const pages: (number | string)[] = [];
-  pages.push(1);
-
-  const start = Math.max(2, current - 1);
-  const end = Math.min(total - 1, current + 1);
-
-  if (start > 2) {
+  if (current <= 4) {
+    for (let i = 1; i <= 5; i++) {
+      pages.push(i);
+    }
     pages.push('...');
-  }
-  for (let i = start; i <= end; i++) {
-    pages.push(i);
-  }
-  if (end < total - 1) {
+    pages.push(total);
+  } else if (current >= total - 3) {
+    pages.push(1);
     pages.push('...');
+    for (let i = total - 4; i <= total; i++) {
+      pages.push(i);
+    }
+  } else {
+    pages.push(1);
+    pages.push('...');
+    pages.push(current - 1);
+    pages.push(current);
+    pages.push(current + 1);
+    pages.push('...');
+    pages.push(total);
   }
-  pages.push(total);
   return pages;
 };
+
 
 export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded = false }) => {
   // Lấy dữ liệu khởi tạo ngay từ L1/L2 Cache (0ms perceived latency, không bị nháy loading)
@@ -87,14 +102,16 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   const initialLookup = amenityCache.get<AmenityListResponse>(initialCacheKey);
 
   // Data states
-  const [amenities, setAmenities] = useState<Amenity[]>(() => initialLookup.data?.items || []);
+  const [amenities, setAmenities] = useState<Amenity[]>(() => {
+    return Array.isArray(initialLookup.data?.items) ? initialLookup.data.items : [];
+  });
   const [categories, setCategories] = useState<Category[]>(() => {
     const cached = amenityCache.get<Category[]>('amenities:categories');
-    return cached.data || [];
+    return Array.isArray(cached.data) ? cached.data : [];
   });
   const [blocks, setBlocks] = useState<BlockOption[]>(() => {
     const cached = amenityCache.get<BlockOption[]>('amenities:blocks');
-    return cached.data || [];
+    return Array.isArray(cached.data) ? cached.data : [];
   });
   const [total, setTotal] = useState<number>(() => initialLookup.data?.total || 0);
   const [totalPages, setTotalPages] = useState<number>(() => initialLookup.data?.total_pages || 1);
@@ -107,7 +124,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
   // Filter & pagination states
   const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebounce(searchInput, 150);
+  const debouncedSearch = useDebounce(searchInput, 300);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -122,6 +139,15 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   const prevFilterSignatureRef = useRef<string>(
     `${debouncedSearch}|${selectedCategory}|${selectedBlock}|${selectedStatus}|${sortOrder}|10`
   );
+  const scrollPosRef = useRef<number | null>(null);
+
+  // Chuyển trang mượt mà tuyệt đối không bao giờ bị nhảy/giật lên đầu trang
+  const handlePageChange = useCallback((targetPage: number) => {
+    if (loading || isChangingPage || targetPage === page) return;
+    const scrollContainer = document.querySelector('main') || document.documentElement;
+    scrollPosRef.current = scrollContainer.scrollTop;
+    setPage(targetPage);
+  }, [loading, isChangingPage, page]);
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -133,6 +159,34 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   const [blackoutModalAmenity, setBlackoutModalAmenity] = useState<Amenity | null>(null);
   const [detailAmenity, setDetailAmenity] = useState<Amenity | null>(null);
   const [bookingModalAmenity, setBookingModalAmenity] = useState<Amenity | null>(null);
+  const [bookingSearch, setBookingSearch] = useState('');
+  const [closureAmenity, setClosureAmenity] = useState<Amenity | null>(null);
+  const [openingBooking, setOpeningBooking] = useState(false);
+
+  useEffect(() => {
+    let generation = 0;
+    let disposed = false;
+    const openLinkedBooking = async () => {
+      const requestId = ++generation;
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('amenity_id');
+      if (!id) { setBookingModalAmenity(null); setBookingSearch(''); setOpeningBooking(false); return; }
+      setOpeningBooking(true);
+      try {
+        const item = await api.getAmenity(id, true);
+        if (disposed || requestId !== generation) return;
+        setBookingSearch(params.get('booking_code') || '');
+        setBookingModalAmenity(item);
+      } catch {
+        if (!disposed && requestId === generation) showToast('Không thể mở tiện ích từ thông báo. Vui lòng thử lại.', 'error');
+      } finally {
+        if (!disposed && requestId === generation) setOpeningBooking(false);
+      }
+    };
+    void openLinkedBooking();
+    window.addEventListener('popstate', openLinkedBooking);
+    return () => { disposed = true; window.removeEventListener('popstate', openLinkedBooking); };
+  }, []);
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -217,8 +271,10 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         api.getCategories(forceRefresh),
         api.getBlocks(forceRefresh),
       ]);
-      setCategories(cats);
-      setBlocks(blks);
+      const validCats = Array.isArray(cats) ? cats : ((cats as any)?.data || (cats as any)?.value || []);
+      const validBlks = Array.isArray(blks) ? blks : ((blks as any)?.data || (blks as any)?.value || []);
+      setCategories(Array.isArray(validCats) ? validCats : []);
+      setBlocks(Array.isArray(validBlks) ? validBlks : []);
     } catch (err: any) {
       console.error('Failed to load metadata', err);
     }
@@ -244,7 +300,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       category_id: selectedCategory || undefined,
       block_id: selectedBlock || undefined,
       is_active: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
-      sort: sortOrder,
+      sort: debouncedSearch.trim() ? 'relevance' : sortOrder,
       page: currentPage,
       limit,
     };
@@ -272,9 +328,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           if (currentSeq !== searchSequenceRef.current) {
             return;
           }
-          setAmenities(data.items);
-          setTotal(data.total);
-          setTotalPages(data.total_pages);
+          setAmenities(Array.isArray(data?.items) ? data.items : []);
+          setTotal(data?.total || 0);
+          setTotalPages(data?.total_pages || 1);
           setCorrectedQuery(data.corrected_query || null);
           setLoading(false);
           setIsSearching(false);
@@ -285,6 +341,39 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           // Đảm bảo không bị kẹt ở trang vượt quá tổng số trang sau khi xóa item
           if (data.total_pages > 0 && currentPage > data.total_pages) {
             setPage(data.total_pages);
+            return;
+          }
+
+          // SMART IDLE PREFETCHING: Tự động tải trước các trang 1, 2, 3, 4, 5 vào RAM Cache
+          // Giúp chuyển trang 1, 2, 3, 4, 5 tức thì (0ms) với dữ liệu chính xác 100%
+          if (data.total_pages > 1) {
+            const pagesToPrefetch = new Set<number>();
+
+            // 1. Ưu tiên cao nhất: Trang liền kề (next & prev)
+            if (currentPage + 1 <= data.total_pages) pagesToPrefetch.add(currentPage + 1);
+            if (currentPage - 1 >= 1) pagesToPrefetch.add(currentPage - 1);
+
+            // 2. Tải sẵn dải trang 1 -> 5 (hoặc tối đa theo total_pages)
+            const maxPrefetchPages = Math.min(5, data.total_pages);
+            for (let p = 1; p <= maxPrefetchPages; p++) {
+              if (p !== currentPage) {
+                pagesToPrefetch.add(p);
+              }
+            }
+
+            // Thực hiện tải ngầm tuần tự với khoảng đệm thời gian, không nghẽn đường truyền mạng
+            let staggerMs = 80;
+            pagesToPrefetch.forEach((targetP) => {
+              setTimeout(() => {
+                if (currentSeq === searchSequenceRef.current) {
+                  api.prefetchAmenities({
+                    ...params,
+                    page: targetP,
+                  });
+                }
+              }, staggerMs);
+              staggerMs += 120;
+            });
           }
         },
         onSyncing: (syncing) => {
@@ -317,20 +406,6 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
           }
         },
       });
-
-      // Tự động tải trước (Prefetch) cả 2 chiều: trang tiếp theo và trang trước vào cache ngầm
-      if (currentPage < totalPages) {
-        api.prefetchAmenities({
-          ...params,
-          page: currentPage + 1,
-        });
-      }
-      if (currentPage > 1) {
-        api.prefetchAmenities({
-          ...params,
-          page: currentPage - 1,
-        });
-      }
     } catch (err: any) {
       if (currentSeq === searchSequenceRef.current) {
         setLoading(false);
@@ -363,7 +438,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         category_id: selectedCategory || undefined,
         block_id: selectedBlock || undefined,
         is_active: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
-        sort: sortOrder,
+        sort: debouncedSearch.trim() ? 'relevance' : sortOrder,
         page: targetPage,
         limit,
       });
@@ -387,6 +462,23 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
     }
     fetchAmenities(false, page);
   }, [debouncedSearch, selectedCategory, selectedBlock, selectedStatus, sortOrder, limit, page]);
+
+  // Cố định vị trí cuộn khi đổi trang, không bao giờ để trình duyệt đẩy lên đầu trang
+  useEffect(() => {
+    if (scrollPosRef.current !== null) {
+      const scrollContainer = document.querySelector('main') || document.documentElement;
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollPosRef.current;
+      }
+      const raf = requestAnimationFrame(() => {
+        if (scrollContainer && scrollPosRef.current !== null) {
+          scrollContainer.scrollTop = scrollPosRef.current;
+          scrollPosRef.current = null;
+        }
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [amenities, page]);
 
   // Lắng nghe sự kiện đồng bộ đa tab toàn diện (Comprehensive Cross-Tab Synchronization)
   useEffect(() => {
@@ -448,6 +540,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   };
 
   const handleToggleStatus = (amenity: Amenity) => {
+    if (amenity.is_active) { setClosureAmenity(amenity); return; }
     const nextStatus = !amenity.is_active;
     setConfirmDialog({
       isOpen: true,
@@ -459,7 +552,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       action: async () => {
         setIsConfirmLoading(true);
         try {
-          await api.patchAmenityStatus(amenity.id, nextStatus);
+          await api.patchAmenityStatus(amenity.id, nextStatus, amenity.updated_at);
           showToast(`Đã ${nextStatus ? 'kích hoạt' : 'tạm ngưng'} tiện ích thành công.`);
           await fetchAmenities(true);
         } catch (err: any) {
@@ -517,20 +610,21 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
   };
 
   return (
-    <div className={`${embedded ? 'w-full text-neutral-900' : 'min-h-screen bg-neutral-900/10 text-neutral-900 pb-16'} font-sans`}>
+    <div className={`feature-controls catalog-ui ${embedded ? 'w-full text-neutral-900' : 'min-h-screen bg-neutral-900/10 text-neutral-900 pb-16'} font-sans`}>
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-top-3 duration-200 border ${
+          role={toast.type === 'error' ? 'alert' : 'status'}
+          className={`mb-4 flex items-center gap-2.5 rounded-2xl border px-4 py-3 text-xs font-medium sm:text-sm ${
             toast.type === 'success'
-              ? 'bg-neutral-950 text-white border-white/20'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
+              ? 'bg-neutral-900/95 text-white border-white/10'
+              : 'bg-rose-950/95 text-rose-100 border-rose-500/30'
           }`}
         >
           {toast.type === 'success' ? (
             <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 animate-pulse" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           )}
           <span>{toast.message}</span>
         </div>
@@ -538,7 +632,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Top Breadcrumb & Actions Bar (Only if not embedded) */}
       {!embedded && (
-        <div className="bg-white/80 backdrop-blur-xl border-b border-neutral-200/80 sticky top-0 z-20">
+        <div data-astryx-theme="neutral" data-theme="light" className="amenity-astryx-trial bg-white/80 backdrop-blur-xl border-b border-neutral-200/80 sticky top-0 z-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Breadcrumbs */}
             <div className="flex items-center gap-2 text-xs text-neutral-500">
@@ -584,36 +678,23 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={() => setIsCategoryModalOpen(true)}
-                className="px-3.5 py-2 bg-white hover:bg-neutral-50 active:scale-95 border border-neutral-200/90 text-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
-              >
-                <Tag className="w-3.5 h-3.5 text-neutral-600" />
-                <span>Quản lý danh mục</span>
-              </button>
+              <AstryxButton label="Quản lý danh mục" variant="secondary" size="lg" className="amenity-astryx-secondary" icon={<Tag className="h-4 w-4" />} onClick={() => setIsCategoryModalOpen(true)} />
 
-              <button
-                type="button"
-                onClick={handleOpenCreate}
-                className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Thêm tiện ích</span>
-              </button>
+              <AstryxButton label="Thêm tiện ích" variant="primary" size="lg" icon={<Plus className="h-4 w-4" />} onClick={handleOpenCreate} />
             </div>
           </div>
         </div>
       )}
 
       {/* Page Header */}
-      <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${embedded ? 'pt-0' : 'pt-6'} pb-4`}>
+      <div data-astryx-theme="neutral" data-theme="light" className={`amenity-astryx-trial catalog-header ${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${embedded ? 'pt-0' : 'pt-6'} pb-4`}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
                 <Sparkles className="w-3.5 h-3.5 text-sky-500" />
                 <span>PHÂN HỆ QUẢN LÝ TIỆN ÍCH</span>
+                <AstryxBadge label="Astryx · Bản thử" variant="neutral" />
               </div>
               {isSyncing && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-sky-50 text-sky-700 border border-sky-200/80 animate-in fade-in duration-200">
@@ -630,127 +711,90 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-start md:self-end">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-end">
             {embedded && (
               <>
-                <button
-                  type="button"
-                  onClick={() => setIsCategoryModalOpen(true)}
-                  className="px-3.5 py-2 bg-white hover:bg-neutral-50 active:scale-95 border border-neutral-200/90 text-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
-                >
-                  <Tag className="w-3.5 h-3.5 text-neutral-600" />
-                  <span>Quản lý danh mục</span>
-                </button>
+                <AstryxButton label="Quản lý danh mục" variant="secondary" size="lg" className="amenity-astryx-secondary" icon={<Tag className="h-4 w-4" />} onClick={() => setIsCategoryModalOpen(true)} />
 
-                <button
-                  type="button"
-                  onClick={handleOpenCreate}
-                  className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Thêm tiện ích</span>
-                </button>
+                <AstryxButton label="Thêm tiện ích" variant="primary" size="lg" icon={<Plus className="h-4 w-4" />} onClick={handleOpenCreate} />
               </>
             )}
 
-            <button
-              type="button"
-              onClick={() => fetchAmenities(true)}
-              className="p-2.5 text-slate-500 hover:text-neutral-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
-              title="Làm mới dữ liệu từ máy chủ (Bỏ qua cache)"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading || isSyncing ? 'animate-spin text-neutral-950' : ''}`} />
-            </button>
+            <AstryxButton label="Tải lại danh sách tiện ích" variant="secondary" size="lg" className="amenity-astryx-secondary" isIconOnly isLoading={loading || isSyncing} icon={<RefreshCw className="h-4 w-4" />} onClick={() => fetchAmenities(true)} tooltip="Làm mới dữ liệu từ máy chủ (Bỏ qua cache)" />
           </div>
         </div>
       </div>
 
       {/* Main Container */}
       <div className={`${embedded ? 'w-full' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} space-y-4`}>
+        <AmenityBookingWorklist opening={openingBooking} onOpen={(id, code) => { const url = new URL(window.location.href); url.searchParams.set('amenity_id', id); url.searchParams.set('booking_code', code); window.history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }} />
+        {currentUser && <AmenitySearchMetricsPanel />}
         {/* Filters Bar Card */}
-        <div className="bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <div data-astryx-theme="neutral" data-theme="light" className="amenity-astryx-trial catalog-toolbar relative z-30 bg-white/90 backdrop-blur-xl border border-white/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {/* Search Input, Clear button & Searching spinner */}
             <div className="lg:col-span-2 relative">
-              <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
+              <AmenitySearchField
                 placeholder="Tìm theo tên tiện ích hoặc mã tiện ích (VD: GYM, BƠI)..."
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all"
+                onChange={setSearchInput}
+                suggestions={amenities}
+                loading={isSearching || loading || searchInput !== debouncedSearch}
+                className="w-full pl-9 pr-14 py-2 text-xs border border-neutral-200 rounded-2xl bg-white hover:bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all shadow-2xs"
               />
 
-              {/* Right Indicators: Spinner & Clear Button */}
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                {isSearching && (
-                  <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
-                )}
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={handleClearSearch}
-                    className="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer"
-                    title="Xóa từ khóa tìm kiếm"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
             </div>
 
             {/* Category Filter */}
             <div>
-              <select
-                value={selectedCategory}
-                onChange={(e) => {
-                  setSelectedCategory(e.target.value);
+              <CustomSelect variant="feature" overlay ariaLabel="Tất cả danh mục"                 value={selectedCategory}
+                onChange={(val) => {
+                  setSelectedCategory(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="">Tất cả danh mục</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.category_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Tất cả danh mục' },
+                  ...(Array.isArray(categories) ? categories : []).map((c) => ({
+                    value: c.id,
+                    label: c.category_name,
+                  })),
+                ]}
+                placeholder="Tất cả danh mục"
+              />
             </div>
 
             {/* Block Filter */}
             <div>
-              <select
-                value={selectedBlock}
-                onChange={(e) => {
-                  setSelectedBlock(e.target.value);
+              <CustomSelect variant="feature" overlay ariaLabel="Tất cả tòa nhà"                 value={selectedBlock}
+                onChange={(val) => {
+                  setSelectedBlock(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="">Tất cả tòa nhà</option>
-                {blocks.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.block_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Tất cả tòa nhà' },
+                  ...(Array.isArray(blocks) ? blocks : []).map((b) => ({
+                    value: b.id,
+                    label: b.block_name,
+                  })),
+                ]}
+                placeholder="Tất cả tòa nhà"
+              />
             </div>
 
             {/* Status Filter */}
             <div>
-              <select
-                value={selectedStatus}
-                onChange={(e) => {
-                  setSelectedStatus(e.target.value);
+              <CustomSelect variant="feature" overlay ariaLabel="Tất cả trạng thái"                 value={selectedStatus}
+                onChange={(val) => {
+                  setSelectedStatus(val);
                   setPage(1);
                 }}
-                className="w-full px-3 py-2 text-xs border border-neutral-200 rounded-xl bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer"
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="active">Đang hoạt động</option>
-                <option value="inactive">Tạm ngưng</option>
-              </select>
+                options={[
+                  { value: 'all', label: 'Tất cả trạng thái' },
+                  { value: 'active', label: 'Đang hoạt động' },
+                  { value: 'inactive', label: 'Tạm ngưng' },
+                ]}
+                placeholder="Tất cả trạng thái"
+              />
             </div>
           </div>
 
@@ -775,9 +819,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         </div>
 
         {/* Data Table Card */}
-        <div className="bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-          {/* Table Container */}
-          <div className="overflow-x-auto table-scrollbar">
+        <div className="catalog-table relative z-10 bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+          {/* Table Container - Duy trì chiều cao tối thiểu để không bao giờ bị giật khung cuộn (Scroll Jump) khi đổi trang */}
+          <div className="overflow-x-auto table-scrollbar min-h-[640px]">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-neutral-200/80 bg-neutral-50/80 text-[11px] font-bold text-neutral-600 uppercase tracking-wider">
@@ -863,13 +907,13 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                     </td>
                   </tr>
                 ) : (
-                  amenities.map((item) => (
+                  (Array.isArray(amenities) ? amenities : []).map((item) => (
                     <tr
                       key={item.id}
-                      className="hover:bg-neutral-50/70 transition-colors group"
+                      className="hover:bg-neutral-50/70 transition-colors group h-[58px]"
                     >
                       {/* 1. Tên tiện ích */}
-                      <td className="py-3.5 px-4 font-bold text-neutral-900 min-w-[220px]">
+                      <td className="py-2 px-4 font-bold text-neutral-900 min-w-[220px]">
                         <div className="flex items-center gap-2.5">
                           {item.cover_image_url ? (
                             <img
@@ -883,7 +927,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="leading-snug text-neutral-950 font-semibold">{renderHighlightedText(item.amenity_name, debouncedSearch)}</div>
+                            <div className="leading-snug text-neutral-950 font-semibold truncate max-w-[200px]" title={item.amenity_name}>
+                              {renderHighlightedText(item.amenity_name, debouncedSearch)}
+                            </div>
                             <div className="text-[10px] font-normal text-neutral-400 mt-0.5 whitespace-nowrap">
                               {item.active_time_slots_count} slot đang mở
                             </div>
@@ -892,27 +938,27 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                       </td>
 
                       {/* 2. Mã tiện ích */}
-                      <td className="py-3.5 px-3 font-mono font-bold text-neutral-700 whitespace-nowrap">
+                      <td className="py-2 px-3 font-mono font-bold text-neutral-700 whitespace-nowrap">
                         <span className="px-1.5 py-0.5 rounded bg-neutral-100 border border-neutral-200/80">
                           {renderHighlightedText(item.amenity_code, debouncedSearch)}
                         </span>
                       </td>
 
                       {/* 3. Danh mục */}
-                      <td className="py-3.5 px-3 text-neutral-700 whitespace-nowrap">
+                      <td className="py-2 px-3 text-neutral-700 whitespace-nowrap">
                         {item.category_name || '-'}
                       </td>
 
                       {/* 4. Tòa nhà */}
-                      <td className="py-3.5 px-3 text-neutral-600 whitespace-nowrap">
+                      <td className="py-2 px-3 text-neutral-600 whitespace-nowrap">
                         {item.block_name || (
                           <span className="text-neutral-400 italic">Dùng chung</span>
                         )}
                       </td>
 
                       {/* 5. Vị trí */}
-                      <td className="py-3.5 px-3 text-neutral-600 min-w-[160px] leading-snug" title={item.location_detail}>
-                        {item.location_detail}
+                      <td className="py-2 px-3 text-neutral-600 min-w-[160px] max-w-[200px] leading-snug" title={item.location_detail}>
+                        <div className="truncate">{item.location_detail}</div>
                       </td>
 
                       {/* 6. Sức chứa / slot */}
@@ -985,10 +1031,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                           <button
                             type="button"
                             onClick={() => setBookingModalAmenity(item)}
-                            className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                            title="Xem thông tin đặt chỗ của cư dân"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                            title="Xem và duyệt đăng ký tiện ích của cư dân"
                           >
                             <Ticket className="w-3.5 h-3.5" />
+                            <span>Duyệt đăng ký</span>
                           </button>
 
                           {/* Xem chi tiết */}
@@ -1077,18 +1124,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Items per page selector */}
               <div className="flex items-center gap-1.5 border-l border-neutral-200 pl-3">
                 <span className="text-neutral-500">Mỗi trang:</span>
-                <select
-                  value={limit}
-                  onChange={(e) => {
-                    setLimit(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="px-2 py-1 rounded-lg border border-neutral-200 bg-white text-xs font-semibold text-neutral-800 focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer shadow-2xs"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
+                <CustomSelect variant="feature" overlay ariaLabel="Số dòng mỗi trang" value={limit} onChange={(value) => { setLimit(value); setPage(1); }} options={[10, 20, 50].map(value => ({ value, label: String(value) }))} />
               </div>
 
               {isChangingPage && (
@@ -1103,8 +1139,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang đầu */}
               <button
                 type="button"
-                disabled={page <= 1 || loading || isChangingPage}
-                onClick={() => setPage(1)}
+                disabled={page <= 1 || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handlePageChange(1);
+                }}
                 onMouseEnter={() => handlePrefetchPage(1)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
                 title="Trang đầu"
@@ -1115,8 +1154,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang trước */}
               <button
                 type="button"
-                disabled={page <= 1 || loading || isChangingPage}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handlePageChange(Math.max(1, page - 1));
+                }}
                 onMouseEnter={() => handlePrefetchPage(Math.max(1, page - 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
               >
@@ -1140,8 +1182,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                     <button
                       key={`page-${pNum}`}
                       type="button"
-                      disabled={loading || isChangingPage}
-                      onClick={() => setPage(numVal)}
+                      disabled={loading}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handlePageChange(numVal);
+                      }}
                       onMouseEnter={() => handlePrefetchPage(numVal)}
                       className={`min-w-[28px] h-[28px] px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                         isCurrent
@@ -1158,8 +1203,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang sau */}
               <button
                 type="button"
-                disabled={page >= totalPages || loading || isChangingPage}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handlePageChange(Math.min(totalPages, page + 1));
+                }}
                 onMouseEnter={() => handlePrefetchPage(Math.min(totalPages, page + 1))}
                 className="px-2.5 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-2xs cursor-pointer text-neutral-700"
               >
@@ -1170,8 +1218,11 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
               {/* Trang cuối */}
               <button
                 type="button"
-                disabled={page >= totalPages || loading || isChangingPage}
-                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages || loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handlePageChange(totalPages);
+                }}
                 onMouseEnter={() => handlePrefetchPage(totalPages)}
                 className="p-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-2xs cursor-pointer text-neutral-700"
                 title="Trang cuối"
@@ -1185,9 +1236,9 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Amenity Detail Modal Drawer */}
       {detailAmenity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div onClick={() => setDetailAmenity(null)} className="fixed inset-0 bg-neutral-950/45 backdrop-blur-sm animate-in fade-in" />
-          <div className="relative w-full max-w-lg bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4">
+          <div onClick={() => setDetailAmenity(null)} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
+          <div className="relative w-full max-w-lg bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200/80">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-neutral-900" />
@@ -1259,19 +1310,12 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                     Bộ sưu tập hình ảnh ({detailAmenity.gallery_images.length}):
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {detailAmenity.gallery_images.map((imgUrl, idx) => (
+                    {(Array.isArray(detailAmenity.gallery_images) ? detailAmenity.gallery_images : []).map((imgUrl, idx) => (
                       <div
                         key={idx}
                         className="rounded-lg overflow-hidden border border-neutral-200 aspect-video bg-neutral-200"
                       >
-                        <img
-                          src={imgUrl}
-                          alt={`Gallery ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
+                        <AmenityGalleryImage url={imgUrl} name={`Ảnh bộ sưu tập ${idx + 1}`} className="w-full h-full object-cover" />
                       </div>
                     ))}
                   </div>
@@ -1299,7 +1343,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
                 className="px-3.5 py-2 text-xs font-semibold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 <Ticket className="w-3.5 h-3.5 text-sky-600" />
-                <span>Xem {detailAmenity.active_bookings_count ?? 0} lượt đặt chỗ thực tế</span>
+                <span>Xem và duyệt đăng ký ({detailAmenity.active_bookings_count ?? 0} đang đặt)</span>
               </button>
 
               <button
@@ -1318,7 +1362,8 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
       <AmenityBookingsModal
         isOpen={!!bookingModalAmenity}
         amenity={bookingModalAmenity}
-        onClose={() => setBookingModalAmenity(null)}
+        initialSearch={bookingSearch}
+        onClose={() => { setBookingModalAmenity(null); setBookingSearch(''); }}
       />
 
       <AmenityFormModal
@@ -1349,6 +1394,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         onChanged={() => fetchAmenities(true)}
       />
 
+      {closureAmenity && <AmenityClosureDialog amenity={closureAmenity} onClose={() => setClosureAmenity(null)} onChanged={() => { showToast('Đã tạm ngưng tiện ích và xử lý đăng ký theo lựa chọn.'); void fetchAmenities(true); }} />}
       <BlackoutModal
         isOpen={!!blackoutModalAmenity}
         amenity={blackoutModalAmenity}
@@ -1356,7 +1402,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
         onChanged={() => fetchAmenities(true)}
       />
 
-      <ConfirmDialog
+      <ConfirmDialog variant="feature"
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
         message={confirmDialog.message}
@@ -1368,7 +1414,7 @@ export const AmenityManagement: React.FC<AmenityManagementProps> = ({ embedded =
 
       {/* Admin Authentication Modal */}
       {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-neutral-950/60 backdrop-blur-md">
           <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-neutral-100 animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
               <div className="flex items-center gap-2">

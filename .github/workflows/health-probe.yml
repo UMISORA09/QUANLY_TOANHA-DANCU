@@ -1,0 +1,69 @@
+name: Scheduled Production Health Probe
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL to probe (leave empty to use secret/var PRODUCTION_URL)'
+        required: false
+
+concurrency:
+  group: health-probe-scheduled
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Probe Production Health Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine Target URL
+        id: target
+        env:
+          INPUT_URL: ${{ inputs.target_url }}
+          SECRET_URL: ${{ secrets.PRODUCTION_URL }}
+          VAR_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          URL="${INPUT_URL:-${SECRET_URL:-${VAR_URL}}}"
+          if [ -z "$URL" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::notice ::PRODUCTION_URL is not configured in repository secrets or variables. Health freshness remains UNKNOWN until configured."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+            echo "url=$URL" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Probe /health Endpoint
+        if: steps.target.outputs.configured == 'true'
+        env:
+          TARGET_URL: ${{ steps.target.outputs.url }}
+        run: |
+          echo "============================================================"
+          echo "Executing Health Probe to: ${TARGET_URL}/health"
+          echo "============================================================"
+          
+          RESPONSE=$(curl -s -S -w "\n%{http_code}" -m 15 -L "${TARGET_URL}/health" || echo -e "\n000")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "HTTP Response Code: ${HTTP_CODE}"
+          echo "Response Body: ${BODY}"
+          
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::error ::Health probe failed: HTTP status ${HTTP_CODE} on ${TARGET_URL}/health"
+            exit 1
+          fi
+          
+          STATUS=$(echo "$BODY" | jq -r '.status // "unknown"')
+          DB_STATUS=$(echo "$BODY" | jq -r '.database // "unknown"')
+          CACHE_STATUS=$(echo "$BODY" | jq -r '.cache // "unknown"')
+          
+          if [ "$STATUS" != "healthy" ] && [ "$STATUS" != "ok" ]; then
+            echo "::error ::Health probe failed: overall status is '${STATUS}', database='${DB_STATUS}', cache='${CACHE_STATUS}'"
+            exit 1
+          fi
+          
+          echo "============================================================"
+          echo "✅ Health probe successful! (Status=${STATUS}, DB=${DB_STATUS}, Cache=${CACHE_STATUS})"
+          echo "============================================================"

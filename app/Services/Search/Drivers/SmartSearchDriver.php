@@ -6,6 +6,7 @@ use App\Services\Search\Contracts\SearchDriverInterface;
 use App\Services\Search\DTOs\SearchResult;
 use App\Services\Search\VietnameseNormalizer;
 use App\Services\Search\VietnameseSpellCorrector;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -81,6 +82,27 @@ class SmartSearchDriver implements SearchDriverInterface
         'tre em' => ['kidzone', 'kids', 'vui choi tre em'],
         'vui choi' => ['kidzone', 'tro choi'],
     ];
+
+    /**
+     * Cache gợi ý tìm kiếm trong bộ nhớ tiến trình (Process Memory Cache) để phản hồi siêu tốc (< 1ms)
+     *
+     * @var array<string, array<int, array<string, mixed>>>
+     */
+    protected static array $suggestMemoryCache = [];
+
+    /** @return list<array{objectID: string, type: string, input: string, synonyms: list<string>}> */
+    public static function indexSynonyms(): array
+    {
+        $records = [];
+        foreach ([...self::$synonyms, ...self::$phraseSynonyms] as $input => $synonyms) {
+            $alternatives = array_values(array_diff(array_unique($synonyms), [$input]));
+            if ($alternatives !== []) {
+                $records[] = ['objectID' => 'amenity-'.sha1($input), 'type' => 'oneWaySynonym', 'input' => $input, 'synonyms' => $alternatives];
+            }
+        }
+
+        return $records;
+    }
 
     /**
      * @param  array<string, mixed>  $config
@@ -178,8 +200,9 @@ class SmartSearchDriver implements SearchDriverInterface
      *     candidate_queries?: array<int, string>
      * }  $normQuery  Truy vấn đã chuẩn hóa
      */
-    public function computeRelevanceScore(object $item, array $normQuery): float
+    public function computeRelevanceScore(object $item, array $normQuery, ?bool &$usedFuzzy = null): float
     {
+        $usedFuzzy = false;
         $normalized = $normQuery['normalized'];
         $unaccented = $normQuery['unaccented'];
         $tokens = $normQuery['unaccented_tokens'];
@@ -342,6 +365,8 @@ class SmartSearchDriver implements SearchDriverInterface
 
         // Nếu TẤT CẢ các từ tìm kiếm đều khớp trên Tên tiện ích (ví dụ "ku nghi duon" -> "khu nghi duong")
         if ($nameMinScore >= 0.70) {
+            $usedFuzzy = $nameMinScore < 1.0;
+
             return round(0.78 + ($nameAvgScore * 0.08) + $brevityBonus, 2);
         }
 
@@ -355,6 +380,8 @@ class SmartSearchDriver implements SearchDriverInterface
             if ($matchedCountOnName >= 2) {
                 $ratio = $matchedCountOnName / count($tokensToEvaluate);
                 if ($ratio >= 0.65) {
+                    $usedFuzzy = true;
+
                     return round(0.50 + ($ratio * 0.15), 2);
                 }
             }
@@ -404,6 +431,9 @@ class SmartSearchDriver implements SearchDriverInterface
             if (! empty($filters['block_id'])) {
                 $baseQuery->where('amenities.block_id', $filters['block_id']);
             }
+            if (array_key_exists('allowed_block_ids', $filters)) {
+                $baseQuery->where(fn ($query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $filters['allowed_block_ids']));
+            }
             if (isset($filters['is_active']) && $filters['is_active'] !== 'all' && $filters['is_active'] !== null) {
                 $baseQuery->where('amenities.is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0);
             }
@@ -418,6 +448,7 @@ class SmartSearchDriver implements SearchDriverInterface
                     'created_at_asc' => $baseQuery->orderBy('amenities.created_at', 'asc'),
                     default => $baseQuery->orderBy('amenities.created_at', 'desc'),
                 };
+                $baseQuery->orderBy('amenities.id');
 
                 $total = $baseQuery->count();
                 $items = $baseQuery->skip(($page - 1) * $perPage)->take($perPage)->get()->toArray();
@@ -434,9 +465,12 @@ class SmartSearchDriver implements SearchDriverInterface
             $candidates = $baseQuery->get();
 
             $scored = [];
+            $isFuzzy = (bool) $correction['is_corrected'];
             foreach ($candidates as $item) {
-                $score = $this->computeRelevanceScore($item, $normQuery);
+                $usedFuzzy = false;
+                $score = $this->computeRelevanceScore($item, $normQuery, $usedFuzzy);
                 if ($score >= 0.45) {
+                    $isFuzzy = $isFuzzy || $usedFuzzy;
                     $itemArray = (array) $item;
                     $itemArray['relevance_score'] = $score;
                     $scored[] = $itemArray;
@@ -444,14 +478,28 @@ class SmartSearchDriver implements SearchDriverInterface
             }
 
             // Sắp xếp
-            if ($sort === 'relevance') {
-                $unaccentedQuery = $normQuery['unaccented'];
-                usort($scored, function ($a, $b) use ($unaccentedQuery) {
+            $rawQueryLower = mb_strtolower(trim($normQuery['raw'] ?? ''));
+            $isExactCodeMatch = function (array $item) use ($rawQueryLower): bool {
+                $code = mb_strtolower(trim((string) ($item['amenity_code'] ?? '')));
+
+                return $code !== '' && $code === $rawQueryLower;
+            };
+
+            usort($scored, function ($a, $b) use ($isExactCodeMatch, $sort, $normQuery) {
+                // 0. Luôn ưu tiên tuyệt đối bản ghi khớp 100% mã tiện ích (Exact Code Match) đứng đầu danh sách
+                $aExact = $isExactCodeMatch($a);
+                $bExact = $isExactCodeMatch($b);
+                if ($aExact !== $bExact) {
+                    return $aExact ? -1 : 1;
+                }
+
+                if ($sort === 'relevance') {
                     // 1. So sánh điểm tương quan (Relevance Score)
                     if (abs($b['relevance_score'] - $a['relevance_score']) >= 0.005) {
                         return $b['relevance_score'] <=> $a['relevance_score'];
                     }
 
+                    $unaccentedQuery = $normQuery['unaccented'];
                     $nameA = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['amenity_name'] ?? '')));
                     $nameB = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['amenity_name'] ?? '')));
 
@@ -476,19 +524,19 @@ class SmartSearchDriver implements SearchDriverInterface
                         return $lenA <=> $lenB;
                     }
 
-                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
-                });
-            } elseif ($sort === 'name_asc') {
-                usort($scored, fn ($a, $b) => strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? ''));
-            } elseif ($sort === 'name_desc') {
-                usort($scored, fn ($a, $b) => strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? ''));
-            } elseif ($sort === 'price_asc') {
-                usort($scored, fn ($a, $b) => ($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0));
-            } elseif ($sort === 'price_desc') {
-                usort($scored, fn ($a, $b) => ($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0));
-            } else {
-                usort($scored, fn ($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
-            }
+                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '') ?: strcmp($a['id'], $b['id']);
+                } elseif ($sort === 'name_asc') {
+                    return strcmp($a['amenity_name'] ?? '', $b['amenity_name'] ?? '') ?: strcmp($a['id'], $b['id']);
+                } elseif ($sort === 'name_desc') {
+                    return strcmp($b['amenity_name'] ?? '', $a['amenity_name'] ?? '') ?: strcmp($a['id'], $b['id']);
+                } elseif ($sort === 'price_asc') {
+                    return (($a['hourly_rate'] ?? 0) <=> ($b['hourly_rate'] ?? 0)) ?: strcmp($a['id'], $b['id']);
+                } elseif ($sort === 'price_desc') {
+                    return (($b['hourly_rate'] ?? 0) <=> ($a['hourly_rate'] ?? 0)) ?: strcmp($a['id'], $b['id']);
+                } else {
+                    return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '') ?: strcmp($a['id'], $b['id']);
+                }
+            });
 
             $total = count($scored);
             $sliced = array_slice($scored, ($page - 1) * $perPage, $perPage);
@@ -501,7 +549,7 @@ class SmartSearchDriver implements SearchDriverInterface
                 $perPage,
                 $elapsedMs,
                 'smart',
-                $correction['is_corrected'] || true,
+                $isFuzzy,
                 [
                     'query' => $trimmed,
                     'normalized_query' => $normQuery['normalized'],
@@ -529,29 +577,43 @@ class SmartSearchDriver implements SearchDriverInterface
             return [];
         }
 
+        $limit = max(min($limit, 20), 1);
+
+        if (app()->environment('testing')) {
+            return $this->executeSuggest($index, $prefix, $norm, $limit);
+        }
+
+        $memoryKey = "{$index}_".mb_strtolower($prefix)."_{$limit}";
+        if (isset(self::$suggestMemoryCache[$memoryKey])) {
+            return self::$suggestMemoryCache[$memoryKey];
+        }
+
+        $suggestCacheKey = "smart_search_suggest_{$index}_".md5($memoryKey);
+
+        $result = Cache::remember($suggestCacheKey, 300, function () use ($index, $prefix, $norm, $limit) {
+            return $this->executeSuggest($index, $prefix, $norm, $limit);
+        });
+
+        self::$suggestMemoryCache[$memoryKey] = $result;
+
+        return $result;
+    }
+
+    protected function executeSuggest(string $index, string $prefix, array $norm, int $limit): array
+    {
         $correction = VietnameseSpellCorrector::correctQuery($prefix);
         $norm['corrected'] = $correction['corrected'];
         $norm['corrected_tokens'] = $correction['corrected_tokens'];
 
-        $limit = max(min($limit, 20), 1);
-
         if ($index === 'amenities') {
-            $candidates = DB::table('amenities')
-                ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
-                ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
-                ->whereNull('amenities.deleted_at')
-                ->select(
-                    'amenities.id',
-                    'amenities.amenity_name',
-                    'amenities.amenity_code',
-                    'amenities.location_detail',
-                    'amenity_categories.category_name',
-                    'blocks.block_name'
-                )
-                ->get();
+            $cacheKey = 'smart_search_candidates_suggest_amenities';
+            $cachedCandidates = app()->environment('testing')
+                ? $this->fetchAmenitySuggestCandidates()
+                : Cache::remember($cacheKey, 120, fn () => $this->fetchAmenitySuggestCandidates());
 
             $scored = [];
-            foreach ($candidates as $item) {
+            foreach ($cachedCandidates as $rawItem) {
+                $item = (object) $rawItem;
                 $score = $this->computeRelevanceScore($item, $norm);
                 if ($score >= 0.45) {
                     $scored[] = [
@@ -562,6 +624,7 @@ class SmartSearchDriver implements SearchDriverInterface
                         'block' => $item->block_name,
                         'type' => 'amenity',
                         'score' => $score,
+                        'unaccented_name' => $item->unaccented_name ?? null,
                     ];
                 }
             }
@@ -572,8 +635,8 @@ class SmartSearchDriver implements SearchDriverInterface
                     return $b['score'] <=> $a['score'];
                 }
 
-                $nameA = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['label'] ?? '')));
-                $nameB = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['label'] ?? '')));
+                $nameA = $a['unaccented_name'] ?? mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($a['label'] ?? '')));
+                $nameB = $b['unaccented_name'] ?? mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) ($b['label'] ?? '')));
 
                 $startsA = str_starts_with($nameA, $unaccentedPrefix);
                 $startsB = str_starts_with($nameB, $unaccentedPrefix);
@@ -584,15 +647,62 @@ class SmartSearchDriver implements SearchDriverInterface
                 return mb_strlen($a['label'] ?? '') <=> mb_strlen($b['label'] ?? '');
             });
 
-            return array_slice($scored, 0, $limit);
+            return array_map(function ($item) {
+                unset($item['unaccented_name']);
+
+                return $item;
+            }, array_slice($scored, 0, $limit));
         }
 
         return [];
     }
 
-    public function index(string $index, string $id, array $document): void {}
+    /**
+     * Tải và tiền xử lý tập ứng viên tiện ích (Được cache để tăng tốc độ phản hồi sub-millisecond)
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function fetchAmenitySuggestCandidates(): array
+    {
+        $raw = DB::table('amenities')
+            ->leftJoin('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
+            ->leftJoin('blocks', 'amenities.block_id', '=', 'blocks.id')
+            ->whereNull('amenities.deleted_at')
+            ->select(
+                'amenities.id',
+                'amenities.amenity_name',
+                'amenities.amenity_code',
+                'amenities.location_detail',
+                'amenity_categories.category_name',
+                'blocks.block_name'
+            )
+            ->get();
 
-    public function delete(string $index, string $id): void {}
+        $candidates = [];
+        foreach ($raw as $item) {
+            $arr = (array) $item;
+            $arr['unaccented_name'] = mb_strtolower(VietnameseNormalizer::stripVietnameseAccents((string) $item->amenity_name));
+            $candidates[] = $arr;
+        }
 
-    public function flush(string $index): void {}
+        return $candidates;
+    }
+
+    public function index(string $index, string $id, array $document): void
+    {
+        self::$suggestMemoryCache = [];
+        Cache::forget("smart_search_candidates_suggest_{$index}");
+    }
+
+    public function delete(string $index, string $id): void
+    {
+        self::$suggestMemoryCache = [];
+        Cache::forget("smart_search_candidates_suggest_{$index}");
+    }
+
+    public function flush(string $index): void
+    {
+        self::$suggestMemoryCache = [];
+        Cache::forget("smart_search_candidates_suggest_{$index}");
+    }
 }

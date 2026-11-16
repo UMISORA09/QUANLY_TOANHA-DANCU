@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
   Menu as MenuData,
@@ -66,7 +66,7 @@ import {
   LayoutDashboard
 } from 'lucide-react';
 import { api } from '../Services/api';
-import { Building3DModel } from '../Components/Building3DModel';
+const Building3DModel = lazy(() => import('../Components/Building3DModel').then(m => ({ default: m.Building3DModel })));
 import { AuthModal, UserRole } from '../Components/AuthModal';
 
 type WorkspaceTab = 'overview' | 'residents' | 'billing' | 'maintenance';
@@ -86,6 +86,8 @@ interface HomeProps {
   onNavigateManager?: () => void;
   onNavigateResident?: () => void;
   onNavigateReception?: () => void;
+  onNavigateLogin?: (role?: UserRole) => void;
+  onNavigateRegister?: (type?: 'owner' | 'tenant') => void;
   currentUserRole?: string;
 }
 
@@ -96,6 +98,8 @@ export const Home: React.FC<HomeProps> = ({
   onNavigateManager,
   onNavigateResident,
   onNavigateReception,
+  onNavigateLogin,
+  onNavigateRegister,
   currentUserRole,
 }) => {
   // Navigation & Interactive states
@@ -108,8 +112,15 @@ export const Home: React.FC<HomeProps> = ({
   const [activeBarIndex, setActiveBarIndex] = useState<number | null>(null);
   const [liveUptimeSeconds, setLiveUptimeSeconds] = useState(0);
 
-  // Authenticated user state
-  const [currentUser, setCurrentUser] = useState<any>(() => api.getUser());
+  // Authenticated user state: Chỉ coi là đã đăng nhập nếu có phiên session hợp lệ
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    const sessionStr = typeof window !== 'undefined' ? localStorage.getItem('smartcassavas_session') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('smart_cassavas_token') : null;
+    if (!sessionStr || (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr)) {
+      return null;
+    }
+    return api.getUser();
+  });
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -123,7 +134,23 @@ export const Home: React.FC<HomeProps> = ({
   }, []);
 
   useEffect(() => {
+    const sessionStr = localStorage.getItem('smartcassavas_session');
     const token = localStorage.getItem('smart_cassavas_token');
+
+    // Nếu không có phiên session hoặc token là demo sót lại mà chưa login -> đảm bảo trạng thái khách vãng lai
+    if (!sessionStr || (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr)) {
+      if (token && token.startsWith('smart_token_') && token.endsWith('_demo')) {
+        try {
+          localStorage.removeItem('smart_cassavas_token');
+          localStorage.removeItem('smart_cassavas_user');
+        } catch {
+          // ignore
+        }
+      }
+      setCurrentUser(null);
+      return;
+    }
+
     if (token) {
       api.getMe()
         .then((user) => {
@@ -142,15 +169,42 @@ export const Home: React.FC<HomeProps> = ({
 
   const handleLogout = () => {
     api.logout();
+    try {
+      localStorage.removeItem('smartcassavas_session');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     setCurrentUser(null);
     setLoginFeedback('Đã đăng xuất tài khoản thành công.');
     setTimeout(() => setLoginFeedback(null), 3000);
   };
 
-  const openAuth = (mode: 'login' | 'register', role?: UserRole) => {
+  const openAuth = (mode: 'login' | 'register', role?: UserRole, registerType?: 'owner' | 'tenant') => {
+    if (mode === 'login') {
+      if (onNavigateLogin) {
+        onNavigateLogin(role);
+      } else {
+        window.history.pushState({}, '', role ? `/login?role=${role}` : '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
+    if (mode === 'register') {
+      const targetUrl = registerType ? `/register?type=${registerType}` : '/register';
+      if (onNavigateRegister) {
+        onNavigateRegister(registerType);
+      } else {
+        window.history.pushState({}, '', targetUrl);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
     setAuthModal(mode);
     setAuthModalRole(role || null);
-    window.history.pushState({}, '', mode === 'login' ? '/login' : '/register');
   };
 
   const closeAuth = () => {
@@ -321,9 +375,6 @@ export const Home: React.FC<HomeProps> = ({
                 SMART CASSAVAS
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </span>
-              <span className="text-[10px] tracking-wider text-neutral-600 font-medium -mt-1 uppercase">
-                Building OS
-              </span>
             </div>
           </a>
 
@@ -465,25 +516,6 @@ export const Home: React.FC<HomeProps> = ({
                                 <div className="flex flex-col text-left">
                                   <span className="font-bold text-slate-900">Trung tâm Quản trị Admin</span>
                                   <span className="text-[10px] text-slate-500 font-mono">/admin</span>
-                                </div>
-                              </a>
-
-                              <a
-                                href="/dev"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  setIsUserDropdownOpen(false);
-                                  window.history.pushState({}, '', '/dev');
-                                  window.dispatchEvent(new PopStateEvent('popstate'));
-                                }}
-                                className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer group mt-0.5"
-                              >
-                                <div className="w-7 h-7 rounded-lg bg-slate-950 text-cyan-400 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                                  <Zap className="w-4 h-4 text-cyan-400" />
-                                </div>
-                                <div className="flex flex-col text-left">
-                                  <span className="font-bold text-slate-900">Developer Console (Dev / AI / IoT)</span>
-                                  <span className="text-[10px] text-slate-500 font-mono">/dev</span>
                                 </div>
                               </a>
 
@@ -1810,7 +1842,7 @@ export const Home: React.FC<HomeProps> = ({
         <div className="space-y-4 mb-10">
           <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full glass-pill text-xs font-bold text-neutral-800 tracking-wider uppercase shadow-xs">
             <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-            <span className="animate-text-light-brand font-bold">Bản sao kỹ thuật số 3D • Digital Twin Building OS</span>
+            <span className="animate-text-light-brand font-bold">Bản sao kỹ thuật số 3D • Digital Twin</span>
           </div>
 
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -1872,11 +1904,22 @@ export const Home: React.FC<HomeProps> = ({
         </div>
 
         {/* 3D Model Component */}
-        <Building3DModel
-          nightMode={buildingNightMode}
-          highAlert={highAlertMode}
-          isCompact={false}
-        />
+        <Suspense
+          fallback={
+            <div className="w-full h-[520px] rounded-3xl bg-neutral-900/40 border border-neutral-800 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-mono text-neutral-400">Đang tải mô hình 3D tòa nhà...</span>
+              </div>
+            </div>
+          }
+        >
+          <Building3DModel
+            nightMode={buildingNightMode}
+            highAlert={highAlertMode}
+            isCompact={false}
+          />
+        </Suspense>
       </section>
 
       {/* ================= CORE CAPABILITIES / NĂNG LỰC CỐT LÕI ================= */}
@@ -2057,7 +2100,7 @@ export const Home: React.FC<HomeProps> = ({
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 z-10">
             <button
-              onClick={() => setAuthModal('register')}
+              onClick={() => openAuth('register')}
               className="bg-white hover:bg-neutral-100 text-neutral-950 text-sm font-semibold px-7 py-3.5 rounded-sm transition-all shadow-md hover:shadow-lg active:scale-95"
             >
               Trải nghiệm miễn phí
@@ -2118,7 +2161,7 @@ export const Home: React.FC<HomeProps> = ({
                 </li>
                 <li>
                   <button
-                    onClick={() => setAuthModal('register')}
+                    onClick={() => openAuth('register')}
                     className="hover:text-neutral-950 transition-colors text-left"
                   >
                     Tạo tài khoản
@@ -2135,18 +2178,18 @@ export const Home: React.FC<HomeProps> = ({
               <h4 className="text-xs font-bold text-neutral-900 tracking-wide">Chính sách</h4>
               <ul className="space-y-2 text-xs text-neutral-600">
                 <li>
-                  <a href="#" className="hover:text-neutral-950 transition-colors">
+                  <a href="/privacy" className="hover:text-neutral-950 transition-colors">
                     Bảo mật
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-neutral-950 transition-colors">
-                    Điều khoản
+                  <a href="/about" className="hover:text-neutral-950 transition-colors">
+                    Giới thiệu
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-neutral-950 transition-colors">
-                    Hỗ trợ
+                  <a href="/docs" className="hover:text-neutral-950 transition-colors">
+                    Tài liệu
                   </a>
                 </li>
               </ul>
@@ -2156,9 +2199,9 @@ export const Home: React.FC<HomeProps> = ({
             <div className="md:col-span-3 space-y-3">
               <h4 className="text-xs font-bold text-neutral-900 tracking-wide">Liên hệ</h4>
               <ul className="space-y-2 text-xs text-neutral-600">
-                <li className="font-mono text-neutral-900">support@smartcassavas.vn</li>
-                <li>Thứ 2 — Thứ 6, 08:00 — 17:30</li>
-                <li className="text-neutral-400">Hotline: 1900 6868 (Miễn phí)</li>
+                <li><a href="/contact" className="hover:text-neutral-950 transition-colors">Liên hệ ban quản lý</a></li>
+                <li>Qua kênh đã xác nhận của tòa nhà</li>
+                <li className="text-neutral-400">Không chia sẻ mật khẩu hoặc mã OTP</li>
               </ul>
             </div>
 

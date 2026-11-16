@@ -31,6 +31,8 @@ class SharedDemoDataSeeder extends Seeder
         $driver = DB::getDriverName();
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 0;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF;');
         }
 
         DB::transaction(function () {
@@ -942,6 +944,8 @@ class SharedDemoDataSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 1;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON;');
         }
 
         $this->command->info('✅ HOÀN TẤT NẠP DỮ LIỆU ẢO DÙNG CHUNG THÀNH CÔNG RỰC RỠ!');

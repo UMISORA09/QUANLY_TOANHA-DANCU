@@ -18,6 +18,8 @@ class ReceptionPortalSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 0;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF;');
         }
 
         $this->command->info('Đang nạp dữ liệu mẫu cho Cổng Lễ Tân & An Ninh (Reception Portal)...');
@@ -123,7 +125,7 @@ class ReceptionPortalSeeder extends Seeder
                 'pickup_pin_code' => '982711',
                 'pickup_qr_code' => 'QR-PKG-031-VERIFIED',
                 'status' => 'RECEIVED_AT_RECEPTION',
-                'received_by_staff_id' => $staffId,
+                'received_by_staff_id' => $letanUserId,
                 'received_at' => $now->copy()->subMinutes(15),
                 'created_at' => $now->copy()->subMinutes(15),
                 'updated_at' => $now->copy()->subMinutes(15),
@@ -152,7 +154,7 @@ class ReceptionPortalSeeder extends Seeder
                     'pickup_pin_code' => sprintf('%06d', 100000 + $k),
                     'pickup_qr_code' => 'QR-PKG-'.$trackNo,
                     'status' => 'RECEIVED_AT_RECEPTION',
-                    'received_by_staff_id' => $staffId,
+                    'received_by_staff_id' => $letanUserId,
                     'received_at' => $recvTime,
                     'created_at' => $recvTime,
                     'updated_at' => $recvTime,
@@ -363,6 +365,8 @@ class ReceptionPortalSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 1;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON;');
         }
 
         $this->command->info('Đã nạp thành công 18 khách check-in, 42 bưu phẩm (4 quá hạn), 7 xe chờ duyệt, 2 sự cố an ninh!');

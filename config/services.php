@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    'github' => [
+        'owner' => env('GITHUB_OWNER', env('GITHUB_REPOSITORY_OWNER', 'UMISORA09')),
+        'repo' => env('GITHUB_REPO', env('GITHUB_REPOSITORY_NAME', 'QUANLY_TOANHA-DANCU')),
+        'token' => env('GITHUB_TOKEN', env('GITHUB_API_TOKEN')),
+        'deploy_branch' => env('GIT_DEPLOY_BRANCH'),
+    ],
+
+    'vapid' => [
+        'public_key' => env('VAPID_PUBLIC_KEY'),
+        'private_key' => env('VAPID_PRIVATE_KEY'),
+        'subject' => env('VAPID_SUBJECT', 'mailto:admin@cassavas.vn'),
+    ],
+
 ];

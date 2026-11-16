@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use Carbon\Carbon;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,7 +15,7 @@ class AuthenticateBearer
     /**
      * Handle an incoming request.
      */
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $mode = 'legacy'): Response
     {
         // 1. Kiểm tra nếu người dùng đã được xác thực (qua Session hoặc actingAs trong test)
         $existingUser = $request->user() ?? Auth::user();
@@ -33,6 +34,21 @@ class AuthenticateBearer
         $authHeader = $request->header('Authorization');
 
         if (! $authHeader || ! str_starts_with($authHeader, 'Bearer ')) {
+            if ($mode !== 'strict') {
+                $existingUser = $request->user() ?: (Auth::check() ? Auth::user() : null);
+                if ($existingUser) {
+                    if ($existingUser->status !== 'ACTIVE') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.',
+                            'error' => 'ACCOUNT_LOCKED',
+                        ], 403);
+                    }
+
+                    return $next($request);
+                }
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Yêu cầu xác thực Bearer token.',
@@ -50,33 +66,29 @@ class AuthenticateBearer
             ], 401);
         }
 
-        // 1. Kiểm tra session trong bảng user_sessions
-        $tokenHash = hash('sha256', $token);
-
         $session = DB::table('user_sessions')
-            ->where(function ($q) use ($token, $tokenHash) {
-                $q->where('refresh_token_hash', $tokenHash)
-                    ->orWhere('refresh_token_hash', $token);
-            })
-            ->where('is_revoked', 0)
-            ->where('expires_at', '>', now())
+            ->where('refresh_token_hash', hash('sha256', $token))
             ->first();
 
-        $user = null;
-
         if ($session) {
-            $user = User::with('roles.permissions')->find($session->user_id);
-        } else {
-            // 2. Fallback kiểm tra smart_token format (phục vụ tương thích ngược nếu chưa lưu session vào DB)
-            // Cấu trúc token: smart_token_{uuid}_{random} hoặc kiểm tra token demo
-            if (str_starts_with($token, 'smart_token_')) {
-                // Kiểm tra xem có user_id gắn trong token không
-                $parts = explode('_', $token);
-                if (isset($parts[2]) && strlen($parts[2]) === 36) {
-                    $user = User::with('roles.permissions')->find($parts[2]);
-                }
+            if ($session->is_revoked) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phiên đăng nhập đã bị thu hồi.',
+                    'error' => 'TOKEN_REVOKED',
+                ], 401);
+            }
+
+            if ($session->expires_at && Carbon::parse($session->expires_at)->isPast()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phiên đăng nhập đã hết hạn.',
+                    'error' => 'TOKEN_EXPIRED',
+                ], 401);
             }
         }
+
+        $user = self::resolveSessionUser($token);
 
         if (! $user) {
             return response()->json([
@@ -99,5 +111,16 @@ class AuthenticateBearer
         $request->setUserResolver(fn () => $user);
 
         return $next($request);
+    }
+
+    public static function resolveSessionUser(string $token): ?User
+    {
+        $session = DB::table('user_sessions')
+            ->where('refresh_token_hash', hash('sha256', $token))
+            ->where('is_revoked', 0)
+            ->where('expires_at', '>', now())
+            ->first();
+
+        return $session ? User::with('roles.permissions')->find($session->user_id) : null;
     }
 }

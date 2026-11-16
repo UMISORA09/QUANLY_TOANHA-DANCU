@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Terminal,
   Bot,
@@ -13,13 +13,15 @@ import {
   Cpu,
   ArrowRight,
   Building2,
-  Sparkles,
   Zap,
 } from 'lucide-react';
 import { AppLayout } from '../../Components/Layout/AppLayout';
 import { CicdDashboard } from '../../Components/Cicd/CicdDashboard';
 import { RbacManagement } from '../Admin/RbacManagement';
-import { AmenityManagement } from '../Admin/AmenityManagement';
+import { TicketManagementPanel } from '../../Components/TicketManagementPanel';
+import { ManagerNotificationCenter, useManagerNotifications } from '../../Components/ManagerNotificationCenter';
+
+const AnnouncementManagement = lazy(() => import('../../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
 
 interface DevConsolePageProps {
   onLogout: () => void;
@@ -39,8 +41,31 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
   initialTab = 'overview',
 }) => {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notices = useManagerNotifications(notificationsOpen);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      try {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        if (tab) {
+          setActiveTab(tab);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, []);
 
   // State demo cho Feature Flags
   const [featureFlags, setFeatureFlags] = useState([
@@ -138,8 +163,11 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText="Hệ thống Quản trị & Kỹ thuật (Admin / Dev) đang vận hành ổn định"
+      unreadNotificationCount={notices.unread}
+      onNotificationClick={() => { setNotificationsOpen(!notificationsOpen); notices.retry(); }}
     >
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+      {notificationsOpen && <ManagerNotificationCenter feed={notices} onClose={() => setNotificationsOpen(false)} />}
+      <div className="p-4 sm:p-6 lg:p-8 w-full max-w-[2000px] mx-auto space-y-6 animate-in fade-in duration-200">
         {/* Breadcrumb & Title Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
           <div>
@@ -150,14 +178,15 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               {activeTab === 'overview' && 'Bàn Làm Việc Quản Trị & Kỹ Thuật (Admin / Dev)'}
               {activeTab === 'roles' && 'Phân Quyền Tài Khoản (RBAC Matrix)'}
-              {activeTab === 'amenities' && 'Quản Lý Tiện Ích & Cấu Hình Slot'}
+              {activeTab === 'residents' && 'Quản Lý Cư Dân & Căn Hộ'}
               {activeTab === 'ai_triage' && 'AI Chatbot & Phân Loại Sự Cố Tự Động (Triage)'}
               {activeTab === 'api_iot' && 'API, Webhooks & Thiết Bị IoT Tòa Nhà'}
               {activeTab === 'audit_flags' && 'Cờ Tính Năng (Feature Flags) & Audit Logs'}
+              {activeTab === 'temporary_registrations' && 'Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)'}
               {activeTab === 'cicd' && 'Hệ Thống Tự Động Hóa CI/CD & DevOps Pipeline'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Toàn quyền quản trị tài khoản, phân quyền, cấu hình tiện ích, CI/CD và hạ tầng kỹ thuật IoT.
+              Toàn quyền quản trị tài khoản, phân quyền, CI/CD và hạ tầng kỹ thuật IoT.
             </p>
           </div>
 
@@ -181,7 +210,7 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Main Welcome Card */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs">
+            <div className="demo-card rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
@@ -482,6 +511,8 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
         )}
 
         {/* TAB 5: CI/CD & DEVOPS */}
+        {activeTab === 'tickets' && <TicketManagementPanel />}
+        {activeTab === 'news' && <Suspense fallback={<p role="status">Đang mở bảng tin…</p>}><AnnouncementManagement /></Suspense>}
         {activeTab === 'cicd' && (
           <div className="space-y-6">
             <CicdDashboard userRole="admin" />
@@ -494,11 +525,51 @@ export const DevConsolePage: React.FC<DevConsolePageProps> = ({
             <RbacManagement embedded={true} />
           </div>
         )}
+        {/* TAB 7: QUẢN LÝ CHỦ HỘ & NHÂN KHẨU (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
+        {activeTab === 'residents' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Quản Lý Chủ Hộ & Thông Tin Nhân Khẩu</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Quản lý Chủ hộ và Nhân khẩu căn hộ đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác vận hành thường nhật của tòa nhà.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-        {/* TAB 7: QUẢN LÝ TIỆN ÍCH */}
-        {activeTab === 'amenities' && (
-          <div className="space-y-6">
-            <AmenityManagement embedded={true} />
+        {/* TAB 8: ĐĂNG KÝ & QUẢN LÝ TẠM TRÚ / TẠM VẮNG (CHỈ Ở CỔNG BAN QUẢN LÝ) */}
+        {activeTab === 'temporary_registrations' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto space-y-4 shadow-sm animate-in fade-in duration-200">
+            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+              <FileText className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Đăng Ký & Quản Lý Tạm Trú / Tạm Vắng (Công An)</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Nghiệp vụ Đăng ký & Quản lý Tạm trú / Tạm vắng đã được quy chuẩn tập trung tại <strong>Cổng Ban Quản Lý (Manager)</strong> để phục vụ công tác hành chính và nhân khẩu với cơ quan Công an.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateManager}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Chuyển sang Cổng Ban Quản Lý</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>

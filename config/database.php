@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Str;
-use Pdo\Mysql;
 
 return [
 
@@ -34,7 +33,7 @@ return [
 
         'sqlite' => [
             'driver' => 'sqlite',
-            'url' => env('DB_URL'),
+            'url' => env('DB_URL', env('DATABASE_URL')),
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
@@ -42,8 +41,8 @@ return [
 
         'mysql' => [
             'driver' => 'mysql',
-            'url' => env('DB_URL'),
-            'host' => file_exists('/.dockerenv') ? env('DB_HOST', 'db') : (env('DB_HOST') === 'db' ? '127.0.0.1' : env('DB_HOST', '127.0.0.1')),
+            'url' => env('DB_URL', env('DATABASE_URL')),
+            'host' => env('DB_HOST', 'db'),
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'quanly_toanha'),
             'username' => env('DB_USERNAME', 'root'),
@@ -54,9 +53,12 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            'options' => extension_loaded('pdo_mysql') ? (array_filter([
+                (defined('Pdo\Mysql::ATTR_SSL_CA') ? constant('Pdo\Mysql::ATTR_SSL_CA') : (defined('PDO::MYSQL_ATTR_SSL_CA') ? PDO::MYSQL_ATTR_SSL_CA : 1008)) => env('MYSQL_ATTR_SSL_CA'),
+            ]) + [
+                PDO::ATTR_EMULATE_PREPARES => false,
+                (defined('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY') ? constant('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY') : (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY') ? PDO::MYSQL_ATTR_USE_BUFFERED_QUERY : 1000)) => true,
+                PDO::ATTR_PERSISTENT => env('APP_ENV') !== 'testing' && filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN),
             ]) : [],
         ],
 

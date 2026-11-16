@@ -1,11 +1,15 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ isset($canonical) ? 'vi' : str_replace('_', '-', app()->getLocale()) }}">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="description" content="SMART CASSAVAS - Nền tảng quản lý tòa nhà thông minh, kết nối cư dân, ban quản lý, lễ tân và admin trong một hệ thống rõ ràng và an toàn.">
-
-        <title>{{ config('app.name', 'SMART CASSAVAS') }} - Nền tảng quản lý tòa nhà</title>
+        <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+        @if (isset($canonical))
+            @include('public.head')
+        @else
+            <meta name="robots" content="noindex, nofollow">
+            <title>SMART CASSAVAS - Nền tảng quản lý tòa nhà</title>
+        @endif
 
         <link rel="dns-prefetch" href="//fonts.googleapis.com">
         <link rel="dns-prefetch" href="//fonts.gstatic.com">
@@ -22,6 +26,6 @@
         @vite(['resources/css/app.css', 'resources/js/app.tsx'])
     </head>
     <body class="antialiased bg-[#FAFAFA] text-[#171717] min-h-screen">
-        <div id="app"></div>
+        <div id="app">@isset($html)<main class="public-guide mx-auto max-w-4xl px-6 py-12">{!! $html !!}@if ($canonical === config('public_content.url').'/home')<nav aria-label="Tài nguyên lập trình viên"><a href="/docs">SMART CASSAVAS API</a> · <a href="/mcp">SMART CASSAVAS MCP Server</a> · <a href="/cli">SMART CASSAVAS CLI</a> · <a href="https://github.com/UMISORA09/QUANLY_TOANHA-DANCU">GitHub dự án</a></nav>@endif</main>@endisset</div>
     </body>
 </html>

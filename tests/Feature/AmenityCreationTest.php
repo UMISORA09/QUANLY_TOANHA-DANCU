@@ -2,11 +2,22 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
 class AmenityCreationTest extends TestCase
 {
+    use DatabaseTransactions, ResidentAmenityBookingFixtures;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->createBookingFixture();
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+    }
+
     /**
      * Test tạo mới tiện ích thành công và xác minh dữ liệu được lưu thật vào CSDL.
      * Giải quyết triệt để lỗi "Bấm Lưu nhưng bản ghi không được lưu".

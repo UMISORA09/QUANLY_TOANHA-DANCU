@@ -6,7 +6,7 @@ FROM php:8.4-fpm-bookworm AS base
 WORKDIR /var/www/html
 
 # Cài đặt các công cụ hệ thống tối thiểu
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     gnupg2 \
     apt-transport-https \
@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Sử dụng công cụ cài đặt extensions chính thức
-ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+# Sử dụng công cụ cài đặt extensions chính thức qua Docker Hub image layer để tránh lỗi mạng 504 Gateway Timeout
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
 
 # Cài đặt PHP extensions: bổ sung redis phục vụ cache, session, queue hiệu năng cao
 RUN chmod +x /usr/local/bin/install-php-extensions && \
@@ -39,7 +39,7 @@ RUN chmod +x /usr/local/bin/install-php-extensions && \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Cấu hình PHP & Opcache cơ bản cho container
-RUN echo "opcache.enable=1\nopcache.enable_cli=1\nopcache.memory_consumption=256\nopcache.max_accelerated_files=20000\nopcache.revalidate_freq=2\nopcache.validate_timestamps=1\nvariables_order=\"EGPCS\"" > /usr/local/etc/php/conf.d/custom.ini
+COPY docker/app/custom.ini /usr/local/etc/php/conf.d/custom.ini
 
 # ==============================================================================
 # Development Stage: Dành cho lập trình viên local (mount volume, Node.js, HMR)
@@ -87,6 +87,7 @@ RUN npm ci --ignore-scripts
 COPY resources/ ./resources/
 COPY vite.config.js tsconfig.json ./
 COPY public/ ./public/
+COPY scripts/ ./scripts/
 
 RUN npm run build
 
@@ -131,6 +132,7 @@ COPY . .
 
 # Sao chép frontend bundles đã build từ frontend-builder
 COPY --from=frontend-builder /app/public/build ./public/build
+COPY --from=frontend-builder /app/public/index.html ./public/index.html
 
 # Tạo classmap autoloader tối ưu cho production
 RUN composer dump-autoload --optimize --no-dev --classmap-authoritative

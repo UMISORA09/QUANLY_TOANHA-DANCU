@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Edit2, Trash2, Tag, Check, AlertCircle, Sparkles } from 'lucide-react';
 import { api, Category } from '../../Services/api';
 import { amenityCache } from '../../Services/amenityCache';
@@ -10,6 +10,16 @@ interface CategoryModalProps {
 }
 
 export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, onChanged }) => {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const element = dialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    element?.showModal();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { if (element?.open) element.close(); document.body.style.overflow = previous; if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [isOpen]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -20,16 +30,42 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [editingVersion, setEditingVersion] = useState(1);
+  const [hasConflict, setHasConflict] = useState(false);
+  const [latestCategory, setLatestCategory] = useState<Category | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const conflictGeneration = useRef(0);
+  const listGeneration = useRef(0);
+  useEffect(() => () => { conflictGeneration.current++; listGeneration.current++; }, [isOpen]);
+  const recoverConflict = async (id: string, preserveDraft = false) => {
+    const generation = ++conflictGeneration.current;
+    const listRequest = ++listGeneration.current;
+    if (preserveDraft) { setHasConflict(true); setLatestCategory(null); }
+    setRecovering(true);
+    try {
+      const data = await api.getCategories(true);
+      if (generation !== conflictGeneration.current) return;
+      if (listRequest === listGeneration.current) setCategories(data);
+      if (preserveDraft) setLatestCategory(data.find((item) => item.id === id) || null);
+      setErrorMessage('Danh mục đã thay đổi. Bản nhập được giữ nguyên; hãy xem bản mới trước khi thao tác lại.');
+    } catch {
+      if (generation === conflictGeneration.current) setErrorMessage('Chưa tải được danh mục mới. Bản nhập vẫn được giữ; hãy thử lại.');
+    } finally {
+      if (generation === conflictGeneration.current) setRecovering(false);
+      if (listRequest === listGeneration.current) setLoading(false);
+    }
+  };
 
   const fetchCategories = async () => {
+    const listRequest = ++listGeneration.current;
     setLoading(true);
     try {
-      const data = await api.getCategories();
-      setCategories(data);
+      const data = await api.getCategories(true);
+      if (listRequest === listGeneration.current) setCategories(data);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Không thể tải danh sách danh mục.');
+      if (listRequest === listGeneration.current) setErrorMessage(err.message || 'Không thể tải danh sách danh mục.');
     } finally {
-      setLoading(false);
+      if (listRequest === listGeneration.current) setLoading(false);
     }
   };
 
@@ -57,6 +93,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
   const resetForm = () => {
     setEditingId(null);
+    setEditingVersion(1); setHasConflict(false); setLatestCategory(null); setRecovering(false);
     setName('');
     setCode('');
     setDescription('');
@@ -65,7 +102,9 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   };
 
   const handleEdit = (cat: Category) => {
+    if (isSubmitting || recovering) return;
     setEditingId(cat.id);
+    setEditingVersion(cat.version); setHasConflict(false); setLatestCategory(null);
     setName(cat.category_name);
     setCode(cat.category_code);
     setDescription(cat.description || '');
@@ -75,8 +114,34 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !code.trim()) {
-      setErrorMessage('Vui lòng điền tên và mã danh mục.');
+    if (isSubmitting || recovering || hasConflict) return;
+    setSuccessMessage(null);
+    const trimmedCode = code.trim().toUpperCase();
+    const trimmedName = name.trim();
+    const trimmedDesc = description.trim();
+
+    if (!trimmedName || !trimmedCode) {
+      setErrorMessage('Vui lòng điền đầy đủ mã và tên danh mục.');
+      return;
+    }
+
+    if (trimmedCode.length < 2 || trimmedCode.length > 50) {
+      setErrorMessage('Mã danh mục phải từ 2 đến 50 ký tự.');
+      return;
+    }
+
+    if (!/^[A-Z0-9_]+$/.test(trimmedCode)) {
+      setErrorMessage('Mã danh mục chỉ được chứa chữ cái không dấu, số và dấu gạch dưới (_).');
+      return;
+    }
+
+    if (trimmedName.length < 2 || trimmedName.length > 100) {
+      setErrorMessage('Tên danh mục phải từ 2 đến 100 ký tự.');
+      return;
+    }
+
+    if (trimmedDesc.length > 255) {
+      setErrorMessage('Mô tả danh mục không được vượt quá 255 ký tự.');
       return;
     }
 
@@ -86,18 +151,19 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
     try {
       if (editingId) {
         await api.updateCategory(editingId, {
-          category_name: name.trim(),
-          category_code: code.trim().toUpperCase(),
+          version: editingVersion,
+          category_name: trimmedName,
+          category_code: trimmedCode,
           icon_name: iconName,
-          description: description.trim() || null,
+          description: trimmedDesc || null,
         });
         setSuccessMessage('Đã cập nhật danh mục thành công!');
       } else {
         await api.createCategory({
-          category_name: name.trim(),
-          category_code: code.trim().toUpperCase(),
+          category_name: trimmedName,
+          category_code: trimmedCode,
           icon_name: iconName,
-          description: description.trim() || null,
+          description: trimmedDesc || null,
         });
         setSuccessMessage('Đã thêm danh mục mới thành công!');
       }
@@ -107,12 +173,15 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Đã xảy ra lỗi khi lưu danh mục.');
+      if (err.status === 409 && editingId) await recoverConflict(editingId, true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (cat: Category) => {
+    if (isSubmitting || recovering || loading) return;
+    setSuccessMessage(null);
     if (cat.amenities_count > 0) {
       setErrorMessage(`Không thể xóa danh mục '${cat.category_name}' vì đang có ${cat.amenities_count} tiện ích trực thuộc!`);
       return;
@@ -123,13 +192,16 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
     setLoading(true);
     try {
-      await api.deleteCategory(cat.id);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      await api.deleteCategory(cat.id, cat.version);
       setSuccessMessage('Đã xóa danh mục.');
       await fetchCategories();
       onChanged();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Lỗi khi xóa danh mục.');
+      if (err.status === 409) await recoverConflict(cat.id);
     } finally {
       setLoading(false);
     }
@@ -138,9 +210,9 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+    <dialog ref={dialog} aria-label="Quản lý danh mục tiện ích" onCancel={(event) => { event.preventDefault(); if (!isSubmitting && !recovering) onClose(); }} className="feature-controls feature-dialog catalog-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none items-center justify-center bg-transparent p-3 open:flex sm:p-4">
       {/* Backdrop */}
-      <div onClick={onClose} className="fixed inset-0 bg-neutral-950/45 backdrop-blur-md animate-in fade-in" />
+      <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 
       {/* Modal Content */}
       <div className="relative w-full max-w-2xl bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 max-h-[90vh] flex flex-col">
@@ -166,160 +238,190 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
 
         {/* Alerts */}
         {errorMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+          <div role="alert" className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
+            {!hasConflict && <button type="button" disabled={isSubmitting || recovering || loading} className="min-h-11 shrink-0 underline" onClick={() => { setErrorMessage(null); void fetchCategories(); }}>Tải lại danh sách</button>}
           </div>
         )}
+        {hasConflict && <section aria-label="Bản danh mục mới nhất" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 space-y-2">
+          <p>Bản nhập chưa bị thay thế. {recovering ? 'Đang tải bản mới…' : 'Hãy đối chiếu trước khi lưu tiếp.'}</p>
+          {latestCategory && <><p>Phiên bản máy chủ: {latestCategory.version}</p><p>{latestCategory.category_name} · {latestCategory.category_code} · {latestCategory.icon_name}</p><p className="whitespace-pre-wrap">{latestCategory.description}</p><button type="button" disabled={recovering} className="min-h-11 underline font-semibold" onClick={() => { setEditingVersion(latestCategory.version); setHasConflict(false); setErrorMessage(null); }}>Đã xem bản mới, tiếp tục sửa bản nhập</button></>}
+          <button type="button" disabled={recovering} className="min-h-11 underline" onClick={() => { if (editingId) void recoverConflict(editingId, true); }}>Tải lại bản mới</button>
+        </section>}
         {successMessage && (
-          <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+          <div role="status" className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 shrink-0">
             <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
 
-        <div className="mt-4 flex-1 overflow-y-auto space-y-6 pr-1">
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-4 bg-neutral-50/80 border border-neutral-200/70 rounded-xl space-y-3">
-            <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
-              {editingId ? 'Chỉnh sửa danh mục' : 'Thêm mới danh mục'}
-            </div>
+        {/* Form - Cố định không cuộn */}
+        <form onSubmit={handleSubmit} className="mt-4 shrink-0 p-4 bg-neutral-50/80 border border-neutral-200/70 rounded-xl space-y-3">
+          <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
+            {editingId ? 'Chỉnh sửa danh mục' : 'Thêm mới danh mục'}
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-neutral-700">
                   Mã danh mục <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: BBQ, GYM, POOL"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white uppercase font-mono focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
+                <span className={`text-[10px] font-mono ${code.length >= 50 ? 'text-rose-600 font-bold' : 'text-neutral-400'}`}>
+                  {code.length}/50
+                </span>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Tên danh mục <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: Vườn nướng BBQ ngoài trời"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                />
-              </div>
+              <input
+                type="text"
+                required
+                minLength={2}
+                maxLength={50}
+                placeholder="VD: BBQ, GYM, POOL"
+                aria-label="Mã danh mục" value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+                className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white uppercase font-mono focus:outline-none focus:ring-1 focus:ring-neutral-900"
+              />
+              <p className="mt-1 text-[10px] text-neutral-400">Tối đa 50 ký tự (chữ hoa, số, dấu gạch dưới)</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1">Mô tả danh mục</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-neutral-700">
+                  Tên danh mục <span className="text-rose-500">*</span>
+                </label>
+                <span className={`text-[10px] font-mono ${name.length >= 100 ? 'text-rose-600 font-bold' : 'text-neutral-400'}`}>
+                  {name.length}/100
+                </span>
+              </div>
               <input
                 type="text"
-                placeholder="Mô tả chi tiết danh mục..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                required
+                minLength={2}
+                maxLength={100}
+                placeholder="VD: Vườn nướng BBQ ngoài trời"
+                aria-label="Tên danh mục" value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
+              <p className="mt-1 text-[10px] text-neutral-400">Tối đa 100 ký tự</p>
             </div>
+          </div>
 
-            <div className="flex items-center justify-end gap-2 pt-1">
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-200/70 rounded-lg transition-colors"
-                >
-                  Hủy sửa
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : editingId ? (
-                  <Check className="w-3.5 h-3.5" />
-                ) : (
-                  <Plus className="w-3.5 h-3.5" />
-                )}
-                <span>{editingId ? 'Cập nhật' : 'Thêm danh mục'}</span>
-              </button>
-            </div>
-          </form>
-
-          {/* Categories List */}
           <div>
-            <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider mb-2.5">
-              Danh sách hiện có ({categories.length})
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-neutral-700">Mô tả danh mục</label>
+              <span className={`text-[10px] font-mono ${description.length >= 255 ? 'text-rose-600 font-bold' : 'text-neutral-400'}`}>
+                {description.length}/255
+              </span>
             </div>
+            <input
+              type="text"
+              maxLength={255}
+              placeholder="Mô tả chi tiết danh mục..."
+              aria-label="Mô tả danh mục" value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
+            />
+            <p className="mt-1 text-[10px] text-neutral-400">Tùy chọn, tối đa 255 ký tự</p>
+          </div>
 
+          <div className="flex items-center justify-end gap-2 pt-1">
+            {editingId && (
+              <button
+                type="button"
+                disabled={isSubmitting || recovering}
+                  onClick={resetForm}
+                className="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-200/70 rounded-lg transition-colors cursor-pointer"
+              >
+                Hủy sửa
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={isSubmitting || recovering || hasConflict}
+              className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 active:scale-95 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            >
+              {isSubmitting ? (
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : editingId ? (
+                <Check className="w-3.5 h-3.5" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>{editingId ? 'Cập nhật' : 'Thêm danh mục'}</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Categories List Section - Chỉ cuộn riêng danh sách */}
+        <div className="mt-4 flex-1 flex flex-col min-h-0">
+          <div className="text-xs font-bold text-neutral-800 uppercase tracking-wider mb-2.5 shrink-0">
+            Danh sách hiện có ({categories.length})
+          </div>
+
+          <div role="list" aria-label="Danh mục tiện ích" className="flex-1 overflow-y-auto pr-1 space-y-2">
             {loading ? (
               <div className="py-8 text-center text-neutral-400 text-xs flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-neutral-400 border-t-neutral-800 rounded-full animate-spin" />
                 <span>Đang tải danh mục...</span>
               </div>
-            ) : categories.length === 0 ? (
+            ) : !Array.isArray(categories) || categories.length === 0 ? (
               <div className="py-8 text-center text-neutral-400 text-xs border border-dashed border-neutral-200 rounded-xl">
                 Chưa có danh mục nào. Hãy tạo danh mục đầu tiên ở biểu mẫu phía trên!
               </div>
             ) : (
-              <div className="space-y-2">
-                {categories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="p-3 bg-white border border-neutral-200/80 rounded-xl flex items-center justify-between hover:border-neutral-300 transition-colors shadow-2xs"
-                  >
-                    <div className="min-w-0 pr-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-neutral-950 truncate">{cat.category_name}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-neutral-100 text-neutral-700 font-semibold border border-neutral-200 whitespace-nowrap">
-                          {cat.category_code}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-50 text-sky-700 border border-sky-200 whitespace-nowrap">
-                          {cat.amenities_count} tiện ích
-                        </span>
-                      </div>
-                      {cat.description && (
-                        <p className="text-[11px] text-neutral-500 truncate mt-0.5">{cat.description}</p>
-                      )}
+              categories.map((cat) => (
+                <div
+                  key={cat.id}
+                  role="listitem"
+                  className="p-3 bg-white border border-neutral-200/80 rounded-xl flex items-center justify-between hover:border-neutral-300 transition-colors shadow-2xs"
+                >
+                  <div className="min-w-0 pr-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-neutral-950 truncate">{cat.category_name}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-neutral-100 text-neutral-700 font-semibold border border-neutral-200 whitespace-nowrap">
+                        {cat.category_code}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-50 text-sky-700 border border-sky-200 whitespace-nowrap">
+                        {cat.amenities_count} tiện ích
+                      </span>
                     </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(cat)}
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
-                        title="Chỉnh sửa"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(cat)}
-                        disabled={cat.amenities_count > 0}
-                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                          cat.amenities_count > 0
-                            ? 'text-neutral-300 cursor-not-allowed'
-                            : 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
-                        }`}
-                        title={
-                          cat.amenities_count > 0
-                            ? 'Không thể xóa danh mục đang có tiện ích'
-                            : 'Xóa danh mục'
-                        }
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {cat.description && (
+                      <p className="text-[11px] text-neutral-500 truncate mt-0.5">{cat.description}</p>
+                    )}
                   </div>
-                ))}
-              </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isSubmitting || recovering}
+                      onClick={() => handleEdit(cat)}
+                      className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
+                      title="Chỉnh sửa"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(cat)}
+                      disabled={isSubmitting || recovering || cat.amenities_count > 0}
+                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                        cat.amenities_count > 0
+                          ? 'text-neutral-300 cursor-not-allowed'
+                          : 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
+                      }`}
+                      title={
+                        cat.amenities_count > 0
+                          ? 'Không thể xóa danh mục đang có tiện ích'
+                          : 'Xóa danh mục'
+                      }
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
@@ -335,6 +437,6 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({ isOpen, onClose, o
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

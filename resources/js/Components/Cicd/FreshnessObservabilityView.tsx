@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   Info,
   ExternalLink,
+  Flame,
 } from 'lucide-react';
 import { FreshnessOverviewData, FreshnessSourceItem, FreshnessState } from '@/Services/cicdApi';
 
@@ -39,7 +40,7 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
   };
 
   const formatTimestamp = (ts: string | null | undefined): string => {
-    if (!ts) return 'Chưa có dữ liệu (No record)';
+    if (!ts) return 'Chưa có bản ghi (No record)';
     try {
       const d = new Date(ts);
       return d.toLocaleString('vi-VN', {
@@ -103,7 +104,7 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
         <Clock className="w-10 h-10 text-slate-400 mx-auto animate-pulse" />
         <h3 className="text-base font-bold text-slate-800">Đang khởi tạo Freshness Observability...</h3>
         <p className="text-xs text-slate-500 max-w-md mx-auto">
-          Thu thập độ tươi mới của CSDL tòa nhà và các luồng quan sát monitoring.
+          Thu thập độ tươi mới của CSDL tòa nhà và các luồng quan sát monitoring thực tế.
         </p>
       </div>
     );
@@ -112,13 +113,15 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
   const monitoringSources: FreshnessSourceItem[] = [
     {
       source: 'collector',
-      name: 'Freshness Collector (Tiến trình thu thập)',
+      name: 'Freshness Collector (Scheduler)',
       type: 'monitoring',
       status: freshness.collector.status,
       age_seconds: freshness.collector.age_seconds,
       warning_threshold: freshness.collector.warning_threshold,
       critical_threshold: freshness.collector.critical_threshold,
       last_observed_at: freshness.collector.last_success_at,
+      source_timestamp: freshness.collector.source_timestamp || freshness.collector.last_success_at,
+      reason: freshness.collector.reason,
     },
     freshness.github_actions,
     freshness.deployment,
@@ -126,6 +129,7 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
   ];
 
   const dbSources: FreshnessSourceItem[] = freshness.database?.sources || [];
+  const worstSource = freshness.worst_source || freshness.metrics?.worst_source;
 
   return (
     <div className="space-y-6">
@@ -142,6 +146,12 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
             <p className="text-xs text-slate-300">
               Công thức chuẩn: <code className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-amber-300">freshness_age = current_time - source_timestamp</code>
             </p>
+            {freshness.overall_reason && (
+              <div className="text-xs text-sky-200 mt-1 flex items-center gap-1.5 font-medium">
+                <Info className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span>{freshness.overall_reason}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -164,30 +174,42 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
           </div>
         </div>
 
-        {/* 4 THẺ CHỈ SỐ NHANH */}
+        {/* 4 THẺ CHỈ SỐ BẮT BUỘC: Newest Data Age, Oldest Data Age, Worst Source, Overall Freshness */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-800">
           <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Collector Age</span>
-            <div className="text-lg font-black text-white mt-0.5">{formatSeconds(freshness.collector.age_seconds)}</div>
-            <div className="text-[10px] text-slate-400">Ngưỡng: &lt;{freshness.collector.warning_threshold}s</div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Newest Data Age</span>
+            <div className="text-lg font-black text-white mt-0.5">
+              {formatSeconds(freshness.newest_data_age_seconds ?? freshness.database?.newest_data_age_seconds ?? freshness.database?.age_seconds)}
+            </div>
+            <div className="text-[10px] text-slate-400">Tuổi bản ghi mới nhất trong CSDL</div>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">App Health Age</span>
-            <div className="text-lg font-black text-white mt-0.5">{formatSeconds(freshness.application_health?.age_seconds)}</div>
-            <div className="text-[10px] text-slate-400">Ngưỡng: &lt;{freshness.application_health?.warning_threshold}s</div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Oldest Data Age</span>
+            <div className="text-lg font-black text-white mt-0.5">
+              {formatSeconds(freshness.oldest_data_age_seconds ?? freshness.database?.oldest_data_age_seconds)}
+            </div>
+            <div className="text-[10px] text-slate-400">Tuổi bản ghi cũ nhất các bảng</div>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">GitHub Event Age</span>
-            <div className="text-lg font-black text-white mt-0.5">{formatSeconds(freshness.github_actions?.age_seconds)}</div>
-            <div className="text-[10px] text-slate-400">Ngưỡng: &lt;{Math.round((freshness.github_actions?.warning_threshold || 3600)/60)}m</div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Worst Source</span>
+            <div className="text-sm font-black text-amber-300 mt-1 truncate">
+              {worstSource?.name || worstSource?.source || 'Không xác định'}
+            </div>
+            <div className="text-[10px] text-slate-400 mt-0.5">
+              Trạng thái: <span className="font-bold text-white">{worstSource?.status || 'UNKNOWN'}</span>
+            </div>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">DB Max Data Age</span>
-            <div className="text-lg font-black text-white mt-0.5">{formatSeconds(freshness.database?.age_seconds)}</div>
-            <div className="text-[10px] text-slate-400">Trạng thái: {freshness.database?.status}</div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Overall Freshness</span>
+            <div className="mt-1">
+              {getStatusBadge(freshness.overall_state)}
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1 truncate" title={freshness.overall_reason}>
+              {freshness.overall_reason || 'Độ tươi mới hệ thống'}
+            </div>
           </div>
         </div>
       </div>
@@ -238,7 +260,7 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {monitoringSources.map((item) => {
-              const sourceTime = item.last_update_at || item.last_event_at || item.last_observed_at;
+              const sourceTime = item.source_timestamp || item.last_update_at || item.last_event_at || item.last_observed_at;
               return (
                 <div
                   key={item.source}
@@ -266,11 +288,34 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-100">
-                    <span>Ngưỡng Warning: &lt;{item.warning_threshold}s</span>
-                    <span>Ngưỡng Critical: &gt;{item.critical_threshold}s</span>
+                    <span>Ngưỡng Warning: &lt;{formatSeconds(item.warning_threshold)}</span>
+                    <span>Ngưỡng Critical: &gt;{formatSeconds(item.critical_threshold)}</span>
                   </div>
 
-                  {item.message && (
+                  {/* BẰNG CHỨNG QUAN SÁT THỰC TẾ (PROVENANCE & EVIDENCE) */}
+                  {item.reason && (
+                    <div className="text-[11px] text-slate-700 bg-sky-50/60 p-2 rounded border border-sky-100">
+                      <span className="font-bold text-sky-800">Lý do: </span>
+                      {item.reason}
+                    </div>
+                  )}
+
+                  {item.workflow && (
+                    <div className="text-[11px] text-slate-600 font-mono bg-slate-50 p-2 rounded border border-slate-200">
+                      Workflow: <span className="font-bold text-slate-800">{item.workflow}</span>
+                      {item.commit_sha && <span> &middot; Commit: {item.commit_sha}</span>}
+                      {item.conclusion && <span> &middot; Conclusion: {item.conclusion}</span>}
+                    </div>
+                  )}
+
+                  {item.environment && (
+                    <div className="text-[11px] text-slate-600 font-mono bg-slate-50 p-2 rounded border border-slate-200">
+                      Environment: <span className="font-bold text-slate-800">{item.environment}</span>
+                      {item.version && <span> &middot; Phiên bản: {item.version}</span>}
+                    </div>
+                  )}
+
+                  {item.message && !item.reason && (
                     <div className="text-[11px] text-slate-600 italic bg-amber-50/50 p-2 rounded border border-amber-100">
                       {item.message}
                     </div>
@@ -321,6 +366,7 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
                     <th className="px-4 py-3">Độ tuổi dữ liệu (Age)</th>
                     <th className="px-4 py-3">Ngưỡng cảnh báo</th>
                     <th className="px-4 py-3">Trạng thái</th>
+                    <th className="px-4 py-3">Bằng chứng & Lý do</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -339,7 +385,7 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
                         {src.timestamp_field || 'updated_at'}
                       </td>
                       <td className="px-4 py-3 font-mono text-[11px] text-slate-700">
-                        {formatTimestamp(src.last_update_at)}
+                        {formatTimestamp(src.source_timestamp || src.last_update_at)}
                       </td>
                       <td className="px-4 py-3 font-mono font-bold text-slate-900">
                         {formatSeconds(src.age_seconds)}
@@ -349,6 +395,9 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
                       </td>
                       <td className="px-4 py-3">
                         {getStatusBadge(src.status)}
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-slate-600 max-w-xs truncate" title={src.reason || src.message || src.error}>
+                        {src.reason || src.message || src.error || 'N/A'}
                       </td>
                     </tr>
                   ))}
@@ -366,7 +415,7 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
             <AlertTriangle className="w-4 h-4 text-amber-600" />
             <span>Nhật Ký Sự Cố Freshness Bền Vững (Durable Incident Tracker)</span>
           </h3>
-          <span className="text-[11px] text-slate-600">Lưu vết chuyển đổi NORMAL &rarr; STALE &rarr; CRITICAL &rarr; RECOVERED</span>
+          <span className="text-[11px] text-slate-600">Lưu vết chuyển đổi NORMAL &rarr; STALE &rarr; CRITICAL &rarr; RECOVERED (DB Single Source of Truth)</span>
         </div>
 
         {freshness.incidents && freshness.incidents.length > 0 ? (
@@ -399,7 +448,12 @@ export const FreshnessObservabilityView: React.FC<FreshnessObservabilityViewProp
                         {formatSeconds(inc.age_seconds)}
                       </td>
                       <td className="px-4 py-2.5 font-mono text-[11px] text-slate-600">
-                        {inc.resolved_at ? formatTimestamp(inc.resolved_at) : 'Đang xử lý (Active)'}
+                        {inc.resolved_at ? formatTimestamp(inc.resolved_at) : (
+                          <span className="inline-flex items-center gap-1 font-bold text-rose-600">
+                            <Flame className="w-3 h-3 text-rose-500 animate-pulse" />
+                            Đang active
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-slate-600 text-[11px]">
                         {inc.details || 'N/A'}

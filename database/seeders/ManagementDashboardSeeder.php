@@ -19,6 +19,8 @@ class ManagementDashboardSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 0;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF;');
         }
 
         $this->command->info('Đang nạp dữ liệu ảo cho Trang Quản trị Tòa nhà & Dân cư...');
@@ -38,9 +40,13 @@ class ManagementDashboardSeeder extends Seeder
         ];
 
         foreach ($roles as $role) {
+            $existingRole = DB::table('roles')->where('role_code', $role['role_code'])->first();
+            $roleId = $existingRole ? $existingRole->id : $role['id'];
+
             DB::table('roles')->updateOrInsert(
                 ['role_code' => $role['role_code']],
                 [
+                    'id' => $roleId,
                     'role_name' => $role['role_name'],
                     'description' => $role['description'],
                     'is_system_role' => 1,
@@ -322,9 +328,16 @@ class ManagementDashboardSeeder extends Seeder
             );
 
             if ($residentUserId) {
+                $existingResident = DB::table('residents')
+                    ->where('user_id', $residentUserId)
+                    ->where('apartment_id', $aptId)
+                    ->first();
+                $resId = $existingResident ? $existingResident->id : (string) Str::uuid();
+
                 DB::table('residents')->updateOrInsert(
                     ['user_id' => $residentUserId, 'apartment_id' => $aptId],
                     [
+                        'id' => $resId,
                         'resident_type' => 'OWNER',
                         'is_head_of_household' => 1,
                         'stay_start_date' => $now->copy()->subMonths(10)->toDateString(),
@@ -606,9 +619,13 @@ class ManagementDashboardSeeder extends Seeder
 
                 // If paid, create payment record
                 if ($paidAmount > 0) {
+                    $existingPayment = DB::table('payments')->where('payment_reference_code', "PAY-{$invNumber}")->first();
+                    $payId = $existingPayment ? $existingPayment->id : (string) Str::uuid();
+
                     DB::table('payments')->updateOrInsert(
                         ['payment_reference_code' => "PAY-{$invNumber}"],
                         [
+                            'id' => $payId,
                             'invoice_id' => $invId,
                             'apartment_id' => $aptId,
                             'payer_user_id' => $userMap['nguyenvanan'] ?? null,
@@ -630,11 +647,18 @@ class ManagementDashboardSeeder extends Seeder
             'category_code' => 'COMMUNITY_FACILITIES',
             'category_name' => 'Tiện Ích Nội Khu Cao Cấp',
         ];
+        $existingCat = DB::table('amenity_categories')->where('category_code', $amenityCategory['category_code'])->first();
+        $amenityCatId = $existingCat ? $existingCat->id : $amenityCategory['id'];
+
         DB::table('amenity_categories')->updateOrInsert(
             ['category_code' => $amenityCategory['category_code']],
-            ['category_name' => $amenityCategory['category_name'], 'icon_name' => 'sparkles']
+            [
+                'id' => $amenityCatId,
+                'category_name' => $amenityCategory['category_name'],
+                'icon_name' => 'sparkles',
+            ]
         );
-        $amenityCatId = DB::table('amenity_categories')->where('category_code', 'COMMUNITY_FACILITIES')->value('id');
+        $amenityCatId = DB::table('amenity_categories')->where('category_code', 'COMMUNITY_FACILITIES')->value('id') ?? $amenityCatId;
 
         $amenities = [
             ['code' => 'POOL_A', 'name' => 'Bể bơi vô cực tháp A', 'loc' => 'Tầng 4 Tháp A', 'cap' => 30],
@@ -672,9 +696,13 @@ class ManagementDashboardSeeder extends Seeder
             $aptCode = $aptKeys[$bIdx % $totalApts];
             $hour = 6 + ($bIdx % 14);
 
+            $existingBkg = DB::table('amenity_bookings')->where('booking_code', $bCode)->first();
+            $bkgId = $existingBkg ? $existingBkg->id : (string) Str::uuid();
+
             DB::table('amenity_bookings')->updateOrInsert(
                 ['booking_code' => $bCode],
                 [
+                    'id' => $bkgId,
                     'amenity_id' => $amId,
                     'apartment_id' => $apartmentMap[$aptCode],
                     'resident_user_id' => $userMap['nguyenvanan'] ?? null,
@@ -732,12 +760,19 @@ class ManagementDashboardSeeder extends Seeder
             );
 
             // Add maintenance log
+            $existingLog = DB::table('asset_maintenance_logs')
+                ->where('asset_id', $assetId)
+                ->where('maintenance_date', $now->copy()->subDays(1)->toDateString())
+                ->first();
+            $logId = $existingLog ? $existingLog->id : (string) Str::uuid();
+
             DB::table('asset_maintenance_logs')->updateOrInsert(
                 [
                     'asset_id' => $assetId,
                     'maintenance_date' => $now->copy()->subDays(1)->toDateString(),
                 ],
                 [
+                    'id' => $logId,
                     'maintenance_type' => 'PREVENTIVE',
                     'performed_by_vendor' => $ast['category'] === 'ELEVATOR' ? 'Otis Vietnam' : 'PCCC Hà Nội',
                     'work_summary' => $ast['category'] === 'ELEVATOR'
@@ -783,9 +818,13 @@ class ManagementDashboardSeeder extends Seeder
         ];
 
         foreach ($notifications as $n) {
+            $existingNotif = DB::table('user_in_app_notifications')->where('title', $n['title'])->first();
+            $notifId = $existingNotif ? $existingNotif->id : (string) Str::uuid();
+
             DB::table('user_in_app_notifications')->updateOrInsert(
                 ['title' => $n['title']],
                 [
+                    'id' => $notifId,
                     'recipient_user_id' => $userMap['admin'] ?? null,
                     'body_message' => $n['msg'],
                     'category' => $n['cat'],
@@ -819,6 +858,8 @@ class ManagementDashboardSeeder extends Seeder
 
         if ($driver === 'mysql') {
             DB::statement('SET FOREIGN_KEY_CHECKS = 1;');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON;');
         }
 
         $this->command->info('✅ Nạp dữ liệu ảo cho Trang Quản Trị thành công 100%!');

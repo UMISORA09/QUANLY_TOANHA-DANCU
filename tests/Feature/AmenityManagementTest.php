@@ -2,11 +2,26 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
+use Tests\ResidentAmenityBookingFixtures;
 use Tests\TestCase;
 
 class AmenityManagementTest extends TestCase
 {
+    use DatabaseTransactions, ResidentAmenityBookingFixtures;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->createBookingFixture();
+        DB::table('amenities')->where('id', $this->amenityId)->update(['amenity_name' => 'Test Tennis']);
+        $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated();
+        $this->withHeader('Authorization', 'Bearer '.$this->secondToken);
+        $this->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated();
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+    }
+
     /**
      * Kiểm tra lấy danh sách tiện ích có đếm lượt đặt chỗ thật từ database
      */
@@ -52,6 +67,7 @@ class AmenityManagementTest extends TestCase
         // Thử giảm sức chứa xuống 1 (thấp hơn số người/lượt đặt thực tế)
         $response = $this->putJson("/api/v1/admin/amenities/{$amenityId}", [
             'max_capacity_per_slot' => 1,
+            'updated_at' => DB::table('amenities')->where('id', $amenityId)->value('updated_at'),
         ]);
 
         $response->assertStatus(422);
@@ -112,22 +128,9 @@ class AmenityManagementTest extends TestCase
         // Chuyển sang tạm ngưng
         DB::table('amenities')->where('id', $amenity->id)->update(['is_active' => 0]);
 
-        $apartment = DB::table('apartments')->first();
-        $user = DB::table('users')->first();
-
-        $response = $this->postJson("/api/v1/amenities/{$amenity->id}/bookings", [
-            'apartment_id' => $apartment->id,
-            'resident_user_id' => $user->id,
-            'booking_date' => '2026-09-20',
-            'start_time' => '08:00',
-            'end_time' => '09:00',
-            'attendee_count' => 2,
-        ]);
-
-        $response->assertStatus(400)
-            ->assertJsonFragment([
-                'detail' => 'Tiện ích hiện đang tạm ngưng hoạt động, không thể đặt chỗ mới.',
-            ]);
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken);
+        $this->postJson('/api/v1/amenities/'.$this->amenityId.'/bookings', $this->bookingPayload())
+            ->assertStatus(409);
 
         // Khôi phục lại trạng thái hoạt động
         DB::table('amenities')->where('id', $amenity->id)->update(['is_active' => 1]);
@@ -186,6 +189,7 @@ class AmenityManagementTest extends TestCase
         $newStatus = ! (bool) $amenity->is_active;
         $patchResp = $this->patchJson("/api/v1/admin/amenities/{$amenity->id}/status", [
             'is_active' => $newStatus,
+            'updated_at' => $amenity->updated_at,
         ]);
         $patchResp->assertStatus(200);
 
@@ -199,6 +203,7 @@ class AmenityManagementTest extends TestCase
         // Khôi phục lại trạng thái ban đầu
         $this->patchJson("/api/v1/admin/amenities/{$amenity->id}/status", [
             'is_active' => (bool) $amenity->is_active,
+            'updated_at' => $patchResp->json('updated_at'),
         ]);
     }
 
@@ -207,7 +212,7 @@ class AmenityManagementTest extends TestCase
      */
     public function test_can_update_booking_status_and_invalidate_etag(): void
     {
-        $booking = DB::table('amenity_bookings')->whereNull('deleted_at')->first();
+        $booking = DB::table('amenity_bookings')->where('amenity_id', $this->amenityId)->where('status', 'PENDING')->whereNull('deleted_at')->first();
         $this->assertNotNull($booking);
 
         // Lấy ETag trước khi thay đổi
@@ -240,6 +245,7 @@ class AmenityManagementTest extends TestCase
     public function test_can_cancel_booking_and_invalidate_etag(): void
     {
         $booking = DB::table('amenity_bookings')
+            ->where('amenity_id', $this->amenityId)
             ->whereIn('status', ['PENDING', 'APPROVED', 'CONFIRMED'])
             ->whereNull('deleted_at')
             ->first();

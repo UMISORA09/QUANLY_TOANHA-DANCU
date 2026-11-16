@@ -37,7 +37,7 @@ class Floor extends Model
     }
 
     /**
-     * Khối tòa nhà chứa tầng này.
+     * Khối tòa nhà chứa tầng này (Quan hệ N-1: Floor -> Block)
      */
     public function block(): BelongsTo
     {
@@ -45,10 +45,10 @@ class Floor extends Model
     }
 
     /**
-     * Các căn hộ nằm trên tầng này.
+     * Danh sách căn hộ thuộc tầng này (Quan hệ 1-N: Floor -> Apartments)
      */
     public function apartments(): HasMany
     {
-        return $this->hasMany(Apartment::class, 'floor_id');
+        return $this->hasMany(Apartment::class, 'floor_id')->orderBy('apartment_number', 'asc');
     }
 }
