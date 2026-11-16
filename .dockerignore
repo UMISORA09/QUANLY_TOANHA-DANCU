@@ -22,3 +22,5 @@ playwright-report/
 test-results/
 database/*.sqlite
 storage/app/**
+
+!resources/views/public/*.md
