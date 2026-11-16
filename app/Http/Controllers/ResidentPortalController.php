@@ -5,13 +5,10 @@ namespace App\Http\Controllers;
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
 use App\Services\RbacService;
 use App\Services\ResidentVisitorService;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class ResidentPortalController extends Controller
 {
@@ -250,72 +247,6 @@ class ResidentPortalController extends Controller
         }
 
         return array_merge($body, $request->all());
-    }
-
-    /**
-     * Tạo yêu cầu phản ánh / sửa chữa kỹ thuật mới từ Cư Dân.
-     */
-    public function createTicket(Request $request): JsonResponse
-    {
-        $request->merge($this->getRequestData($request));
-
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'category_id' => 'nullable|string',
-            'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT',
-            'preferred_service_time' => 'nullable|date',
-            'apartment_id' => 'nullable|uuid',
-        ]);
-
-        $userId = $request->user()->id;
-        $apartments = app(DatabaseResidentAmenityBookingRepository::class)->apartments($userId);
-        abort_if($apartments->isEmpty(), 403, 'Bạn chưa có hồ sơ cư trú còn hiệu lực.');
-        $apartmentId = $validated['apartment_id'] ?? ($apartments->count() === 1 ? $apartments->first()->id : null);
-        if (! $apartments->contains('id', $apartmentId)) {
-            throw ValidationException::withMessages(['apartment_id' => 'Vui lòng chọn căn hộ bạn đang cư trú.']);
-        }
-
-        $categoryId = $validated['category_id'] ?? null;
-        if (! $categoryId) {
-            $cat = DB::table('ticket_categories')->first();
-            $categoryId = $cat?->id;
-        }
-        if (! $categoryId || ! DB::table('ticket_categories')->where('id', $categoryId)->exists()) {
-            throw ValidationException::withMessages(['category_id' => 'Danh mục sự cố không hợp lệ.']);
-        }
-
-        $ticketId = (string) Str::uuid();
-        $ticketNumber = 'TICKET-'.Str::upper(Str::random(12));
-        $now = Carbon::now();
-
-        DB::table('tickets')->insert([
-            'id' => $ticketId,
-            'ticket_number' => $ticketNumber,
-            'category_id' => $categoryId,
-            'apartment_id' => $apartmentId,
-            'creator_user_id' => $userId,
-            'title' => $validated['title'],
-            'description' => $validated['description'],
-            'priority' => $validated['priority'] ?? 'MEDIUM',
-            'status' => 'NEW',
-            'preferred_service_time' => ! empty($validated['preferred_service_time']) ? Carbon::parse($validated['preferred_service_time']) : null,
-            'sla_deadline' => $now->copy()->addHours(24),
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-
-        $newTicket = DB::table('tickets')
-            ->leftJoin('ticket_categories', 'tickets.category_id', '=', 'ticket_categories.id')
-            ->where('tickets.id', $ticketId)
-            ->select('tickets.*', 'ticket_categories.category_name', 'ticket_categories.category_code')
-            ->first();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Gửi yêu cầu hỗ trợ kỹ thuật thành công!',
-            'ticket' => $newTicket,
-        ], 201);
     }
 
     /**

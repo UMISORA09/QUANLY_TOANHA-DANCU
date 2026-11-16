@@ -284,7 +284,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(page.locator('#ticket-title-input')).toBeVisible();
     await expect(page.locator('#ticket-category-select')).toBeVisible();
     await expect(page.locator('#ticket-location-input')).toBeVisible();
-    await expect(page.locator('#ticket-priority-select')).toBeVisible();
+    await expect(page.locator('#ticket-priority-select')).toHaveCount(0);
+    await expect(page.getByText('Ban quản lý sẽ xác nhận mức độ ưu tiên khi tiếp nhận yêu cầu.', { exact: true })).toBeVisible();
     await expect(page.locator('#ticket-description-textarea')).toBeVisible();
     await expect(page.locator('#ticket-submit-btn')).toBeVisible();
 
@@ -308,9 +309,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await page.click('button:has-text("Khu vực bếp")');
     await expect(page.locator('#ticket-location-input')).toHaveValue('Khu vực bếp');
 
-    // Chọn mức độ ưu tiên
-    await page.locator('#ticket-priority-select').click();
-    await page.getByRole('option', { name: 'Ưu tiên cao', exact: true }).click();
+    await expect(page.locator('#ticket-priority-select')).toHaveCount(0);
 
     // Nhập mô tả
     await page.fill(
@@ -394,8 +393,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(opener).toBeFocused();
     await page.getByRole('button', { name: 'Chỉnh sửa', exact: true }).click();
     const edit = page.getByRole('dialog', { name: 'Sửa yêu cầu', exact: true });
-    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).click();
-    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).press('Escape');
+    await expect(edit.getByLabel('Ưu tiên yêu cầu', { exact: true })).toHaveCount(0);
+    await expect(edit).toContainText('Mức độ ưu tiên do ban quản lý xác nhận.');
     await expect(edit).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(edit).toHaveCount(0);

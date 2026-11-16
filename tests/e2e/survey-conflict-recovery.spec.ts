@@ -45,7 +45,7 @@ async function openSurvey(page: Page, outcome: 'submitted' | 'pending' | 'offlin
   return { draft, posts: () => posts, detailReads: () => detailReads };
 }
 
-for (const width of [390, 1280]) {
+for (const width of [375, 768, 1440]) {
   test(`409 reloads actual submitted state without another POST at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 850 });
     const state = await openSurvey(page, 'submitted');

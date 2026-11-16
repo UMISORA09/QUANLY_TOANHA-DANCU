@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import api, { ParcelItem } from '../Services/api';
 import { useRealtimeSync, emitLocalRealtimeEvent } from '../Hooks/useRealtimeSync';
+import { CustomSelect } from './Common/CustomSelect';
 
 export interface ReceptionParcelPanelProps {
   embedded?: boolean;
@@ -2264,20 +2265,23 @@ export const ReceptionParcelPanel: React.FC<ReceptionParcelPanelProps> = ({ embe
 
               <div className="flex items-center gap-1.5 text-xs text-slate-500">
                 <span className="hidden sm:inline">Hiển thị:</span>
-                <select
-                  value={perPage}
-                  onChange={(e) => {
-                    const nextLimit = Number(e.target.value);
-                    setPerPage(nextLimit);
-                    setCurrentPage(1);
-                  }}
-                  className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
-                >
-                  <option value={4}>4 kiện / trang</option>
-                  <option value={10}>10 kiện / trang</option>
-                  <option value={15}>15 kiện / trang</option>
-                  <option value={20}>20 kiện / trang</option>
-                </select>
+                <div className="w-36">
+                  <CustomSelect
+                    value={perPage}
+                    onChange={(val) => {
+                      const nextLimit = Number(val);
+                      setPerPage(nextLimit);
+                      setCurrentPage(1);
+                    }}
+                    options={[
+                      { value: 4, label: '4 kiện / trang' },
+                      { value: 10, label: '10 kiện / trang' },
+                      { value: 15, label: '15 kiện / trang' },
+                      { value: 20, label: '20 kiện / trang' },
+                    ]}
+                    searchable={false}
+                  />
+                </div>
               </div>
             </div>
 

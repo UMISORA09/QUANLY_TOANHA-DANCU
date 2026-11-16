@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { CustomSelect } from './Common/CustomSelect';
+import '../../css/scss/feature-controls.scss';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { TicketDialog } from './TicketDialog';
 import {
   api,
   SatisfactionSurveyItem,
@@ -85,6 +88,26 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
 
   // OCC Conflict Modal
   const [occConflict, setOccConflict] = useState<string | null>(null);
+  const [latestSurvey, setLatestSurvey] = useState<SatisfactionSurveyItem | null>(null);
+  const [refreshingConflict, setRefreshingConflict] = useState(false);
+  const conflictRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => { conflictRequest.current?.abort(); }, [isFormModalOpen, editingSurvey?.id]);
+
+  const refreshConflict = async (id: string) => {
+    conflictRequest.current?.abort();
+    const controller = new AbortController();
+    conflictRequest.current = controller;
+    setRefreshingConflict(true);
+    setLatestSurvey(null);
+    try {
+      const response = await api.getManagementSurveyDetail(id, controller.signal);
+      if (!controller.signal.aborted) setLatestSurvey(response.data);
+    } catch {
+      if (!controller.signal.aborted) setOccConflict('Chưa tải được bản mới. Bản nhập được giữ nguyên; hãy thử tải lại.');
+    } finally {
+      if (!controller.signal.aborted) setRefreshingConflict(false);
+    }
+  };
 
   // Fetch survey list and aggregate KPIs
   const loadSurveys = useCallback(async () => {
@@ -193,6 +216,8 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
 
   // Open Edit Modal
   const handleOpenEditModal = (survey: SatisfactionSurveyItem) => {
+    setOccConflict(null);
+    setLatestSurvey(null);
     setEditingSurvey(survey);
     setFormCode(survey.survey_code);
     setFormTitle(survey.title);
@@ -269,6 +294,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
       return;
     }
 
+    if (formSubmitting || occConflict) return;
     setFormSubmitting(true);
     try {
       const formattedQuestions = formQuestions.map((q, idx) => ({
@@ -312,7 +338,8 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
       loadSurveys();
     } catch (err: any) {
       if (err?.message?.includes('409') || err?.message?.includes('Xung đột phiên bản') || err?.status === 409) {
-        setOccConflict(err.message || 'Khảo sát đã được chỉnh sửa bởi một quản lý khác. Vui lòng tải lại dữ liệu mới nhất.');
+        setOccConflict('Khảo sát đã thay đổi. Bản nhập được giữ nguyên; hãy đối chiếu bản mới trước khi lưu tiếp.');
+        if (editingSurvey) await refreshConflict(editingSurvey.id);
       } else {
         alert(err?.message || 'Lưu khảo sát thất bại.');
       }
@@ -324,10 +351,15 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
   // Toggle active status
   const handleToggleActive = async (survey: SatisfactionSurveyItem) => {
     try {
-      await api.toggleManagementSurveyStatus(survey.id, !survey.is_active);
+      await api.toggleManagementSurveyStatus(survey.id, !survey.is_active, survey.version);
       loadSurveys();
     } catch (err: any) {
-      alert(err?.message || 'Không thể thay đổi trạng thái khảo sát.');
+      if (err?.status === 409) {
+        await loadSurveys();
+        setError('Khảo sát đã thay đổi. Danh sách đã được tải lại; hãy kiểm tra trạng thái trước khi thao tác lại.');
+      } else {
+        setError(err?.message || 'Không thể thay đổi trạng thái khảo sát.');
+      }
     }
   };
 
@@ -347,8 +379,30 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
     }
   };
 
+  const builderDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!(isFormModalOpen) || !builderDialog.current) return;
+    const dialog = builderDialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => { dialog.close(); document.body.style.overflow = previousOverflow; if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [isFormModalOpen]);
+
+  const analyticsDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!analyticsSurveyId || !analyticsData || !analyticsDialog.current) return;
+    const dialog = analyticsDialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => { dialog.close(); document.body.style.overflow = previousOverflow; if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
+  }, [analyticsSurveyId, !!analyticsData]);
+
   return (
-    <div className="space-y-6">
+    <div className="feature-controls space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -457,17 +511,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 dark:text-slate-300"
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="ACTIVE">Đang diễn ra</option>
-            <option value="UPCOMING">Sắp diễn ra</option>
-            <option value="CLOSED">Đã kết thúc</option>
-            <option value="DISABLED">Đã vô hiệu hóa</option>
-          </select>
+          <CustomSelect variant="feature" overlay ariaLabel="Trạng thái khảo sát" value={statusFilter} onChange={setStatusFilter} options={ [['ALL','Tất cả trạng thái'],['ACTIVE','Đang diễn ra'],['UPCOMING','Sắp diễn ra'],['CLOSED','Đã kết thúc'],['DISABLED','Đã vô hiệu hóa']].map(([value,label]) => ({value,label}))} />
         </div>
       </div>
 
@@ -579,7 +623,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
 
       {/* MODAL 1: Create / Edit Survey Builder */}
       {isFormModalOpen && (
-        <div data-testid="survey-builder-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+        <dialog ref={builderDialog} data-testid="survey-builder-modal" aria-label="Soạn khảo sát" onCancel={(event) => { event.preventDefault(); if (!formSubmitting) setIsFormModalOpen(false); }} className="feature-controls feature-dialog feature-modal-shell">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-8">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>
@@ -595,7 +639,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                 data-testid="close-survey-builder-modal"
                 aria-label="Đóng biểu mẫu khảo sát"
                 title="Đóng"
-                onClick={() => setIsFormModalOpen(false)}
+                disabled={formSubmitting} onClick={() => setIsFormModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg p-1.5 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -621,14 +665,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Tòa nhà áp dụng
                   </label>
-                  <select
-                    value={formTargetBlockId}
-                    onChange={(e) => setFormTargetBlockId(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-emerald-500 text-slate-700 dark:text-slate-300"
-                  >
-                    <option value="">Toàn khu đô thị (Mọi tòa)</option>
-                    {/* Dynamic blocks can be selected */}
-                  </select>
+                  <CustomSelect variant="feature" overlay ariaLabel="Tòa nhà áp dụng" value={formTargetBlockId} onChange={setFormTargetBlockId} options={[{value:'',label:'Toàn khu đô thị (Mọi tòa)'}]} />
                 </div>
               </div>
 
@@ -747,17 +784,7 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
                         </div>
 
                         <div>
-                          <select
-                            value={q.question_type}
-                            onChange={(e) => handleQuestionChange(idx, 'question_type', e.target.value)}
-                            disabled={editingSurvey ? (editingSurvey.responses_count ?? 0) > 0 : false}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-emerald-500 text-slate-700 dark:text-slate-300 disabled:opacity-50"
-                          >
-                            <option value="RATING_1_TO_5">Đánh giá 1-5 sao (CSAT)</option>
-                            <option value="YES_NO">Câu hỏi Có / Không</option>
-                            <option value="MULTIPLE_CHOICE">Trắc nghiệm lựa chọn</option>
-                            <option value="FREE_TEXT">Tự luận góp ý</option>
-                          </select>
+                          <CustomSelect variant="feature" overlay ariaLabel={'Loại câu hỏi ' + (idx + 1)} value={q.question_type} onChange={(value) => handleQuestionChange(idx, 'question_type', value)} disabled={editingSurvey ? (editingSurvey.responses_count ?? 0) > 0 : false} options={ [['RATING_1_TO_5','Đánh giá 1-5 sao (CSAT)'],['YES_NO','Câu hỏi Có / Không'],['MULTIPLE_CHOICE','Trắc nghiệm lựa chọn'],['FREE_TEXT','Tự luận góp ý']].map(([value,label]) => ({value,label}))} />
                         </div>
                       </div>
 
@@ -799,14 +826,14 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsFormModalOpen(false)}
+                  disabled={formSubmitting} onClick={() => setIsFormModalOpen(false)}
                   className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 transition-colors"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  disabled={formSubmitting}
+                  disabled={formSubmitting || !!occConflict}
                   className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
                 >
                   {formSubmitting ? 'Đang lưu...' : editingSurvey ? 'Lưu cập nhật' : 'Tạo khảo sát'}
@@ -814,12 +841,12 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </dialog>
       )}
 
       {/* MODAL 2: Comprehensive CSAT Analytics Dashboard */}
       {analyticsSurveyId && analyticsData && (
-        <div data-testid="analytics-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+        <dialog ref={analyticsDialog} data-testid="analytics-modal" aria-label="Báo cáo khảo sát" onCancel={(event) => { event.preventDefault(); setAnalyticsSurveyId(null); }} className="feature-controls feature-dialog feature-modal-shell">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-8">
             {/* Header */}
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -1028,35 +1055,27 @@ export const SatisfactionSurveyManagementPanel: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
 
-      {/* OCC Conflict Dialog */}
-      {occConflict && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-rose-200 dark:border-rose-900 shadow-xl space-y-4">
-            <div className="flex items-center gap-3 text-rose-600">
-              <AlertCircle className="w-6 h-6 flex-shrink-0" />
-              <h3 className="text-lg font-bold">Xung đột phiên bản (409 Conflict)</h3>
-            </div>
-            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              {occConflict}
-            </p>
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => {
-                  setOccConflict(null);
-                  setIsFormModalOpen(false);
-                  loadSurveys();
-                }}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors"
-              >
-                Tải lại dữ liệu mới nhất
-              </button>
-            </div>
-          </div>
+      <TicketDialog variant="feature" open={!!occConflict} title="Khảo sát đã được cập nhật" busy={refreshingConflict} onClose={() => { setOccConflict(null); setIsFormModalOpen(false); void loadSurveys(); }}>
+        <div className="space-y-4">
+          <p role="alert">{occConflict}</p>
+          {refreshingConflict && <p role="status">Đang tải bản mới nhất…</p>}
+          {latestSurvey && <div className="space-y-2">
+            <p>Phiên bản máy chủ: {latestSurvey.version}</p>
+            <p><strong>{latestSurvey.title}</strong></p>
+            <p className="whitespace-pre-wrap">{latestSurvey.description}</p>
+            <p>{latestSurvey.start_date} – {latestSurvey.end_date} · {latestSurvey.is_active ? 'Đang bật' : 'Đã tạm dừng'}</p>
+            <p>Phạm vi: {latestSurvey.target_block?.block_name || latestSurvey.target_block_id || 'Toàn khu'}</p>
+            <ul>{latestSurvey.questions?.map((question, index) => <li key={question.id || index}>{question.question_text}</li>)}</ul>
+            <p>{latestSurvey.responses_count ?? 0} phiếu trả lời. Câu hỏi không được sửa sau khi có phiếu.</p>
+            <button type="button" onClick={() => { setEditingSurvey(latestSurvey); setOccConflict(null); }} className="px-4 py-2 bg-emerald-600 text-white rounded-xl">Đã xem bản mới, tiếp tục sửa bản nhập</button>
+          </div>}
+          <button type="button" disabled={refreshingConflict} onClick={() => { if (editingSurvey) void refreshConflict(editingSurvey.id); }} className="px-4 py-2 border rounded-xl">Tải lại bản mới</button>
+          <button type="button" disabled={refreshingConflict} onClick={() => { setOccConflict(null); setIsFormModalOpen(false); }}>Bỏ bản nhập và đóng</button>
         </div>
-      )}
+      </TicketDialog>
     </div>
   );
 };

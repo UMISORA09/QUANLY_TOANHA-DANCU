@@ -1151,10 +1151,19 @@ class ApiService {
     return item;
   }
 
-  async createAmenity(payload: Partial<Amenity>): Promise<Amenity> {
+  async amenityGalleryImage(path: string, signal: AbortSignal): Promise<Blob> {
+    if (!/^\/api\/v1\/admin\/amenity-images\/(local|s3|supabase)\/[a-f0-9-]{36}\.(jpg|png|webp)$/.test(path)) throw new Error('Đường dẫn ảnh tiện ích không hợp lệ.');
+    const response = await fetch(API_BASE_URL + path.slice('/api/v1'.length), { signal, cache: 'no-store', headers: { Authorization: 'Bearer ' + (this.getToken() || '') } });
+    if (!response.ok) throw new Error('Không tải được ảnh tiện ích.');
+    return response.blob();
+  }
+
+  async createAmenity(payload: Partial<Amenity>, files: File[] = []): Promise<Amenity> {
+    const body = new FormData();
+    if (files.length) { body.append('payload', JSON.stringify(payload)); files.forEach(file => body.append('gallery_files[]', file)); }
     const result = await this.request<Amenity>('/admin/amenities', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: files.length ? body : JSON.stringify(payload),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
@@ -1162,10 +1171,12 @@ class ApiService {
     return result;
   }
 
-  async updateAmenity(id: string, payload: Partial<Amenity>): Promise<Amenity> {
+  async updateAmenity(id: string, payload: Partial<Amenity>, files: File[] = []): Promise<Amenity> {
+    const body = new FormData();
+    if (files.length) { body.append('payload', JSON.stringify(payload)); body.append('_method', 'PUT'); files.forEach(file => body.append('gallery_files[]', file)); }
     const result = await this.request<Amenity>(`/admin/amenities/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+      method: files.length ? 'POST' : 'PUT',
+      body: files.length ? body : JSON.stringify(payload),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
@@ -1877,6 +1888,50 @@ class ApiService {
     });
   }
 
+  async getUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      data: {
+        user_id: string;
+        username: string;
+        full_name: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`);
+  }
+
+  async syncUserPermissions(id: string, permissions: string[]) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    });
+  }
+
+  async resetUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'DELETE',
+    });
+  }
+
   async getRoles() {
     return this.request<{ success: boolean; data: RoleRbac[] }>('/roles');
   }
@@ -2531,6 +2586,10 @@ class ApiService {
     return this.request(`/management/surveys${qStr ? `?${qStr}` : ''}`);
   }
 
+  async getManagementSurveyDetail(id: string, signal?: AbortSignal): Promise<{ status: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}`, { signal, cache: 'no-store' });
+  }
+
   async getManagementSurveyKpis(): Promise<{ status: string; data: SurveyOverviewKpis }> {
     return this.request('/management/surveys/kpis');
   }
@@ -2551,11 +2610,11 @@ class ApiService {
     });
   }
 
-  async toggleManagementSurveyStatus(id: string, isActive: boolean): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+  async toggleManagementSurveyStatus(id: string, isActive: boolean, version: number): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
     return this.request(`/management/surveys/${id}/toggle-status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_active: isActive }),
+      body: JSON.stringify({ is_active: isActive, version }),
     });
   }
 
