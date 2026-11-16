@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\InvoiceResource;
 use App\Models\Apartment;
 use App\Models\Invoice;
 use App\Models\User;
@@ -37,7 +38,7 @@ class InvoiceManagementController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $invoices,
+            'data' => $invoices->through(fn ($invoice) => new InvoiceResource($invoice)),
         ]);
     }
 
@@ -106,7 +107,7 @@ class InvoiceManagementController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Lấy chi tiết hóa đơn tháng hiện tại thành công.',
-            'data' => $invoice,
+            'data' => new InvoiceResource($invoice),
         ]);
     }
 
@@ -143,7 +144,7 @@ class InvoiceManagementController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $invoice,
+            'data' => new InvoiceResource($invoice),
         ]);
     }
 
@@ -154,6 +155,7 @@ class InvoiceManagementController extends Controller
     public function statement(string $id): JsonResponse
     {
         $statement = $this->invoiceService->getDetailedStatement($id);
+        $statement['invoice'] = new InvoiceResource($statement['invoice']);
 
         return response()->json([
             'success' => true,
@@ -177,7 +179,7 @@ class InvoiceManagementController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Đã hủy thành công hóa đơn {$invoice->invoice_number}.",
-                'data' => $invoice,
+                'data' => new InvoiceResource($invoice),
             ]);
         } catch (\DomainException $e) {
             return response()->json([
@@ -207,9 +209,20 @@ class InvoiceManagementController extends Controller
             $validated['reason'] ?? null
         );
 
+        $isSuccess = $result['failed_count'] === 0 && $result['cancelled_count'] > 0;
+        $totalRequested = count($validated['invoice_ids']);
+
+        if ($result['failed_count'] === 0 && $result['cancelled_count'] > 0) {
+            $message = "Đã hủy thành công {$result['cancelled_count']} hóa đơn.";
+        } elseif ($result['cancelled_count'] > 0) {
+            $message = "Đã hủy thành công {$result['cancelled_count']}/{$totalRequested} hóa đơn, {$result['failed_count']} hóa đơn thất bại.";
+        } else {
+            $message = 'Không có hóa đơn nào được hủy thành công.';
+        }
+
         return response()->json([
-            'success' => true,
-            'message' => "Đã hủy thành công {$result['cancelled_count']} hóa đơn.",
+            'success' => $isSuccess,
+            'message' => $message,
             'data' => $result,
         ]);
     }
