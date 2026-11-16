@@ -53,7 +53,9 @@ for (const width of [375, 768, 1440]) test(`F12 manager: 409 automatically reloa
   await page.setViewportSize({ width, height: 844 });
   await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-token'); });
   let item = { id: 'qa-suggestion', title: 'Góp ý QA', content: 'Nội dung góp ý', content_text: 'Nội dung góp ý', topic_category: 'OTHER', status: 'RECEIVED', version: 1, is_anonymous: true, created_at: '2026-11-01T00:00:00Z', official_response_text: '' };
-  let writes = 0; let reads = 0;
+  let writes = 0; let reads = 0; let refreshStarted = false;
+  let releaseRefresh!: () => void;
+  const refreshPending = new Promise<void>(resolve => { releaseRefresh = resolve; });
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/qa-suggestion/reply')) {
@@ -64,7 +66,10 @@ for (const width of [375, 768, 1440]) test(`F12 manager: 409 automatically reloa
       return route.fulfill({ json: { success: true, data: item } });
     }
     if (path.endsWith('/qa-suggestion')) { reads++; return route.fulfill({ json: { success: true, data: item } }); }
-    if (path.endsWith('/management/suggestions')) return route.fulfill({ json: { data: [item], pagination: { last_page: 1, total: 1 } } });
+    if (path.endsWith('/management/suggestions')) {
+      if (writes === 2) { refreshStarted = true; await refreshPending; }
+      return route.fulfill({ json: { data: [item], pagination: { last_page: 1, total: 1 } } });
+    }
     return route.fulfill({ json: { data: [], items: [], unread_count: 0 } });
   });
   await page.goto('/quan-ly?tab=feedback');
@@ -91,9 +96,12 @@ for (const width of [375, 768, 1440]) test(`F12 manager: 409 automatically reloa
   await page.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập' }).click();
   await submit.click(); await expect.poll(() => writes).toBe(2);
   await expect(submit).toBeEnabled();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(open).toBeFocused();
+  try {
+    await expect.poll(() => refreshStarted).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(open).toBeFocused();
+  } finally { releaseRefresh(); }
 });
 
 for (const mode of ['empty', 'network']) test('F12: unavailable boxes show a useful message and retry preserves draft ' + mode, async ({ page }) => {
