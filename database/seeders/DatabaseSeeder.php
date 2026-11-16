@@ -38,7 +38,6 @@ class DatabaseSeeder extends Seeder
             $this->call(SharedDemoDataSeeder::class);
             $this->call(TicketDiscussionSeeder::class);
             $this->call(AnnouncementSeeder::class);
-            $this->call(DangNguyenFeatureMassSeeder::class);
         }
     }
 }
