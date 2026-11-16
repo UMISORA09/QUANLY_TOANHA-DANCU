@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 
 const fixturePath = process.env.TICKET_BROWSER_FIXTURE;
-test.use({ actionTimeout: 30000 });
+test.use({ actionTimeout: 30000, screenshot: 'off', video: 'off', trace: 'off' });
 test.describe.configure({ timeout: 360000 });
 const expect = baseExpect.configure({ timeout: 30000 });
 test.skip(!fixturePath || !process.env.TICKET_REAL_API_CONTAINER, 'Requires isolated Ticket QA fixture and multi-worker API on port 9038.');
 
-test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư dân mở lại và nghiệm thu', async ({ browser }) => {
+test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư dân mở lại và Admin đóng thay', async ({ browser }) => {
   test.setTimeout(360000);
   const fixture = JSON.parse(readFileSync(fixturePath!, 'utf8'));
   const base = process.env.APP_URL || 'http://127.0.0.1:8026';
@@ -105,9 +105,15 @@ test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư
     await expect(resident.getByRole('dialog', { name: 'Phản hồi chưa đạt' })).toHaveCount(0);
     await tech.goto(techUrl); await resolve();
     await resident.goto(`${base}/cu-dan?tab=tickets&ticket_id=${id}`);
-    await resident.getByRole('button', { name: 'Xác nhận đã sửa xong', exact: true }).click();
-    await resident.getByRole('button', { name: 'Xác nhận hoàn thành', exact: true }).click();
-    await expect(resident.getByRole('dialog', { name: 'Xác nhận nghiệm thu' })).toHaveCount(0);
+    await resident.getByRole('tab', { name: 'Lịch sử xử lý', exact: true }).click();
+    await admin.goto(`${base}/admin?tab=tickets&ticket_id=${id}`);
+    await admin.getByRole('button', { name: 'Đóng thay cư dân', exact: true }).click();
+    const closeDialog = admin.getByRole('dialog', { name: 'Đóng thay cư dân', exact: true });
+    await closeDialog.getByRole('textbox').fill('QA cư dân đề nghị Admin đóng thay.');
+    await closeDialog.getByRole('button', { name: 'Đóng thay cư dân', exact: true }).click();
+    await expect(closeDialog).toHaveCount(0);
+    await expect(resident.getByText('Admin đóng thay cư dân: QA cư dân đề nghị Admin đóng thay.', { exact: true })).toBeVisible();
+    await resident.goto(`${base}/cu-dan?tab=tickets&ticket_id=${id}`);
     await expect(resident.getByRole('button', { name: 'Xác nhận đã sửa xong', exact: true })).toHaveCount(0);
     await expect(resident.getByLabel('Nội dung trao đổi', { exact: true })).toBeDisabled();
   } finally { for (const context of contexts) await context.close(); }
