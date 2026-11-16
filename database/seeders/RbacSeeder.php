@@ -103,6 +103,15 @@ class RbacSeeder extends Seeder
             ['module' => 'PERMISSION', 'permission_code' => 'PERMISSION:UPDATE', 'permission_name' => 'Cập nhật quyền hạn', 'description' => 'Chỉnh sửa tên và mô tả quyền hạn'],
             ['module' => 'PERMISSION', 'permission_code' => 'PERMISSION:DELETE', 'permission_name' => 'Xóa quyền hạn', 'description' => 'Xóa quyền hạn tùy chỉnh'],
 
+            // BUILDING & ZONE MODULE
+            ['module' => 'BUILDING', 'permission_code' => 'BUILDING:VIEW', 'permission_name' => 'Xem khối nhà & căn hộ', 'description' => 'Xem cấu trúc khối nhà và danh sách căn hộ'],
+            ['module' => 'BUILDING', 'permission_code' => 'BUILDING:MANAGE', 'permission_name' => 'Quản lý khối nhà & căn hộ', 'description' => 'Tạo, sửa, xóa cấu trúc khối nhà và căn hộ'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:VIEW', 'permission_name' => 'Xem danh sách Zone/Khối', 'description' => 'Xem danh sách các khối nhà/Zone'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:CREATE', 'permission_name' => 'Tạo Zone/Khối mới', 'description' => 'Thêm mới khối nhà/Zone vào hệ thống'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:UPDATE', 'permission_name' => 'Cập nhật Zone/Khối', 'description' => 'Chỉnh sửa thông tin khối nhà/Zone'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:DELETE', 'permission_name' => 'Xóa Zone/Khối', 'description' => 'Xóa mềm khối nhà/Zone'],
+            ['module' => 'ZONE', 'permission_code' => 'ZONE:MANAGE', 'permission_name' => 'Quản trị toàn quyền Zone/Khối', 'description' => 'Toàn quyền cấu hình và quản trị khối nhà/Zone'],
+
             // AMENITY MODULE
             ['module' => 'AMENITY', 'permission_code' => 'AMENITY:VIEW', 'permission_name' => 'Xem tiện ích & lịch đặt', 'description' => 'Xem danh sách tiện ích và thông tin slot'],
             ['module' => 'AMENITY', 'permission_code' => 'AMENITY:CREATE', 'permission_name' => 'Tạo tiện ích mới', 'description' => 'Thêm tiện ích tòa nhà mới'],
@@ -224,6 +233,8 @@ class RbacSeeder extends Seeder
                 'USER:VIEW', 'USER:CREATE', 'USER:UPDATE', 'USER:ASSIGN_ROLE',
                 'ROLE:VIEW',
                 'PERMISSION:VIEW',
+                'BUILDING:VIEW', 'BUILDING:MANAGE',
+                'ZONE:VIEW', 'ZONE:CREATE', 'ZONE:UPDATE', 'ZONE:DELETE', 'ZONE:MANAGE',
                 'AMENITY:VIEW', 'AMENITY:CREATE', 'AMENITY:UPDATE', 'AMENITY:DELETE', 'AMENITY:CONFIG_SLOT', 'AMENITY:BOOK',
                 'INVOICE:VIEW', 'INVOICE:CREATE', 'INVOICE:UPDATE', 'INVOICE:APPROVE',
                 'TICKET:VIEW', 'TICKET:UPDATE', 'TICKET:RESOLVE',

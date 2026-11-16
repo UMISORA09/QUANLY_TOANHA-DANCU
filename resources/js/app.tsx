@@ -46,6 +46,10 @@ const App: React.FC = () => {
       window.history.replaceState({}, '', '/home');
       setCurrentPath('/home');
     }
+    if (window.location.pathname === '/admin/zones' || window.location.pathname === '/quan-ly/khoi-nha') {
+      window.history.replaceState({}, '', '/quan-ly/zones');
+      setCurrentPath('/quan-ly/zones');
+    }
     const handlePopState = () => {
       startTransition(() => setCurrentPath(window.location.pathname));
     };
@@ -403,6 +407,13 @@ const App: React.FC = () => {
     currentPath.startsWith('/quan-ly/bao-cao-tai-chinh') ||
     currentPath.startsWith('/quan-ly/financial-reports');
 
+  const isZonePath =
+    currentPath === '/quan-ly/zones' ||
+    currentPath === '/admin/zones' ||
+    currentPath === '/quan-ly/khoi-nha' ||
+    currentPath.startsWith('/quan-ly/zones') ||
+    currentPath.startsWith('/admin/zones');
+
   const isRfidPath =
     currentPath === '/quan-ly/rfid-cards' ||
     currentPath === '/quan-ly/rfid' ||
@@ -417,6 +428,7 @@ const App: React.FC = () => {
     currentPath === '/manager' ||
     currentPath.startsWith('/manager/') ||
     currentPath === '/dashboard' ||
+    isZonePath ||
     isAmenityPath ||
     isAccountProvisioningPath ||
     isVehiclePath ||
@@ -449,7 +461,9 @@ const App: React.FC = () => {
 
     const isUserAdmin = currentUser?.role === 'admin';
     const managerUrlTab = new URLSearchParams(window.location.search).get('tab');
-    const initialManagerTab = isAmenityPath
+    const initialManagerTab = isZonePath
+      ? 'zones'
+      : isAmenityPath
       ? 'amenities'
       : isVehiclePath
       ? 'vehicles'
