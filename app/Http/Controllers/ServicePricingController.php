@@ -22,11 +22,6 @@ class ServicePricingController extends Controller
     {
         $user = $request->user();
 
-        // Cho phép các yêu cầu kiểm thử hoặc môi trường có Bearer token hợp lệ
-        if ($request->bearerToken() && str_starts_with($request->bearerToken(), 'smart_token_')) {
-            return null;
-        }
-
         if (! $user) {
             return response()->json([
                 'success' => false,
@@ -57,12 +52,22 @@ class ServicePricingController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $configs = $this->service->listConfigs($request->all());
+        if ($authError = $this->checkAdminAuthorization($request)) {
+            return $authError;
+        }
+
+        $paginated = $this->service->listConfigs($request->all());
 
         return response()->json([
             'success' => true,
-            'data' => $configs,
-            'total' => $configs->count(),
+            'data' => $paginated->items(),
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
+            'total' => $paginated->total(),
         ]);
     }
 
@@ -105,7 +110,7 @@ class ServicePricingController extends Controller
         $validated = $request->validate([
             'service_code' => ['required', 'string', 'max:50'],
             'service_name' => ['required', 'string', 'max:150'],
-            'meter_type' => ['nullable', 'string', 'in:ELECTRICITY,COLD_WATER,HOT_WATER,GAS'],
+            'meter_type' => ['nullable', 'string', 'in:ELECTRICITY,WATER,COLD_WATER,HOT_WATER,GAS'],
             'billing_type' => ['required', 'string', 'in:TIERED_USAGE,FIXED_MONTHLY,UNIT_PRICE_USAGE'],
             'unit_name' => ['required', 'string', 'max:30'],
             'fixed_unit_price' => ['nullable', 'numeric', 'min:0'],
@@ -152,14 +157,14 @@ class ServicePricingController extends Controller
         $validated = $request->validate([
             'service_code' => ['sometimes', 'string', 'max:50'],
             'service_name' => ['sometimes', 'string', 'max:150'],
-            'meter_type' => ['nullable', 'string', 'in:ELECTRICITY,COLD_WATER,HOT_WATER,GAS'],
+            'meter_type' => ['nullable', 'string', 'in:ELECTRICITY,WATER,COLD_WATER,HOT_WATER,GAS'],
             'billing_type' => ['sometimes', 'string', 'in:TIERED_USAGE,FIXED_MONTHLY,UNIT_PRICE_USAGE'],
             'unit_name' => ['sometimes', 'string', 'max:30'],
             'fixed_unit_price' => ['nullable', 'numeric', 'min:0'],
             'vat_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'environmental_protection_fee_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'effective_from_date' => ['nullable', 'date'],
-            'effective_to_date' => ['nullable', 'date'],
+            'effective_to_date' => ['nullable', 'date', 'after_or_equal:effective_from_date'],
             'is_active' => ['nullable', 'boolean'],
             'tiers' => ['nullable', 'array'],
         ]);
@@ -345,13 +350,18 @@ class ServicePricingController extends Controller
      */
     public function pricingConfig(Request $request): JsonResponse
     {
+        if ($authError = $this->checkAdminAuthorization($request)) {
+            return $authError;
+        }
+
         $configs = $this->service->listConfigs([
             'is_active' => true,
+            'per_page' => 100,
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $configs,
+            'data' => $configs->items(),
         ]);
     }
 }

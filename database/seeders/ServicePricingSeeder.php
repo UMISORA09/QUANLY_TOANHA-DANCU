@@ -65,7 +65,7 @@ class ServicePricingSeeder extends Seeder
             [
                 'id' => 'c0000002-0000-0000-0000-000000000002',
                 'service_name' => 'Nước Sinh Hoạt Định Mức',
-                'meter_type' => 'COLD_WATER',
+                'meter_type' => 'WATER',
                 'billing_type' => 'TIERED_USAGE',
                 'unit_name' => 'm3',
                 'fixed_unit_price' => 0,
@@ -75,6 +75,10 @@ class ServicePricingSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+
+        if ($water->meter_type === 'COLD_WATER') {
+            $water->update(['meter_type' => 'WATER']);
+        }
 
         $waterTiers = [
             ['order' => 1, 'name' => 'Bậc 1: Định mức dưới 10 m3', 'min' => 0, 'max' => 10, 'price' => 7500.00],
