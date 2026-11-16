@@ -145,7 +145,10 @@ class RealtimeSyncTest extends TestCase
             ]);
         }
 
-        $this->testResident = Resident::where('is_active', 1)->first();
+        $this->testResident = Resident::where('apartment_id', $this->testApartment->id)
+            ->where('user_id', $this->adminUser->id)
+            ->where('is_active', 1)
+            ->first();
         if (! $this->testResident) {
             $this->testResident = Resident::create([
                 'apartment_id' => $this->testApartment->id,

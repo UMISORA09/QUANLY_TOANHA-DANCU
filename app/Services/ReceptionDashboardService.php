@@ -36,7 +36,7 @@ class ReceptionDashboardService
      */
     public function authorizeViewer(?object $user): object
     {
-        if (!$user) {
+        if (! $user) {
             throw new HttpException(401, 'Vui lòng đăng nhập để truy cập Dashboard Lễ tân.');
         }
 
@@ -51,15 +51,15 @@ class ReceptionDashboardService
         // Lấy danh sách mã vai trò (role_code) của người dùng
         $userRoles = [];
         if (method_exists($user, 'roles')) {
-            $userRoles = $user->roles()->pluck('role_code')->map(fn($r): string => strtoupper(trim((string) $r)))->toArray();
+            $userRoles = $user->roles()->pluck('role_code')->map(fn ($r): string => strtoupper(trim((string) $r)))->toArray();
         }
-        if (empty($userRoles) && !empty($user->id)) {
+        if (empty($userRoles) && ! empty($user->id)) {
             $userRoles = DB::table('user_roles')
                 ->join('roles', 'user_roles.role_id', '=', 'roles.id')
                 ->where('user_roles.user_id', $user->id)
                 ->whereNull('roles.deleted_at')
                 ->pluck('roles.role_code')
-                ->map(fn($r): string => strtoupper(trim((string) $r)))
+                ->map(fn ($r): string => strtoupper(trim((string) $r)))
                 ->toArray();
         }
 
@@ -80,7 +80,7 @@ class ReceptionDashboardService
             }
         }
 
-        if (!$isStaff) {
+        if (! $isStaff) {
             throw new HttpException(403, 'Bạn không có quyền truy cập Dashboard Giám sát Lễ tân.');
         }
 
@@ -133,7 +133,7 @@ class ReceptionDashboardService
                 $startInput = $filters['start_date'] ?? null;
                 $endInput = $filters['end_date'] ?? null;
 
-                if (!$startInput || !$endInput) {
+                if (! $startInput || ! $endInput) {
                     throw ValidationException::withMessages([
                         'start_date' => ['Vui lòng cung cấp cả ngày bắt đầu và ngày kết thúc cho khoảng tùy chọn.'],
                     ]);
@@ -197,18 +197,17 @@ class ReceptionDashboardService
      * - SUPER_ADMIN: Toàn quyền truy cập đầy đủ cả hai phân hệ.
      *
      * @param  array<string, mixed>  $filters
-     * @param  object|null  $user
      * @return array<string, mixed>
      *
      * @throws HttpException
      */
     public function getDashboardMetrics(array $filters, ?object $user = null): array
     {
-        if (!$user) {
+        if (! $user) {
             $user = auth()->user();
         }
 
-        if (!$user) {
+        if (! $user) {
             throw new HttpException(401, 'Vui lòng xác thực người dùng để truy cập dữ liệu Dashboard.');
         }
 
@@ -216,18 +215,18 @@ class ReceptionDashboardService
         $isSuperAdmin = (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
             (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('SUPER_ADMI')));
 
-        if (!$isSuperAdmin) {
+        if (! $isSuperAdmin) {
             $userRoles = [];
             if (method_exists($user, 'roles')) {
-                $userRoles = $user->roles()->pluck('role_code')->map(fn($r): string => strtoupper(trim((string) $r)))->toArray();
+                $userRoles = $user->roles()->pluck('role_code')->map(fn ($r): string => strtoupper(trim((string) $r)))->toArray();
             }
-            if (empty($userRoles) && !empty($user->id)) {
+            if (empty($userRoles) && ! empty($user->id)) {
                 $userRoles = DB::table('user_roles')
                     ->join('roles', 'user_roles.role_id', '=', 'roles.id')
                     ->where('user_roles.user_id', $user->id)
                     ->whereNull('roles.deleted_at')
                     ->pluck('roles.role_code')
-                    ->map(fn($r): string => strtoupper(trim((string) $r)))
+                    ->map(fn ($r): string => strtoupper(trim((string) $r)))
                     ->toArray();
             }
             if (in_array('SUPER_ADMIN', $userRoles, true) || in_array('SUPER_ADMI', $userRoles, true)) {
@@ -239,7 +238,7 @@ class ReceptionDashboardService
         $canViewParcels = $isSuperAdmin || RbacService::hasPermission($user, 'PARCEL:VIEW');
         $canViewDashboard = $isSuperAdmin || RbacService::hasPermission($user, 'DASHBOARD:VIEW');
 
-        if (!$canViewVisitors && !$canViewParcels && !$canViewDashboard) {
+        if (! $canViewVisitors && ! $canViewParcels && ! $canViewDashboard) {
             throw new HttpException(403, 'Bạn không có quyền truy cập dữ liệu Dashboard Giám sát Lễ tân.');
         }
 
@@ -317,7 +316,7 @@ class ReceptionDashboardService
             ];
         }
 
-        if (!$canViewParcels && !$canViewVisitors && $canViewDashboard) {
+        if (! $canViewParcels && ! $canViewVisitors && $canViewDashboard) {
             // Khi chỉ có DASHBOARD:VIEW đơn thuần: Chỉ cung cấp cấu trúc tổng quan an toàn, không chứa PII hoặc dữ liệu phân hệ
             $kpis['overview'] = [
                 'mode' => 'general_overview',
@@ -880,7 +879,7 @@ class ReceptionDashboardService
                 'duration_hours' => $hoursInside,
                 'stay_duration_minutes' => $minutesInside,
                 'stay_duration_label' => $hoursInside >= 1 ? "{$hoursInside}h" : "{$minutesInside}m",
-                'temp_card_assigned' => !empty($l->temp_card_id),
+                'temp_card_assigned' => ! empty($l->temp_card_id),
                 'temp_card_id' => $l->temp_card_id ? (string) $l->temp_card_id : null,
             ];
         })->toArray();
@@ -891,13 +890,13 @@ class ReceptionDashboardService
      */
     protected function maskPhoneNumber(?string $phone): string
     {
-        if (!$phone) {
+        if (! $phone) {
             return '';
         }
 
         $clean = preg_replace('/[^0-9]/', '', $phone);
         if (strlen($clean) >= 9) {
-            return substr($clean, 0, 3) . '****' . substr($clean, -3);
+            return substr($clean, 0, 3).'****'.substr($clean, -3);
         }
 
         return $phone;
