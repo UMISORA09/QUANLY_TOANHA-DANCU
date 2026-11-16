@@ -6,7 +6,6 @@ import {
   Tag,
   Zap,
   Receipt,
-  BarChart3,
   Wrench,
   Sparkles,
   Bell,
@@ -148,7 +147,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   const resolveInitialTab = (): string => {
     const path = window.location.pathname;
 
-    // 1. Kiểm tra URL path trực tiếp tới CI/CD, tiện ích, khối tòa nhà hoặc phân quyền
+    // 1. Kiểm tra URL path trực tiếp tới CI/CD, tiện ích hoặc phân quyền
     if (path === '/admin/cicd' || path.startsWith('/admin/cicd')) {
       return 'cicd';
     }
@@ -162,17 +161,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       path.startsWith('/quan-ly/amenities')
     ) {
       return 'amenities';
-    }
-    if (
-      path === '/quan-ly/zones' ||
-      path === '/quan-ly/khoi-nha' ||
-      path.startsWith('/quan-ly/zones') ||
-      path === '/manager/zones' ||
-      path === '/admin/zones' ||
-      path === '/quan-ly/buildings' ||
-      path === '/manager/buildings'
-    ) {
-      return 'buildings';
     }
     if (path === '/admin/roles' || path === '/admin/rbac' || path === '/admin/phan-quyen' || path.startsWith('/admin/roles')) {
       return 'roles';
@@ -361,11 +349,9 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       return initialTab;
     }
 
-    // 4. Khi vào route quản trị gốc (/quan-ly, /manager): mặc định mở ngay Khối / Tòa nhà & Căn hộ
-    if (path === '/quan-ly' || path === '/manager') {
-      return 'buildings';
-    }
-    if (path === '/admin' || path === '/dashboard') {
+    // 4. Khi vào route quản trị gốc (/admin, /dashboard, /quan-ly, /manager) mà không có tab query:
+    // MẶC ĐỊNH LUÔN LUÔN LÀ 'overview' (Tổng quan) khi mới đăng nhập hoặc khởi động lại trang quản lý.
+    if (path === '/admin' || path === '/dashboard' || path === '/quan-ly' || path === '/manager') {
       return 'overview';
     }
 
@@ -464,38 +450,12 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Tải danh sách tòa nhà/khối động từ Backend
-  const loadBuildings = async (force = false) => {
-    setIsBuildingsLoading(true);
-    setBuildingsError(null);
-    try {
-      const blocks = await api.getBlocks(force);
-      if (Array.isArray(blocks) && blocks.length > 0) {
-        const mapped = [
-          { id: 'all', label: 'Toàn bộ khu đô thị' },
-          ...blocks.map((b) => ({
-            id: b.id,
-            label: `${b.block_code} - ${b.block_name}`,
-          })),
-        ];
-        setBuildingOptions(mapped);
-      }
-    } catch {
-      setBuildingsError('Không thể tải danh sách tòa nhà');
-    } finally {
-      setIsBuildingsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadBuildings();
-  }, []);
-
   // Tự động tải trước (Prefetch) danh mục Tiện ích ở background SAU KHI trang chính đã render mượt mà
   useEffect(() => {
     const timer = setTimeout(() => {
       api.prefetchAmenities({ page: 1, limit: 10, sort: 'created_at_desc' });
       api.getCategories().catch(() => {});
+      api.getBlocks().catch(() => {});
     }, 3500);
     return () => clearTimeout(timer);
   }, []);
@@ -878,10 +838,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'amenities' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <AmenityManagement embedded={true} />
-            </div>
-          ) : activeMenuId === 'zones' ? (
-            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <ZoneManager />
             </div>
           ) : activeMenuId === 'roles' || activeMenuId === 'rbac' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
