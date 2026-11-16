@@ -57,10 +57,14 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const navigateTo = (path: string) => {
+  const navigateTo = (path: string, immediate = false) => {
     window.history.pushState({}, '', path);
     const clean = path.split('?')[0];
-    startTransition(() => setCurrentPath(clean));
+    if (immediate) {
+      setCurrentPath(clean);
+    } else {
+      startTransition(() => setCurrentPath(clean));
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -133,31 +137,18 @@ const App: React.FC = () => {
     }
     setCurrentUser(session);
 
-    // Điều hướng theo đúng vai trò được xác thực
-    // Admin / Dev điều hướng trực tiếp vào Cổng Quản Trị & Kỹ Thuật (/admin)
-    if (isDev || isAdmin) {
-      setTimeout(() => {
-        navigateTo('/admin');
-      }, 350);
-    } else if (isTechnician) {
-      navigateTo('/quan-ly?tab=tickets');
-    } else if (isManager) {
-      setTimeout(() => {
-        navigateTo('/quan-ly');
-      }, 350);
-    } else if (isReceptionist) {
-      setTimeout(() => {
-        navigateTo('/le-tan');
-      }, 350);
-    } else {
-      setTimeout(() => {
-        if (residentType === 'TENANT') {
-          navigateTo('/cu-dan?tab=rentals');
-        } else {
-          navigateTo('/cu-dan');
-        }
-      }, 350);
-    }
+    const destination = isDev || isAdmin
+      ? '/admin'
+      : isTechnician
+      ? '/quan-ly?tab=tickets'
+      : isManager
+      ? '/quan-ly'
+      : isReceptionist
+      ? '/le-tan'
+      : residentType === 'TENANT'
+      ? '/cu-dan?tab=rentals'
+      : '/cu-dan';
+    navigateTo(destination, true);
   };
 
   const handleLogout = () => {
