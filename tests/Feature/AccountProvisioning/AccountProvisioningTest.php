@@ -44,11 +44,23 @@ class AccountProvisioningTest extends TestCase
         [$this->regularUser, $this->regularToken] = $this->createRegularUser();
     }
 
+    protected function generateUniquePhoneNumber(string $prefix = '09'): string
+    {
+        do {
+            $digits = 10 - strlen($prefix);
+            $min = (int) ('1'.str_repeat('0', $digits - 1));
+            $max = (int) str_repeat('9', $digits);
+            $phone = $prefix.random_int($min, $max);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
+        return $phone;
+    }
+
     protected function createAdminUser(): array
     {
         $user = User::create([
             'username' => 'adm_prov_'.Str::random(8),
-            'phone_number' => '09'.random_int(10000000, 99999999),
+            'phone_number' => $this->generateUniquePhoneNumber('09'),
             'email' => 'adm_prov_'.Str::random(8).'@cassavas.vn',
             'full_name' => 'Quản Lý Cấp Phát',
             'password_hash' => Hash::make('AdminPass@123'),
@@ -95,7 +107,7 @@ class AccountProvisioningTest extends TestCase
     {
         $user = User::create([
             'username' => 'reg_prov_'.Str::random(8),
-            'phone_number' => '09'.random_int(10000000, 99999999),
+            'phone_number' => $this->generateUniquePhoneNumber('09'),
             'email' => 'reg_prov_'.Str::random(8).'@cassavas.vn',
             'full_name' => 'Người Dùng Thường',
             'password_hash' => Hash::make('UserPass@123'),
@@ -130,7 +142,7 @@ class AccountProvisioningTest extends TestCase
         $payload = [
             'full_name' => 'Nguyễn Văn Nhân Viên',
             'email' => strtolower('nhanvien_'.Str::random(6).'@example.com'),
-            'phone_number' => '098'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('098'),
             'national_id_number' => '079'.random_int(100000000, 999999999),
             'gender' => 'MALE',
             'roles' => ['RECEPTIONIST'],
@@ -168,7 +180,7 @@ class AccountProvisioningTest extends TestCase
         User::create([
             'username' => $username1,
             'email' => 'collision_'.Str::random(6).'@example.com',
-            'phone_number' => '091'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('091'),
             'full_name' => 'Tài Khoản Đã Có',
             'password_hash' => Hash::make('Pass@123'),
             'status' => 'PENDING_ACTIVATION',
@@ -187,7 +199,7 @@ class AccountProvisioningTest extends TestCase
         Mail::fake();
 
         $email = 'user_created_'.Str::random(6).'@example.com';
-        $phone = '097'.random_int(1000000, 9999999);
+        $phone = $this->generateUniquePhoneNumber('097');
         $payload = [
             'full_name' => 'Lê Thị Thu',
             'email' => $email,
@@ -218,7 +230,7 @@ class AccountProvisioningTest extends TestCase
         $payload = [
             'full_name' => 'Phạm Văn Hash',
             'email' => $email,
-            'phone_number' => '096'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('096'),
         ];
 
         $response = $this->withHeader('Authorization', "Bearer {$this->adminToken}")
@@ -248,7 +260,7 @@ class AccountProvisioningTest extends TestCase
         $payload = [
             'full_name' => 'Hoàng Minh Thắng',
             'email' => $email,
-            'phone_number' => '093'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('093'),
         ];
 
         $this->withHeader('Authorization', "Bearer {$this->adminToken}")
@@ -281,7 +293,7 @@ class AccountProvisioningTest extends TestCase
         $provisioned = $this->service->provisionAccount([
             'full_name' => 'Ngô Văn Link',
             'email' => $email,
-            'phone_number' => '092'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('092'),
         ], $this->admin);
 
         $record = DB::table('password_reset_tokens')->where('email', $email)->first();
@@ -298,7 +310,7 @@ class AccountProvisioningTest extends TestCase
         $provisioned = $this->service->provisionAccount([
             'full_name' => 'Vũ Thị Hoa',
             'email' => $email,
-            'phone_number' => '094'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('094'),
         ], $this->admin);
 
         $plainToken = 'valid_secret_token_'.Str::random(32);
@@ -333,7 +345,7 @@ class AccountProvisioningTest extends TestCase
         $this->service->provisionAccount([
             'full_name' => 'Trần Lỗi Xác Nhận',
             'email' => $email,
-            'phone_number' => '095'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('095'),
         ], $this->admin);
 
         $plainToken = 'token_test_confirm_123';
@@ -362,7 +374,7 @@ class AccountProvisioningTest extends TestCase
         $this->service->provisionAccount([
             'full_name' => 'Đỗ Văn Token',
             'email' => $email,
-            'phone_number' => '090'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('090'),
         ], $this->admin);
 
         $response = $this->postJson('/api/v1/account-provisioning/activate', [
@@ -388,7 +400,7 @@ class AccountProvisioningTest extends TestCase
         $this->service->provisionAccount([
             'full_name' => 'Lý Hết Hạn',
             'email' => $email,
-            'phone_number' => '098'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('098'),
         ], $this->admin);
 
         $plainToken = 'expired_plain_token_123';
@@ -420,7 +432,7 @@ class AccountProvisioningTest extends TestCase
         $this->service->provisionAccount([
             'full_name' => 'Bùi Dùng Lại',
             'email' => $email,
-            'phone_number' => '097'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('097'),
         ], $this->admin);
 
         $plainToken = 'reuse_plain_token_12345';
@@ -459,7 +471,7 @@ class AccountProvisioningTest extends TestCase
         User::create([
             'username' => 'existing_u_'.Str::random(6),
             'email' => $dupEmail,
-            'phone_number' => '091'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('091'),
             'full_name' => 'Tài Khoản Có Sẵn',
             'password_hash' => Hash::make('Pass@123'),
             'status' => 'ACTIVE',
@@ -468,7 +480,7 @@ class AccountProvisioningTest extends TestCase
         $payload = [
             'full_name' => 'Trùng Email Test',
             'email' => $dupEmail,
-            'phone_number' => '098'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('098'),
         ];
 
         $response = $this->withHeader('Authorization', "Bearer {$this->adminToken}")
@@ -483,7 +495,7 @@ class AccountProvisioningTest extends TestCase
      */
     public function test_13_phone_duplicate_tra_ve_loi(): void
     {
-        $dupPhone = '099'.random_int(1000000, 9999999);
+        $dupPhone = $this->generateUniquePhoneNumber('099');
         User::create([
             'username' => 'existing_ph_'.Str::random(6),
             'email' => 'unique_ph_'.Str::random(6).'@example.com',
@@ -517,7 +529,7 @@ class AccountProvisioningTest extends TestCase
         $provisioned = $this->service->provisionAccount([
             'full_name' => 'Mai Văn Gửi Lại',
             'email' => $email,
-            'phone_number' => '093'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('093'),
         ], $this->admin);
 
         $userId = $provisioned['user']['id'];
@@ -555,7 +567,7 @@ class AccountProvisioningTest extends TestCase
         $provisioned = $this->service->provisionAccount([
             'full_name' => 'Đinh Không Duplicate',
             'email' => $email,
-            'phone_number' => '094'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('094'),
         ], $this->admin);
 
         $userId = $provisioned['user']['id'];
@@ -584,7 +596,7 @@ class AccountProvisioningTest extends TestCase
         $provisioned = $this->service->provisionAccount([
             'full_name' => 'Nhân Viên Đăng Nhập Mới',
             'email' => $email,
-            'phone_number' => '092'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('092'),
             'roles' => ['RECEPTIONIST'],
         ], $this->admin);
 
@@ -630,7 +642,7 @@ class AccountProvisioningTest extends TestCase
         $provisioned = $this->service->provisionAccount([
             'full_name' => 'Chưa Kích Hoạt Đòi Login',
             'email' => $email,
-            'phone_number' => '093'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('093'),
         ], $this->admin);
 
         $username = $provisioned['user']['username'];
@@ -654,7 +666,7 @@ class AccountProvisioningTest extends TestCase
         $provisioned = $this->service->provisionAccount([
             'full_name' => 'Nhân Viên Kích Hoạt Lần Hai',
             'email' => $email,
-            'phone_number' => '091'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('091'),
         ], $this->admin);
 
         $userId = $provisioned['user']['id'];
@@ -1433,7 +1445,7 @@ class AccountProvisioningTest extends TestCase
         $this->service->provisionAccount([
             'full_name' => 'Nguyễn Văn Bảo Mật Token',
             'email' => $email,
-            'phone_number' => '096'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('096'),
             'roles' => ['RECEPTIONIST'],
         ], $this->admin);
 
@@ -1521,7 +1533,7 @@ class AccountProvisioningTest extends TestCase
         $pendingProvisioned = $this->service->provisionAccount([
             'full_name' => 'Lê Minh Chờ Kích Hoạt',
             'email' => $pendingEmail,
-            'phone_number' => '095'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('095'),
             'roles' => ['RECEPTIONIST'],
         ], $this->admin);
         $pendingId = $pendingProvisioned['user']['id'];
@@ -1539,7 +1551,7 @@ class AccountProvisioningTest extends TestCase
         $activeProvisioned = $this->service->provisionAccount([
             'full_name' => 'Phạm Thị Đã Kích Hoạt',
             'email' => $activeEmail,
-            'phone_number' => '094'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('094'),
             'roles' => ['RECEPTIONIST'],
         ], $this->admin);
         $activeId = $activeProvisioned['user']['id'];
@@ -1711,7 +1723,7 @@ class AccountProvisioningTest extends TestCase
         $freshUser = User::create([
             'username' => 'sec_direct_'.Str::random(6),
             'email' => 'sec_direct_'.Str::random(6).'@test.local',
-            'phone_number' => '093'.random_int(1000000, 9999999),
+            'phone_number' => $this->generateUniquePhoneNumber('093'),
             'full_name' => 'Bảo Vệ Direct',
             'password_hash' => Hash::make('Pass@123'),
             'status' => 'PENDING_ACTIVATION',
