@@ -658,6 +658,12 @@ class ApiService {
     }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username: identifier, identifier, password }),
+      signal: AbortSignal.timeout(15000),
+    }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'TimeoutError') {
+        throw new Error('Đăng nhập phản hồi quá lâu. Vui lòng kiểm tra kết nối và thử lại.');
+      }
+      throw error;
     });
     if (!res.access_token || !res.user?.id || !Array.isArray(res.user.roles) || res.user.roles.length === 0) {
       throw new Error('Phản hồi đăng nhập không có phiên hoặc quyền hợp lệ.');
@@ -2496,7 +2502,7 @@ class ApiService {
 
   // ================= F12: HÒM THƯ GÓP Ý & PHÂN TÍCH CẢM XÚC =================
   async getResidentSuggestionBoxes(): Promise<{ success: boolean; data: SuggestionBoxItem[] }> {
-    return this.request('/resident/suggestion-boxes');
+    return this.request('/resident/suggestion-boxes', { cache: 'no-store' });
   }
 
   async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string; replayed?: boolean }> {

@@ -108,8 +108,9 @@ class DebtReminderController extends Controller
     {
         $overdueOnly = $request->boolean('overdue_only', true);
         $daysBeforeDue = max(1, min(30, (int) $request->input('days_before_due', 3)));
+        $minDaysOverdue = max(0, min(365, (int) $request->input('min_days_overdue', 0)));
 
-        $count = $this->reminderService->autoDispatchScheduledReminders($overdueOnly, $daysBeforeDue);
+        $count = $this->reminderService->autoDispatchScheduledReminders($overdueOnly, $daysBeforeDue, $minDaysOverdue);
 
         return response()->json([
             'success' => true,
@@ -118,6 +119,7 @@ class DebtReminderController extends Controller
                 'dispatched_count' => $count,
                 'overdue_only' => $overdueOnly,
                 'days_before_due' => $daysBeforeDue,
+                'min_days_overdue' => $minDaysOverdue,
             ],
         ]);
     }

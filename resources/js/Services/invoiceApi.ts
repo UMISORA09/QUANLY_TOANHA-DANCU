@@ -555,6 +555,7 @@ export const invoiceApi = {
     async autoDispatchDebtReminders(params?: {
         overdue_only?: boolean;
         days_before_due?: number;
+        min_days_overdue?: number;
     }): Promise<{
         success: boolean;
         message: string;
@@ -562,6 +563,7 @@ export const invoiceApi = {
             dispatched_count: number;
             overdue_only: boolean;
             days_before_due: number;
+            min_days_overdue?: number;
         };
     }> {
         const res = await fetch('/api/v1/invoices/reminders/auto-dispatch', {

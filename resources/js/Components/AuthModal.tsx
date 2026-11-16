@@ -199,14 +199,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       try {
         const res = await api.login(loginIdentifier.trim(), password);
         setSubmitSuccess(true);
-        setTimeout(() => {
-          setSubmitSuccess(false);
-          if (onSuccess) {
-            const role = res.user.roles[0] as UserRole;
-            onSuccess(role, res.user?.email || res.user?.username || loginIdentifier, res.user);
-          }
-          onClose();
-        }, 500);
+        if (onSuccess) {
+          const role = res.user.roles[0] as UserRole;
+          onSuccess(role, res.user?.email || res.user?.username || loginIdentifier, res.user);
+        }
+        setSubmitSuccess(false);
+        onClose();
       } catch (err: any) {
         setErrorMessage(err.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản và mật khẩu.');
       } finally {

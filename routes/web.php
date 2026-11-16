@@ -51,6 +51,7 @@ use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\TicketRatingController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
+use App\Http\Controllers\ZoneController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -63,9 +64,10 @@ Route::get('/', [PublicContentController::class, 'show'])->name('public.root');
 Route::get('/home', [PublicContentController::class, 'show'])->name('public.home');
 Route::redirect('/index.html', '/home', 308);
 Route::get('/{page}', [PublicContentController::class, 'show'])
-    ->where('page', 'about|contact|privacy|docs|mcp')->name('public.page');
+    ->where('page', 'about|contact|privacy|docs|mcp|cli')->name('public.page');
 Route::get('/{page}.md', [PublicContentController::class, 'markdown'])
-    ->where('page', 'home|about|contact|privacy|docs|mcp');
+    ->where('page', 'home|about|contact|privacy|docs|mcp|cli');
+Route::get('/api/v1/public/cli', [PublicContentController::class, 'readCliInfo']);
 Route::get('/api/v1/public/guides/{page}', [PublicContentController::class, 'guide']);
 Route::get('/sitemap.xml', [PublicContentController::class, 'sitemap']);
 Route::get('/.well-known/mcp', [PublicContentController::class, 'mcpDiscovery']);
@@ -854,6 +856,37 @@ Route::get('/admin/apartments', function () {
 });
 
 // ==========================================
+// QUẢN LÝ KHỐI TÒA NHÀ & ZONE (CHỨC NĂNG 1 - XUANHOA)
+// ==========================================
+Route::get('api/v1/zones/public', [ZoneController::class, 'publicIndex']);
+
+Route::prefix('api/v1/manager')->middleware(['auth.bearer'])->group(function () {
+    Route::get('zones', [ZoneController::class, 'index'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::post('zones', [ZoneController::class, 'store'])->middleware('permission:BUILDING:MANAGE|ZONE:CREATE|ZONE:MANAGE');
+    Route::get('zones/{id}', [ZoneController::class, 'show'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::put('zones/{id}', [ZoneController::class, 'update'])->middleware('permission:BUILDING:MANAGE|ZONE:UPDATE|ZONE:MANAGE');
+    Route::delete('zones/{id}', [ZoneController::class, 'destroy'])->middleware('permission:BUILDING:MANAGE|ZONE:DELETE|ZONE:MANAGE');
+});
+
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('zones', [ZoneController::class, 'index'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::post('zones', [ZoneController::class, 'store'])->middleware('permission:BUILDING:MANAGE|ZONE:CREATE|ZONE:MANAGE');
+    Route::get('zones/{id}', [ZoneController::class, 'show'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::put('zones/{id}', [ZoneController::class, 'update'])->middleware('permission:BUILDING:MANAGE|ZONE:UPDATE|ZONE:MANAGE');
+    Route::delete('zones/{id}', [ZoneController::class, 'destroy'])->middleware('permission:BUILDING:MANAGE|ZONE:DELETE|ZONE:MANAGE');
+});
+
+Route::get('/quan-ly/zones', function () {
+    return view('welcome');
+});
+Route::get('/admin/zones', function () {
+    return redirect('/quan-ly/zones');
+});
+Route::get('/quan-ly/khoi-nha', function () {
+    return redirect('/quan-ly/zones');
+});
+
+// ==========================================
 // RFID ACCESS CARDS MODULE (Quản Lý Mã Thẻ RFID)
 // ==========================================
 Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:rfid_cards'])->group(function () {
@@ -1003,7 +1036,7 @@ Route::withoutMiddleware([
 });
 
 // DevOps Management & Metrics APIs
-Route::prefix('api/devops')->group(function () {
+Route::prefix('api/devops')->middleware(['auth.bearer:strict', 'permission:CICD:VIEW'])->group(function () {
     Route::get('status', [DevOpsApiController::class, 'status']);
     Route::get('metrics', [DevOpsApiController::class, 'metrics']);
     Route::get('deployments', [DevOpsApiController::class, 'deployments']);
