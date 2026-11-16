@@ -1,3 +1,4 @@
+import { CustomSelect } from '../Common/CustomSelect';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Edit2, Trash2, Clock, Check, AlertCircle, Sparkles, Power } from 'lucide-react';
 import { api, TimeSlot, Amenity } from '../../Services/api';
@@ -47,6 +48,20 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const [recovering, setRecovering] = useState(false);
   const conflictGeneration = useRef(0);
   const listGeneration = useRef(0);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!isOpen || !amenity || !dialog.current) return;
+    const element = dialog.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    element.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => {
+      element.close();
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, [isOpen, amenity?.id]);
   useEffect(() => () => { conflictGeneration.current++; listGeneration.current++; }, [isOpen, amenity?.id]);
   const recoverConflict = async (id: string, preserveDraft = false) => {
     if (!amenity) return;
@@ -225,9 +240,9 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   }));
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4">
+    <dialog ref={dialog} aria-label="Cấu hình Khung giờ Hoạt động" onCancel={(event) => { event.preventDefault(); if (!isSubmitting && !recovering) onClose(); }} className="feature-controls feature-dialog fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-transparent p-3 open:flex items-center justify-center sm:p-4">
       {/* Backdrop */}
-      <div onClick={onClose} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
+      <div onClick={!isSubmitting && !recovering ? onClose : undefined} className="fixed inset-0 bg-neutral-950/50 backdrop-blur-md animate-in fade-in" />
 
       {/* Modal */}
       <div className="relative w-full max-w-3xl bg-white/95 backdrop-blur-2xl border border-white/90 rounded-2xl shadow-2xl p-6 text-neutral-900 z-10 max-h-[92vh] flex flex-col">
@@ -248,6 +263,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            disabled={isSubmitting || recovering}
+            aria-label="Đóng khung giờ"
             className="p-1.5 text-neutral-400 hover:text-neutral-900 rounded-lg hover:bg-neutral-100 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -286,17 +303,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                 <label className="block text-xs font-semibold text-neutral-700 mb-1">
                   Thứ trong tuần <span className="text-rose-500">*</span>
                 </label>
-                <select
-                  value={dayOfWeek}
-                  onChange={(e) => setDayOfWeek(parseInt(e.target.value))}
-                  className="w-full px-2.5 py-2 text-xs border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                >
-                  {DAYS_OF_WEEK.map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect variant="feature" overlay ariaLabel="Thứ trong tuần" value={dayOfWeek} onChange={setDayOfWeek} options={DAYS_OF_WEEK} />
               </div>
 
               <div>
@@ -501,12 +508,13 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            disabled={isSubmitting || recovering}
             className="px-4 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
           >
             Hoàn tất & Đóng
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

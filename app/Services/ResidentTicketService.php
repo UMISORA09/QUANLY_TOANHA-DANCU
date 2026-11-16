@@ -173,10 +173,7 @@ class ResidentTicketService
             ]);
         }
 
-        // Xác định mức độ khẩn cấp (priority)
-        $priority = ! empty($data['priority']) && in_array(strtoupper((string) $data['priority']), self::VALID_PRIORITIES, true)
-            ? strtoupper((string) $data['priority'])
-            : ($category->default_priority ?: 'MEDIUM');
+        $priority = 'MEDIUM';
 
         $now = Carbon::now();
         $slaDeadline = $now->copy()->addHours($category->sla_resolution_time_hours ?: 24);
@@ -297,10 +294,6 @@ class ResidentTicketService
             $ticket->title = trim((string) $data['title']);
             $ticket->description = trim((string) $data['description']);
             $ticket->location = trim((string) ($data['location'] ?? $ticket->location));
-
-            if (! empty($data['priority']) && in_array(strtoupper((string) $data['priority']), self::VALID_PRIORITIES, true)) {
-                $ticket->priority = strtoupper((string) $data['priority']);
-            }
 
             if (array_key_exists('preferred_service_time', $data)) {
                 $ticket->preferred_service_time = ! empty($data['preferred_service_time'])

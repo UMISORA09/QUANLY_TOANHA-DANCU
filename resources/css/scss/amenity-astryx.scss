@@ -1,0 +1,31 @@
+@use 'sass:meta';
+
+// Keep library defaults and theme selectors inside the F1 trial surfaces.
+@scope (.amenity-astryx-trial) {
+  @include meta.load-css('../../../node_modules/@astryxdesign/core/dist/astryx.css');
+  @include meta.load-css('../../../node_modules/@astryxdesign/theme-neutral/dist/theme.css');
+}
+
+.amenity-astryx-trial {
+  color-scheme: light;
+  --font-family-body: 'Inter', sans-serif;
+  --font-family-heading: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  --color-accent: #1e40af;
+  --color-on-accent: #fff;
+  --radius-element: 12px;
+
+  .astryx-button {
+    min-height: 44px;
+    font-weight: 600;
+    font-size: .875rem;
+    gap: .5rem;
+    padding: 0 .875rem;
+    border-radius: .75rem;
+  }
+
+  .amenity-astryx-secondary {
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+  }
+}

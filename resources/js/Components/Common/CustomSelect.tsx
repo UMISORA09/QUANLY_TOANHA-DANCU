@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useId, useMemo } from 'react';
+import '../../../css/scss/feature-controls.scss';
 import { ChevronDown, Check, Search, X } from 'lucide-react';
 
 export interface SelectOption<T = string> {
@@ -12,6 +13,8 @@ export interface SelectOption<T = string> {
 }
 
 export interface CustomSelectProps<T = string> {
+    variant?: 'default' | 'feature';
+    ariaLabel?: string;
     value: T;
     onChange: (value: T) => void;
     options: SelectOption<T>[];
@@ -32,6 +35,8 @@ export interface CustomSelectProps<T = string> {
 }
 
 export function CustomSelect<T extends string | number | null = string>({
+    variant = 'default',
+    ariaLabel,
     value,
     onChange,
     options,
@@ -67,7 +72,7 @@ export function CustomSelect<T extends string | number | null = string>({
         } else if (showSearch) {
             // Focus vào ô tìm kiếm khi mở
             const timer = setTimeout(() => {
-                if (!(menuRef.current || containerRef.current)?.querySelector('[role="option"]:focus')) {
+                if (variant !== 'feature' || !(menuRef.current || containerRef.current)?.querySelector('[role="option"]:focus')) {
                     searchInputRef.current?.focus();
                 }
             }, 60);
@@ -162,7 +167,7 @@ export function CustomSelect<T extends string | number | null = string>({
 
     return (
         <div
-            className={`relative ${isOpen ? 'z-40' : 'z-10'} ${className}`}
+            className={`relative ${isOpen ? 'z-40' : 'z-10'} ${variant === 'feature' ? 'feature-controls' : ''} ${className}`}
             ref={containerRef}
             onKeyDown={(event) => {
                 if (event.key === 'Escape' && isOpen) {
@@ -187,7 +192,7 @@ export function CustomSelect<T extends string | number | null = string>({
                 }
                 const buttons = Array.from((menuRef.current || containerRef.current)?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') || []);
                 const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-                const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length;
+                const next = variant === 'feature' && current < 0 && event.key === 'ArrowUp' ? buttons.length - 1 : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length;
                 buttons[next]?.focus();
             }}
             onBlur={(event) => {
@@ -208,7 +213,7 @@ export function CustomSelect<T extends string | number | null = string>({
                 disabled={disabled}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 aria-haspopup="listbox"
-                aria-label={label}
+                aria-label={ariaLabel || label}
                 aria-expanded={isOpen}
                 className={`w-full px-3 py-2 bg-white border rounded-xl text-xs flex items-center justify-between gap-2 shadow-2xs transition-all text-left cursor-pointer select-none font-medium ${
                     disabled
@@ -253,7 +258,7 @@ export function CustomSelect<T extends string | number | null = string>({
                     role="listbox"
                     className={`absolute top-full z-50 mt-1.5 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col ${
                         align === 'right' ? 'right-0' : 'left-0'
-                    } ${menuClassName}`}
+                    } ${variant === 'feature' ? 'feature-select-menu' : ''} ${menuClassName}`}
                 >
                     {/* Search Input Box */}
                     {showSearch && (
@@ -268,7 +273,16 @@ export function CustomSelect<T extends string | number | null = string>({
                                     placeholder={searchPlaceholder}
                                     className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-medium"
                                     onClick={(e) => e.stopPropagation()}
-                                    onKeyDown={(e) => e.stopPropagation()}
+                                    onKeyDown={(event) => {
+                                        if (variant === 'feature' && event.key === 'Enter') {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            const option = filteredOptions.find(item => !item.disabled);
+                                            if (option) handleSelect(option);
+                                            return;
+                                        }
+                                        if (variant !== 'feature' || !['Escape', 'ArrowDown', 'ArrowUp'].includes(event.key)) event.stopPropagation();
+                                    }}
                                 />
                                 {searchQuery && (
                                     <button

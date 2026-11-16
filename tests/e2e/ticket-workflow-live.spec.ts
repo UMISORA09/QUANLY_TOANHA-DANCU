@@ -65,7 +65,10 @@ test('API thật: ảnh private, quản lý phân công, kỹ thuật sửa, cư
     await expect(resident.getByText('Ban quản lý đã nhận thông tin bổ sung.', { exact: true })).toBeVisible();
     await expect(resident.getByText('Ghi chú riêng QA: chuẩn bị van dự phòng.', { exact: true })).toHaveCount(0);
     await admin.getByRole('button', { name: 'Tiếp nhận', exact: true }).click();
-    await admin.getByRole('dialog', { name: 'Tiếp nhận', exact: true }).getByRole('button', { name: 'Tiếp nhận', exact: true }).click();
+    const reception = admin.getByRole('dialog', { name: 'Tiếp nhận', exact: true });
+    await reception.getByRole('button', { name: 'Mức độ ưu tiên', exact: true }).click();
+    await admin.getByRole('option', { name: 'Cao', exact: true }).click();
+    await reception.getByRole('button', { name: 'Tiếp nhận', exact: true }).click();
     await admin.getByRole('button', { name: 'Phân công kỹ thuật', exact: true }).click();
     const assignment = admin.getByRole('dialog', { name: 'Phân công kỹ thuật', exact: true });
     await assignment.getByLabel('Kỹ thuật viên', { exact: true }).click();

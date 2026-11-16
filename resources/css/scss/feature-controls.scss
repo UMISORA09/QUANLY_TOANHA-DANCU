@@ -1,0 +1,51 @@
+.feature-controls {
+  button, input:not([type='checkbox']):not([type='radio']), select, textarea {
+    min-height: 44px;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+  button { min-width: 44px; cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .5; }
+  :is(button, input, textarea, select):focus-visible { outline: 2px solid #1e40af; outline-offset: 2px; }
+  button:not([aria-pressed]):not([class*='bg-rose-']):not([class*='bg-red-']):is([type='submit'], .catalog-primary, [class*='bg-neutral-950'], [class*='bg-neutral-900'], [class*='bg-slate-900'], [class*='bg-emerald-600'], [class*='bg-blue-600'], [class*='bg-indigo-600']) {
+    background-color: #1e40af;
+    color: #fff;
+  }
+  form :is(.gap-3, .gap-2) { gap: 16px; }
+  form:is(.space-y-3, .space-y-4, .space-y-5, .space-y-6) > :not([hidden]) { margin-block: 0; }
+  form:is(.space-y-3, .space-y-4, .space-y-5, .space-y-6) > :not([hidden]) ~ :not([hidden]) { margin-block-start: 16px; }
+}
+.feature-select-menu {
+  background: #fff;
+  border-radius: 12px;
+  font-size: 14px;
+  > div:last-child { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  input { min-height: 44px; font-size: 14px; padding-right: 44px; }
+  [role='option'] { min-height: 44px; font-size: 14px; }
+  [role='option'][aria-selected='true'] { background: #1e40af; color: #fff; }
+}
+.feature-dialog {
+  border-radius: 20px;
+  > div { border-radius: 20px; }
+  footer { flex-shrink: 0; }
+}
+
+.feature-modal-shell {
+  margin: auto;
+  width: calc(100% - 24px);
+  max-width: 56rem;
+  max-height: 92dvh;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+  overflow: auto;
+  &::backdrop { background: rgb(15 23 42 / 50%); }
+  > div { margin: 0; max-width: none; max-height: 92dvh; }
+  form > div:last-child { position: sticky; bottom: -24px; background: #fff; padding-block: 16px; z-index: 1; }
+}
+
+.feature-ticket-dialog > div { overflow: hidden; }
+.feature-ticket-dialog > div > header > button { display: inline-flex; align-items: center; justify-content: center; }
+
+.feature-controls.feature-ticket-dialog, .feature-controls.feature-modal-shell { position: fixed; inset: 0; margin: auto; }
