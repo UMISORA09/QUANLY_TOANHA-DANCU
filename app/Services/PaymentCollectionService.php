@@ -39,11 +39,13 @@ class PaymentCollectionService
     public function collectPayment(array $data, ?string $staffUserId = null): array
     {
         $idempotencyKey = $data['idempotency_key'] ?? null;
+        $invoiceId = $data['invoice_id'];
 
-        // 1. Kiểm tra Idempotency chống thanh toán 2 lần
+        // 1. Kiểm tra Idempotency chống thanh toán 2 lần (gắn chặt với invoice_id)
         if ($idempotencyKey) {
             $existingPayment = Payment::with(['receipt', 'invoice'])
                 ->where('idempotency_key', $idempotencyKey)
+                ->where('invoice_id', $invoiceId)
                 ->where('payment_status', 'SUCCESS')
                 ->first();
 
@@ -59,7 +61,7 @@ class PaymentCollectionService
         }
 
         // 2. Kiểm tra hóa đơn
-        $invoice = Invoice::with(['apartment.block', 'residentUser'])->findOrFail($data['invoice_id']);
+        $invoice = Invoice::with(['apartment.block', 'residentUser'])->findOrFail($invoiceId);
 
         if ($invoice->status === 'CANCELLED') {
             throw new \DomainException('Hóa đơn này đã bị hủy bỏ, không thể thu tiền.');
@@ -93,7 +95,50 @@ class PaymentCollectionService
             $idempotencyKey
         ) {
             // Khóa dòng hóa đơn để đảm bảo concurrency an toàn
-            $lockedInvoice = Invoice::where('id', $invoice->id)->lockForUpdate()->first();
+            $lockedInvoice = Invoice::with(['apartment.block', 'residentUser'])
+                ->where('id', $invoice->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedInvoice) {
+                throw new \DomainException('Không tìm thấy thông tin hóa đơn.');
+            }
+
+            // Kiểm tra lại Idempotency sau khi khóa dòng (chống 2 request song song cùng key)
+            if ($idempotencyKey) {
+                $existingPayment = Payment::with(['receipt', 'invoice'])
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->where('invoice_id', $lockedInvoice->id)
+                    ->where('payment_status', 'SUCCESS')
+                    ->first();
+
+                if ($existingPayment) {
+                    return [
+                        'payment' => $existingPayment,
+                        'receipt' => $existingPayment->receipt,
+                        'invoice' => $existingPayment->invoice,
+                        'is_fully_paid' => $existingPayment->invoice?->status === 'PAID',
+                        'is_duplicate' => true,
+                    ];
+                }
+            }
+
+            // Kiểm tra lại trạng thái hóa đơn và số tiền trên dòng đã khóa (chống race condition)
+            if ($lockedInvoice->status === 'CANCELLED') {
+                throw new \DomainException('Hóa đơn này đã bị hủy bỏ, không thể thu tiền.');
+            }
+
+            if ($lockedInvoice->status === 'PAID' || (float) $lockedInvoice->remaining_balance <= 0) {
+                throw new \DomainException('Hóa đơn đã được thanh toán toàn bộ.');
+            }
+
+            if ($actualPayment <= 0) {
+                throw new \DomainException('Số tiền thanh toán phải lớn hơn 0 đồng.');
+            }
+
+            if ($actualPayment > (float) $lockedInvoice->remaining_balance) {
+                throw new \DomainException('Số tiền thanh toán không được lớn hơn dư nợ còn lại ('.number_format((float) $lockedInvoice->remaining_balance).' đ).');
+            }
 
             $cleanPeriod = str_replace('-', '', $lockedInvoice->billing_period);
             $cleanApt = str_replace(['/', ' '], '', $lockedInvoice->apartment?->apartment_number ?? 'APT');
@@ -128,8 +173,8 @@ class PaymentCollectionService
                 'status' => $newStatus,
             ]);
 
-            // 3. TỰ ĐỘNG SINH BIÊN LAI THU TIỀN (PaymentReceipt)
-            $receiptNumber = 'BL-'.date('Ym').'-'.str_pad((string) mt_rand(1, 99999), 5, '0', STR_PAD_LEFT);
+            // 3. TỰ ĐỘNG SINH BIÊN LAI THU TIỀN (PaymentReceipt) TUẦN TỰ THEO THÁNG
+            $receiptNumber = $this->generateSequentialReceiptNumber();
             $payerName = $this->resolvePayerName($payerUserId, $lockedInvoice);
             $amountInWords = $this->convertNumberToWords((int) round($actualPayment)).' đồng chẵn';
 
@@ -326,6 +371,25 @@ class PaymentCollectionService
             'receipt' => $payment->receipt,
             'invoice' => $payment->invoice,
         ];
+    }
+
+    /**
+     * Sinh số biên lai tuần tự theo tháng (định dạng BL-YYYYMM-00001, tự tăng khi vượt 99999) có khóa chống trùng
+     */
+    protected function generateSequentialReceiptNumber(): string
+    {
+        $prefix = 'BL-'.Carbon::now()->format('Ym').'-';
+        $latestReceipt = PaymentReceipt::where('receipt_number', 'like', "{$prefix}%")
+            ->orderByRaw('LENGTH(receipt_number) DESC, receipt_number DESC')
+            ->lockForUpdate()
+            ->first();
+
+        $nextSeq = 1;
+        if ($latestReceipt && preg_match('/^BL-\d{6}-(\d+)$/', (string) $latestReceipt->receipt_number, $matches)) {
+            $nextSeq = ((int) $matches[1]) + 1;
+        }
+
+        return $prefix.str_pad((string) $nextSeq, 5, '0', STR_PAD_LEFT);
     }
 
     /**
