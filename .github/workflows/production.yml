@@ -87,6 +87,7 @@ jobs:
           for i in {1..30}; do
             if mysqladmin ping -h 127.0.0.1 -u root -prootpassword --silent; then
               echo "MySQL is ready."
+              mysql -h 127.0.0.1 -u root -prootpassword -e "ALTER DATABASE quanly_toanha_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
               exit 0
             fi
             sleep 2
@@ -236,8 +237,8 @@ jobs:
 
           if [ "$CONFIGURED" != "true" ]; then
             echo "2. DEPLOY_STATUS:    SKIPPED (Production server credentials not configured)"
-            echo "ℹ️ OVERALL RESULT: BUILD VERIFIED & DEPLOYMENT SKIPPED (Awaiting server credentials)"
-            exit 0
+            echo "::error ::Deployment blocked: server credentials are missing."
+            exit 1
           elif [ "$SSH_OUTCOME" = "success" ]; then
             echo "2. DEPLOY_STATUS:    SUCCESS (SSH executed deploy.sh with target image)"
             echo "3. VERIFY_STATUS:    PASSED (Health, Smoke & Freshness verified)"

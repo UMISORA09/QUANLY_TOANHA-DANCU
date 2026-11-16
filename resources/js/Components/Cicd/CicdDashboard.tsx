@@ -42,6 +42,7 @@ import { SystemHealthView } from './SystemHealthView';
 import { ActivityTimeline } from './ActivityTimeline';
 import { RunPipelineModal } from './RunPipelineModal';
 import { RollbackModal } from './RollbackModal';
+import { HistoryPagination } from './HistoryPagination';
 
 interface CicdDashboardProps {
   userRole?: string;
@@ -51,9 +52,23 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
   // Navigation tabs within CI/CD Dashboard
   const [activeTab, setActiveTab] = useState<'pipelines' | 'deployments' | 'environments' | 'freshness' | 'security' | 'activity'>('pipelines');
 
-  // Data states
-  const [overview, setOverview] = useState<CicdOverviewStats | null>(null);
-  const [pipelines, setPipelines] = useState<PipelineItem[]>([]);
+  // Data states with Stale-While-Revalidate instant restore
+  const [overview, setOverview] = useState<CicdOverviewStats | null>(() => {
+    try {
+      const cached = sessionStorage.getItem('smartcassavas_cicd_overview');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [pipelines, setPipelines] = useState<PipelineItem[]>(() => {
+    try {
+      const cached = sessionStorage.getItem('smartcassavas_cicd_pipelines');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [deployments, setDeployments] = useState<DeploymentItem[]>([]);
   const [environments, setEnvironments] = useState<EnvironmentItem[]>([]);
   const [health, setHealth] = useState<SystemHealthStatus | null>(null);
@@ -62,9 +77,19 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
   const [freshness, setFreshness] = useState<FreshnessOverviewData | null>(null);
 
   // Loading & Error states
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    try {
+      return !sessionStorage.getItem('smartcassavas_cicd_overview');
+    } catch {
+      return true;
+    }
+  });
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [historyTotal, setHistoryTotal] = useState(0);
 
   // Filter state for pipelines
   const [filters, setFilters] = useState<FilterState>({
@@ -73,10 +98,14 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
     branch: 'all',
     workflow: 'all',
     dateRange: 'all',
+    author: 'all',
   });
+  const [pipelinePage, setPipelinePage] = useState(1);
 
   // Interactive drawer & modal states
   const [selectedPipeline, setSelectedPipeline] = useState<PipelineItem | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | undefined>();
+  const [selectedStepNumber, setSelectedStepNumber] = useState<number | undefined>();
   const [isDetailOpen, setIsDetailOpen] = useState<boolean>(false);
   const [isRunModalOpen, setIsRunModalOpen] = useState<boolean>(false);
   const [isRollbackModalOpen, setIsRollbackModalOpen] = useState<boolean>(false);
@@ -108,14 +137,15 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       ]);
 
       setOverview(bundle.overview);
-      setPipelines(bundle.pipelines);
+      try {
+        sessionStorage.setItem('smartcassavas_cicd_overview', JSON.stringify(bundle.overview));
+      } catch {}
       setDeployments(bundle.deployments);
       setEnvironments(bundle.environments);
       setHealth(bundle.health);
       if (bundle.security) {
         setSecurity(bundle.security);
       }
-      setActivities(bundle.activities);
       if (bundle.branches && bundle.branches.length > 0) {
         setGitBranches(bundle.branches);
       }
@@ -138,13 +168,28 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       if (filters.status && filters.status !== 'all' && p.status !== filters.status) {
         return false;
       }
+      if (filters.author !== 'all' && (p.author_login || p.author) !== filters.author) {
+        return false;
+      }
       // 2. Lọc theo nhánh
-      if (filters.branch && filters.branch !== 'all' && !p.branch.toLowerCase().includes(filters.branch.toLowerCase())) {
+      if (filters.branch && filters.branch !== 'all' && p.branch !== filters.branch) {
         return false;
       }
       // 3. Lọc theo workflow
-      if (filters.workflow && filters.workflow !== 'all' && !p.workflow_file.toLowerCase().includes(filters.workflow.toLowerCase())) {
+      if (filters.workflow && filters.workflow !== 'all' && p.workflow_file !== filters.workflow) {
         return false;
+      }
+      if (filters.dateRange !== 'all') {
+        const createdAt = new Date(p.created_at);
+        const cutoff = new Date();
+        if (filters.dateRange === 'today') {
+          cutoff.setHours(0, 0, 0, 0);
+        } else {
+          cutoff.setDate(cutoff.getDate() - (filters.dateRange === '7days' ? 7 : 30));
+        }
+        if (!Number.isFinite(createdAt.getTime()) || createdAt < cutoff || createdAt > new Date()) {
+          return false;
+        }
       }
       // 4. Tìm kiếm từ khóa tức thì
       if (filters.search && filters.search.trim()) {
@@ -161,6 +206,19 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       return true;
     });
   }, [pipelines, filters]);
+
+  const availableWorkflows = useMemo(() => Array.from(
+    new Map(pipelines.map(pipeline => [pipeline.workflow_file, { file: pipeline.workflow_file, name: pipeline.name }])).values(),
+  ), [pipelines]);
+  const availableAuthors = useMemo(() => Array.from(new Map(pipelines.map(pipeline => [pipeline.author_login || pipeline.author, {
+    login: pipeline.author_login || pipeline.author, name: pipeline.author,
+  }])).values()).sort((a, b) => a.name.localeCompare(b.name, 'vi')), [pipelines]);
+
+  const pipelinePageSize = 15;
+  const pipelineTotalPages = Math.max(1, Math.ceil(filteredPipelines.length / pipelinePageSize));
+  const currentPipelinePage = Math.min(pipelinePage, pipelineTotalPages);
+  const pipelinePageStart = (currentPipelinePage - 1) * pipelinePageSize;
+  const paginatedPipelines = filteredPipelines.slice(pipelinePageStart, pipelinePageStart + pipelinePageSize);
 
   useEffect(() => {
     fetchData();
@@ -180,42 +238,86 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
     return () => clearInterval(interval);
   }, [overview?.running_count, fetchData]);
 
-  // Tự động tải hoạt động mới theo thời gian thực (Real-time Activity Auto-refresh)
-  const [isRefreshingActivities, setIsRefreshingActivities] = useState<boolean>(false);
-  const fetchActivities = useCallback(async (force = false) => {
-    try {
-      setIsRefreshingActivities(true);
-      const newActs = await cicdApi.getActivities(force);
-      setActivities(newActs);
-    } catch (e) {
-      console.warn('Failed to refresh activities:', e);
-    } finally {
-      setIsRefreshingActivities(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (activeTab !== 'activity') return;
-
-    // Khi chuyển qua tab activity, tải mới ngay lập tức
-    fetchActivities(true);
-
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchActivities(true);
+    const controller = new AbortController();
+    let syncing = false;
+    let previousHead = new Set<string>();
+    const sync = async (full: boolean, force = false) => {
+      if (syncing) return;
+      syncing = true;
+      setHistoryLoading(true);
+      const runs: PipelineItem[] = [];
+      const events: ActivityItem[] = [];
+      try {
+        let page = 1;
+        let hasMore: boolean;
+        do {
+          let result;
+          try {
+            result = await cicdApi.getHistoryPage(page, force, controller.signal);
+          } catch (pageErr) {
+            if (page === 1) throw pageErr;
+            await new Promise(r => setTimeout(r, 800));
+            if (controller.signal.aborted) return;
+            result = await cicdApi.getHistoryPage(page, force, controller.signal);
+          }
+          if (controller.signal.aborted) return;
+          if (page === 1) {
+            if (previousHead.size && result.pipelines.length && !result.pipelines.some(item => previousHead.has(item.id))) full = true;
+            previousHead = new Set(result.pipelines.map(item => item.id));
+          }
+          runs.push(...result.pipelines);
+          events.push(...result.activities);
+          setHistoryTotal(result.total_pipelines);
+          setPipelines(previous => Array.from(new Map([...previous, ...result.pipelines].map(item => [item.id, item])).values()).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)));
+          setActivities(previous => Array.from(new Map([...previous, ...result.activities].map(item => [item.id, item])).values()).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)));
+          if (page === 1 && result.pipelines.length > 0) {
+            try {
+              sessionStorage.setItem('smartcassavas_cicd_pipelines', JSON.stringify(result.pipelines.slice(0, 30)));
+            } catch {}
+          }
+          hasMore = result.has_more;
+          page++;
+          if (full && hasMore) {
+            await new Promise(r => setTimeout(r, 40));
+          }
+        } while (full && hasMore);
+        if (full) {
+          setPipelines(Array.from(new Map(runs.map(item => [item.id, item])).values()).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)));
+          setActivities(Array.from(new Map(events.map(item => [item.id, item])).values()).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)));
+        }
+        setHistoryError(null);
+      } catch (err) {
+        if (!controller.signal.aborted) setHistoryError((err as Error).message);
+      } finally {
+        syncing = false;
+        if (!controller.signal.aborted) setHistoryLoading(false);
       }
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, [activeTab, fetchActivities]);
+    };
+    void sync(true, historyRefresh > 0);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void sync(false);
+    }, 15000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void sync(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [historyRefresh]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchData(true, true);
-    showToast('Đã làm mới dữ liệu CI/CD từ GitHub');
+    setHistoryRefresh(value => value + 1);
   };
 
   const handleSelectPipeline = (pipeline: PipelineItem) => {
+    setSelectedJobId(undefined);
+    setSelectedStepNumber(undefined);
     setSelectedPipeline(pipeline);
     setIsDetailOpen(true);
   };
@@ -252,7 +354,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
   };
 
   return (
-    <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all">
+    <div className="w-full min-w-0 space-y-6 transition-all">
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -365,6 +467,8 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       )}
 
       {/* 5-6 STATS CARDS */}
+      {historyError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{historyError} <button type="button" onClick={() => setHistoryRefresh(value => value + 1)} className="ml-2 underline">Thử đồng bộ lại</button></div>}
+      <p role="status" className="text-xs text-slate-500">{historyLoading ? `Đang đồng bộ lịch sử GitHub: ${pipelines.length}/${historyTotal} pipelines đã tải…` : 'Tự cập nhật mỗi 15 giây khi tab đang mở.'}</p>
       <PipelineStatsCards stats={overview} isLoading={isLoading} />
 
       {/* LATEST PIPELINE FLOW VISUALIZATION */}
@@ -380,7 +484,11 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
           </div>
           <PipelineFlow
             pipeline={overview.latest_pipeline}
-            onSelect={() => handleSelectPipeline(overview.latest_pipeline!)}
+            onSelect={(jobId, stepNumber) => {
+              handleSelectPipeline(overview.latest_pipeline!);
+              setSelectedJobId(jobId);
+              setSelectedStepNumber(stepNumber);
+            }}
           />
         </div>
       )}
@@ -428,16 +536,24 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       {activeTab === 'pipelines' && (
         <div className="space-y-4">
           <PipelineFilters
-            onFilterChange={setFilters}
-            availableBranches={['all', ...gitBranches]}
+            onFilterChange={(nextFilters) => {
+              setFilters(nextFilters);
+              setPipelinePage(1);
+            }}
+            availableBranches={Array.from(new Set([...gitBranches, ...pipelines.map(pipeline => pipeline.branch)]))}
+            availableWorkflows={availableWorkflows}
+            availableAuthors={availableAuthors}
             totalResults={filteredPipelines.length}
           />
           <PipelineTable
-            pipelines={filteredPipelines}
-            isLoading={isLoading && pipelines.length === 0}
+            pipelines={paginatedPipelines}
+            isLoading={historyLoading && pipelines.length === 0}
             onSelectPipeline={handleSelectPipeline}
             canRun={canRunPipeline}
           />
+          {filteredPipelines.length > 0 && (
+            <HistoryPagination page={currentPipelinePage} total={filteredPipelines.length} onPageChange={setPipelinePage} label="Phân trang pipelines" itemLabel="pipelines" />
+          )}
         </div>
       )}
 
@@ -450,7 +566,7 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
             onTriggerRollback={handleTriggerRollback}
             canDeploy={canDeploy}
           />
-          <DeploymentTimeline />
+          <DeploymentTimeline deployments={deployments} />
         </div>
       )}
 
@@ -617,15 +733,17 @@ export const CicdDashboard: React.FC<CicdDashboardProps> = ({ userRole = 'admin'
       {activeTab === 'activity' && (
         <ActivityTimeline
           activities={activities}
-          isLoading={isLoading}
-          onRefresh={() => fetchActivities(true)}
-          isRefreshing={isRefreshingActivities}
+          isLoading={historyLoading && activities.length === 0}
+          onRefresh={() => setHistoryRefresh(value => value + 1)}
+          isRefreshing={historyLoading}
         />
       )}
 
       {/* PIPELINE DETAIL DRAWER */}
       <PipelineDetailDrawer
         pipeline={selectedPipeline}
+        initialJobId={selectedJobId}
+        initialStepNumber={selectedStepNumber}
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
         onPipelineUpdated={() => fetchData(true)}

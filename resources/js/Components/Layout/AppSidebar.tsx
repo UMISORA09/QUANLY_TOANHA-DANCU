@@ -31,6 +31,7 @@ export interface AppSidebarProps {
   onSetHoveredTooltip: (
     tooltip: { label: string; badge?: string | number | null; top: number } | null
   ) => void;
+  hideBrandHeader?: boolean;
 }
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({
@@ -48,6 +49,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   onLogout,
   onNavigateHome,
   onSetHoveredTooltip,
+  hideBrandHeader = false,
 }) => {
   const { can } = usePermission();
 
@@ -133,61 +135,63 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         }`}
       >
         {/* ================= TOP BRAND HEADER ================= */}
-        <div
-          className={`p-4 border-b border-slate-200/60 flex items-center ${
-            isDesktopCollapsed ? 'justify-center' : 'justify-between'
-          }`}
-        >
+        {!hideBrandHeader && (
           <div
-            className={`flex items-center ${isDesktopCollapsed ? 'justify-center' : 'gap-3'} min-w-0 cursor-pointer`}
-            onClick={() => {
-              if (onNavigateHome) {
-                onNavigateHome();
-              } else if (isDesktopCollapsed) {
-                onToggleCollapse();
-              }
-            }}
-            title={isDesktopCollapsed ? 'Bấm để mở rộng thanh menu' : 'Về trang chủ'}
+            className={`p-4 border-b border-slate-200/60 flex items-center ${
+              isDesktopCollapsed ? 'justify-center' : 'justify-between'
+            }`}
           >
-            <div className="relative group shrink-0">
-              <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center text-white shadow-md shadow-neutral-900/20 group-hover:scale-105 transition-all duration-300">
-                <RoleIcon className="w-5 h-5 text-sky-400 group-hover:rotate-6 transition-transform" />
+            <div
+              className={`flex items-center ${isDesktopCollapsed ? 'justify-center' : 'gap-3'} min-w-0 cursor-pointer`}
+              onClick={() => {
+                if (onNavigateHome) {
+                  onNavigateHome();
+                } else if (isDesktopCollapsed) {
+                  onToggleCollapse();
+                }
+              }}
+              title={isDesktopCollapsed ? 'Bấm để mở rộng thanh menu' : 'Về trang chủ'}
+            >
+              <div className="relative group shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center text-white shadow-md shadow-neutral-900/20 group-hover:scale-105 transition-all duration-300">
+                  <RoleIcon className="w-5 h-5 text-sky-400 group-hover:rotate-6 transition-transform" />
+                </div>
+                <div className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-sky-400 to-indigo-500 opacity-0 group-hover:opacity-30 blur-xs transition-opacity -z-10" />
               </div>
-              <div className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-sky-400 to-indigo-500 opacity-0 group-hover:opacity-30 blur-xs transition-opacity -z-10" />
+
+              {!isDesktopCollapsed && (
+                <div className="min-w-0 transition-opacity duration-200">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-sm tracking-wider text-neutral-900 font-mono truncate">
+                      SMART CASSAVAS
+                    </span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  </div>
+                  <span className="text-[10px] tracking-widest font-semibold uppercase text-sky-600 block truncate">
+                    {config.portalSubtitle}
+                  </span>
+                </div>
+              )}
             </div>
 
             {!isDesktopCollapsed && (
-              <div className="min-w-0 transition-opacity duration-200">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-sm tracking-wider text-neutral-900 font-mono truncate">
-                    SMART CASSAVAS
-                  </span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                </div>
-                <span className="text-[10px] tracking-widest font-semibold uppercase text-sky-600 block truncate">
-                  {config.portalSubtitle}
-                </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onMobileClose}
+                  className="lg:hidden p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer active:scale-95"
+                  aria-label="Đóng menu điều hướng"
+                  title="Đóng menu"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             )}
           </div>
-
-          {!isDesktopCollapsed && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={onMobileClose}
-                className="lg:hidden p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer active:scale-95"
-                aria-label="Đóng menu điều hướng"
-                title="Đóng menu"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* ================= SECTION TITLE ================= */}
-        <div className={`px-4 pt-4 pb-2 shrink-0 ${isDesktopCollapsed ? 'flex justify-center' : ''}`}>
+        <div className={`px-4 ${hideBrandHeader ? 'pt-5 pb-2.5' : 'pt-4 pb-2'} shrink-0 ${isDesktopCollapsed ? 'flex justify-center' : ''}`}>
           {isDesktopCollapsed ? (
             <div className="w-8 h-1 rounded-full bg-slate-200 flex items-center justify-center relative my-1">
               <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
@@ -198,7 +202,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 {config.sectionTitle}
               </span>
               <span className="relative flex h-2 w-2 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
               </span>
             </div>
@@ -215,7 +218,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           >
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeItemId === item.id;
+              const isActive =
+                activeItemId === item.id ||
+                (item.id === 'meter_readings' && (activeItemId === 'metering' || activeItemId === 'chot_chi_so')) ||
+                (item.id === 'pricing_configs' && (activeItemId === 'pricing' || activeItemId === 'don_gia'));
 
               return (
                 <div key={item.id} className="relative group">

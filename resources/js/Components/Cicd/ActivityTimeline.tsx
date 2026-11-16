@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ActivityItem } from '../../Services/cicdApi';
 import { RefreshCw } from 'lucide-react';
+import { HistoryPagination } from './HistoryPagination';
 
 interface ActivityTimelineProps {
   activities: ActivityItem[];
@@ -28,10 +29,13 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   isRefreshing = false,
 }) => {
   const [filterType, setFilterType] = useState<string>('all');
+  const [page, setPage] = useState(1);
 
   const filtered = filterType === 'all'
     ? activities
     : activities.filter((a) => a.type === filterType);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 15)));
+  const visibleActivities = filtered.slice((currentPage - 1) * 15, currentPage * 15);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -64,6 +68,13 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
             Thất bại
           </span>
         );
+      case 'recorded':
+        return <span className="text-[10px] text-slate-500 shrink-0">Đã ghi nhận commit</span>;
+      case 'cancelled':
+      case 'skipped':
+        return <span className="text-[10px] text-slate-500 shrink-0">{status === 'cancelled' ? 'Đã hủy' : 'Bỏ qua'}</span>;
+      case 'queued':
+        return <span className="text-[10px] text-amber-600 shrink-0">Đang chờ</span>;
       default:
         return (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
@@ -102,7 +113,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-sky-600" />
-            <h3 className="text-sm font-bold text-neutral-900">Nhật ký Hoạt động DevOps (Recent Activity)</h3>
+            <h3 className="text-sm font-bold text-neutral-900">Nhật ký Hoạt động GitHub</h3>
           </div>
           {/* Live indicator */}
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
@@ -117,11 +128,11 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
         <div className="flex items-center gap-2">
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-1 text-xs">
-            {['all', 'build', 'deploy', 'test', 'security'].map((type) => (
+            {['all', 'commit', 'build', 'deploy', 'test', 'security', 'rollback'].map((type) => (
               <button
                 key={type}
                 type="button"
-                onClick={() => setFilterType(type)}
+                onClick={() => { setFilterType(type); setPage(1); }}
                 className={`px-2.5 py-1 rounded-lg font-bold capitalize transition-colors cursor-pointer ${
                   filterType === type
                     ? 'bg-neutral-900 text-white shadow-2xs'
@@ -142,6 +153,8 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                 isRefreshing ? 'animate-spin text-sky-600' : ''
               }`}
               title="Làm mới nhật ký ngay"
+              aria-label="Làm mới nhật ký ngay"
+              disabled={isRefreshing}
             >
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -150,38 +163,41 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
       </div>
 
       {/* Activity List */}
-      <div className="divide-y divide-slate-100">
+      <div role="list" aria-label="Lịch sử hoạt động GitHub" className="max-h-[70vh] overflow-y-auto divide-y divide-slate-100">
         {filtered.length === 0 ? (
           <div className="py-6 text-center text-xs text-slate-400">
             Không có hoạt động nào trong danh mục này.
           </div>
         ) : (
-          filtered.map((act) => (
-            <div key={act.id} className="py-3 flex items-start gap-3 text-xs group">
+          visibleActivities.map((act) => (
+            <div role="listitem" key={act.id} className="py-3 flex items-start gap-3 text-xs group">
               <div className="p-2 rounded-xl bg-slate-100 shrink-0 group-hover:bg-slate-200/80 transition-colors">
                 {getTypeIcon(act.type)}
               </div>
 
               <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-bold text-neutral-900 truncate">{act.title}</span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <span className="font-bold text-neutral-900 whitespace-pre-wrap break-words">{act.title}</span>
                     {getStatusBadge(act.status)}
                   </div>
                   <span className="text-[11px] text-slate-400 font-mono shrink-0">
                     {formatRelativeTime(act.timestamp)}
                   </span>
                 </div>
-                <p className="text-slate-500 line-clamp-1">{act.description}</p>
+                <p className="text-slate-500 break-words">{act.description}</p>
                 <div className="flex items-center gap-2 pt-0.5 text-[10px] text-slate-400">
                   <User className="w-3 h-3" />
                   <span>{act.actor}</span>
+                  <time dateTime={act.timestamp}>{new Date(act.timestamp).toLocaleString('vi-VN')}</time>
+                  {act.url && <a href={act.url} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline">GitHub</a>}
                 </div>
               </div>
             </div>
           ))
         )}
       </div>
+      <HistoryPagination page={currentPage} total={filtered.length} onPageChange={setPage} label="Phân trang nhật ký" itemLabel="hoạt động" />
     </div>
   );
 };

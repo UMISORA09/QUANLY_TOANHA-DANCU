@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Permission;
+use App\Services\QuocTinRealtimeService;
 use App\Services\RbacService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -24,7 +26,29 @@ class PermissionController extends Controller
         $search = trim((string) $request->input('search', ''));
         $module = trim((string) $request->input('module', ''));
 
-        $query = Permission::query();
+        if ($search === '' && $module === '') {
+            $cacheKey = 'rbac_permissions_all_'.($grouped ? 'grouped' : 'flat');
+            $cached = Cache::remember($cacheKey, 120, function () use ($grouped) {
+                $permissions = Permission::query()
+                    ->select(['id', 'module', 'permission_code', 'permission_name', 'description', 'created_at'])
+                    ->orderBy('module')
+                    ->orderBy('permission_code')
+                    ->get();
+
+                return [
+                    'data' => $grouped ? $permissions->groupBy('module') : $permissions,
+                    'total' => $permissions->count(),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $cached['data'],
+                'total' => $cached['total'],
+            ]);
+        }
+
+        $query = Permission::query()->select(['id', 'module', 'permission_code', 'permission_name', 'description', 'created_at']);
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -62,7 +86,9 @@ class PermissionController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $permission = Permission::with('roles')->findOrFail($id);
+        $permission = Permission::select(['id', 'module', 'permission_code', 'permission_name', 'description', 'created_at'])
+            ->with(['roles:id,role_code,role_name'])
+            ->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -75,6 +101,8 @@ class PermissionController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+
         $validated = $request->validate([
             'module' => 'required|string|max:50|regex:/^[A-Z0-9_]+$/',
             'permission_code' => 'required|string|max:80|regex:/^[A-Z0-9_]+:[A-Z0-9_]+$/|unique:permissions,permission_code',
@@ -95,6 +123,10 @@ class PermissionController extends Controller
 
         $this->rbacService->logAudit('permissions', $permission->id, 'INSERT', $actor, null, $permission->toArray(), $request);
 
+        Cache::forget('rbac_permissions_all_grouped');
+        Cache::forget('rbac_permissions_all_flat');
+        QuocTinRealtimeService::emit('rbac', 'permission', 'CREATED', $permission->id, ['permission_code' => $permission->permission_code]);
+
         return response()->json([
             'success' => true,
             'message' => "Tạo quyền hạn '{$permission->permission_code}' thành công.",
@@ -107,6 +139,8 @@ class PermissionController extends Controller
      */
     public function update(Request $request, string $id): JsonResponse
     {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+
         $permission = Permission::findOrFail($id);
         $actor = $request->user();
 
@@ -136,6 +170,10 @@ class PermissionController extends Controller
 
         $this->rbacService->logAudit('permissions', $permission->id, 'UPDATE', $actor, $oldData, $permission->toArray(), $request);
 
+        Cache::forget('rbac_permissions_all_grouped');
+        Cache::forget('rbac_permissions_all_flat');
+        QuocTinRealtimeService::emit('rbac', 'permission', 'UPDATED', $permission->id, ['permission_code' => $permission->permission_code]);
+
         return response()->json([
             'success' => true,
             'message' => "Cập nhật quyền hạn '{$permission->permission_code}' thành công.",
@@ -148,6 +186,8 @@ class PermissionController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+
         $permission = Permission::findOrFail($id);
         $actor = $request->user();
 
@@ -163,6 +203,10 @@ class PermissionController extends Controller
         $permission->delete();
 
         $this->rbacService->logAudit('permissions', $permission->id, 'DELETE', $actor, $oldData, null, $request);
+
+        Cache::forget('rbac_permissions_all_grouped');
+        Cache::forget('rbac_permissions_all_flat');
+        QuocTinRealtimeService::emit('rbac', 'permission', 'DELETED', $id);
 
         return response()->json([
             'success' => true,

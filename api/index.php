@@ -5,6 +5,15 @@ use Illuminate\Http\Request;
 
 define('LARAVEL_START', microtime(true));
 
+// The rewrite target is not the application's public /api URL prefix.
+$_SERVER['SCRIPT_NAME'] = '/index.php';
+$_SERVER['PHP_SELF'] = '/index.php';
+
+// Warm serverless workers must not reuse PDO connections closed by MySQL during idle time.
+putenv('DB_PERSISTENT=false');
+$_ENV['DB_PERSISTENT'] = 'false';
+$_SERVER['DB_PERSISTENT'] = 'false';
+
 // Setup writable storage directory in /tmp for Vercel Serverless environment
 $storagePath = '/tmp/storage';
 putenv('LARAVEL_STORAGE_PATH='.$storagePath);

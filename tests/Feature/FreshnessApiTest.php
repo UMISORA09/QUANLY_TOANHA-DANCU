@@ -66,19 +66,12 @@ class FreshnessApiTest extends TestCase
     }
 
     /**
-     * Kiểm tra endpoint alias GET /api/admin/cicd/freshness hoạt động đồng nhất
+     * Endpoint Freshness dành cho admin yêu cầu phiên đăng nhập.
      */
-    public function test_admin_cicd_freshness_alias_endpoint(): void
+    public function test_admin_cicd_freshness_alias_requires_authentication(): void
     {
         $response = $this->getJson('/api/admin/cicd/freshness');
 
-        $response->assertStatus(200);
-        $response->assertJsonStructure([
-            'status',
-            'overall_state',
-            'checked_at',
-            'collector',
-            'database',
-        ]);
+        $response->assertUnauthorized();
     }
 }

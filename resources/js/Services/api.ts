@@ -13,6 +13,7 @@ const SUGGESTION_TTL = 60 * 1000; // 60s
 
 export interface Category {
   id: string;
+  version: number;
   category_name: string;
   category_code: string;
   icon_name?: string | null;
@@ -72,9 +73,71 @@ export interface AmenityBooking {
   status: string;
   checkin_qr_code: string;
   checked_in_at?: string | null;
+  rejection_reason?: string | null;
+  approved_at?: string | null;
+  approved_by_user_id?: string | null;
   resident_notes?: string | null;
   admin_notes?: string | null;
   created_at: string;
+  payment?: AmenityBookingPayment | null;
+}
+
+export interface AmenityBookingPayment {
+  id: string;
+  booking_id: string;
+  reference: string;
+  amount: number;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  status: 'WAITING_APPROVAL' | 'PENDING' | 'REPORTED' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'REVIEW';
+  expires_at: string | null;
+  qr_url: string | null;
+  can_pay: boolean;
+  checkout_available?: boolean;
+  checkout_environment?: 'sandbox' | 'production';
+  can_confirm: boolean;
+  refund_required: boolean;
+  bank_transaction_id: string | null;
+  received_amount: number | null;
+  received_at: string | null;
+  confirmed_at: string | null;
+  review_reason: string | null;
+  review_due_at?: string | null;
+  review_overdue?: boolean;
+}
+
+export interface AmenityBookingNotification {
+  id: string;
+  title: string;
+  message: string;
+  category: 'AMENITY_BOOKING' | 'AMENITY';
+  timeAgo: string;
+  isRead: boolean;
+  deepLink: string;
+}
+
+export interface AmenityNotificationFeed {
+  items: AmenityBookingNotification[];
+  unread_count: number;
+  page: number;
+  total_pages: number;
+  latest_unread?: AmenityBookingNotification | null;
+}
+
+export interface AmenityClosureImpact {
+  count: number;
+  received_amount: number;
+  reported_count: number;
+  confirmation_token: string;
+  items: { booking_code: string; booking_date: string; start_time: string; end_time: string }[];
+}
+
+export interface AmenityBookingWorklist {
+  items: Array<{ id: string; booking_code: string; amenity_id: string; amenity_name: string; resident_name: string; apartment_number: string; booking_date: string; start_time: string; end_time: string; review_overdue: boolean }>;
+  counts: Record<'PENDING' | 'REPORTED' | 'REVIEW', number>;
+  page: number;
+  total_pages: number;
 }
 
 export interface AmenityListResponse {
@@ -86,6 +149,24 @@ export interface AmenityListResponse {
   search_time_ms?: number;
   corrected_query?: string | null;
   is_fuzzy?: boolean;
+  engine?: string;
+  applied_query?: string;
+  is_corrected?: boolean;
+  fallback_reason?: string | null;
+}
+
+export interface AmenitySearchMetrics {
+  days: number;
+  requests: number;
+  zero_result_rate: number;
+  fallback_rate: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  engines: Array<{ engine: string; requests: number }>;
+  fallback_reasons: Array<{ fallback_reason: string; requests: number }>;
+  dirty_documents: number;
+  failed_documents: number;
+  last_synced_at: string | null;
 }
 
 export interface ResidentAmenityCatalog {
@@ -144,8 +225,207 @@ export interface ApiError extends Error {
   errors?: Record<string, string[]>;
 }
 
+export interface ResidentVisitorItem {
+  id: string;
+  registration_code: string;
+  host_resident_user_id: string;
+  apartment_id: string;
+  visitor_name: string;
+  visitor_phone: string;
+  visitor_national_id?: string | null;
+  expected_arrival_time: string;
+  expected_departure_time?: string | null;
+  visit_purpose: string;
+  visitor_count: number;
+  vehicle_license_plate?: string | null;
+  qr_access_pass_code: string;
+  qr_pass_status: 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED';
+  is_pre_approved_by_resident: boolean;
+  created_at: string;
+  updated_at: string;
+  apartment_number?: string;
+  block_name?: string;
+  block_code?: string;
+}
+
+export interface ResidentVisitorListResponse {
+  success: boolean;
+  data: ResidentVisitorItem[];
+  kpis: {
+    total: number;
+    active: number;
+    used: number;
+    cancelled: number;
+    expired: number;
+  };
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+  };
+}
+
+export interface ResidentVisitorDetailResponse {
+  success: boolean;
+  data: ResidentVisitorItem;
+  checkin_log?: any | null;
+  cooldown?: {
+    cooldown_seconds: number;
+    retry_after: number;
+    cooldown_until: string;
+  } | null;
+}
+
+export interface ReceptionVisitorItem {
+  id: string;
+  registration_id: string;
+  registration_code: string;
+  qr_access_pass_code: string;
+  visitor_name: string;
+  visitor_phone: string;
+  visitor_national_id?: string | null;
+  expected_arrival_time: string;
+  expected_departure_time?: string | null;
+  visit_purpose: string;
+  visitor_count: number;
+  vehicle_license_plate?: string | null;
+  qr_pass_status: string;
+  is_pre_approved_by_resident: boolean;
+  status: 'EXPECTED' | 'INSIDE' | 'CHECKED_OUT' | 'CANCELLED' | 'EXPIRED';
+  status_label: string;
+  status_color: 'indigo' | 'blue' | 'emerald' | 'rose' | 'gray' | 'amber';
+  apartment: {
+    id: string;
+    number: string;
+    block_code?: string;
+    block_name?: string;
+  };
+  host: {
+    id?: string;
+    name?: string;
+    phone?: string;
+  };
+  checkin_log?: {
+    id: string;
+    checkin_time: string;
+    checkout_time?: string | null;
+    temp_card_id?: string | null;
+    assigned_elevator_access?: string | null;
+    notes?: string | null;
+    receptionist_user_id?: string | null;
+    security_guard_user_id?: string | null;
+  } | null;
+  created_at: string;
+}
+export interface ReceptionVisitorListResponse {
+  success: boolean;
+  data: ReceptionVisitorItem[];
+  kpis: {
+    expected_today: number;
+    currently_inside: number;
+    checked_out_today: number;
+    total_registrations: number;
+  };
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_more: boolean;
+  };
+}
+
+export interface ReceptionVisitorLookupResponse {
+  success: boolean;
+  data: {
+    registration: any;
+    status: string;
+    status_label: string;
+    status_color: string;
+    can_checkin: boolean;
+    can_checkout: boolean;
+    latest_checkin_log?: any | null;
+  };
+}
+
+// ================= PARCEL RECEPTION (MODULE #9) =================
+export interface ParcelItem {
+  id: string;
+  tracking_number: string;
+  courier_company: string;
+  apartment_id: string;
+  recipient_user_id?: string | null;
+  recipient_name: string;
+  recipient_phone: string;
+  parcel_photo_url: string;
+  stored_location_type: 'RECEPTION_DESK' | 'SMART_LOCKER' | 'SECURITY_BOOTH' | string;
+  locker_compartment_id?: string | null;
+  pickup_pin_code: string;
+  pickup_qr_code: string;
+  status: 'RECEIVED_AT_RECEPTION' | 'RECEIVED' | 'DELIVERED' | 'RETURNED' | string;
+  received_at: string;
+  received_by_staff_id?: string | null;
+  collected_at?: string | null;
+  collected_by_name?: string | null;
+  collected_signature_url?: string | null;
+  checkout_staff_id?: string | null;
+  notes?: string | null;
+  created_at: string;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id?: string;
+    block?: {
+      id: string;
+      block_name?: string;
+      block_code?: string;
+    };
+  };
+  recipient_user?: {
+    id: string;
+    full_name: string;
+    phone_number?: string;
+  } | null;
+  received_by_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
+  checkout_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
+}
+
+export interface ParcelListResponse {
+  success: boolean;
+  data: ParcelItem[];
+  kpis: {
+    pending_parcels: number;
+    expiring_parcels?: number;
+    overdue_parcels: number;
+    received_today: number;
+    total_parcels: number;
+  };
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_more: boolean;
+  };
+}
+
+export interface ParcelDetailResponse {
+  success: boolean;
+  data: ParcelItem;
+}
+
+
+
 export interface TimeSlot {
   id: string;
+  version: number;
   amenity_id: string;
   day_of_week: number;
   slot_start_time: string;
@@ -155,9 +435,9 @@ export interface TimeSlot {
   is_active: boolean;
   created_at: string;
 }
-
 export interface Blackout {
   id: string;
+  version: number;
   amenity_id: string;
   blackout_date: string;
   start_time?: string | null;
@@ -166,7 +446,6 @@ export interface Blackout {
   created_by?: string | null;
   created_at: string;
 }
-
 export interface BlockOption {
   id: string;
   block_code: string;
@@ -183,7 +462,41 @@ export interface SwrOptions<T> {
 
 class ApiService {
   private getToken(): string | null {
-    return localStorage.getItem('smart_cassavas_token');
+    let token = typeof window !== 'undefined' ? localStorage.getItem('smart_cassavas_token') : null;
+    const sessionStr = typeof window !== 'undefined' ? localStorage.getItem('smartcassavas_session') : null;
+
+    // Dọn dẹp token demo sót lại nếu người dùng không hề có phiên đăng nhập active
+    if (token && token.startsWith('smart_token_') && token.endsWith('_demo') && !sessionStr) {
+      try {
+        localStorage.removeItem('smart_cassavas_token');
+        localStorage.removeItem('smart_cassavas_user');
+      } catch {
+        // ignore
+      }
+      token = null;
+    }
+
+    if (!token && sessionStr) {
+      try {
+        const session = JSON.parse(sessionStr);
+        if (session.token || session.access_token) {
+          token = session.token || session.access_token;
+        } else if (session.role === 'admin' || session.isDev) {
+          token = 'smart_token_admin_demo';
+        } else if (session.role === 'receptionist' || session.role === 'security') {
+          token = 'smart_token_reception_demo';
+        } else if (session.role === 'resident' || session.role?.toLowerCase?.().includes('resident')) {
+          token = 'smart_token_resident_demo';
+        } else if (session.role === 'manager' || session.role?.toLowerCase?.().includes('manager')) {
+          token = 'smart_token_manager_demo';
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Nếu không có token và không có phiên đăng nhập, tuyệt đối không tự động sinh token demo giả lập
+    return token || null;
   }
 
   public getAuthToken(): string | null {
@@ -192,6 +505,7 @@ class ApiService {
 
   public setToken(token: string) {
     localStorage.setItem('smart_cassavas_token', token);
+    window.dispatchEvent(new Event('AUTH_SESSION_CHANGED'));
   }
 
   public removeToken() {
@@ -205,6 +519,10 @@ class ApiService {
       return this.request<{ success: boolean; data: UserRbac }>(`/users/${id}`);
     }
     try {
+      const token = this.getToken();
+      if (!token) {
+        return null;
+      }
       const u = localStorage.getItem('smart_cassavas_user');
       return u ? JSON.parse(u) : null;
     } catch {
@@ -222,9 +540,21 @@ class ApiService {
 
   public logout() {
     this.removeToken();
-    localStorage.removeItem('smart_cassavas_user');
+    try {
+      localStorage.removeItem('smart_cassavas_user');
+      localStorage.removeItem('smartcassavas_session');
+      localStorage.removeItem('admin_auth_user');
+      localStorage.removeItem('smart_user_session');
+      localStorage.removeItem('smartcassavas_active_admin_tab');
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
     amenityCache.clearAll();
+    window.dispatchEvent(new Event('AUTH_SESSION_CHANGED'));
   }
+
+  private inflightGetRequests = new Map<string, Promise<{ data: any; etag: string | null; notModified: boolean }>>();
 
   /**
    * Enhanced HTTP Request with ETag support & automatic header propagation
@@ -237,11 +567,22 @@ class ApiService {
     const url = `${API_BASE_URL}${endpoint}`;
     const token = this.getToken();
 
+    const isGet = !options.method || options.method.toUpperCase() === 'GET';
+    const dedupeKey = isGet && !etag && !options.signal && !options.headers && options.cache !== 'no-store' ? `GET:${url}:${token || ''}` : null;
+
+    if (dedupeKey && this.inflightGetRequests.has(dedupeKey)) {
+      return this.inflightGetRequests.get(dedupeKey)! as Promise<{ data: T | null; etag: string | null; notModified: boolean }>;
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       ...(options.headers as Record<string, string> || {}),
     };
+
+    if (options.body instanceof FormData) {
+      delete headers['Content-Type'];
+    }
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -251,43 +592,60 @@ class ApiService {
       headers['If-None-Match'] = etag;
     }
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+    const executeFetch = async (): Promise<{ data: T | null; etag: string | null; notModified: boolean }> => {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers,
+        });
 
-      if (response.status === 304) {
-        return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        if (response.status === 304) {
+          return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        }
+
+        if (response.status === 204) {
+          return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
+        }
+
+        const newEtag = response.headers.get('ETag');
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
+          const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+          error.status = response.status;
+          error.data = data;
+          error.errors = data?.errors;
+          throw error;
+        }
+
+        return { data: data as T, etag: newEtag, notModified: false };
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return { data: null, etag: null, notModified: true };
+        }
+        throw err;
       }
+    };
 
-      if (response.status === 204) {
-        return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
-      }
+    const fetchPromise = executeFetch();
 
-      const newEtag = response.headers.get('ETag');
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
-        const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-        error.status = response.status;
-        error.data = data;
-        error.errors = data?.errors;
-        throw error;
-      }
-
-      return { data: data as T, etag: newEtag, notModified: false };
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        return { data: null, etag: null, notModified: true };
-      }
-      throw err;
+    if (dedupeKey) {
+      this.inflightGetRequests.set(dedupeKey, fetchPromise);
+      const clearInflight = () => { this.inflightGetRequests.delete(dedupeKey); };
+      void fetchPromise.then(clearInflight, clearInflight);
     }
+
+    return fetchPromise;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const res = await this.requestWithEtag<T>(endpoint, null, options);
+    if ((!res || res.data === null) && options.signal?.aborted) {
+      const abortError = new Error('Request was aborted');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
     return res.data as T;
   }
 
@@ -301,12 +659,11 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ username: identifier, identifier, password }),
     });
-    if (res.access_token) {
-      this.setToken(res.access_token);
+    if (!res.access_token || !res.user?.id || !Array.isArray(res.user.roles) || res.user.roles.length === 0) {
+      throw new Error('Phản hồi đăng nhập không có phiên hoặc quyền hợp lệ.');
     }
-    if (res.user) {
-      this.setUser(res.user);
-    }
+    this.setToken(res.access_token);
+    this.setUser(res.user);
     amenityCache.clearAll();
     return res;
   }
@@ -453,8 +810,13 @@ class ApiService {
   async getCategories(forceRefresh: boolean = false): Promise<Category[]> {
     const key = 'amenities:categories';
     const cached = amenityCache.get<Category[]>(key);
+    if (forceRefresh) {
+      const data = await this.request<Category[]>('/admin/amenity-categories', { cache: 'no-store' });
+      amenityCache.set(key, data, null, 10 * 60 * 1000);
+      return data;
+    }
 
-    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.isFresh) {
+    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.data.every((category) => typeof category.version === 'number') && cached.isFresh) {
       return cached.data;
     }
 
@@ -502,6 +864,7 @@ class ApiService {
   async updateCategory(
     id: string,
     payload: {
+      version: number;
       category_name: string;
       category_code: string;
       icon_name?: string | null;
@@ -517,9 +880,10 @@ class ApiService {
     return result;
   }
 
-  async deleteCategory(id: string): Promise<void> {
+  async deleteCategory(id: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenity-categories/${id}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateCategories();
     amenityCache.broadcastMutation('CATEGORY_CHANGED', id);
@@ -633,7 +997,7 @@ class ApiService {
     const trimmed = query.trim();
     if (!trimmed || trimmed.length < 2) return [];
 
-    const cacheKey = `${type}:${trimmed.toLowerCase()}`;
+    const cacheKey = `${this.getUser()?.id ?? 'anonymous'}:${type}:${trimmed.toLowerCase()}`;
     const cached = suggestionCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < SUGGESTION_TTL) {
       return cached.data;
@@ -787,10 +1151,19 @@ class ApiService {
     return item;
   }
 
-  async createAmenity(payload: Partial<Amenity>): Promise<Amenity> {
+  async amenityGalleryImage(path: string, signal: AbortSignal): Promise<Blob> {
+    if (!/^\/api\/v1\/admin\/amenity-images\/(local|s3|supabase)\/[a-f0-9-]{36}\.(jpg|png|webp)$/.test(path)) throw new Error('Đường dẫn ảnh tiện ích không hợp lệ.');
+    const response = await fetch(API_BASE_URL + path.slice('/api/v1'.length), { signal, cache: 'no-store', headers: { Authorization: 'Bearer ' + (this.getToken() || '') } });
+    if (!response.ok) throw new Error('Không tải được ảnh tiện ích.');
+    return response.blob();
+  }
+
+  async createAmenity(payload: Partial<Amenity>, files: File[] = []): Promise<Amenity> {
+    const body = new FormData();
+    if (files.length) { body.append('payload', JSON.stringify(payload)); files.forEach(file => body.append('gallery_files[]', file)); }
     const result = await this.request<Amenity>('/admin/amenities', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: files.length ? body : JSON.stringify(payload),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
@@ -798,10 +1171,12 @@ class ApiService {
     return result;
   }
 
-  async updateAmenity(id: string, payload: Partial<Amenity>): Promise<Amenity> {
+  async updateAmenity(id: string, payload: Partial<Amenity>, files: File[] = []): Promise<Amenity> {
+    const body = new FormData();
+    if (files.length) { body.append('payload', JSON.stringify(payload)); body.append('_method', 'PUT'); files.forEach(file => body.append('gallery_files[]', file)); }
     const result = await this.request<Amenity>(`/admin/amenities/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+      method: files.length ? 'POST' : 'PUT',
+      body: files.length ? body : JSON.stringify(payload),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
@@ -809,14 +1184,21 @@ class ApiService {
     return result;
   }
 
-  async patchAmenityStatus(id: string, is_active: boolean, updated_at: string): Promise<Amenity> {
+  async getAmenityClosureImpact(id: string, period: { blackout_date?: string; start_time?: string | null; end_time?: string | null } = {}): Promise<AmenityClosureImpact> {
+    const query = new URLSearchParams();
+    Object.entries(period).forEach(([key, value]) => { if (value) query.set(key, value); });
+    return this.request(`/admin/amenities/${id}/closure-impact?${query}`, { cache: 'no-store' });
+  }
+
+  async patchAmenityStatus(id: string, is_active: boolean, updated_at: string, closure: { booking_action?: 'keep' | 'cancel'; reason?: string; confirmation_token?: string } = {}): Promise<Amenity> {
     const result = await this.request<Amenity>(`/admin/amenities/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active, updated_at }),
+      body: JSON.stringify({ is_active, updated_at, ...closure }),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
     amenityCache.broadcastMutation('AMENITY_STATUS_CHANGED', id);
+    if (closure.booking_action === 'cancel') { amenityCache.invalidateBookings(id); amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', id); }
     return result;
   }
 
@@ -831,14 +1213,14 @@ class ApiService {
   }
 
   // ================= TIME SLOTS =================
-  async getTimeSlots(amenityId: string): Promise<TimeSlot[]> {
+  async getTimeSlots(amenityId: string, forceRefresh = false): Promise<TimeSlot[]> {
     const key = `amenity:${amenityId}:slots`;
     const lookup = amenityCache.get<TimeSlot[]>(key);
-    if (lookup.exists && lookup.data && lookup.isFresh) {
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.data.every((item) => typeof item.version === 'number') && lookup.isFresh) {
       return lookup.data;
     }
 
-    const slots = await this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`);
+    const slots = await this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`, { cache: 'no-store' });
     amenityCache.set(key, slots, null, 5 * 60 * 1000);
     return slots;
   }
@@ -868,6 +1250,7 @@ class ApiService {
     amenityId: string,
     slotId: string,
     payload: {
+      version: number;
       day_of_week: number;
       slot_start_time: string;
       slot_end_time: string;
@@ -886,10 +1269,10 @@ class ApiService {
     return result;
   }
 
-  async patchTimeSlotStatus(amenityId: string, slotId: string, is_active: boolean): Promise<TimeSlot> {
+  async patchTimeSlotStatus(amenityId: string, slotId: string, is_active: boolean, version: number): Promise<TimeSlot> {
     const result = await this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots/${slotId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active }),
+      body: JSON.stringify({ is_active, version }),
     });
     amenityCache.invalidateSlots(amenityId);
     amenityCache.invalidateAmenities();
@@ -897,9 +1280,10 @@ class ApiService {
     return result;
   }
 
-  async deleteTimeSlot(amenityId: string, slotId: string): Promise<void> {
+  async deleteTimeSlot(amenityId: string, slotId: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenities/${amenityId}/time-slots/${slotId}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateSlots(amenityId);
     amenityCache.invalidateAmenities();
@@ -908,14 +1292,14 @@ class ApiService {
   }
 
   // ================= BLACKOUTS =================
-  async getBlackouts(amenityId: string): Promise<Blackout[]> {
+  async getBlackouts(amenityId: string, forceRefresh = false): Promise<Blackout[]> {
     const key = `amenity:${amenityId}:blackouts`;
     const lookup = amenityCache.get<Blackout[]>(key);
-    if (lookup.exists && lookup.data && lookup.isFresh) {
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.data.every((item) => typeof item.version === 'number') && lookup.isFresh) {
       return lookup.data;
     }
 
-    const blackouts = await this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`);
+    const blackouts = await this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`, { cache: 'no-store' });
     amenityCache.set(key, blackouts, null, 5 * 60 * 1000);
     return blackouts;
   }
@@ -927,6 +1311,7 @@ class ApiService {
       start_time?: string | null;
       end_time?: string | null;
       reason: string;
+      confirmation_token?: string;
     }
   ): Promise<Blackout> {
     const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts`, {
@@ -934,6 +1319,8 @@ class ApiService {
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, result.id);
     return result;
   }
@@ -942,10 +1329,12 @@ class ApiService {
     amenityId: string,
     blackoutId: string,
     payload: {
+      version: number;
       blackout_date: string;
       start_time?: string | null;
       end_time?: string | null;
       reason: string;
+      confirmation_token?: string;
     }
   ): Promise<Blackout> {
     const result = await this.request<Blackout>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
@@ -953,13 +1342,16 @@ class ApiService {
       body: JSON.stringify(payload),
     });
     amenityCache.invalidateBlackouts(amenityId);
+    amenityCache.invalidateBookings(amenityId);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
     return result;
   }
 
-  async deleteBlackout(amenityId: string, blackoutId: string): Promise<void> {
+  async deleteBlackout(amenityId: string, blackoutId: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateBlackouts(amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
@@ -967,15 +1359,20 @@ class ApiService {
   }
 
   // ================= BOOKINGS =================
-  async getAmenityBookings(amenityId: string, forceRefresh: boolean = false): Promise<AmenityBooking[]> {
+  async getAmenityBookingCodeMatches(amenityId: string, query: string, signal: AbortSignal): Promise<{ ids: string[] }> {
+    const params = new URLSearchParams({ q: query });
+    return this.request<{ ids: string[] }>(`/admin/amenities/${amenityId}/booking-code-matches?${params}`, { signal, cache: 'no-store' });
+  }
+
+  async getAmenityBookings(amenityId: string, forceRefresh: boolean = false, signal?: AbortSignal): Promise<AmenityBooking[]> {
     const key = `amenity:${amenityId}:bookings`;
     const lookup = amenityCache.get<AmenityBooking[]>(key);
     if (!forceRefresh && lookup.exists && lookup.data && lookup.isFresh) {
       return lookup.data;
     }
 
-    const bookings = await this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`);
-    amenityCache.set(key, bookings, null, 2 * 60 * 1000);
+    const bookings = await this.request<AmenityBooking[]>(`/admin/amenities/${amenityId}/bookings`, { signal, cache: 'no-store' });
+    if (!signal?.aborted) amenityCache.set(key, bookings, null, 2 * 60 * 1000);
     return bookings;
   }
 
@@ -1056,23 +1453,22 @@ class ApiService {
     return this.request<any>(`/resident/overview${query}`);
   }
 
-  async createResidentTicket(payload: {
-    title: string;
-    description: string;
-    category_id?: string;
-    priority?: string;
-    preferred_service_time?: string;
-    apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    return this.request<any>('/resident/tickets', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  async getResidentAmenities(signal?: AbortSignal, metadataOnly = false): Promise<ResidentAmenityCatalog> {
+    return this.request(`/resident/amenities${metadataOnly ? '?metadata_only=1' : ''}`, { signal, cache: 'no-store' });
   }
 
-  async getResidentAmenities(signal?: AbortSignal): Promise<ResidentAmenityCatalog> {
-    return this.request('/resident/amenities', { signal, cache: 'no-store' });
+  async searchResidentAmenities(params: { q: string; apartment_id: string; category_id: string; page: number }, signal?: AbortSignal): Promise<AmenityListResponse> {
+    const query = new URLSearchParams({ q: params.q, apartment_id: params.apartment_id, page: String(params.page) });
+    if (params.category_id) query.set('category_id', params.category_id);
+    return this.request(`/resident/amenities/search?${query}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentAmenity(id: string, apartmentId: string, signal?: AbortSignal): Promise<Amenity> {
+    return this.request(`/resident/amenities/${id}?apartment_id=${encodeURIComponent(apartmentId)}`, { signal, cache: 'no-store' });
+  }
+
+  async getAmenitySearchMetrics(signal?: AbortSignal): Promise<AmenitySearchMetrics> {
+    return this.request('/admin/amenity-search/metrics', { signal, cache: 'no-store' });
   }
 
   async getResidentAvailability(amenityId: string, date: string, apartmentId: string, signal?: AbortSignal): Promise<{ slots: ResidentAvailableSlot[] }> {
@@ -1088,6 +1484,44 @@ class ApiService {
 
   async getResidentBooking(id: string, signal?: AbortSignal): Promise<ResidentAmenityBooking> {
     return this.request(`/resident/amenity-bookings/${id}`, { signal, cache: 'no-store' });
+  }
+
+  async getResidentBookingPayment(id: string, signal?: AbortSignal): Promise<{ payment: AmenityBookingPayment | null }> {
+    return this.request(`/resident/amenity-bookings/${id}/payment`, { signal, cache: 'no-store' });
+  }
+
+  async createResidentPaymentCheckout(id: string): Promise<{ environment: 'sandbox' | 'production'; action: string; fields: Record<string, string> }> {
+    return this.request(`/resident/amenity-bookings/${id}/payment/checkout`, { method: 'POST', cache: 'no-store' });
+  }
+
+  async getAmenityNotifications(audience: 'resident' | 'admin', page: number, unread: boolean, signal?: AbortSignal): Promise<AmenityNotificationFeed> {
+    const path = audience === 'resident' ? '/resident/amenity-notifications' : '/admin/amenity-booking-notifications';
+    return this.request(`${path}?page=${page}&unread=${unread ? 1 : 0}`, { signal, cache: 'no-store' });
+  }
+
+  async readAmenityNotification(audience: 'resident' | 'admin', id: string): Promise<{ success: boolean }> {
+    const path = audience === 'resident' ? '/resident/amenity-notifications' : '/admin/amenity-booking-notifications';
+    return this.request(`${path}/${encodeURIComponent(id)}/read`, { method: 'POST' });
+  }
+
+  async getAmenityBookingWorklist(bucket: string, page: number, signal?: AbortSignal): Promise<AmenityBookingWorklist> {
+    return this.request(`/admin/amenity-booking-worklist?bucket=${encodeURIComponent(bucket)}&page=${page}`, { signal, cache: 'no-store' });
+  }
+
+  async reportResidentBookingPayment(booking: Pick<AmenityBooking, 'id' | 'amenity_id'>): Promise<{ payment: AmenityBookingPayment }> {
+    const result = await this.request<{ payment: AmenityBookingPayment }>(`/resident/amenity-bookings/${booking.id}/payment/report`, { method: 'POST' });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
+  }
+
+  async decideAmenityBookingPayment(booking: Pick<AmenityBooking, 'id' | 'amenity_id'>, payload: { bank_transaction_id: string; received_amount: number; received_at: string } | { reason: string }): Promise<{ payment: AmenityBookingPayment }> {
+    const action = 'reason' in payload ? 'reject' : 'confirm';
+    const result = await this.request<{ payment: AmenityBookingPayment }>(`/admin/amenities/${booking.amenity_id}/bookings/${booking.id}/payment/${action}`, { method: 'POST', body: JSON.stringify(payload) });
+    amenityCache.invalidateBookings(booking.amenity_id);
+    amenityCache.invalidateAmenities();
+    amenityCache.broadcastMutation('AMENITY_BOOKING_CHANGED', booking.amenity_id, booking.id);
+    return result;
   }
 
   async cancelResidentBooking(booking: ResidentAmenityBooking, reason: string): Promise<{ success: boolean; booking: ResidentAmenityBooking }> {
@@ -1111,18 +1545,78 @@ class ApiService {
     return result;
   }
 
+  // ================= MODULE #7: KHAI BÁO KHÁCH VIẾNG THĂM (CƯ DÂN) =================
+  async getResidentVisitors(params: {
+    search?: string;
+    status?: string;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<ResidentVisitorListResponse> {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.status) q.append('status', params.status);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit) q.append('limit', String(params.limit));
+
+    const qs = q.toString();
+    return this.request<ResidentVisitorListResponse>(`/resident/visitors${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    });
+  }
+
+  async getResidentVisitorDetail(id: string): Promise<ResidentVisitorDetailResponse> {
+    return this.request<ResidentVisitorDetailResponse>(`/resident/visitors/${id}`, {
+      method: 'GET',
+    });
+  }
+
   async createResidentVisitor(payload: {
     visitor_name: string;
-    visitor_phone?: string;
-    visit_purpose?: string;
+    visitor_phone: string;
+    visitor_national_id?: string;
     expected_arrival_time: string;
+    expected_departure_time?: string;
+    visit_purpose?: string;
+    visitor_count?: number;
     vehicle_license_plate?: string;
     apartment_id?: string;
-    user_id?: string;
-  }): Promise<any> {
-    return this.request<any>('/resident/visitors', {
+  }): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>('/resident/visitors', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  }
+
+  async updateResidentVisitor(
+    id: string,
+    payload: {
+      visitor_name?: string;
+      visitor_phone?: string;
+      visitor_national_id?: string;
+      expected_arrival_time?: string;
+      expected_departure_time?: string;
+      visit_purpose?: string;
+      visitor_count?: number;
+      vehicle_license_plate?: string;
+    }
+  ): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>(`/resident/visitors/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async cancelResidentVisitor(
+    id: string,
+    reason?: string
+  ): Promise<{ success: boolean; message: string; data: ResidentVisitorItem }> {
+    return this.request<{ success: boolean; message: string; data: ResidentVisitorItem }>(`/resident/visitors/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   }
 
@@ -1130,6 +1624,217 @@ class ApiService {
     return this.request<any>(`/resident/invoices/${invoiceId}/pay`, {
       method: 'POST',
     });
+  }
+
+  // ================= RECEPTION VISITOR CHECK-IN & CHECK-OUT =================
+  async getReceptionVisitors(
+    params: {
+      search?: string;
+      status?: string;
+      from_date?: string;
+      to_date?: string;
+      apartment_id?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ReceptionVisitorListResponse> {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.status) q.append('status', params.status);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.apartment_id) q.append('apartment_id', params.apartment_id);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit || params.per_page) q.append('limit', String(params.limit || params.per_page));
+
+    return this.request<ReceptionVisitorListResponse>(`/reception/visitors?${q.toString()}`, options);
+  }
+
+  async lookupReceptionVisitor(code: string, options: RequestInit = {}): Promise<ReceptionVisitorLookupResponse> {
+    const q = new URLSearchParams();
+    q.append('code', code);
+    return this.request<ReceptionVisitorLookupResponse>(`/reception/visitors/lookup?${q.toString()}`, options);
+  }
+
+  async checkInReceptionVisitor(payload: {
+    registration_id?: string;
+    id?: string;
+    qr_code?: string;
+    code?: string;
+    national_id_number?: string;
+    temp_card_id?: string;
+    assigned_elevator_access?: any;
+    notes?: string;
+  }): Promise<{ success: boolean; message: string; data: any }> {
+    return this.request<{ success: boolean; message: string; data: any }>('/reception/visitors/check-in', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async checkOutReceptionVisitor(payload: {
+    checkin_log_id?: string;
+    registration_id?: string;
+    id?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; message: string; data: any }> {
+    return this.request<{ success: boolean; message: string; data: any }>('/reception/visitors/check-out', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // ================= RECEPTION PARCEL RECEPTION & UPLOAD (MODULE #9) =================
+  async getReceptionParcels(
+    params: {
+      search?: string;
+      status?: string;
+      apartment_id?: string;
+      courier_company?: string;
+      from_date?: string;
+      to_date?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ParcelListResponse> {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.status) q.append('status', params.status);
+    if (params.apartment_id) q.append('apartment_id', params.apartment_id);
+    if (params.courier_company) q.append('courier_company', params.courier_company);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit || params.per_page) q.append('limit', String(params.limit || params.per_page));
+
+    return this.request<ParcelListResponse>(`/reception/parcels?${q.toString()}`, options);
+  }
+
+  async getParcels(
+    params: {
+      search?: string;
+      status?: string;
+      apartment_id?: string;
+      courier_company?: string;
+      from_date?: string;
+      to_date?: string;
+      page?: number;
+      limit?: number;
+      per_page?: number;
+    } = {},
+    options: RequestInit = {}
+  ): Promise<ParcelListResponse> {
+    return this.getReceptionParcels(params, options);
+  }
+
+  async receiveParcel(formData: FormData): Promise<{ success: boolean; message: string; data: ParcelItem }> {
+    return this.request<{ success: boolean; message: string; data: ParcelItem }>('/reception/parcels', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async getParcelDetail(id: string, options: RequestInit = {}): Promise<ParcelDetailResponse> {
+    return this.request<ParcelDetailResponse>(`/reception/parcels/${id}`, options);
+  }
+
+  async updateParcel(id: string, formData: FormData | object): Promise<{ success: boolean; message: string; data: ParcelItem }> {
+    const isFormData = formData instanceof FormData;
+    return this.request<{ success: boolean; message: string; data: ParcelItem }>(`/reception/parcels/${id}`, {
+      method: isFormData ? 'POST' : 'PUT',
+      body: isFormData ? formData : JSON.stringify(formData),
+    });
+  }
+
+  async deleteParcel(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/reception/parcels/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async searchParcelRecipients(keyword: string = '', apartmentId?: string): Promise<{ success: boolean; data: any[] }> {
+    const q = new URLSearchParams();
+    if (keyword) q.append('search', keyword);
+    if (apartmentId) q.append('apartment_id', apartmentId);
+    return this.request<{ success: boolean; data: any[] }>(`/reception/parcels/recipients/search?${q.toString()}`);
+  }
+
+  async searchParcelApartments(keyword: string = ''): Promise<{ success: boolean; data: any[] }> {
+    const q = new URLSearchParams();
+    if (keyword) q.append('search', keyword);
+    return this.request<{ success: boolean; data: any[] }>(`/reception/parcels/apartments/search?${q.toString()}`);
+  }
+
+  async checkoutReceptionParcel(
+    id: string,
+    data: {
+      collected_by_name?: string;
+      pin_code?: string;
+      qr_code?: string;
+      notes?: string;
+      collected_signature_url?: string;
+    } = {}
+  ): Promise<{ success: boolean; message: string; data: ParcelItem }> {
+    return this.request<{ success: boolean; message: string; data: ParcelItem }>(`/reception/parcels/${id}/check-out`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async lookupReceptionParcel(
+    code: string
+  ): Promise<{ success: boolean; data: ParcelItem | null; can_checkout?: boolean; message?: string }> {
+    const q = new URLSearchParams({ code });
+    return this.request<{ success: boolean; data: ParcelItem | null; can_checkout?: boolean; message?: string }>(
+      `/reception/parcels/lookup?${q.toString()}`
+    );
+  }
+
+  async remindReceptionParcel(
+    id: string
+  ): Promise<{ success: boolean; message: string; parcel?: ParcelItem; recipient_user_id?: string }> {
+    return this.request<{ success: boolean; message: string; parcel?: ParcelItem; recipient_user_id?: string }>(
+      `/reception/parcels/${id}/remind`,
+      { method: 'POST' }
+    );
+  }
+
+  async remindExpiringParcels(): Promise<{ success: boolean; count?: number; message: string }> {
+    return this.request<{ success: boolean; count?: number; message: string }>(
+      '/reception/parcels/remind-expiring',
+      { method: 'POST' }
+    );
+  }
+
+  // ================= WEB PUSH NOTIFICATIONS =================
+  async registerPushSubscription(subscriptionData: {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+    content_encoding?: string;
+  }): Promise<{ success: boolean; message: string; subscription_id?: string }> {
+    return this.request<{ success: boolean; message: string; subscription_id?: string }>('/notifications/push-subscription', {
+      method: 'POST',
+      body: JSON.stringify(subscriptionData),
+    });
+  }
+
+  async unregisterPushSubscription(endpoint: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/notifications/push-subscription', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
+  async getPushNotificationStatus(): Promise<{ success: boolean; is_subscribed: boolean; active_devices: number }> {
+    return this.request<{ success: boolean; is_subscribed: boolean; active_devices: number }>('/notifications/push-status');
+  }
+
+  async getVapidPublicKey(): Promise<{ success: boolean; public_key: string | null; is_configured: boolean }> {
+    return this.request<{ success: boolean; public_key: string | null; is_configured: boolean }>('/notifications/vapid-public-key');
   }
 
   // ================= RBAC MANAGEMENT =================
@@ -1180,6 +1885,50 @@ class ApiService {
     return this.request<{ success: boolean; message: string; data: RoleRbac[] }>(`/users/${id}/roles`, {
       method: 'PUT',
       body: JSON.stringify({ roles, primary_role: primaryRole }),
+    });
+  }
+
+  async getUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      data: {
+        user_id: string;
+        username: string;
+        full_name: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`);
+  }
+
+  async syncUserPermissions(id: string, permissions: string[]) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    });
+  }
+
+  async resetUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'DELETE',
     });
   }
 
@@ -1262,7 +2011,7 @@ class ApiService {
     sort_order?: 'asc' | 'desc';
     page?: number;
     limit?: number;
-  } = {}) {
+  } = {}, options: RequestInit = {}) {
     const q = new URLSearchParams();
     if (params.search) q.append('search', params.search);
     if (params.apartment_id) q.append('apartment_id', params.apartment_id);
@@ -1278,7 +2027,7 @@ class ApiService {
       success: boolean;
       data: ResidentItem[];
       meta: { current_page: number; last_page: number; per_page: number; total: number };
-    }>(`/residents?${q.toString()}`);
+    }>(`/residents?${q.toString()}`, options);
   }
 
   async getResident(id: string) {
@@ -1292,7 +2041,7 @@ class ApiService {
     apartment_id: string;
     user_id: string;
     resident_type: string;
-    is_head_of_household?: boolean;
+    is_head_of_household: boolean;
     stay_start_date: string;
     stay_end_date?: string | null;
     relationship_to_head?: string;
@@ -1348,7 +2097,7 @@ class ApiService {
   // ==========================================
   // TEMPORARY REGISTRATIONS APIs
   // ==========================================
-  async getTemporaryRegistrations(params?: Record<string, string | number | boolean | undefined | null>) {
+  async getTemporaryRegistrations(params?: Record<string, string | number | boolean | undefined | null>, options: RequestInit = {}) {
     const query = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -1367,7 +2116,7 @@ class ApiService {
         per_page: number;
         total: number;
       };
-    }>(`/residents/temporary-registrations${qStr ? `?${qStr}` : ''}`);
+    }>(`/residents/temporary-registrations${qStr ? `?${qStr}` : ''}`, options);
   }
 
   async getTemporaryRegistrationById(id: string) {
@@ -1564,6 +2313,445 @@ class ApiService {
       body: JSON.stringify(payload),
     });
   }
+
+  // ================= RESIDENT TICKETS =================
+  async getResidentTicketCategories() {
+    return this.request<{ success: boolean; data: TicketCategoryItem[] }>('/resident/tickets/categories');
+  }
+
+  async getManagedTickets(params: URLSearchParams, signal?: AbortSignal) {
+    return this.request<{ data: ManagedTicket[]; current_page: number; last_page: number; total: number }>(`/admin/tickets?${params}`, { signal });
+  }
+  async getTicketOptions() { return this.request<TicketOptions>('/admin/tickets/options'); }
+  async getManagedTicket(id: string, signal?: AbortSignal) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { signal, cache: 'no-store' }); }
+  async createManagedTicket(payload: Record<string, unknown>) { return this.request<ManagedTicket>('/admin/tickets', { method: 'POST', body: JSON.stringify(payload) }); }
+  async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
+  async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
+  async getTicketTechnicians(id: string) { return this.request<{ id: string; full_name: string }[]>(`/admin/tickets/${id}/technicians`); }
+  async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
+  async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
+  async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
+  async getManagerNotifications(page: number, category: string, unread: boolean, signal?: AbortSignal, summary = false) {
+    const query = new URLSearchParams({ page: String(page), unread: unread ? '1' : '0' });
+    if (category) query.set('category', category);
+    if (summary) query.set('summary', '1');
+    return this.request<{ items: ManagerNotification[]; unread_count: number; latest_id: string | null; category_activity?: Record<string, string>; page: number; total_pages: number }>(`/manager/notifications?${query}`, { signal, cache: 'no-store' });
+  }
+  async readAllManagerNotifications() { return this.request<{ unread_count: number }>('/manager/notifications/read-all', { method: 'POST', cache: 'no-store' }); }
+  async readManagerNotification(id: string) { return this.request<{ unread_count: number }>(`/manager/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', cache: 'no-store' }); }
+  async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
+
+  async ticketImage(path: string, signal?: AbortSignal, anonymousToken?: string): Promise<Blob> {
+    if (!/^\/api\/v1\/(resident\/tickets|suggestions)\/[a-zA-Z0-9-]+\/attachments\/[a-zA-Z0-9-]+(?:\/content)?$/.test(path)) throw new Error('Đường dẫn ảnh không hợp lệ.');
+    const url = `${API_BASE_URL}${path.slice('/api/v1'.length)}`;
+    const response = await fetch(url, { signal, cache: 'no-store', headers: anonymousToken
+      ? { 'X-Anonymous-Token': anonymousToken } : { Authorization: `Bearer ${this.getToken() || ''}` } });
+    if (!response.ok) throw new Error('Không tải được ảnh sự cố.');
+    return response.blob();
+  }
+
+  async addTicketImages(id: string, files: File[], version: number) {
+    const body = new FormData();
+    files.forEach((file) => body.append('attachments[]', file));
+    body.append('version', String(version));
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments`, { method: 'POST', body });
+  }
+
+  async removeTicketImage(id: string, attachmentId: string, version: number) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) });
+  }
+
+  async getResidentTickets(filters?: {
+    status?: string;
+    category_id?: string;
+    priority?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  }, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.category_id && filters.category_id !== 'ALL') params.append('category_id', filters.category_id);
+    if (filters?.priority && filters.priority !== 'ALL') params.append('priority', filters.priority);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.per_page) params.append('per_page', String(filters.per_page));
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<TicketListResponse>(`/resident/tickets${query}`, { signal });
+  }
+
+  async getResidentTicketDetail(id: string, signal?: AbortSignal) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`, { signal, cache: 'no-store' });
+  }
+
+  async createResidentTicket(payload: FormData | Record<string, any>, idempotencyKey?: string) {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers['X-Idempotency-Key'] = idempotencyKey;
+    }
+    const isFormData = payload instanceof FormData;
+    return this.request<{ success: boolean; message: string; data: TicketItem }>('/resident/tickets', {
+      method: 'POST',
+      body: isFormData ? payload : JSON.stringify(payload),
+      headers,
+    });
+  }
+
+  async updateResidentTicket(id: string, payload: {
+    title: string;
+    description: string;
+    location: string;
+    priority?: string;
+    preferred_service_time?: string | null;
+    version: number;
+    updated_at?: string;
+  }) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async cancelResidentTicket(id: string, version: number, reason: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, version }),
+    });
+  }
+
+  async getTicketRating(id: string, signal?: AbortSignal) {
+    return this.request<TicketRatingResponse>(`/tickets/${id}/rating`, { signal, cache: 'no-store' });
+  }
+
+  async rateResidentTicket(id: string, payload: { version: number; rating_stars: number; review_comment: string }) {
+    return this.request<TicketRatingResponse>(`/resident/tickets/${id}/rating`, { method: 'POST', body: JSON.stringify(payload), cache: 'no-store' });
+  }
+
+  async confirmResidentTicket(id: string, version: number, note?: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ note, version }),
+    });
+  }
+
+  async reopenResidentTicket(id: string, version: number, reason: string) {
+    return this.request<{ success: boolean; message: string; data: TicketItem }>(`/resident/tickets/${id}/reopen`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, version }),
+    });
+  }
+
+  async getResidentTicketHistory(id: string) {
+    return this.request<{ success: boolean; data: TicketHistoryItem[] }>(`/resident/tickets/${id}/history`);
+  }
+
+  async getTicketComments(id: string, filters: { cursor?: string; since?: string } = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams(filters);
+    return this.request<TicketCommentPage>(`/tickets/${id}/comments?${params}`, { signal, cache: 'no-store' });
+  }
+
+  async postTicketComment(id: string, payload: TicketCommentPayload, signal?: AbortSignal) {
+    return this.request<{ data: TicketComment }>(`/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify(payload), signal, cache: 'no-store' });
+  }
+
+  async getTicketDiscussionHistory(id: string, cursor?: string, signal?: AbortSignal) {
+    return this.request<TicketDiscussionPage<TicketHistoryItem>>(`/tickets/${id}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { signal, cache: 'no-store' });
+  }
+  async getResidentAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<ResidentAnnouncementPage>(`/resident/announcements?${params}`, { signal, cache: 'no-store' }); }
+  async getResidentAnnouncement(id: string, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}`, { signal, cache: 'no-store' }); }
+  async readResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/read`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+  async acknowledgeResidentAnnouncement(id: string, version: number, signal?: AbortSignal) { return this.request<ResidentAnnouncement>(`/resident/announcements/${encodeURIComponent(id)}/acknowledge`, { method: 'POST', body: JSON.stringify({ version }), signal, cache: 'no-store' }); }
+
+  async getAnnouncements(params: URLSearchParams, signal?: AbortSignal) { return this.request<AnnouncementPage>(`/admin/announcements?${params}`, { signal, cache: 'no-store' }); }
+  async getAnnouncementOptions(signal?: AbortSignal) { return this.request<AnnouncementOptions>('/admin/announcements/options', { signal, cache: 'no-store' }); }
+  async getAnnouncement(id: string, signal?: AbortSignal) { return this.request<Announcement>(`/admin/announcements/${id}`, { signal, cache: 'no-store' }); }
+  async saveAnnouncement(id: string | null, body: FormData) { if (id) body.set('_method', 'PATCH'); return this.request<Announcement>(`/admin/announcements${id ? `/${id}` : ''}`, { method: 'POST', body, cache: 'no-store' }); }
+  async previewAnnouncement(content_html: string) { return this.request<{ content_html: string }>('/admin/announcements/preview', { method: 'POST', body: JSON.stringify({ content_html }), cache: 'no-store' }); }
+  async announcementAction(id: string, action: 'publish' | 'unpublish' | 'archive', payload: { version: number; reason?: string; publish_at?: string | null }) { return this.request<Announcement>(`/admin/announcements/${id}${action === 'archive' ? '' : `/${action}`}`, { method: action === 'archive' ? 'DELETE' : 'POST', body: JSON.stringify(payload), cache: 'no-store' }); }
+  async uploadAnnouncementFile(id: string, file: File): Promise<AnnouncementUpload> {
+    const ticket = await this.request<AnnouncementUpload>('/admin/announcements/uploads', { method: 'POST', body: JSON.stringify({ announcement_id: id, file_name: file.name, size: file.size, mime_type: file.type }) });
+    const local = ticket.transport === 'local';
+    if (local ? !ticket.url.startsWith('/api/v1/admin/announcements/uploads/') : !ticket.url.startsWith('https://')) throw new Error('Địa chỉ upload không hợp lệ.');
+    const url = local ? `${API_BASE_URL}/admin/announcements/uploads/${encodeURIComponent(ticket.token)}` : ticket.url;
+    try {
+      const response = await fetch(url, { method: 'PUT', body: file, credentials: 'omit', headers: { ...ticket.headers, ...(local ? { Authorization: `Bearer ${this.getToken() || ''}` } : {}) } });
+      if (!response.ok) throw new Error('Upload chưa hoàn tất. Vui lòng thử lại; bản nhập vẫn được giữ.');
+      return ticket;
+    } catch (error) { void this.discardAnnouncementUpload(ticket.token).catch(() => {}); throw error; }
+  }
+  async discardAnnouncementUpload(token: string) { return this.request('/admin/announcements/uploads/discard', { method: 'POST', body: JSON.stringify({ token }) }); }
+  async announcementAttachment(id: string, attachmentId: string, audience: 'admin' | 'resident' = 'admin', signal?: AbortSignal): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/${audience}/announcements/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`, { signal, cache: 'no-store', headers: { Authorization: `Bearer ${this.getToken() || ''}` } });
+    if (!response.ok) throw new Error('Không tải được tệp. Kiểm tra phiên đăng nhập và quyền xem bài.');
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      const result: { download_url: string } = await response.json();
+      if (!result.download_url.startsWith('https://')) throw new Error('Địa chỉ tải không hợp lệ.');
+      const download = await fetch(result.download_url, { signal, credentials: 'omit', cache: 'no-store' });
+      if (!download.ok) throw new Error('Không tải được tệp từ kho riêng tư.');
+      return download.blob();
+    }
+    return response.blob();
+  }
+
+  // ================= F12: HÒM THƯ GÓP Ý & PHÂN TÍCH CẢM XÚC =================
+  async getResidentSuggestionBoxes(): Promise<{ success: boolean; data: SuggestionBoxItem[] }> {
+    return this.request('/resident/suggestion-boxes', { cache: 'no-store' });
+  }
+
+  async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string; replayed?: boolean }> {
+    return this.request('/resident/suggestions', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async getResidentSuggestions(params?: Record<string, any>): Promise<ResidentSuggestionListResponse> {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return this.request(`/resident/suggestions/my-suggestions${query}`);
+  }
+
+  async lookupAnonymousSuggestion(token: string): Promise<{ success: boolean; data: AnonymousSuggestionDetail }> {
+    return this.request(`/resident/suggestions/anonymous-lookup?token=${encodeURIComponent(token)}`);
+  }
+
+  async getManagementSuggestions(params?: Record<string, any>): Promise<ManagementSuggestionListResponse> {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return this.request(`/management/suggestions${query}`);
+  }
+
+  async getManagementSuggestionDetail(id: string): Promise<{ success: boolean; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}`);
+  }
+
+  async updateSuggestionStatus(id: string, payload: { status: string; version: number; rejection_reason?: string }): Promise<{ success: boolean; message: string; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async replySuggestion(id: string, payload: { official_response_text: string; version: number; status?: string }): Promise<{ success: boolean; message: string; data: SuggestionItem }> {
+    return this.request(`/management/suggestions/${id}/reply`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async analyzeSuggestionSentiment(suggestionId: string): Promise<{ success: boolean; status: string; message: string; data: SuggestionItem }> {
+    return this.request('/suggestions/ai-sentiment-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suggestion_id: suggestionId }),
+    });
+  }
+
+  async createSuggestionBox(payload: { box_name: string; block_id?: string | null; description?: string; is_open?: boolean }): Promise<{ success: boolean; message: string; data: SuggestionBoxItem }> {
+    return this.request('/management/suggestion-boxes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // ================= F13: KHAO SAT & THONG KE CSAT =================
+  async getResidentActiveSurveys(): Promise<{ status: string; data: ResidentSurveyItem[] }> {
+    return this.request('/resident/surveys/active');
+  }
+
+  async getResidentSurveyDetails(id: string): Promise<{ status: string; data: ResidentSurveyDetailResponse }> {
+    return this.request(`/resident/surveys/${id}`, { cache: 'no-store' });
+  }
+
+  async submitResidentSurvey(id: string, answers: Record<string, any>, idempotencyKey?: string): Promise<{ status: string; message: string; data: { response_id: string; submitted_at: string } }> {
+    return this.request(`/resident/surveys/${id}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers, idempotency_key: idempotencyKey }),
+    });
+  }
+
+  async getManagementSurveys(params?: Record<string, any>): Promise<ManagementSurveyListResponse> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '') {
+          query.append(key, String(val));
+        }
+      });
+    }
+    const qStr = query.toString();
+    return this.request(`/management/surveys${qStr ? `?${qStr}` : ''}`);
+  }
+
+  async getManagementSurveyDetail(id: string, signal?: AbortSignal): Promise<{ status: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}`, { signal, cache: 'no-store' });
+  }
+
+  async getManagementSurveyKpis(): Promise<{ status: string; data: SurveyOverviewKpis }> {
+    return this.request('/management/surveys/kpis');
+  }
+
+  async createManagementSurvey(payload: CreateSurveyPayload): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request('/management/surveys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateManagementSurvey(id: string, payload: UpdateSurveyPayload): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async toggleManagementSurveyStatus(id: string, isActive: boolean, version: number): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}/toggle-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive, version }),
+    });
+  }
+
+  async getManagementSurveyAnalytics(id: string): Promise<{ status: string; data: SurveyAnalyticsData }> {
+    return this.request(`/management/surveys/${id}/analytics`);
+  }
+
+}
+
+export interface TicketParticipant { id: string; full_name: string; role: string; }
+export interface TicketComment {
+  id: string;
+  ticket_id: string;
+  comment_text: string;
+  is_internal_staff_note: boolean;
+  created_at: string;
+  sender: TicketParticipant | null;
+}
+export interface TicketCommentPayload { id: string; comment_text: string; is_internal_staff_note: boolean; }
+export interface TicketDiscussionPage<T> { items: T[]; next_cursor: string | null; }
+export interface TicketCommentPage extends TicketDiscussionPage<TicketComment> {
+  meta: { status: TicketItem['status']; ticket_version: number; history_count: number; can_comment: boolean; can_internal_note: boolean; can_view_internal: boolean; };
+}
+
+export interface ManagedTicket extends TicketItem {
+  actions: Record<string, boolean>;
+}
+export interface TicketNotification { id: string; title: string; body_message: string; deep_link_url: string; is_read: boolean | number; created_at: string; }
+export interface ManagerNotification extends TicketNotification { category: 'TICKET' | 'AMENITY_BOOKING' | 'SUGGESTION'; }
+export interface TicketOptions {
+  categories: TicketCategoryItem[];
+  blocks: { id: string; block_name: string }[];
+  apartments: { id: string; block_id: string; apartment_number: string }[];
+  residents: { id: string; apartment_id: string; full_name: string }[];
+  can_create: boolean;
+}
+
+export interface TicketCategoryItem {
+  id: string;
+  category_code: string;
+  category_name: string;
+  default_priority?: string;
+  sla_response_time_minutes?: number;
+  sla_resolution_time_hours?: number;
+}
+
+export interface TicketAttachmentItem {
+  id: string;
+  ticket_id: string;
+  file_name: string;
+  file_url: string;
+  storage_path?: string;
+  file_type: string;
+  is_resolution_proof?: boolean;
+  mime_type?: string;
+  file_size_bytes?: number;
+  created_at: string;
+}
+export interface TicketHistoryItem {
+  id: string;
+  ticket_id: string;
+  action_type: string;
+  old_status?: string | null;
+  new_status?: string | null;
+  notes?: string | null;
+  created_at: string;
+  performer?: {
+    id: string;
+    full_name: string;
+    email?: string;
+    role?: string;
+  } | null;
+}
+
+export interface TicketItem {
+  id: string;
+  ticket_number: string;
+  category_id: string;
+  apartment_id: string;
+  creator_user_id: string;
+  title: string;
+  description: string;
+  location: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'NEW' | 'RECEIVED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'CANCELLED';
+  current_technician_user_id?: string | null;
+  preferred_service_time?: string | null;
+  sla_deadline?: string | null;
+  resolved_at?: string | null;
+  closed_at?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  category?: TicketCategoryItem;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block?: {
+      id: string;
+      block_name: string;
+      block_code: string;
+    };
+  };
+  creator?: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone_number?: string;
+  };
+  technician?: {
+    id: string;
+    full_name: string;
+    email: string;
+    phone_number?: string;
+  } | null;
+  attachments?: TicketAttachmentItem[];
+  history?: TicketHistoryItem[];
+}
+
+export interface TicketListResponse {
+  success: boolean;
+  data: TicketItem[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+  counters: {
+    all: number;
+    new: number;
+    received?: number;
+    in_progress: number;
+    resolved: number;
+    closed: number;
+    cancelled: number;
+  };
 }
 
 export interface TemporaryRegistrationItem {
@@ -1738,3 +2926,329 @@ export interface PermissionRbac {
 
 export const api = new ApiService();
 export default api;
+
+export type AnnouncementStatus = 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED' | 'SCHEDULED' | 'EXPIRED';
+export interface AnnouncementAttachment { id: string; file_name: string; mime_type: string; file_size_bytes: number; }
+export interface Announcement {
+  requires_acknowledgement: boolean;
+  id: string; title: string; summary_excerpt: string | null; content_html: string; category: string;
+  target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; target_block_id: string | null; target_floor_id: string | null;
+  is_pinned: boolean; is_urgent: boolean; publish_at: string; expires_at: string | null; author_name?: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED'; display_status: AnnouncementStatus; version: number; created_at: string;
+  actions: { edit: boolean; publish: boolean; archive: boolean }; attachments?: AnnouncementAttachment[];
+}
+export interface AnnouncementPage { data: Announcement[]; current_page: number; last_page: number; total: number; }
+export interface AnnouncementOptions {
+  timezone: string; categories: Record<string, string>; blocks: { id: string; block_name: string }[];
+  floors: { id: string; block_id: string; floor_name: string }[]; can_target_all: boolean; can_create: boolean; can_publish: boolean;
+}
+
+export interface AnnouncementUpload { token: string; transport: 'local' | 's3'; url: string; headers: Record<string, string>; expires_at: number; }
+
+export interface ResidentAnnouncement {
+  id: string; title: string; summary_excerpt: string | null; category: string;
+  target_scope: 'ALL_BLOCKS' | 'BLOCK' | 'FLOOR'; block_name: string | null; floor_name: string | null;
+  is_pinned: boolean; is_urgent: boolean; requires_acknowledgement: boolean; version: number;
+  publish_at: string; expires_at: string | null; read_at: string | null; acknowledged_at: string | null;
+  content_html?: string; attachments?: AnnouncementAttachment[];
+}
+export interface ResidentAnnouncementPage {
+  data: ResidentAnnouncement[]; current_page: number; last_page: number; total: number;
+  unread_count: number; categories: Record<string, string>; timezone: string;
+}
+
+// ================= F12 SUGGESTION INTERFACES =================
+export interface SuggestionBoxItem {
+  id: string;
+  box_name: string;
+  block_id: string | null;
+  description: string | null;
+  is_open: boolean;
+  created_at?: string;
+  block?: {
+    id: string;
+    block_name: string;
+    block_code: string;
+  } | null;
+}
+
+export interface SuggestionAttachmentItem {
+  id: string;
+  file_name: string;
+  storage_disk: string;
+  storage_path: string;
+  mime_type: string;
+  file_size_bytes: number;
+  url: string;
+}
+
+export interface SuggestionItem {
+  id: string;
+  box_id: string;
+  idempotency_key?: string | null;
+  resident_user_id?: string | null;
+  apartment_id?: string | null;
+  is_anonymous: boolean;
+  topic_category: 'AN_NINH' | 'VE_SINH' | 'BAI_XE' | 'TIEN_ICH' | 'THAI_DO_NHAN_VIEN' | 'KHAC' | string;
+  title: string;
+  content_text: string;
+  attached_files?: SuggestionAttachmentItem[];
+  status: 'RECEIVED' | 'REVIEWING' | 'ACCEPTED' | 'RESOLVED' | 'REJECTED' | string;
+  version: number;
+  official_response_text?: string | null;
+  rejection_reason?: string | null;
+  responded_by_staff_id?: string | null;
+  responded_at?: string | null;
+  ai_sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'VERY_ANGRY' | 'NOT_ANALYZED' | string;
+  ai_sentiment_score?: number | null;
+  created_at: string;
+  updated_at: string;
+  box?: SuggestionBoxItem;
+  resident_user?: {
+    id: string;
+    full_name: string;
+    phone_number?: string;
+  } | null;
+  apartment?: {
+    id: string;
+    apartment_number: string;
+    block_id: string;
+  } | null;
+  responded_by_staff?: {
+    id: string;
+    full_name: string;
+  } | null;
+}
+
+export interface SuggestionKpis {
+  total: number;
+  received: number;
+  reviewing: number;
+  accepted: number;
+  resolved: number;
+  rejected: number;
+  negative_sentiment: number;
+}
+
+export interface ManagementSuggestionListResponse {
+  success: boolean;
+  data: SuggestionItem[];
+  kpis: SuggestionKpis;
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface ResidentSuggestionListResponse {
+  success: boolean;
+  data: SuggestionItem[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface AnonymousSuggestionDetail {
+  id: string;
+  box_name?: string;
+  topic_category: string;
+  title: string;
+  content_text: string;
+  status: string;
+  attached_files?: SuggestionAttachmentItem[];
+  official_response_text?: string | null;
+  rejection_reason?: string | null;
+  responded_at?: string | null;
+  created_at: string;
+}
+
+// ================= F13 TYPES: KHAO SAT CSAT =================
+export interface SurveyQuestionItem {
+  id: string;
+  question_order: number;
+  question_text: string;
+  question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+  options?: string[];
+  options_json?: string[];
+  is_required: boolean;
+}
+
+export interface ResidentSurveyItem {
+  id: string;
+  survey_code: string;
+  title: string;
+  description?: string;
+  target_block_name: string;
+  start_date: string;
+  end_date: string;
+  days_left: number;
+  total_questions: number;
+  has_submitted: boolean;
+  is_open: boolean;
+}
+
+export interface ResidentSurveyDetailResponse {
+  survey: {
+    id: string;
+    survey_code: string;
+    title: string;
+    description?: string;
+    target_block_name: string;
+    start_date: string;
+    end_date: string;
+    is_open: boolean;
+    has_submitted: boolean;
+    submitted_at?: string | null;
+  };
+  questions: SurveyQuestionItem[];
+}
+
+export interface SatisfactionSurveyItem {
+  id: string;
+  survey_code: string;
+  title: string;
+  description?: string | null;
+  target_block_id?: string | null;
+  target_block?: { id: string; block_name: string } | null;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  computed_status: 'ACTIVE' | 'UPCOMING' | 'CLOSED' | 'DISABLED';
+  version: number;
+  created_at: string;
+  questions_count?: number;
+  responses_count?: number;
+  eligible_count?: number;
+  participation_rate_percent?: number | null;
+  questions?: SurveyQuestionItem[];
+}
+
+export interface SurveyOverviewKpis {
+  total_surveys: number;
+  active_surveys: number;
+  total_responses: number;
+  overall_average_rating: number;
+  overall_csat_percentage: number;
+  total_valid_ratings: number;
+  dissatisfied_count: number;
+}
+
+export interface QuestionRatingDistribution {
+  stars: number;
+  count: number;
+  percent: number;
+}
+
+export interface QuestionOptionDistribution {
+  option: string;
+  count: number;
+  percent: number;
+}
+
+export interface QuestionAnalyticsItem {
+  question_id: string;
+  question_order: number;
+  question_text: string;
+  question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+  is_required: boolean;
+  total_answers: number;
+  average_rating?: number;
+  csat_percentage?: number;
+  data_status?: 'AVAILABLE' | 'NO_DATA';
+  satisfied_count?: number;
+  neutral_count?: number;
+  dissatisfied_count?: number;
+  rating_distribution?: QuestionRatingDistribution[];
+  yes_count?: number;
+  no_count?: number;
+  yes_percentage?: number;
+  no_percentage?: number;
+  options_distribution?: QuestionOptionDistribution[];
+  text_responses?: Array<{ id: string; answer: string; created_at: string }>;
+  notice?: string;
+}
+
+export interface SurveyAnalyticsData {
+  survey: {
+    id: string;
+    survey_code: string;
+    title: string;
+    description?: string;
+    target_block_id?: string | null;
+    target_block_name: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    computed_status: string;
+    version: number;
+  };
+  kpis: {
+    total_responses: number;
+    eligible_apartments_count: number;
+    participation_rate_percent: number | null;
+    overall_average_rating: number;
+    overall_csat_percentage: number;
+    total_valid_ratings: number;
+    satisfied_ratings_count: number;
+    neutral_ratings_count: number;
+    dissatisfied_ratings_count: number;
+  };
+  question_stats: QuestionAnalyticsItem[];
+}
+
+export interface CreateSurveyPayload {
+  survey_code?: string;
+  title: string;
+  description?: string;
+  target_block_id?: string | null;
+  start_date: string;
+  end_date: string;
+  is_active?: boolean;
+  questions: Array<{
+    question_text: string;
+    question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+    options_json?: string[];
+    is_required?: boolean;
+    question_order?: number;
+  }>;
+}
+
+export interface UpdateSurveyPayload {
+  version: number;
+  title?: string;
+  description?: string;
+  target_block_id?: string | null;
+  start_date?: string;
+  end_date?: string;
+  is_active?: boolean;
+  questions?: Array<{
+    question_text: string;
+    question_type: 'RATING_1_TO_5' | 'YES_NO' | 'MULTIPLE_CHOICE' | 'FREE_TEXT';
+    options_json?: string[];
+    is_required?: boolean;
+    question_order?: number;
+  }>;
+}
+
+export interface ManagementSurveyListResponse {
+  status: string;
+  data: SatisfactionSurveyItem[];
+  kpis: SurveyOverviewKpis;
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}
+
+export interface TicketRatingResponse {
+  data: { id: string; ticket_id: string; rating_stars: number; review_comment: string | null; created_at: string } | null;
+  can_rate: boolean;
+  ticket_version: number;
+}

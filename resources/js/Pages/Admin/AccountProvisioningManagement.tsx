@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   UserPlus,
   Mail,
@@ -28,6 +28,9 @@ import {
   AlertTriangle,
   UserCheck
 } from 'lucide-react';
+import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
+import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
+import { CustomSelect, SelectOption } from '../../Components/Common/CustomSelect';
 
 interface ProvisionedUser {
   id: string;
@@ -56,6 +59,8 @@ interface AccountProvisioningProps {
 }
 
 export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> = ({ embedded = false }) => {
+  const { isCooldownActive, remainingSeconds, message: cooldownMessage, startCooldown } = useModuleCooldown('account_provisioning');
+
   // 1. FORM STATE (THÊM MỚI TÀI KHOẢN)
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -89,15 +94,36 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
 
   // UI STATE CHUNG
   const [submitting, setSubmitting] = useState(false);
-  const [loadingList, setLoadingList] = useState(false);
+
+  // Đọc snapshot lưu trong sessionStorage để hiển thị tức thì (0ms) cho lần tải thứ 2
+  const getCachedUsers = () => {
+    try {
+      const raw = sessionStorage.getItem('smartcassavas_account_prov_cache');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const cachedUsers = getCachedUsers();
+
+  const [loadingList, setLoadingList] = useState<boolean>(() => !cachedUsers);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [batchResending, setBatchResending] = useState(false);
   const [togglingLockId, setTogglingLockId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchAbortRef = useRef<AbortController | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
-  const [users, setUsers] = useState<ProvisionedUser[]>([]);
+  const [users, setUsers] = useState<ProvisionedUser[]>(() => (Array.isArray(cachedUsers) ? cachedUsers : []));
   const [createdResult, setCreatedResult] = useState<any | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Hiển thị toast
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -106,12 +132,19 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
   };
 
   // Tải danh sách người dùng từ API
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async (customSearch?: string) => {
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     try {
       setLoadingList(true);
       const token = localStorage.getItem('smart_cassavas_token');
       const query = new URLSearchParams();
-      if (searchTerm) query.append('search', searchTerm);
+      const effectiveSearch = customSearch !== undefined ? customSearch : debouncedSearch;
+      if (effectiveSearch) query.append('search', effectiveSearch);
       if (statusFilter) query.append('status', statusFilter);
       query.append('limit', '50');
 
@@ -119,23 +152,79 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
         headers: {
           'Accept': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
+        },
+        signal: controller.signal,
       });
 
       if (res.ok) {
         const json = await res.json();
         setUsers(json.data || []);
+        if (!effectiveSearch && !statusFilter) {
+          try {
+            sessionStorage.setItem('smartcassavas_account_prov_cache', JSON.stringify(json.data || []));
+          } catch {
+            // ignore
+          }
+        }
       }
     } catch (err: any) {
-      console.error('Lỗi tải danh sách tài khoản:', err);
+      if (err?.name !== 'AbortError') {
+        console.error('Lỗi tải danh sách tài khoản:', err);
+      }
     } finally {
-      setLoadingList(false);
+      if (searchAbortRef.current === controller) {
+        setLoadingList(false);
+      }
     }
-  };
+  }, [debouncedSearch, statusFilter]);
 
   useEffect(() => {
     loadUsers();
-  }, [statusFilter]);
+  }, [loadUsers]);
+
+  // Realtime Auto-Sync Listener (Quốc Tín - Account Provisioning)
+  useRealtimeSync({
+    channel: 'quoc-tin.account-provisioning',
+    onEvent: (event) => {
+      // 0. Cập nhật state in-memory ngay lập tức
+      if (event.action === 'DELETED' && event.entity_id) {
+        setUsers((prev) => prev.filter((u) => u.id !== event.entity_id));
+      } else if (event.action === 'STATUS_CHANGED' && event.entity_id && event.status) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === event.entity_id ? { ...u, status: event.status } : u))
+        );
+      }
+
+      // 1. Invalidate cache
+      try {
+        sessionStorage.removeItem('smartcassavas_account_prov_cache');
+      } catch {
+        // ignore
+      }
+
+      // 2. Refetch danh sách tài khoản (bảo toàn filter, search)
+      loadUsers();
+
+      // 3. Nếu đang mở modal chi tiết của user bị sửa, cập nhật modal
+      if (detailUser && detailUser.id === event.entity_id) {
+        const token = localStorage.getItem('smart_cassavas_token');
+        fetch(`/api/v1/account-provisioning/${detailUser.id}`, {
+          headers: {
+            Accept: 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+          .then((res) => res.json())
+          .then((json: any) => {
+            if (json.data) setDetailUser(json.data);
+          })
+          .catch(() => {});
+      }
+    },
+    onReconnect: () => {
+      loadUsers();
+    },
+  });
 
   // ========================================================
   // CHỨC NĂNG 1: THÊM MỚI / CẤP PHÁT TÀI KHOẢN TỰ ĐỘNG
@@ -629,6 +718,13 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
         </div>
       </div>
 
+      {/* Cooldown Banner */}
+      <CooldownBanner
+        isCooldownActive={isCooldownActive}
+        remainingSeconds={remainingSeconds}
+        customMessage={cooldownMessage}
+      />
+
       {/* Layout Grid 2 cột: Form Cấp phát & Bảng Danh sách */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* CỘT TRÁI: FORM CẤP PHÁT TÀI KHOẢN (4 Cột) */}
@@ -716,15 +812,17 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                   <label className="block text-xs font-medium text-slate-700 mb-1.5">
                     Giới tính
                   </label>
-                  <select
+                  <CustomSelect
                     value={gender}
-                    onChange={(e: any) => setGender(e.target.value)}
-                    className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
-                  >
-                    <option value="MALE">Nam</option>
-                    <option value="FEMALE">Nữ</option>
-                    <option value="OTHER">Khác</option>
-                  </select>
+                    onChange={(val: any) => setGender(val)}
+                    options={[
+                      { value: 'MALE', label: 'Nam' },
+                      { value: 'FEMALE', label: 'Nữ' },
+                      { value: 'OTHER', label: 'Khác' },
+                    ]}
+                    placeholder="Chọn giới tính"
+                    searchable={false}
+                  />
                 </div>
               </div>
 
@@ -732,21 +830,21 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                 <label className="block text-xs font-medium text-slate-700 mb-1.5">
                   Vai trò phân quyền <span className="text-rose-500">*</span>
                 </label>
-                <div className="relative">
-                  <Shield className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <select
-                    value={roleCode}
-                    onChange={(e) => setRoleCode(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                  >
-                    <option value="RECEPTIONIST">Nhân Viên Lễ Tân</option>
-                    <option value="TECHNICIAN">Nhân Viên Kỹ Thuật</option>
-                    <option value="ACCOUNTANT">Nhân Viên Kế Toán</option>
-                    <option value="SECURITY">Nhân Viên An Ninh</option>
-                    <option value="BUILDING_MANAGER">Ban Quản Lý Tòa Nhà</option>
-                    <option value="RESIDENT_OWNER">Cư Dân / Chủ Hộ</option>
-                  </select>
-                </div>
+                <CustomSelect
+                  value={roleCode}
+                  onChange={(val) => setRoleCode(val)}
+                  prefixIcon={<Shield className="w-4 h-4 text-slate-400" />}
+                  options={[
+                    { value: 'RECEPTIONIST', label: 'Nhân Viên Lễ Tân' },
+                    { value: 'TECHNICIAN', label: 'Nhân Viên Kỹ Thuật' },
+                    { value: 'ACCOUNTANT', label: 'Nhân Viên Kế Toán' },
+                    { value: 'SECURITY', label: 'Nhân Viên An Ninh' },
+                    { value: 'BUILDING_MANAGER', label: 'Ban Quản Lý Tòa Nhà' },
+                    { value: 'RESIDENT_OWNER', label: 'Cư Dân / Chủ Hộ' },
+                  ]}
+                  placeholder="Chọn vai trò phân quyền"
+                  searchable={false}
+                />
               </div>
 
               <div className="p-3 bg-sky-50/70 border border-sky-100 rounded-2xl text-[11px] text-sky-800 leading-relaxed">
@@ -760,6 +858,7 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                 type="submit"
                 disabled={submitting}
                 className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-sky-600/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                title="Cấp tài khoản mới"
               >
                 {submitting ? (
                   <>
@@ -847,16 +946,20 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                   />
                 </div>
 
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
-                >
-                  <option value="">Tất cả trạng thái</option>
-                  <option value="PENDING_ACTIVATION">Chờ kích hoạt</option>
-                  <option value="ACTIVE">Đã kích hoạt</option>
-                  <option value="LOCKED">Tạm khóa</option>
-                </select>
+                <div className="w-44">
+                  <CustomSelect
+                    value={statusFilter}
+                    onChange={(val) => setStatusFilter(val)}
+                    options={[
+                      { value: '', label: 'Tất cả trạng thái' },
+                      { value: 'PENDING_ACTIVATION', label: 'Chờ kích hoạt' },
+                      { value: 'ACTIVE', label: 'Đã kích hoạt' },
+                      { value: 'LOCKED', label: 'Tạm khóa' },
+                    ]}
+                    placeholder="Tất cả trạng thái"
+                    searchable={false}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1171,15 +1274,18 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                   <label className="block text-xs font-medium text-slate-700 mb-1.5">
                     Giới tính
                   </label>
-                  <select
+                  <CustomSelect
                     value={editGender}
-                    onChange={(e: any) => setEditGender(e.target.value)}
-                    className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
-                  >
-                    <option value="MALE">Nam</option>
-                    <option value="FEMALE">Nữ</option>
-                    <option value="OTHER">Khác</option>
-                  </select>
+                    onChange={(val: any) => setEditGender(val)}
+                    options={[
+                      { value: 'MALE', label: 'Nam' },
+                      { value: 'FEMALE', label: 'Nữ' },
+                      { value: 'OTHER', label: 'Khác' },
+                    ]}
+                    placeholder="Chọn giới tính"
+                    overlay={true}
+                    searchable={false}
+                  />
                 </div>
               </div>
 
@@ -1187,18 +1293,21 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                 <label className="block text-xs font-medium text-slate-700 mb-1.5">
                   Vai trò phân quyền
                 </label>
-                <select
+                <CustomSelect
                   value={editRoleCode}
-                  onChange={(e) => setEditRoleCode(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                >
-                  <option value="RECEPTIONIST">Nhân Viên Lễ Tân</option>
-                  <option value="TECHNICIAN">Nhân Viên Kỹ Thuật</option>
-                  <option value="ACCOUNTANT">Nhân Viên Kế Toán</option>
-                  <option value="SECURITY">Nhân Viên An Ninh</option>
-                  <option value="BUILDING_MANAGER">Ban Quản Lý Tòa Nhà</option>
-                  <option value="RESIDENT_OWNER">Cư Dân / Chủ Hộ</option>
-                </select>
+                  onChange={(val) => setEditRoleCode(val)}
+                  options={[
+                    { value: 'RECEPTIONIST', label: 'Nhân Viên Lễ Tân' },
+                    { value: 'TECHNICIAN', label: 'Nhân Viên Kỹ Thuật' },
+                    { value: 'ACCOUNTANT', label: 'Nhân Viên Kế Toán' },
+                    { value: 'SECURITY', label: 'Nhân Viên An Ninh' },
+                    { value: 'BUILDING_MANAGER', label: 'Ban Quản Lý Tòa Nhà' },
+                    { value: 'RESIDENT_OWNER', label: 'Cư Dân / Chủ Hộ' },
+                  ]}
+                  placeholder="Chọn vai trò"
+                  overlay={true}
+                  searchable={false}
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -1302,9 +1411,9 @@ export const AccountProvisioningManagement: React.FC<AccountProvisioningProps> =
                   <span className="text-emerald-700">✓ Thành công: {importReport.success} tài khoản</span>
                   <span className="text-rose-700">✕ Thất bại: {importReport.failed} tài khoản</span>
                 </div>
-                {importReport.errors.length > 0 && (
+                {importReport.errors && importReport.errors.length > 0 && (
                   <div className="mt-2 p-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 max-h-32 overflow-y-auto space-y-1">
-                    {importReport.errors.map((err, idx) => (
+                    {(importReport.errors || []).map((err, idx) => (
                       <div key={idx}>• {err}</div>
                     ))}
                   </div>

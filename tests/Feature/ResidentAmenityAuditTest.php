@@ -53,8 +53,8 @@ class ResidentAmenityAuditTest extends TestCase
     {
         $categoryId = (string) Str::uuid();
         DB::table('ticket_categories')->insert(['id' => $categoryId, 'category_code' => Str::random(12), 'category_name' => 'QA category']);
-        $payload = ['title' => 'QA ticket', 'description' => 'Test only', 'category_id' => $categoryId, 'user_id' => $this->secondUser->id, 'apartment_id' => $this->apartmentId];
-        $this->postJson('/api/v1/resident/tickets', $payload)->assertCreated()->assertJsonPath('ticket.creator_user_id', $this->residentUser->id);
+        $payload = ['title' => 'QA ticket', 'description' => 'Test only', 'location' => 'QA kitchen', 'category_id' => $categoryId, 'user_id' => $this->secondUser->id, 'apartment_id' => $this->apartmentId];
+        $this->postJson('/api/v1/resident/tickets', $payload)->assertCreated()->assertJsonPath('data.creator_user_id', $this->residentUser->id);
         $this->postJson('/api/v1/resident/tickets', array_merge($payload, ['apartment_id' => (string) Str::uuid()]))->assertUnprocessable()->assertJsonValidationErrors('apartment_id');
         $this->postJson('/api/v1/resident/tickets', array_merge($payload, ['category_id' => (string) Str::uuid()]))->assertUnprocessable()->assertJsonValidationErrors('category_id');
         DB::table('residents')->where('user_id', $this->residentUser->id)->update(['stay_end_date' => today()->subDay()]);
@@ -90,6 +90,7 @@ class ResidentAmenityAuditTest extends TestCase
     {
         $this->withHeader('Authorization', 'Bearer '.$this->adminToken)
             ->putJson('/api/v1/admin/amenities/'.$this->amenityId.'/time-slots/'.$this->slotId, [
+                'version' => 1,
                 'day_of_week' => today()->addDay()->dayOfWeek, 'slot_start_time' => '12:00', 'slot_end_time' => '10:00', 'max_bookings' => 2,
             ])->assertUnprocessable();
     }
@@ -101,7 +102,8 @@ class ResidentAmenityAuditTest extends TestCase
             ->postJson('/api/v1/resident/amenity-bookings', $this->bookingPayload())->assertCreated();
         $this->withHeader('Authorization', 'Bearer '.$this->adminToken)
             ->putJson('/api/v1/admin/amenities/'.$this->amenityId.'/time-slots/'.$this->slotId, [
-                'day_of_week' => today()->addDay()->dayOfWeek, 'slot_start_time' => '10:00', 'slot_end_time' => '11:30', 'max_bookings' => 1,
+                'version' => 1,
+                'day_of_week' => today()->addDays(2)->dayOfWeek, 'slot_start_time' => '10:00', 'slot_end_time' => '11:30', 'max_bookings' => 1,
             ])->assertConflict();
     }
 
@@ -112,6 +114,7 @@ class ResidentAmenityAuditTest extends TestCase
         DB::table('amenities')->insert(array_merge($original, ['id' => $otherAmenityId, 'amenity_code' => Str::random(12)]));
         $this->withHeader('Authorization', 'Bearer '.$this->adminToken)
             ->putJson('/api/v1/admin/amenities/'.$otherAmenityId.'/time-slots/'.$this->slotId, [
+                'version' => 1,
                 'day_of_week' => today()->addDay()->dayOfWeek, 'slot_start_time' => '10:00', 'slot_end_time' => '11:30', 'max_bookings' => 2,
             ])->assertNotFound();
     }

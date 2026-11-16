@@ -78,7 +78,7 @@ trait ResidentAmenityBookingFixtures
     protected function sessionToken(User $user): string
     {
         $token = 'smart_token_'.$user->id.'_'.Str::random(32);
-        DB::table('user_sessions')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'refresh_token_hash' => hash('sha256', $token), 'expires_at' => now()->addDay(), 'is_revoked' => 0]);
+        DB::table('user_sessions')->insert(['id' => (string) Str::uuid(), 'user_id' => $user->id, 'refresh_token_hash' => hash('sha256', $token), 'expires_at' => now()->addDays(30), 'is_revoked' => 0]);
 
         return $token;
     }

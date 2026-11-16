@@ -20,7 +20,9 @@ import {
     ChevronRight,
     TrendingUp,
     ShieldAlert,
-    HelpCircle
+    HelpCircle,
+    Ban,
+    Flame
 } from 'lucide-react';
 import {
     servicePricingApi,
@@ -30,6 +32,8 @@ import {
     MeterType,
     SimulationResult
 } from '../../Services/servicePricingApi';
+import { CustomSelect, SelectOption } from '../../Components/Common/CustomSelect';
+import { CustomDatePicker } from '../../Components/Common/CustomDatePicker';
 
 export const ServicePricingManagement: React.FC = () => {
     // Dữ liệu chính
@@ -80,25 +84,56 @@ export const ServicePricingManagement: React.FC = () => {
         setTimeout(() => setToast(null), 4000);
     };
 
-    // Tải danh sách biểu phí
-    const fetchConfigs = async () => {
+    // Tải danh sách biểu phí (Hỗ trợ silent background polling mượt mà không giật lag)
+    const fetchConfigs = async (isSilent = false) => {
         try {
-            setLoading(true);
+            if (!isSilent && configs.length === 0) {
+                setLoading(true);
+            }
             const res = await servicePricingApi.getPricingConfigs();
-            if (res.success) {
-                setConfigs(res.data);
+            if (res.success && Array.isArray(res.data)) {
+                setConfigs(prev => {
+                    const prevJson = JSON.stringify(prev);
+                    const nextJson = JSON.stringify(res.data);
+                    return prevJson === nextJson ? prev : res.data;
+                });
             }
         } catch (error: any) {
-            console.error('Lỗi tải danh mục đơn giá:', error);
-            showToast('error', error?.response?.data?.message || 'Không thể tải danh mục biểu giá.');
+            if (!isSilent) {
+                console.error('Lỗi tải danh mục đơn giá:', error);
+                showToast('error', error?.response?.data?.message || 'Không thể tải danh mục biểu giá.');
+            }
         } finally {
-            setLoading(false);
+            if (!isSilent) {
+                setLoading(false);
+            }
         }
     };
 
+    // Auto-sync polling liên tục ngầm định mượt mà (zero jitter, zero lag)
     useEffect(() => {
-        fetchConfigs();
-    }, []);
+        fetchConfigs(false);
+
+        // Chu kỳ 4 giây một lần (nhẹ nhàng, tạm dừng khi đang gõ modal hoặc rời tab)
+        const timer = setInterval(() => {
+            if (!document.hidden && !isConfigModalOpen && !isTiersModalOpen && !isSimulateModalOpen) {
+                fetchConfigs(true);
+            }
+        }, 4000);
+
+        const handleVisibilityChange = () => {
+            if (!document.hidden && !isConfigModalOpen && !isTiersModalOpen && !isSimulateModalOpen) {
+                fetchConfigs(true);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [isConfigModalOpen, isTiersModalOpen, isSimulateModalOpen]);
 
     // Lọc danh sách
     const filteredConfigs = useMemo(() => {
@@ -342,35 +377,10 @@ export const ServicePricingManagement: React.FC = () => {
                     <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider font-mono text-sky-600">
                         <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500 shrink-0" />
                         <span>HỆ THỐNG BIỂU PHÍ & ĐƠN GIÁ DỊCH VỤ</span>
-                        <span className="text-slate-300">·</span>
-                        <span className="text-slate-500">CHỨC NĂNG #3 (CÀI ĐẶT ĐƠN GIÁ ĐIỆN NƯỚC & PHÍ QUẢN LÝ)</span>
                     </div>
                     <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 tracking-tight mt-1">
                         Cài đặt Đơn giá Dịch vụ & Biểu giá Lũy tiến
                     </h1>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl leading-relaxed">
-                        Quản trị đa tầng biểu phí Điện bậc thang EVN, Nước định mức sinh hoạt, Phí quản lý chung cư và Giữ xe cơ bản.
-                    </p>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
-                    <button
-                        type="button"
-                        onClick={handleOpenCreateModal}
-                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white shadow-sm transition-all active:scale-[0.98] cursor-pointer"
-                    >
-                        <Plus className="w-3.5 h-3.5 shrink-0" />
-                        <span>Thêm Biểu Phí Mới</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={fetchConfigs}
-                        disabled={loading}
-                        title="Làm mới dữ liệu"
-                        className="p-2 rounded-xl text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-2xs transition-all active:scale-[0.98] cursor-pointer shrink-0"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-sky-600' : ''}`} />
-                    </button>
                 </div>
             </div>
 
@@ -467,26 +477,30 @@ export const ServicePricingManagement: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-                    <select
-                        value={filterBillingType}
-                        onChange={e => setFilterBillingType(e.target.value)}
-                        className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition cursor-pointer"
-                    >
-                        <option value="ALL">Mọi hình thức tính cước</option>
-                        <option value="TIERED_USAGE">Lũy tiến bậc thang</option>
-                        <option value="UNIT_PRICE_USAGE">Đơn giá theo tiêu thụ / m²</option>
-                        <option value="FIXED_MONTHLY">Cố định hàng tháng</option>
-                    </select>
+                    <div className="w-full sm:w-56">
+                        <CustomSelect<string>
+                            value={filterBillingType}
+                            onChange={val => setFilterBillingType(val)}
+                            options={[
+                                { value: 'ALL', label: 'Mọi hình thức tính cước' },
+                                { value: 'TIERED_USAGE', label: 'Lũy tiến bậc thang', icon: <Layers className="w-3.5 h-3.5 text-amber-500" /> },
+                                { value: 'UNIT_PRICE_USAGE', label: 'Đơn giá theo tiêu thụ / m²', icon: <Calculator className="w-3.5 h-3.5 text-indigo-500" /> },
+                                { value: 'FIXED_MONTHLY', label: 'Cố định hàng tháng', icon: <Car className="w-3.5 h-3.5 text-emerald-500" /> },
+                            ]}
+                        />
+                    </div>
 
-                    <select
-                        value={filterActive}
-                        onChange={e => setFilterActive(e.target.value)}
-                        className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition cursor-pointer"
-                    >
-                        <option value="ALL">Mọi trạng thái</option>
-                        <option value="ACTIVE">Đang áp dụng</option>
-                        <option value="INACTIVE">Tạm ngưng</option>
-                    </select>
+                    <div className="w-full sm:w-44">
+                        <CustomSelect<string>
+                            value={filterActive}
+                            onChange={val => setFilterActive(val)}
+                            options={[
+                                { value: 'ALL', label: 'Mọi trạng thái' },
+                                { value: 'ACTIVE', label: 'Đang áp dụng', icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />, badge: 'Áp dụng', badgeColor: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+                                { value: 'INACTIVE', label: 'Tạm ngưng', icon: <XCircle className="w-3.5 h-3.5 text-rose-500" />, badge: 'Tạm ngưng', badgeColor: 'bg-rose-50 text-rose-700 border border-rose-200' },
+                            ]}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -503,9 +517,20 @@ export const ServicePricingManagement: React.FC = () => {
                         </p>
                     </div>
 
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 font-mono shadow-2xs">
-                        Tổng cộng: {filteredConfigs.length} Biểu phí
-                    </span>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleOpenCreateModal}
+                            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                        >
+                            <Plus className="w-3.5 h-3.5 shrink-0" />
+                            <span>Thêm Biểu Phí Mới</span>
+                        </button>
+
+                        <span className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-mono shadow-2xs">
+                            Tổng cộng: {filteredConfigs.length} Biểu phí
+                        </span>
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -703,8 +728,8 @@ export const ServicePricingManagement: React.FC = () => {
             {/* MODAL CẤU HÌNH BIỂU PHÍ (THÊM / SỬA) */}
             {isConfigModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
-                    <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                    <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 relative">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 rounded-t-2xl">
                             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                                 <Layers className="w-4 h-4 text-sky-600" />
                                 {editingConfig ? 'Chỉnh Sửa Cấu Hình Đơn Giá' : 'Thiết Lập Đơn Giá Dịch Vụ Mới'}
@@ -752,15 +777,30 @@ export const ServicePricingManagement: React.FC = () => {
                                     <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                                         Hình thức tính cước <span className="text-rose-500">*</span>
                                     </label>
-                                    <select
+                                    <CustomSelect<BillingType>
                                         value={formData.billing_type}
-                                        onChange={e => setFormData({ ...formData, billing_type: e.target.value as BillingType })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition cursor-pointer"
-                                    >
-                                        <option value="TIERED_USAGE">Lũy tiến bậc thang (Điện, Nước)</option>
-                                        <option value="UNIT_PRICE_USAGE">Đơn giá theo diện tích / tiêu thụ</option>
-                                        <option value="FIXED_MONTHLY">Cố định hàng tháng (Gửi xe, phí gói)</option>
-                                    </select>
+                                        onChange={val => setFormData({ ...formData, billing_type: val })}
+                                        options={[
+                                            {
+                                                value: 'TIERED_USAGE',
+                                                label: 'Lũy tiến bậc thang (Điện, Nước)',
+                                                description: 'Tính giá chia theo các bậc tiêu thụ tăng dần',
+                                                icon: <Layers className="w-3.5 h-3.5 text-amber-500" />,
+                                            },
+                                            {
+                                                value: 'UNIT_PRICE_USAGE',
+                                                label: 'Đơn giá theo diện tích / tiêu thụ',
+                                                description: 'Đơn giá cố định nhân số m² thông thủy hoặc số lượng',
+                                                icon: <Calculator className="w-3.5 h-3.5 text-indigo-500" />,
+                                            },
+                                            {
+                                                value: 'FIXED_MONTHLY',
+                                                label: 'Cố định hàng tháng (Gửi xe, phí gói)',
+                                                description: 'Mức thu cố định định kỳ hàng tháng cho căn hộ hoặc xe',
+                                                icon: <Car className="w-3.5 h-3.5 text-emerald-500" />,
+                                            },
+                                        ]}
+                                    />
                                 </div>
 
                                 <div>
@@ -797,17 +837,42 @@ export const ServicePricingManagement: React.FC = () => {
                                     <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                                         Loại đồng hồ đo
                                     </label>
-                                    <select
+                                    <CustomSelect<MeterType | ''>
                                         value={formData.meter_type || ''}
-                                        onChange={e => setFormData({ ...formData, meter_type: (e.target.value || null) as MeterType })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition cursor-pointer"
-                                    >
-                                        <option value="">Không dùng công tơ đo</option>
-                                        <option value="ELECTRICITY">Đồng hồ Điện (kWh)</option>
-                                        <option value="COLD_WATER">Đồng hồ Nước Sạch (m3)</option>
-                                        <option value="HOT_WATER">Đồng hồ Nước Nóng (m3)</option>
-                                        <option value="GAS">Đồng hồ Khí Gas (m3)</option>
-                                    </select>
+                                        onChange={val => setFormData({ ...formData, meter_type: (val || null) as MeterType })}
+                                        options={[
+                                            {
+                                                value: '',
+                                                label: 'Không dùng công tơ đo',
+                                                description: 'Phí dịch vụ thu theo diện tích, cố định hoặc gói',
+                                                icon: <Ban className="w-3.5 h-3.5 text-slate-400" />,
+                                            },
+                                            {
+                                                value: 'ELECTRICITY',
+                                                label: 'Đồng hồ Điện (kWh)',
+                                                description: 'Công tơ điện sinh hoạt hoặc trạm sạc xe điện',
+                                                icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
+                                            },
+                                            {
+                                                value: 'COLD_WATER',
+                                                label: 'Đồng hồ Nước Sạch (m3)',
+                                                description: 'Đồng hồ đo khối lượng nước sạch sinh hoạt',
+                                                icon: <Droplets className="w-3.5 h-3.5 text-sky-500" />,
+                                            },
+                                            {
+                                                value: 'HOT_WATER',
+                                                label: 'Đồng hồ Nước Nóng (m3)',
+                                                description: 'Hệ thống nước nóng trung tâm / heatpump',
+                                                icon: <Flame className="w-3.5 h-3.5 text-orange-500" />,
+                                            },
+                                            {
+                                                value: 'GAS',
+                                                label: 'Đồng hồ Khí Gas (m3)',
+                                                description: 'Hệ thống đường ống dẫn khí gas trung tâm căn hộ',
+                                                icon: <Flame className="w-3.5 h-3.5 text-rose-500" />,
+                                            },
+                                        ]}
+                                    />
                                 </div>
 
                                 <div>
@@ -840,13 +905,12 @@ export const ServicePricingManagement: React.FC = () => {
 
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                                        Ngày bắt đầu hiệu lực
+                                        Ngày bắt đầu hiệu lực <span className="text-rose-500">*</span>
                                     </label>
-                                    <input
-                                        type="date"
+                                    <CustomDatePicker
                                         value={formData.effective_from_date}
-                                        onChange={e => setFormData({ ...formData, effective_from_date: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition"
+                                        onChange={val => setFormData({ ...formData, effective_from_date: val })}
+                                        placeholder="dd/mm/yyyy"
                                     />
                                 </div>
 
@@ -854,16 +918,15 @@ export const ServicePricingManagement: React.FC = () => {
                                     <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
                                         Ngày kết thúc (Tùy chọn)
                                     </label>
-                                    <input
-                                        type="date"
+                                    <CustomDatePicker
                                         value={formData.effective_to_date}
-                                        onChange={e => setFormData({ ...formData, effective_to_date: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition"
+                                        onChange={val => setFormData({ ...formData, effective_to_date: val })}
+                                        placeholder="dd/mm/yyyy (Không bắt buộc)"
                                     />
                                 </div>
                             </div>
 
-                            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50/50 -mx-6 -mb-6 p-4">
+                            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50/50 -mx-6 -mb-6 p-4 rounded-b-2xl">
                                 <button
                                     type="button"
                                     onClick={() => setIsConfigModalOpen(false)}

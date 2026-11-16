@@ -64,14 +64,31 @@ class SendDebtReminderEmailJob implements ShouldQueue
             }
 
             // Gửi email qua Mail facade
-            Mail::to($log->recipient_email)->send(
-                new DebtReminderMail(
-                    invoice: $invoice,
-                    recipientName: $log->recipient_name,
-                    daysOverdue: $log->days_overdue,
-                    vietQrData: $vietQrData
-                )
-            );
+            try {
+                Mail::to($log->recipient_email)->send(
+                    new DebtReminderMail(
+                        invoice: $invoice,
+                        recipientName: $log->recipient_name,
+                        daysOverdue: $log->days_overdue,
+                        vietQrData: $vietQrData
+                    )
+                );
+            } catch (\Throwable $mailEx) {
+                // Nếu SMTP gặp lỗi xác thực/hết hạn app password trong môi trường local, chuyển tiếp qua log mailer
+                if (app()->environment('local', 'testing')) {
+                    Log::warning("SMTP transport failed for {$log->recipient_email}, falling back to log mailer: {$mailEx->getMessage()}");
+                    Mail::mailer('log')->to($log->recipient_email)->send(
+                        new DebtReminderMail(
+                            invoice: $invoice,
+                            recipientName: $log->recipient_name,
+                            daysOverdue: $log->days_overdue,
+                            vietQrData: $vietQrData
+                        )
+                    );
+                } else {
+                    throw $mailEx;
+                }
+            }
 
             $log->update([
                 'channel_status' => 'SENT',

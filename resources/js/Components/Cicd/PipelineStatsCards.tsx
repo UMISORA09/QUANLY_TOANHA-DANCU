@@ -89,15 +89,15 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
       badge: stats.production_status === 'not_configured'
         ? 'Not configured'
         : (stats.production_status === 'healthy' || stats.production_status === 'operational'
-          ? 'Operational'
-          : (stats.production_status === 'degraded'
+          ? 'Đã triển khai'
+          : (stats.production_status === 'degraded' || stats.production_status === 'deploying'
             ? 'Degraded'
-            : (stats.production_status === 'unhealthy' || stats.production_status === 'down' ? 'Down' : 'Chưa triển khai'))),
+            : (stats.production_status === 'unhealthy' || stats.production_status === 'down' || stats.production_status === 'failed' || stats.production_status === 'stopped' ? 'Down' : 'Chưa triển khai'))),
       badgeColor: stats.production_status === 'healthy' || stats.production_status === 'operational'
         ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-        : (stats.production_status === 'degraded'
+        : (stats.production_status === 'degraded' || stats.production_status === 'deploying'
           ? 'bg-amber-100 text-amber-800 border border-amber-200'
-          : (stats.production_status === 'unhealthy' || stats.production_status === 'down'
+          : (stats.production_status === 'unhealthy' || stats.production_status === 'down' || stats.production_status === 'failed' || stats.production_status === 'stopped'
             ? 'bg-rose-100 text-rose-800 border border-rose-200'
             : 'bg-slate-100 text-slate-600 border border-slate-200')),
     },
@@ -111,15 +111,15 @@ export const PipelineStatsCards: React.FC<PipelineStatsCardsProps> = ({ stats, i
       badge: stats.staging_status === 'not_configured'
         ? 'Not configured'
         : (stats.staging_status === 'healthy' || stats.staging_status === 'operational'
-          ? 'Operational'
-          : (stats.staging_status === 'degraded'
+          ? 'Đã triển khai'
+          : (stats.staging_status === 'degraded' || stats.staging_status === 'deploying'
             ? 'Degraded'
-            : (stats.staging_status === 'unhealthy' || stats.staging_status === 'down' ? 'Down' : 'Chưa triển khai'))),
+            : (stats.staging_status === 'unhealthy' || stats.staging_status === 'down' || stats.staging_status === 'failed' || stats.staging_status === 'stopped' ? 'Down' : 'Chưa triển khai'))),
       badgeColor: stats.staging_status === 'healthy' || stats.staging_status === 'operational'
         ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-        : (stats.staging_status === 'degraded'
+        : (stats.staging_status === 'degraded' || stats.staging_status === 'deploying'
           ? 'bg-amber-100 text-amber-800 border border-amber-200'
-          : (stats.staging_status === 'unhealthy' || stats.staging_status === 'down'
+          : (stats.staging_status === 'unhealthy' || stats.staging_status === 'down' || stats.staging_status === 'failed' || stats.staging_status === 'stopped'
             ? 'bg-rose-100 text-rose-800 border border-rose-200'
             : 'bg-slate-100 text-slate-600 border border-slate-200')),
     },

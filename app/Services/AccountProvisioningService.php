@@ -104,6 +104,8 @@ class AccountProvisioningService
      */
     public function provisionAccount(array $data, ?User $actor = null): array
     {
+        QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
+
         $email = strtolower(trim((string) ($data['email'] ?? '')));
         $phoneNumber = trim((string) ($data['phone_number'] ?? ''));
         $fullName = trim((string) ($data['full_name'] ?? ''));
@@ -114,33 +116,34 @@ class AccountProvisioningService
         $dob = $data['date_of_birth'] ?? null;
         $roleCodes = $data['roles'] ?? ['RESIDENT_OWNER'];
 
-        $dbResult = DB::transaction(function () use ($email, $phoneNumber, $fullName, $nationalId, $gender, $dob, $roleCodes, $actor) {
-            // Kiểm tra trùng lặp email với lock tránh race condition
-            $emailExists = User::withTrashed()->where('email', $email)->lockForUpdate()->exists();
+        // 1. Sinh mật khẩu ngẫu nhiên & hash TRƯỚC KHI mở transaction để không block CSDL bằng CPU bcrypt
+        $temporaryPlainPassword = $this->generateSecurePassword(16);
+        $passwordHash = Hash::make($temporaryPlainPassword);
+        $plainToken = Str::random(64);
+
+        $dbResult = DB::transaction(function () use ($email, $phoneNumber, $fullName, $nationalId, $gender, $dob, $roleCodes, $actor, $passwordHash, $plainToken) {
+            // Kiểm tra trùng lặp email bằng index seek
+            $emailExists = User::withTrashed()->where('email', $email)->exists();
             if ($emailExists) {
                 throw new AccountProvisioningDuplicateException("Địa chỉ email '{$email}' đã tồn tại trong hệ thống.");
             }
 
             // Kiểm tra trùng lặp số điện thoại
-            $phoneExists = User::withTrashed()->where('phone_number', $phoneNumber)->lockForUpdate()->exists();
+            $phoneExists = User::withTrashed()->where('phone_number', $phoneNumber)->exists();
             if ($phoneExists) {
                 throw new AccountProvisioningDuplicateException("Số điện thoại '{$phoneNumber}' đã tồn tại trong hệ thống.");
             }
 
             // Kiểm tra trùng lặp số CCCD nếu có
             if ($nationalId !== null) {
-                $nationalIdExists = User::withTrashed()->where('national_id_number', $nationalId)->lockForUpdate()->exists();
+                $nationalIdExists = User::withTrashed()->where('national_id_number', $nationalId)->exists();
                 if ($nationalIdExists) {
                     throw new AccountProvisioningDuplicateException("Số CCCD/Passport '{$nationalId}' đã tồn tại trong hệ thống.");
                 }
             }
 
-            // 1. Sinh username ngẫu nhiên duy nhất theo pattern NV_xxxxxx
+            // 2. Sinh username ngẫu nhiên duy nhất theo pattern NV_xxxxxx
             $username = $this->generateUniqueUsername('NV');
-
-            // 2. Sinh mật khẩu ngẫu nhiên & hash
-            $temporaryPlainPassword = $this->generateSecurePassword(16);
-            $passwordHash = Hash::make($temporaryPlainPassword);
 
             // 3. Khởi tạo bản ghi người dùng với trạng thái PENDING_ACTIVATION
             $now = Carbon::now();
@@ -169,8 +172,7 @@ class AccountProvisioningService
             // 4. Gán vai trò cho người dùng
             $this->assignRoles($user, $roleCodes, $actor);
 
-            // 5. Tạo token kích hoạt và lưu vào bảng password_reset_tokens hiện có của hệ thống
-            $plainToken = Str::random(64);
+            // 5. Tạo token kích hoạt và lưu vào bảng password_reset_tokens
             $this->storeActivationToken($email, $plainToken);
 
             // 6. Xây dựng link kích hoạt
@@ -185,6 +187,12 @@ class AccountProvisioningService
         Mail::to($user->email)->send(new AccountActivationMail($user, $activationUrl, self::ACTIVATION_EXPIRY_HOURS));
 
         $user->load('roles:id,role_code,role_name');
+
+        QuocTinRealtimeService::emit('account-provisioning', 'user', 'PROVISIONED', $user->id, [
+            'status' => $user->status,
+            'email' => $user->email,
+            'full_name' => $user->full_name,
+        ], $actor?->id, false);
 
         return [
             'user' => [
@@ -289,15 +297,15 @@ class AccountProvisioningService
             throw new AccountProvisioningNotFoundException('Không tìm thấy tài khoản người dùng tương ứng.');
         }
 
+        // Đảm bảo liên kết chỉ kích hoạt 1 lần duy nhất, nếu đã kích hoạt rồi thì thông báo đăng nhập
+        if ($user->status === 'ACTIVE') {
+            throw new AccountProvisioningAlreadyActiveException('Đã kích hoạt tài khoản bạn vui lòng đăng nhập.');
+        }
+
         // Kiểm tra bản ghi token trong bảng password_reset_tokens (nếu đã kích hoạt, token đã bị xóa)
         $record = DB::table('password_reset_tokens')->where('email', $email)->first();
         if (! $record) {
             throw new AccountProvisioningInvalidTokenException('Mã kích hoạt không hợp lệ hoặc đã được sử dụng.');
-        }
-
-        // Đảm bảo liên kết chỉ áp dụng cho tài khoản duy nhất chưa kích hoạt
-        if ($user->status === 'ACTIVE') {
-            throw new AccountProvisioningAlreadyActiveException('Tài khoản này đã được kích hoạt thành công trước đó. Liên kết kích hoạt chỉ có hiệu lực duy nhất một lần.');
         }
 
         // Kiểm tra thời hạn hiệu lực của token (48 giờ)
@@ -329,6 +337,10 @@ class AccountProvisioningService
         // Xóa token đã kích hoạt để không thể sử dụng lại lần thứ hai
         DB::table('password_reset_tokens')->where('email', $email)->delete();
 
+        QuocTinRealtimeService::emit('account-provisioning', 'user', 'ACTIVATED', $user->id, [
+            'status' => 'ACTIVE',
+        ]);
+
         return [
             'success' => true,
             'message' => 'Kích hoạt tài khoản thành công! Quý cư dân có thể đăng nhập ngay.',
@@ -344,7 +356,20 @@ class AccountProvisioningService
      */
     public function getProvisionedAccounts(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = User::with('roles:id,role_code,role_name')
+        $query = User::query()
+            ->select([
+                'id',
+                'username',
+                'full_name',
+                'email',
+                'phone_number',
+                'national_id_number',
+                'gender',
+                'status',
+                'extra_preferences',
+                'created_at',
+            ])
+            ->with('roles:id,role_code,role_name')
             ->orderBy('created_at', 'desc');
 
         if (! empty($filters['search'])) {
@@ -412,21 +437,23 @@ class AccountProvisioningService
             }
         }
 
+        $batch = [];
+        $now = Carbon::now();
         $isFirst = true;
         foreach ($roles as $role) {
-            DB::table('user_roles')->updateOrInsert(
-                [
-                    'user_id' => $user->id,
-                    'role_id' => $role->id,
-                ],
-                [
-                    'id' => (string) Str::uuid(),
-                    'is_primary' => $isFirst ? 1 : 0,
-                    'assigned_at' => Carbon::now(),
-                    'assigned_by' => $actor?->id,
-                ]
-            );
+            $batch[] = [
+                'id' => (string) Str::uuid(),
+                'user_id' => $user->id,
+                'role_id' => $role->id,
+                'is_primary' => $isFirst ? 1 : 0,
+                'assigned_at' => $now,
+                'assigned_by' => $actor?->id,
+            ];
             $isFirst = false;
+        }
+
+        if (! empty($batch)) {
+            DB::table('user_roles')->insertOrIgnore($batch);
         }
     }
 
@@ -437,6 +464,8 @@ class AccountProvisioningService
      */
     public function updateAccount(string $userId, array $data, ?User $actor = null): User
     {
+        QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
+
         $user = User::findOrFail($userId);
 
         if (! empty($data['full_name'])) {
@@ -473,6 +502,10 @@ class AccountProvisioningService
 
         $user->load('roles:id,role_code,role_name');
 
+        QuocTinRealtimeService::emit('account-provisioning', 'user', 'UPDATED', $user->id, [
+            'status' => $user->status,
+        ]);
+
         return $user;
     }
 
@@ -481,6 +514,8 @@ class AccountProvisioningService
      */
     public function deleteAccount(string $userId, ?User $actor = null): bool
     {
+        QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
+
         $user = User::findOrFail($userId);
 
         // Xóa token kích hoạt liên quan
@@ -489,7 +524,12 @@ class AccountProvisioningService
         // Thu hồi các phiên đăng nhập đang hoạt động
         DB::table('user_sessions')->where('user_id', $user->id)->update(['is_revoked' => 1]);
 
-        return (bool) $user->delete();
+        $deleted = (bool) $user->delete();
+        if ($deleted) {
+            QuocTinRealtimeService::emit('account-provisioning', 'user', 'DELETED', $userId);
+        }
+
+        return $deleted;
     }
 
     /**
@@ -497,6 +537,8 @@ class AccountProvisioningService
      */
     public function toggleLockAccount(string $userId, ?User $actor = null): User
     {
+        QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
+
         $user = User::findOrFail($userId);
 
         $extra = $user->extra_preferences ?? [];
@@ -515,6 +557,10 @@ class AccountProvisioningService
         $user->extra_preferences = $extra;
         $user->save();
         $user->load('roles:id,role_code,role_name');
+
+        QuocTinRealtimeService::emit('account-provisioning', 'user', 'STATUS_CHANGED', $user->id, [
+            'status' => $user->status,
+        ]);
 
         return $user;
     }

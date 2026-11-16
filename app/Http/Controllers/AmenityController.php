@@ -3,16 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Repositories\Eloquent\DatabaseResidentAmenityBookingRepository;
+use App\Services\AmenityBookingPaymentService;
 use App\Services\AmenityConflictException;
+use App\Services\AmenityGalleryService;
 use App\Services\AmenityService;
 use App\Services\ResidentAmenityBookingService;
+use App\Services\Search\BookingCodeSearch;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Controller Quản lý Tiện ích & Slot theo Kiến trúc Tinh gọn (Lightweight Architecture)
@@ -21,7 +26,8 @@ use InvalidArgumentException;
 class AmenityController extends Controller
 {
     public function __construct(
-        public AmenityService $amenityService
+        public AmenityService $amenityService,
+        public AmenityGalleryService $gallery
     ) {}
 
     /**
@@ -30,6 +36,60 @@ class AmenityController extends Controller
     public function getDataVersion(): int
     {
         return (int) Cache::get('amenities_data_version', 1);
+    }
+
+    public function closureImpact(Request $request, string $id): JsonResponse
+    {
+        $period = $request->validate(['blackout_date' => 'nullable|date_format:Y-m-d', 'start_time' => 'nullable|required_with:end_time|date_format:H:i', 'end_time' => 'nullable|required_with:start_time|date_format:H:i|after:start_time']);
+        if (! empty($period['start_time'])) {
+            abort_unless(! empty($period['blackout_date']), 422, 'Chọn ngày đóng cửa.');
+        }
+        $service = app(ResidentAmenityBookingService::class);
+
+        return response()->json($service->closureImpact($id, $period, $service->closureBookings($id, $period)))->header('Cache-Control', 'private, no-store');
+    }
+
+    public function bookingNotifications(Request $request): JsonResponse
+    {
+        $data = $request->validate(['page' => 'nullable|integer|min:1', 'unread' => 'nullable|boolean']);
+
+        return response()->json(app(ResidentAmenityBookingService::class)->notifications($request->user(), 'AMENITY_BOOKING', $data))->header('Cache-Control', 'private, no-store');
+    }
+
+    public function readBookingNotification(Request $request, string $id): JsonResponse
+    {
+        app(ResidentAmenityBookingService::class)->readNotification($request->user(), 'AMENITY_BOOKING', $id);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function bookingWorklist(Request $request): JsonResponse
+    {
+        $data = $request->validate(['bucket' => 'nullable|in:PENDING,REPORTED,REVIEW', 'page' => 'nullable|integer|min:1']);
+        app(AmenityBookingPaymentService::class)->expire();
+        $bucket = $data['bucket'] ?? 'PENDING';
+        $query = DB::table('amenity_bookings as b')->join('amenities as a', 'a.id', '=', 'b.amenity_id')
+            ->leftJoin('amenity_booking_payments as p', 'p.booking_id', '=', 'b.id')
+            ->leftJoin('users as u', 'u.id', '=', 'b.resident_user_id')->leftJoin('apartments as ap', 'ap.id', '=', 'b.apartment_id')
+            ->whereNull('b.deleted_at')->whereNull('a.deleted_at');
+        $totals = (clone $query)->selectRaw("COALESCE(SUM(b.status = 'PENDING'), 0) as pending, COALESCE(SUM(p.status = 'REPORTED'), 0) as reported, COALESCE(SUM(p.status = 'REVIEW'), 0) as review")->first();
+        $counts = ['PENDING' => (int) $totals->pending, 'REPORTED' => (int) $totals->reported, 'REVIEW' => (int) $totals->review];
+        $query->where($bucket === 'PENDING' ? 'b.status' : 'p.status', $bucket);
+        $pages = max(1, (int) ceil($counts[$bucket] / 15));
+        $page = min((int) ($data['page'] ?? 1), $pages);
+        $items = $query->select(
+            'b.id', 'b.booking_code', 'b.amenity_id', 'b.booking_date', 'b.start_time', 'b.end_time',
+            'b.status', 'b.attendee_count', 'b.total_amount', 'b.deposit_amount', 'b.is_paid',
+            'b.rejection_reason', 'b.approved_at', 'b.created_at',
+            'a.amenity_name', 'u.full_name as resident_name', 'u.phone_number as resident_phone',
+            'ap.apartment_number', 'p.status as payment_status', 'p.reported_at'
+        )->orderByDesc('b.created_at')->orderBy('b.id')->forPage($page, 15)->get()->map(function (object $row): object {
+            $row->review_overdue = $row->payment_status === 'REPORTED' && $row->reported_at && Carbon::parse($row->reported_at)->addMinutes((int) config('amenity_payments.review_minutes'))->lte(now());
+
+            return $row;
+        });
+
+        return response()->json(['items' => $items, 'counts' => $counts, 'page' => $page, 'total_pages' => $pages])->header('Cache-Control', 'private, no-store');
     }
 
     /**
@@ -105,9 +165,9 @@ class AmenityController extends Controller
     public function getCategories(): JsonResponse
     {
         $version = $this->getDataVersion();
-        $result = Cache::remember("amenity_categories_v{$version}", 3600, function () {
+        $result = Cache::remember("amenity_categories_occ_v{$version}", 3600, function () {
             $categories = DB::table('amenity_categories')
-                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at')
+                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at', 'version')
                 ->orderBy('category_name')
                 ->get();
 
@@ -126,6 +186,7 @@ class AmenityController extends Controller
                     'icon_name' => $cat->icon_name,
                     'description' => $cat->description,
                     'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
+                    'version' => (int) $cat->version,
                     'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
                 ];
             })->values()->toArray();
@@ -133,7 +194,7 @@ class AmenityController extends Controller
 
         if (! is_array($result) || empty($result)) {
             $categories = DB::table('amenity_categories')
-                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at')
+                ->select('id', 'category_name', 'category_code', 'icon_name', 'description', 'created_at', 'version')
                 ->orderBy('category_name')
                 ->get();
 
@@ -152,10 +213,11 @@ class AmenityController extends Controller
                     'icon_name' => $cat->icon_name,
                     'description' => $cat->description,
                     'created_at' => Carbon::parse($cat->created_at)->toIso8601String(),
+                    'version' => (int) $cat->version,
                     'amenities_count' => (int) ($amenityCounts[$cat->id] ?? 0),
                 ];
             })->values()->toArray();
-            Cache::put("amenity_categories_v{$version}", $result, 3600);
+            Cache::put("amenity_categories_occ_v{$version}", $result, 3600);
         }
 
         return response()->json($result);
@@ -190,6 +252,7 @@ class AmenityController extends Controller
 
         return response()->json([
             'id' => $id,
+            'version' => 1,
             'category_name' => trim($validated['category_name']),
             'category_code' => strtoupper(trim($validated['category_code'])),
             'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? 'Sparkles',
@@ -204,64 +267,78 @@ class AmenityController extends Controller
      */
     public function updateCategory(Request $request, string $id): JsonResponse
     {
-        $data = $this->extractPayload($request);
-        $validated = validator($data, [
-            'category_name' => 'required|string|max:100',
-            'category_code' => 'required|string|max:50',
-            'icon_name' => 'nullable|string|max:50',
-            'description' => 'nullable|string|max:255',
-        ])->validate();
+        return DB::transaction(function () use ($request, $id): JsonResponse {
+            $data = $this->extractPayload($request);
+            $validated = validator($data, [
+                'version' => 'required|integer|min:1',
+                'category_name' => 'required|string|max:100',
+                'category_code' => 'required|string|max:50',
+                'icon_name' => 'nullable|string|max:50',
+                'description' => 'nullable|string|max:255',
+            ])->validate();
 
-        $exists = DB::table('amenity_categories')->where('id', $id)->first();
-        if (! $exists) {
-            return response()->json(['detail' => 'Không tìm thấy danh mục tiện ích.'], 404);
-        }
+            $exists = DB::table('amenity_categories')->where('id', $id)->lockForUpdate()->first();
+            if (! $exists) {
+                return response()->json(['detail' => 'Không tìm thấy danh mục tiện ích.'], 404);
+            }
 
-        DB::table('amenity_categories')->where('id', $id)->update([
-            'category_name' => trim($validated['category_name']),
-            'category_code' => strtoupper(trim($validated['category_code'])),
-            'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
-            'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
-        ]);
+            abort_if((int) $exists->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
-        $this->bumpDataVersion();
+            DB::table('amenity_categories')->where('id', $id)->update([
+                'version' => $exists->version + 1,
+                'category_name' => trim($validated['category_name']),
+                'category_code' => strtoupper(trim($validated['category_code'])),
+                'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
+                'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
+            ]);
 
-        $count = DB::table('amenities')
-            ->where('category_id', $id)
-            ->whereNull('deleted_at')
-            ->count();
+            $this->bumpDataVersion();
 
-        return response()->json([
-            'id' => $id,
-            'category_name' => trim($validated['category_name']),
-            'category_code' => strtoupper(trim($validated['category_code'])),
-            'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
-            'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
-            'created_at' => Carbon::parse($exists->created_at)->toIso8601String(),
-            'amenities_count' => $count,
-        ]);
+            $count = DB::table('amenities')
+                ->where('category_id', $id)
+                ->whereNull('deleted_at')
+                ->count();
+
+            return response()->json([
+                'id' => $id,
+                'category_name' => trim($validated['category_name']),
+                'category_code' => strtoupper(trim($validated['category_code'])),
+                'icon_name' => $this->amenityService->nullifyEmpty($validated['icon_name'] ?? null) ?? $exists->icon_name,
+                'description' => $this->amenityService->nullifyEmpty($validated['description'] ?? null),
+                'created_at' => Carbon::parse($exists->created_at)->toIso8601String(),
+                'amenities_count' => $count,
+                'version' => (int) $exists->version + 1,
+            ]);
+        }, 3);
     }
 
     /**
      * Xóa danh mục tiện ích
      */
-    public function deleteCategory(string $id): JsonResponse
+    public function deleteCategory(Request $request, string $id): JsonResponse
     {
-        $hasAmenities = DB::table('amenities')
-            ->where('category_id', $id)
-            ->whereNull('deleted_at')
-            ->exists();
+        return DB::transaction(function () use ($request, $id): JsonResponse {
+            $category = DB::table('amenity_categories')->where('id', $id)->lockForUpdate()->first();
+            abort_unless($category, 404);
+            $validated = validator($this->extractPayload($request), ['version' => 'required|integer|min:1'])->validate();
+            abort_if((int) $category->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
-        if ($hasAmenities) {
-            return response()->json([
-                'detail' => 'Không thể xóa danh mục này vì đang có tiện ích trực thuộc!',
-            ], 400);
-        }
+            $hasAmenities = DB::table('amenities')
+                ->where('category_id', $id)
+                ->whereNull('deleted_at')
+                ->exists();
 
-        DB::table('amenity_categories')->where('id', $id)->delete();
-        $this->bumpDataVersion();
+            if ($hasAmenities) {
+                return response()->json([
+                    'detail' => 'Không thể xóa danh mục này vì đang có tiện ích trực thuộc!',
+                ], 400);
+            }
 
-        return response()->json(['success' => true, 'message' => 'Đã xóa danh mục tiện ích.']);
+            DB::table('amenity_categories')->where('id', $id)->delete();
+            $this->bumpDataVersion();
+
+            return response()->json(['success' => true, 'message' => 'Đã xóa danh mục tiện ích.']);
+        }, 3);
     }
 
     /**
@@ -270,28 +347,27 @@ class AmenityController extends Controller
     public function getAmenities(Request $request): JsonResponse
     {
         $filters = [
+            ...$this->amenityService->scopedFilters($request),
             'search' => $request->query('search'),
-            'category_id' => $request->query('category_id'),
-            'block_id' => $request->query('block_id'),
-            'is_active' => $request->query('is_active'),
             'sort' => $request->query('sort', 'created_at_desc'),
             'page' => $request->query('page', 1),
             'limit' => $request->query('limit', 10),
         ];
 
         $version = $this->getDataVersion();
-        $fingerprint = md5(json_encode($filters).'_v'.$version);
+        $fingerprint = md5(json_encode($filters).'_v'.$version.'_search3_'.config('search.default').'_'.$request->user()?->id);
         $etag = '"amenities-'.$fingerprint.'"';
 
         $clientEtag = $request->header('If-None-Match');
-        if ($clientEtag && trim($clientEtag) === $etag) {
+        $liveIndexSearch = config('search.default') === 'elasticsearch' && trim((string) ($filters['search'] ?? '')) !== '';
+        if (! $liveIndexSearch && $clientEtag && trim($clientEtag) === $etag) {
             return response()->json(null, 304, [
                 'ETag' => $etag,
                 'Cache-Control' => 'private, no-cache, must-revalidate',
             ]);
         }
 
-        $result = app()->environment('testing')
+        $result = app()->environment('testing') || $liveIndexSearch
             ? $this->amenityService->getPaginatedAmenities($filters)
             : Cache::remember("amenities_page_{$fingerprint}", 600, function () use ($filters) {
                 return $this->amenityService->getPaginatedAmenities($filters);
@@ -306,8 +382,9 @@ class AmenityController extends Controller
     /**
      * Lấy chi tiết một tiện ích
      */
-    public function getAmenity(string $id): JsonResponse
+    public function getAmenity(Request $request, string $id): JsonResponse
     {
+        $this->amenityService->assertCanViewAmenity($request, $id);
         $version = $this->getDataVersion();
         $amenity = Cache::remember("amenity_detail_{$id}_v{$version}", 600, function () use ($id) {
             return $this->amenityService->getAmenityById($id);
@@ -323,9 +400,28 @@ class AmenityController extends Controller
     /**
      * Tạo mới tiện ích
      */
+    protected function extractAmenityPayload(Request $request): array
+    {
+        if (! $request->has('payload')) {
+            return $this->extractPayload($request);
+        }
+        $validated = $request->validate(['payload' => 'required|json|max:65535']);
+        $data = json_decode($validated['payload'], true);
+        if (! is_array($data)) {
+            throw ValidationException::withMessages(['payload' => 'Dữ liệu tiện ích không hợp lệ.']);
+        }
+
+        return $data;
+    }
+
+    public function galleryImage(Request $request, string $disk, string $file): StreamedResponse
+    {
+        return $this->gallery->image($request, $disk, $file);
+    }
+
     public function createAmenity(Request $request): JsonResponse
     {
-        $data = $this->extractPayload($request);
+        $data = $this->extractAmenityPayload($request);
         $validated = validator($data, [
             'category_id' => 'required|string',
             'block_id' => 'nullable|string',
@@ -341,11 +437,13 @@ class AmenityController extends Controller
             'rules_and_regulations' => 'nullable|string',
             'cover_image_url' => 'nullable|string|max:500',
             'gallery_images' => 'nullable|array',
+            'gallery_images.*' => 'string|max:1000',
             'is_active' => 'nullable|boolean',
         ])->validate();
 
         try {
-            $created = $this->amenityService->createAmenity($validated);
+            $files = $request->validate(['gallery_files' => 'sometimes|array|max:5'])['gallery_files'] ?? [];
+            $created = $this->gallery->persist($validated, $files, null, fn (array $payload): array => $this->amenityService->createAmenity($payload));
 
             return response()->json($created, 201);
         } catch (InvalidArgumentException $e) {
@@ -358,7 +456,7 @@ class AmenityController extends Controller
      */
     public function updateAmenity(Request $request, string $id): JsonResponse
     {
-        $data = $this->extractPayload($request);
+        $data = $this->extractAmenityPayload($request);
         $validated = validator($data, [
             'updated_at' => 'required|date',
             'category_id' => 'sometimes|required|string',
@@ -375,11 +473,13 @@ class AmenityController extends Controller
             'rules_and_regulations' => 'nullable|string',
             'cover_image_url' => 'nullable|string|max:500',
             'gallery_images' => 'nullable|array',
+            'gallery_images.*' => 'string|max:1000',
             'is_active' => 'nullable|boolean',
         ])->validate();
 
         try {
-            $updated = $this->amenityService->updateAmenity($id, $validated);
+            $files = $request->validate(['gallery_files' => 'sometimes|array|max:5'])['gallery_files'] ?? [];
+            $updated = $this->gallery->persist($validated, $files, $id, fn (array $payload): array => $this->amenityService->updateAmenity($id, $payload));
 
             return response()->json($updated);
         } catch (AmenityConflictException $e) {
@@ -398,10 +498,18 @@ class AmenityController extends Controller
         $validated = validator($data, [
             'is_active' => 'required|boolean',
             'updated_at' => 'required|date',
+            'booking_action' => 'nullable|in:keep,cancel',
+            'reason' => 'required_if:booking_action,cancel|nullable|string|max:255',
+            'confirmation_token' => 'nullable|string|size:64',
         ])->validate();
 
         try {
-            return response()->json($this->amenityService->updateAmenity($id, $validated));
+            abort_if($validated['is_active'] && ($validated['booking_action'] ?? 'keep') === 'cancel', 422, 'Kích hoạt lại không được hủy đăng ký.');
+            $bookings = ($validated['booking_action'] ?? 'keep') === 'cancel' ? app(ResidentAmenityBookingService::class)->prepareClosure($id, [], $validated['confirmation_token'] ?? null, $request) : collect();
+            $updated = $this->amenityService->updateAmenity($id, $validated);
+            app(ResidentAmenityBookingService::class)->cancelForClosure($bookings, $validated['reason'] ?? '', $request);
+
+            return response()->json($updated);
         } catch (AmenityConflictException $e) {
             return response()->json(['message' => $e->getMessage(), 'code' => 'AMENITY_CONFLICT'], 409);
         }
@@ -420,7 +528,7 @@ class AmenityController extends Controller
         // Kiểm tra xem có booking nào đang hoạt động không (Section 12)
         $activeBookingsCount = DB::table('amenity_bookings')
             ->where('amenity_id', $id)
-            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
+            ->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)->tap([AmenityBookingPaymentService::class, 'holdingQuery'])
             ->whereNull('deleted_at')
             ->count();
 
@@ -440,6 +548,7 @@ class AmenityController extends Controller
      */
     public function getAmenityBookings(string $id): JsonResponse
     {
+        app(AmenityBookingPaymentService::class)->expire($id);
         $amenity = DB::table('amenities')->where('id', $id)->whereNull('deleted_at')->first();
         if (! $amenity) {
             return response()->json(['detail' => 'Không tìm thấy tiện ích.'], 404);
@@ -450,13 +559,22 @@ class AmenityController extends Controller
         return response()->json($bookings);
     }
 
+    public function bookingCodeMatches(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate(['q' => ['required', 'string', 'max:64', 'regex:/^BK-[A-Z0-9-]+$/iD']]);
+
+        return response()->json(['ids' => app(BookingCodeSearch::class)->matches($request->user(), $id, $data['q'])])
+            ->header('Cache-Control', 'private, no-store');
+    }
+
     /**
      * Lấy danh sách khung giờ của tiện ích
      */
-    public function getTimeSlots(string $amenityId): JsonResponse
+    public function getTimeSlots(Request $request, string $amenityId): JsonResponse
     {
+        $this->amenityService->assertCanViewAmenity($request, $amenityId);
         $version = $this->getDataVersion();
-        $res = Cache::remember("amenity_slots_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
+        $res = Cache::remember("amenity_slots_occ_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
             $slots = DB::table('amenity_time_slots')
                 ->where('amenity_id', $amenityId)
                 ->orderBy('day_of_week')
@@ -474,6 +592,7 @@ class AmenityController extends Controller
                     'max_bookings' => (int) $s->max_bookings,
                     'is_active' => (bool) $s->is_active,
                     'created_at' => Carbon::parse($s->created_at)->toIso8601String(),
+                    'version' => (int) $s->version,
                 ];
             });
         });
@@ -516,6 +635,7 @@ class AmenityController extends Controller
 
         return response()->json([
             'id' => $id,
+            'version' => 1,
             'amenity_id' => $amenityId,
             'day_of_week' => (int) $validated['day_of_week'],
             'slot_start_time' => substr($validated['slot_start_time'], 0, 5),
@@ -532,9 +652,10 @@ class AmenityController extends Controller
      */
     public function updateTimeSlot(Request $request, string $amenityId, string $slotId): JsonResponse
     {
-        $this->findTimeSlot($amenityId, $slotId);
+        $slot = $this->findTimeSlot($amenityId, $slotId);
         $data = $this->extractPayload($request);
         $validated = validator($data, [
+            'version' => 'required|integer|min:1',
             'day_of_week' => 'required|integer|between:0,6',
             'slot_start_time' => 'required|date_format:H:i',
             'slot_end_time' => 'required|date_format:H:i|after:slot_start_time',
@@ -543,11 +664,14 @@ class AmenityController extends Controller
             'is_active' => 'nullable|boolean',
         ])->validate();
 
+        abort_if((int) $slot->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
+
         $this->validateSlotBookingLimit($amenityId, $validated);
         DB::table('amenity_time_slots')
             ->where('id', $slotId)
             ->where('amenity_id', $amenityId)
             ->update([
+                'version' => $slot->version + 1,
                 'day_of_week' => $validated['day_of_week'],
                 'slot_start_time' => $validated['slot_start_time'],
                 'slot_end_time' => $validated['slot_end_time'],
@@ -570,6 +694,7 @@ class AmenityController extends Controller
             'max_bookings' => (int) $slot->max_bookings,
             'is_active' => (bool) $slot->is_active,
             'created_at' => Carbon::parse($slot->created_at)->toIso8601String(),
+            'version' => (int) $slot->version,
         ]);
     }
 
@@ -578,16 +703,20 @@ class AmenityController extends Controller
      */
     public function toggleTimeSlotStatus(Request $request, string $amenityId, string $slotId): JsonResponse
     {
-        $this->findTimeSlot($amenityId, $slotId);
+        $slot = $this->findTimeSlot($amenityId, $slotId);
         $data = $this->extractPayload($request);
         $validated = validator($data, [
+            'version' => 'required|integer|min:1',
             'is_active' => 'required|boolean',
         ])->validate();
+
+        abort_if((int) $slot->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
 
         DB::table('amenity_time_slots')
             ->where('id', $slotId)
             ->where('amenity_id', $amenityId)
             ->update([
+                'version' => $slot->version + 1,
                 'is_active' => $validated['is_active'] ? 1 : 0,
             ]);
 
@@ -605,15 +734,20 @@ class AmenityController extends Controller
             'max_bookings' => (int) $slot->max_bookings,
             'is_active' => (bool) $slot->is_active,
             'created_at' => Carbon::parse($slot->created_at)->toIso8601String(),
+            'version' => (int) $slot->version,
         ]);
     }
 
     /**
      * Xóa khung giờ
      */
-    public function deleteTimeSlot(string $amenityId, string $slotId): JsonResponse
+    public function deleteTimeSlot(Request $request, string $amenityId, string $slotId): JsonResponse
     {
-        $this->findTimeSlot($amenityId, $slotId);
+        $slot = $this->findTimeSlot($amenityId, $slotId);
+        abort_unless($slot, 404);
+        $validated = validator($this->extractPayload($request), ['version' => 'required|integer|min:1'])->validate();
+        abort_if((int) $slot->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
+
         DB::table('amenity_time_slots')
             ->where('id', $slotId)
             ->where('amenity_id', $amenityId)
@@ -636,8 +770,8 @@ class AmenityController extends Controller
     private function validateSlotBookingLimit(string $amenityId, array $data): void
     {
         $bookings = DB::table('amenity_bookings')->where('amenity_id', $amenityId)
-            ->whereNull('deleted_at')->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)
-            ->whereDate('booking_date', '>=', today())
+            ->whereNull('deleted_at')->whereIn('status', DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES)->tap([AmenityBookingPaymentService::class, 'holdingQuery'])
+            ->where('booking_date', '>=', today()->toDateString())
             ->where('start_time', '<', $data['slot_end_time'])->where('end_time', '>', $data['slot_start_time'])
             ->lockForUpdate()->get()->filter(fn (object $booking): bool => Carbon::parse($booking->booking_date)->dayOfWeek === (int) $data['day_of_week']);
         foreach ($bookings->groupBy('booking_date') as $dayBookings) {
@@ -648,10 +782,11 @@ class AmenityController extends Controller
     /**
      * Lấy danh sách ngày/giờ đóng cửa bảo trì (Blackouts)
      */
-    public function getBlackouts(string $amenityId): JsonResponse
+    public function getBlackouts(Request $request, string $amenityId): JsonResponse
     {
+        $this->amenityService->assertCanViewAmenity($request, $amenityId);
         $version = $this->getDataVersion();
-        $res = Cache::remember("amenity_blackouts_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
+        $res = Cache::remember("amenity_blackouts_occ_{$amenityId}_v{$version}", 600, function () use ($amenityId) {
             $blackouts = DB::table('amenity_blackouts')
                 ->where('amenity_id', $amenityId)
                 ->orderBy('blackout_date', 'desc')
@@ -667,6 +802,7 @@ class AmenityController extends Controller
                     'reason' => $b->reason,
                     'created_by' => $b->created_by,
                     'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
+                    'version' => (int) $b->version,
                 ];
             });
         });
@@ -685,7 +821,10 @@ class AmenityController extends Controller
             'start_time' => 'nullable|required_with:end_time|date_format:H:i',
             'end_time' => 'nullable|required_with:start_time|date_format:H:i|after:start_time',
             'reason' => 'required|string|max:255',
+            'confirmation_token' => 'nullable|string|size:64',
         ])->validate();
+
+        $bookings = app(ResidentAmenityBookingService::class)->prepareClosure($amenityId, $validated, $validated['confirmation_token'] ?? null, $request);
 
         $id = (string) Str::uuid();
         $now = Carbon::now();
@@ -704,9 +843,11 @@ class AmenityController extends Controller
         ]);
 
         $this->bumpDataVersion();
+        app(ResidentAmenityBookingService::class)->cancelForClosure($bookings, $validated['reason'], $request);
 
         return response()->json([
             'id' => $id,
+            'version' => 1,
             'amenity_id' => $amenityId,
             'blackout_date' => $validated['blackout_date'],
             'start_time' => $startTime ? substr($startTime, 0, 5) : null,
@@ -722,14 +863,21 @@ class AmenityController extends Controller
      */
     public function updateBlackout(Request $request, string $amenityId, string $blackoutId): JsonResponse
     {
-        abort_unless(DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first(), 404);
+        $blackout = DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first();
+        abort_unless($blackout, 404);
         $data = $this->extractPayload($request);
         $validated = validator($data, [
+            'version' => 'required|integer|min:1',
             'blackout_date' => 'required|date',
             'start_time' => 'nullable|required_with:end_time|date_format:H:i',
             'end_time' => 'nullable|required_with:start_time|date_format:H:i|after:start_time',
             'reason' => 'required|string|max:255',
+            'confirmation_token' => 'nullable|string|size:64',
         ])->validate();
+
+        abort_if((int) $blackout->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
+
+        $bookings = app(ResidentAmenityBookingService::class)->prepareClosure($amenityId, $validated, $validated['confirmation_token'] ?? null, $request);
 
         $startTime = $this->amenityService->nullifyEmpty($validated['start_time'] ?? null);
         $endTime = $this->amenityService->nullifyEmpty($validated['end_time'] ?? null);
@@ -738,6 +886,7 @@ class AmenityController extends Controller
             ->where('id', $blackoutId)
             ->where('amenity_id', $amenityId)
             ->update([
+                'version' => $blackout->version + 1,
                 'blackout_date' => $validated['blackout_date'],
                 'start_time' => $startTime,
                 'end_time' => $endTime,
@@ -745,6 +894,7 @@ class AmenityController extends Controller
             ]);
 
         $this->bumpDataVersion();
+        app(ResidentAmenityBookingService::class)->cancelForClosure($bookings, $validated['reason'], $request);
 
         $b = DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->first();
 
@@ -757,15 +907,20 @@ class AmenityController extends Controller
             'reason' => $b->reason,
             'created_by' => $b->created_by,
             'created_at' => Carbon::parse($b->created_at)->toIso8601String(),
+            'version' => (int) $b->version,
         ]);
     }
 
     /**
      * Xóa ngày đóng cửa bảo trì
      */
-    public function deleteBlackout(string $amenityId, string $blackoutId): JsonResponse
+    public function deleteBlackout(Request $request, string $amenityId, string $blackoutId): JsonResponse
     {
-        abort_unless(DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first(), 404);
+        $blackout = DB::table('amenity_blackouts')->where('id', $blackoutId)->where('amenity_id', $amenityId)->lockForUpdate()->first();
+        abort_unless($blackout, 404);
+        $validated = validator($this->extractPayload($request), ['version' => 'required|integer|min:1'])->validate();
+        abort_if((int) $blackout->version !== (int) $validated['version'], 409, 'Dữ liệu đã thay đổi. Vui lòng xem lại bản mới trước khi thao tác.');
+
         DB::table('amenity_blackouts')
             ->where('id', $blackoutId)
             ->where('amenity_id', $amenityId)
@@ -781,6 +936,7 @@ class AmenityController extends Controller
      */
     public function updateBookingStatus(Request $request, string $amenityId, string $bookingId): JsonResponse
     {
+        app(AmenityBookingPaymentService::class)->expire($amenityId);
         $data = $this->extractPayload($request);
         $validated = validator($data, [
             'status' => 'required|string|in:PENDING,APPROVED,CONFIRMED,COMPLETED,CANCELLED,REJECTED',
@@ -788,47 +944,98 @@ class AmenityController extends Controller
             'rejection_reason' => 'required_if:status,REJECTED|nullable|string|max:500',
         ])->validate();
 
-        $booking = DB::table('amenity_bookings')
-            ->where('id', $bookingId)
-            ->where('amenity_id', $amenityId)
-            ->whereNull('deleted_at')
-            ->lockForUpdate()->first();
-
-        if (! $booking) {
-            return response()->json(['detail' => 'Không tìm thấy thông tin đặt chỗ.'], 404);
+        if ($validated['status'] === 'REJECTED' && (! isset($validated['rejection_reason']) || trim($validated['rejection_reason']) === '')) {
+            throw ValidationException::withMessages([
+                'rejection_reason' => 'Vui lòng nhập lý do từ chối đăng ký tiện ích.',
+            ]);
         }
 
-        if ($validated['status'] === 'REJECTED' && $booking->status !== 'PENDING') {
-            return response()->json(['detail' => 'Chỉ có thể từ chối đăng ký đang chờ duyệt.'], 409);
-        }
+        $result = DB::transaction(function () use ($request, $amenityId, $bookingId, $validated): array {
+            // Khóa tiện ích trước theo thứ tự nhất quán
+            $amenity = DB::table('amenities')->where('id', $amenityId)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($amenity, 404, 'Không tìm thấy tiện ích.');
 
-        if (in_array($validated['status'], DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES, true)
-            && ! in_array($booking->status, DatabaseResidentAmenityBookingRepository::HOLDING_STATUSES, true)) {
-            return response()->json(['detail' => 'Không thể mở lại lượt đăng ký đã kết thúc.'], 409);
-        }
+            // Khóa booking cần cập nhật
+            $booking = DB::table('amenity_bookings')
+                ->where('id', $bookingId)
+                ->where('amenity_id', $amenityId)
+                ->whereNull('deleted_at')
+                ->lockForUpdate()->first();
 
-        $now = Carbon::now();
-        $updateData = [
-            'status' => strtoupper($validated['status']),
-            'updated_at' => $now,
-        ];
-        if ($validated['status'] === 'REJECTED') {
-            $updateData['rejection_reason'] = trim($validated['rejection_reason']);
-        }
+            abort_unless($booking, 404, 'Không tìm thấy thông tin đặt chỗ.');
 
-        if (array_key_exists('admin_notes', $validated)) {
-            $updateData['admin_notes'] = $this->amenityService->nullifyEmpty($validated['admin_notes']);
-        }
+            // Xử lý gửi lại request trùng (Idempotency)
+            if ($validated['status'] === $booking->status) {
+                if ($booking->status === 'REJECTED') {
+                    abort_unless(trim($validated['rejection_reason'] ?? '') === ($booking->rejection_reason ?? ''), 409, 'Đăng ký đã bị từ chối bằng lý do khác.');
+                }
+                if (array_key_exists('admin_notes', $validated)) {
+                    abort_unless($this->amenityService->nullifyEmpty($validated['admin_notes']) === $booking->admin_notes, 409, 'Đăng ký đã được cập nhật với ghi chú khác.');
+                }
 
-        DB::transaction(function () use ($bookingId, $updateData) {
+                return ['booking' => $booking, 'changed' => false];
+            }
+
+            // Kiểm tra Booking State Machine
+            $allowed = match ($booking->status) {
+                'PENDING' => ['APPROVED', 'REJECTED', 'CANCELLED'],
+                'APPROVED' => ['CONFIRMED', 'COMPLETED', 'CANCELLED'],
+                'CONFIRMED', 'CHECKED_IN' => ['COMPLETED', 'CANCELLED'],
+                default => [],
+            };
+            abort_unless(in_array($validated['status'], $allowed, true), 409, 'Không thể chuyển đăng ký từ trạng thái hiện tại sang trạng thái đã chọn.');
+
+            if ($validated['status'] === 'APPROVED') {
+                abort_if(! $amenity->is_active, 409, 'Tiện ích hiện đang tạm ngưng hoạt động, không thể duyệt đăng ký.');
+                abort_if(Carbon::parse($booking->booking_date.' '.$booking->start_time, config('app.timezone'))->lte(now()), 409, 'Đã qua giờ sử dụng, không thể duyệt đăng ký.');
+
+                $blackouts = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->where('blackout_date', $booking->booking_date)->lockForUpdate()->get();
+                $isBlackout = $blackouts->contains(fn ($b) => ! $b->start_time || (substr($b->start_time, 0, 5) < substr($booking->end_time, 0, 5) && substr($b->end_time, 0, 5) > substr($booking->start_time, 0, 5)));
+                abort_if($isBlackout, 409, 'Khung giờ đặt chỗ rơi vào lịch bảo trì của tiện ích.');
+            }
+
+            // Khóa thanh toán và kiểm tra điều kiện hoàn tất
+            $payment = DB::table('amenity_booking_payments')->where('booking_id', $bookingId)->lockForUpdate()->first();
+            $requiresPayment = $payment || (float) $booking->total_amount > 0 || (float) $booking->deposit_amount > 0;
+            if ($requiresPayment && in_array($validated['status'], ['CONFIRMED', 'COMPLETED'], true) && ! $booking->is_paid) {
+                abort(409, 'Phải xác nhận thanh toán trước khi xác nhận sử dụng hoặc hoàn tất.');
+            }
+
+            $now = Carbon::now();
+            $updateData = [
+                'status' => strtoupper($validated['status']),
+                'updated_at' => $now,
+            ];
+
+            if ($validated['status'] === 'APPROVED') {
+                $updateData['approved_by_user_id'] = $request->user()?->id;
+                $updateData['approved_at'] = $now;
+            }
+
+            if ($validated['status'] === 'REJECTED') {
+                $updateData['rejection_reason'] = trim($validated['rejection_reason']);
+            }
+
+            if (array_key_exists('admin_notes', $validated)) {
+                $updateData['admin_notes'] = $this->amenityService->nullifyEmpty($validated['admin_notes']);
+            }
+
             DB::table('amenity_bookings')->where('id', $bookingId)->update($updateData);
-        });
+
+            $updated = DB::table('amenity_bookings')->where('id', $bookingId)->first();
+
+            // Đồng bộ trạng thái thanh toán và hoàn tiền
+            app(AmenityBookingPaymentService::class)->synchronize($updated, $request);
+
+            // Ghi audit log và thông báo cư dân nhất quán trong transaction
+            app(ResidentAmenityBookingService::class)->recordStatusChange($request, $booking, $updated);
+
+            return ['booking' => $updated, 'changed' => true];
+        }, 3);
 
         $this->bumpDataVersion();
 
-        $updated = DB::table('amenity_bookings')->where('id', $bookingId)->first();
-
-        return response()->json($updated);
+        return response()->json($result['booking']);
     }
 
     /**
@@ -841,39 +1048,49 @@ class AmenityController extends Controller
             'reason' => 'nullable|string|max:500',
         ])->validate();
 
-        $booking = DB::table('amenity_bookings')
-            ->where('id', $bookingId)
-            ->where('amenity_id', $amenityId)
-            ->whereNull('deleted_at')
-            ->lockForUpdate()->first();
+        $result = DB::transaction(function () use ($request, $amenityId, $bookingId, $validated): array {
+            $amenity = DB::table('amenities')->where('id', $amenityId)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($amenity, 404, 'Không tìm thấy tiện ích.');
 
-        if (! $booking) {
-            return response()->json(['detail' => 'Không tìm thấy thông tin đặt chỗ.'], 404);
-        }
+            $booking = DB::table('amenity_bookings')
+                ->where('id', $bookingId)
+                ->where('amenity_id', $amenityId)
+                ->whereNull('deleted_at')
+                ->lockForUpdate()->first();
 
-        if (in_array($booking->status, ['CANCELLED', 'REJECTED', 'COMPLETED'], true)) {
-            return response()->json(['detail' => "Đặt chỗ này đã ở trạng thái {$booking->status}, không thể hủy."], 400);
-        }
+            abort_unless($booking, 404, 'Không tìm thấy thông tin đặt chỗ.');
 
-        $now = Carbon::now();
-        $notes = $this->amenityService->nullifyEmpty($validated['reason'] ?? null);
+            if ($booking->status === 'CANCELLED') {
+                return ['booking' => $booking, 'changed' => false];
+            }
 
-        DB::transaction(function () use ($bookingId, $now, $notes) {
+            if (in_array($booking->status, ['REJECTED', 'COMPLETED'], true)) {
+                abort(409, "Đặt chỗ này đã ở trạng thái {$booking->status}, không thể hủy.");
+            }
+
+            $now = Carbon::now();
+            $notes = $this->amenityService->nullifyEmpty($validated['reason'] ?? null);
+
             DB::table('amenity_bookings')->where('id', $bookingId)->update([
                 'status' => 'CANCELLED',
                 'admin_notes' => $notes,
                 'updated_at' => $now,
             ]);
-        });
+
+            $updated = DB::table('amenity_bookings')->where('id', $bookingId)->first();
+
+            app(AmenityBookingPaymentService::class)->synchronize($updated, $request);
+            app(ResidentAmenityBookingService::class)->recordStatusChange($request, $booking, $updated);
+
+            return ['booking' => $updated, 'changed' => true];
+        }, 3);
 
         $this->bumpDataVersion();
-
-        $updated = DB::table('amenity_bookings')->where('id', $bookingId)->first();
 
         return response()->json([
             'success' => true,
             'message' => 'Đã hủy đặt chỗ thành công.',
-            'booking' => $updated,
+            'booking' => $result['booking'],
         ]);
     }
 }

@@ -111,23 +111,14 @@ class VehicleApiService {
       }
     }
 
-    // Default fallback demo token for manager/reception/admin session if needed
     if (!bearerToken) {
       const isReceptionPath =
-        window.location.pathname.startsWith('/le-tan') ||
+        typeof window !== 'undefined' &&
+        (window.location.pathname.startsWith('/le-tan') ||
         window.location.pathname.startsWith('/an-ninh') ||
         window.location.pathname.startsWith('/bao-ve') ||
-        window.location.pathname.startsWith('/reception');
-      bearerToken = isReceptionPath ? 'smart_token_reception_demo' : 'smart_token_manager_demo';
-    }
-
-    // Save token if not yet saved so other operations can reuse it
-    try {
-      if (!localStorage.getItem('smart_cassavas_token')) {
-        localStorage.setItem('smart_cassavas_token', bearerToken);
-      }
-    } catch {
-      // ignore
+        window.location.pathname.startsWith('/reception'));
+      bearerToken = isReceptionPath ? 'smart_token_reception_demo' : '';
     }
 
     return {
@@ -165,7 +156,10 @@ class VehicleApiService {
   /**
    * Lấy danh sách phương tiện
    */
-  async getVehicles(params: Record<string, any> = {}): Promise<{
+  async getVehicles(
+    params: Record<string, any> = {},
+    options: RequestInit = {}
+  ): Promise<{
     success: boolean;
     data: VehicleItem[];
     meta: {
@@ -183,7 +177,7 @@ class VehicleApiService {
     });
 
     const endpoint = `/vehicles${query.toString() ? `?${query.toString()}` : ''}`;
-    return this.request(endpoint);
+    return this.request(endpoint, options);
   }
 
   /**
@@ -342,16 +336,26 @@ class VehicleApiService {
   }
 
   /**
-   * Lấy danh sách toàn bộ cư dân tòa nhà (hỗ trợ chọn chủ xe linh hoạt)
+   * Lấy danh sách cư dân tòa nhà hỗ trợ tìm kiếm và chọn chủ xe linh hoạt (phân trang / giới hạn)
    */
-  async getAllResidents(apartmentId?: string): Promise<{
+  async getAllResidents(
+    params?: string | { search?: string; apartment_id?: string; limit?: number },
+    options: RequestInit = {}
+  ): Promise<{
     success: boolean;
     data: (VehicleResidentOption & { apartment_id?: string; apartment_number?: string })[];
   }> {
-    const endpoint = apartmentId
-      ? `/vehicles/meta/residents?apartment_id=${encodeURIComponent(apartmentId)}`
-      : '/vehicles/meta/residents';
-    return this.request(endpoint);
+    const query = new URLSearchParams();
+    if (typeof params === 'string') {
+      if (params) query.append('apartment_id', params);
+    } else if (params && typeof params === 'object') {
+      if (params.apartment_id) query.append('apartment_id', params.apartment_id);
+      if (params.search) query.append('search', params.search);
+      if (params.limit) query.append('limit', String(params.limit));
+    }
+
+    const endpoint = `/vehicles/meta/residents${query.toString() ? `?${query.toString()}` : ''}`;
+    return this.request(endpoint, options);
   }
 }
 

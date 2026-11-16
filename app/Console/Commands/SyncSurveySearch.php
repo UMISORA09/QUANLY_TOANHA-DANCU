@@ -1,0 +1,38 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Services\Search\SurveySearch;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+
+class SyncSurveySearch extends Command
+{
+    protected $signature = 'search:sync-surveys {--dry-run} {--queue-only : Skip creating the remote index in this process}';
+
+    protected $description = 'Queue Elasticsearch synchronization for surveys';
+
+    public function handle(SurveySearch $search): int
+    {
+        $surveys = DB::table('satisfaction_surveys')->select('id');
+        if ($this->option('dry-run')) {
+            $this->info('Surveys to synchronize: '.$surveys->count());
+
+            return self::SUCCESS;
+        }
+        if (! SurveySearch::enabled()) {
+            $this->error('Set SEARCH_DRIVER=elasticsearch before synchronizing surveys.');
+
+            return self::FAILURE;
+        }
+
+        if (! $this->option('queue-only')) {
+            $search->configure();
+        }
+        $surveys->chunkById(100, function ($rows) use ($search): void {
+            $search->queueMany($rows->pluck('id')->all());
+        });
+
+        return self::SUCCESS;
+    }
+}

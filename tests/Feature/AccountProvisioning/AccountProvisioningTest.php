@@ -6,6 +6,7 @@ use App\Mail\AccountActivationMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AccountProvisioningService;
+use App\Services\QuocTinRealtimeService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -432,18 +433,16 @@ class AccountProvisioningTest extends TestCase
         ]);
         $firstAttempt->assertStatus(200);
 
-        // Lần 2: Token đã bị xóa khỏi bảng password_reset_tokens, không thể dùng lại
+        // Lần 2: Token đã bị xóa khỏi bảng password_reset_tokens hoặc tài khoản đã active, không thể dùng lại
         $secondAttempt = $this->postJson('/api/v1/account-provisioning/activate', [
             'email' => $email,
             'token' => $plainToken,
             'password' => 'SecondPass@456',
             'password_confirmation' => 'SecondPass@456',
         ]);
-        $secondAttempt->assertStatus(422)
-            ->assertJson([
-                'success' => false,
-                'error' => 'INVALID_TOKEN',
-            ]);
+        $this->assertContains($secondAttempt->status(), [400, 422]);
+        $this->assertFalse($secondAttempt->json('success'));
+        $this->assertContains($secondAttempt->json('error'), ['ALREADY_ACTIVE', 'INVALID_TOKEN']);
     }
 
     /**
@@ -519,6 +518,7 @@ class AccountProvisioningTest extends TestCase
         $userId = $provisioned['user']['id'];
 
         // Reset cooldown để cho phép resend
+        QuocTinRealtimeService::clearModuleCooldown('account_provisioning');
         $user = User::find($userId);
         $extra = $user->extra_preferences;
         $extra['provisioning']['activation_sent_at'] = Carbon::now()->subMinutes(2)->toIso8601String();
@@ -638,5 +638,57 @@ class AccountProvisioningTest extends TestCase
 
         // Trả về 401 (sai pass) hoặc 403 (tài khoản chưa active)
         $this->assertContains($loginRes->status(), [401, 403]);
+    }
+
+    /**
+     * 18. Đã kích hoạt 1 lần rồi thì lần 2 báo Đã kích hoạt tài khoản bạn vui lòng đăng nhập
+     */
+    public function test_18_da_kich_hoat_mot_lan_thi_lan_hai_bao_da_kich_hoat_vui_long_dang_nhap(): void
+    {
+        $email = 'act_twice_'.Str::random(6).'@example.com';
+        $provisioned = $this->service->provisionAccount([
+            'full_name' => 'Nhân Viên Kích Hoạt Lần Hai',
+            'email' => $email,
+            'phone_number' => '091'.random_int(1000000, 9999999),
+        ], $this->admin);
+
+        $plainToken = 'test_token_'.Str::random(32);
+        DB::table('password_reset_tokens')->where('email', $email)->update([
+            'token' => Hash::make($plainToken),
+            'created_at' => Carbon::now(),
+        ]);
+
+        // Lần 1: Kích hoạt thành công
+        $firstAct = $this->postJson('/api/v1/account-provisioning/activate', [
+            'email' => $email,
+            'token' => $plainToken,
+            'password' => 'FirstPass@2026',
+            'password_confirmation' => 'FirstPass@2026',
+        ]);
+        $firstAct->assertStatus(200);
+
+        // Kiểm tra status endpoint không cần Bearer token: báo Đã kích hoạt tài khoản bạn vui lòng đăng nhập
+        $statusRes = $this->getJson("/api/v1/account-provisioning/status?email={$email}");
+        $statusRes->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'status' => 'ALREADY_ACTIVE',
+                'is_activated' => true,
+                'message' => 'Đã kích hoạt tài khoản bạn vui lòng đăng nhập.',
+            ]);
+
+        // Lần 2: Cố kích hoạt lại với token hoặc mật khẩu mới
+        $secondAct = $this->postJson('/api/v1/account-provisioning/activate', [
+            'email' => $email,
+            'token' => $plainToken,
+            'password' => 'SecondPass@2026',
+            'password_confirmation' => 'SecondPass@2026',
+        ]);
+        $secondAct->assertStatus(400)
+            ->assertJson([
+                'success' => false,
+                'error' => 'ALREADY_ACTIVE',
+                'message' => 'Đã kích hoạt tài khoản bạn vui lòng đăng nhập.',
+            ]);
     }
 }

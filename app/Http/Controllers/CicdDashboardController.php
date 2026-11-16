@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Services\Cicd\GitHubActionsService;
 use App\Services\RbacService;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -12,6 +14,23 @@ class CicdDashboardController extends Controller
     public function __construct(
         protected GitHubActionsService $cicdService
     ) {}
+
+    public function history(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'force' => ['sometimes', 'boolean'],
+        ]);
+        try {
+            $history = $this->cicdService->getHistoryPage((int) ($validated['page'] ?? 1), $request->boolean('force'));
+        } catch (RequestException $exception) {
+            return response()->json(['message' => 'Không thể đồng bộ lịch sử GitHub (HTTP '.$exception->response->status().'). Vui lòng thử lại sau.'], 502);
+        } catch (ConnectionException) {
+            return response()->json(['message' => 'Kết nối GitHub quá thời gian chờ. Vui lòng thử đồng bộ lại.'], 504);
+        }
+
+        return response()->json(['data' => $history]);
+    }
 
     /**
      * Bundle toàn bộ dữ liệu Dashboard trong 1 request (Tối ưu tốc độ cao)
@@ -104,7 +123,11 @@ class CicdDashboardController extends Controller
      */
     public function jobs(string $id): JsonResponse
     {
-        $jobs = $this->cicdService->getPipelineJobs($id);
+        try {
+            $jobs = $this->cicdService->getPipelineJobs($id);
+        } catch (\Throwable) {
+            return response()->json(['message' => 'Không thể tải jobs/steps từ GitHub. Vui lòng thử lại.'], 502);
+        }
 
         return response()->json([
             'success' => true,
@@ -117,8 +140,13 @@ class CicdDashboardController extends Controller
      */
     public function logs(string $id, Request $request): JsonResponse
     {
-        $jobId = $request->query('job_id');
-        $logs = $this->cicdService->getLogs($id, $jobId);
+        $validated = $request->validate([
+            'job_id' => ['nullable', 'integer', 'min:1', 'required_with:step_number'],
+            'step_number' => ['nullable', 'integer', 'min:0'],
+        ]);
+        $jobId = isset($validated['job_id']) ? (string) $validated['job_id'] : null;
+        $stepNumber = isset($validated['step_number']) ? (int) $validated['step_number'] : null;
+        $logs = $this->cicdService->getLogs($id, $jobId, $stepNumber);
 
         return response()->json([
             'success' => true,

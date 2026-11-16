@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\RbacSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -12,6 +13,12 @@ use Tests\TestCase;
 
 class RbacSecurityTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RbacSeeder::class);
+    }
+
     /**
      * Tạo user kèm token phiên đăng nhập
      */
@@ -264,12 +271,27 @@ class RbacSecurityTest extends TestCase
      */
     public function test_login_returns_permissions_and_role_details(): void
     {
-        $admin = User::where('username', 'admin')->first();
-        $password = ($admin && Hash::check('Admin@123456', $admin->password_hash)) ? 'Admin@123456' : '123567';
+        $admin = User::firstOrCreate(
+            ['username' => 'admin'],
+            [
+                'email' => 'admin@cassavas.vn',
+                'phone_number' => '0900000001',
+                'full_name' => 'Administrator',
+            ]
+        );
+        $admin->password_hash = Hash::make('Admin@123456');
+        $admin->status = 'ACTIVE';
+        $admin->save();
+
+        $role = Role::firstOrCreate(['role_code' => 'SUPER_ADMIN'], ['role_name' => 'Super Administrator', 'is_system_role' => true]);
+        DB::table('user_roles')->updateOrInsert(
+            ['user_id' => $admin->id, 'role_id' => $role->id],
+            ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
+        );
 
         $response = $this->postJson('/api/v1/auth/login', [
             'username' => 'admin',
-            'password' => $password,
+            'password' => 'Admin@123456',
         ]);
 
         $response->assertStatus(200)

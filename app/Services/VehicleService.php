@@ -6,6 +6,7 @@ use App\Models\Vehicle;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -22,31 +23,33 @@ class VehicleService
             default => 'PARKING_MOTORBIKE',
         };
 
-        $config = DB::table('service_pricing_configs')
-            ->where('service_code', $serviceCode)
-            ->where('is_active', 1)
-            ->first();
+        return Cache::remember("pricing_config_{$serviceCode}", 3600, function () use ($category, $serviceCode) {
+            $config = DB::table('service_pricing_configs')
+                ->where('service_code', $serviceCode)
+                ->where('is_active', 1)
+                ->first();
 
-        if ($config) {
+            if ($config) {
+                return [
+                    'service_code' => $config->service_code,
+                    'service_name' => $config->service_name,
+                    'monthly_parking_fee' => (float) $config->fixed_unit_price,
+                    'vat_percentage' => (float) $config->vat_percentage,
+                    'unit_name' => $config->unit_name ?? 'xe/tháng',
+                ];
+            }
+
+            // Giá mặc định nếu chưa khởi tạo cấu hình
+            $fallbackPrice = ($category === 'CAR') ? 1500000.00 : 120000.00;
+
             return [
-                'service_code' => $config->service_code,
-                'service_name' => $config->service_name,
-                'monthly_parking_fee' => (float) $config->fixed_unit_price,
-                'vat_percentage' => (float) $config->vat_percentage,
-                'unit_name' => $config->unit_name ?? 'xe/tháng',
+                'service_code' => $serviceCode,
+                'service_name' => ($category === 'CAR') ? 'Phí Trông Giữ Ô Tô Tháng' : 'Phí Trông Giữ Xe Máy Tháng',
+                'monthly_parking_fee' => $fallbackPrice,
+                'vat_percentage' => 10.00,
+                'unit_name' => 'xe/tháng',
             ];
-        }
-
-        // Giá mặc định nếu chưa khởi tạo cấu hình
-        $fallbackPrice = ($category === 'CAR') ? 1500000.00 : 120000.00;
-
-        return [
-            'service_code' => $serviceCode,
-            'service_name' => ($category === 'CAR') ? 'Phí Trông Giữ Ô Tô Tháng' : 'Phí Trông Giữ Xe Máy Tháng',
-            'monthly_parking_fee' => $fallbackPrice,
-            'vat_percentage' => 10.00,
-            'unit_name' => 'xe/tháng',
-        ];
+        });
     }
 
     /**
@@ -54,31 +57,33 @@ class VehicleService
      */
     public function getAllParkingPricingConfigs(): array
     {
-        $configs = DB::table('service_pricing_configs')
-            ->whereIn('service_code', ['PARKING_MOTORBIKE', 'PARKING_CAR'])
-            ->where('is_active', 1)
-            ->get();
+        return Cache::remember('parking_pricing_configs_all', 3600, function () {
+            $configs = DB::table('service_pricing_configs')
+                ->whereIn('service_code', ['PARKING_MOTORBIKE', 'PARKING_CAR'])
+                ->where('is_active', 1)
+                ->get();
 
-        if ($configs->isEmpty()) {
-            return [
-                'MOTORBIKE' => $this->getPricingForCategory('MOTORBIKE'),
-                'CAR' => $this->getPricingForCategory('CAR'),
-            ];
-        }
+            if ($configs->isEmpty()) {
+                return [
+                    'MOTORBIKE' => $this->getPricingForCategory('MOTORBIKE'),
+                    'CAR' => $this->getPricingForCategory('CAR'),
+                ];
+            }
 
-        $result = [];
-        foreach ($configs as $config) {
-            $catKey = ($config->service_code === 'PARKING_CAR') ? 'CAR' : 'MOTORBIKE';
-            $result[$catKey] = [
-                'service_code' => $config->service_code,
-                'service_name' => $config->service_name,
-                'monthly_parking_fee' => (float) $config->fixed_unit_price,
-                'vat_percentage' => (float) $config->vat_percentage,
-                'unit_name' => $config->unit_name,
-            ];
-        }
+            $result = [];
+            foreach ($configs as $config) {
+                $catKey = ($config->service_code === 'PARKING_CAR') ? 'CAR' : 'MOTORBIKE';
+                $result[$catKey] = [
+                    'service_code' => $config->service_code,
+                    'service_name' => $config->service_name,
+                    'monthly_parking_fee' => (float) $config->fixed_unit_price,
+                    'vat_percentage' => (float) $config->vat_percentage,
+                    'unit_name' => $config->unit_name,
+                ];
+            }
 
-        return $result;
+            return $result;
+        });
     }
 
     /**
@@ -87,8 +92,26 @@ class VehicleService
     public function listVehicles(array $filters = []): LengthAwarePaginator
     {
         $query = Vehicle::query()
+            ->select([
+                'id',
+                'apartment_id',
+                'owner_user_id',
+                'license_plate',
+                'vehicle_category',
+                'brand',
+                'model',
+                'color',
+                'registration_certificate_number',
+                'monthly_parking_fee',
+                'has_electric_charging_subscription',
+                'is_active',
+                'approved_by',
+                'approved_at',
+                'created_at',
+                'updated_at',
+            ])
             ->with([
-                'apartment',
+                'apartment:id,apartment_number,block_id,status',
                 'owner:id,full_name,email,phone_number',
                 'approver:id,full_name',
             ]);
@@ -182,6 +205,8 @@ class VehicleService
      */
     public function createVehicle(array $data, ?string $adminUserId = null): array
     {
+        QuocTinRealtimeService::assertNotInCooldown('vehicles');
+
         // 1. Chuẩn hóa biển số
         $licensePlate = strtoupper(trim($data['license_plate']));
         $data['license_plate'] = $licensePlate;
@@ -206,9 +231,9 @@ class VehicleService
         }
 
         // 4. Thực thi trong DB Transaction bảo đảm toàn vẹn
-        return DB::transaction(function () use ($data) {
+        [$vehicle, $invoiceSync] = DB::transaction(function () use ($data) {
             try {
-                $vehicle = Vehicle::create($data);
+                $veh = Vehicle::create($data);
             } catch (QueryException $e) {
                 // Kiểm tra lỗi trùng khóa unique biển số (MySQL error code 1062)
                 if ($e->errorInfo[1] === 1062 || str_contains($e->getMessage(), 'Duplicate entry') || str_contains($e->getMessage(), 'license_plate')) {
@@ -218,13 +243,29 @@ class VehicleService
             }
 
             // Đẩy phí gửi xe vào hóa đơn kỳ hiện tại
-            $invoiceSync = $this->syncVehicleParkingFeeToInvoice($vehicle);
+            $sync = $this->syncVehicleParkingFeeToInvoice($veh);
 
-            return [
-                'vehicle' => $vehicle->fresh(['apartment', 'owner', 'approver']),
-                'invoice_sync' => $invoiceSync,
-            ];
+            return [$veh, $sync];
         });
+
+        // Nạp quan hệ SAU KHI commit transaction để giải phóng khóa hàng ngay lập tức
+        $vehicle->load(['apartment', 'owner', 'approver']);
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'CREATED', $vehicle->id, [
+            'apartment_id' => $vehicle->apartment_id,
+            'vehicle_category' => $vehicle->vehicle_category,
+            'is_active' => (bool) $vehicle->is_active,
+            'license_plate' => $vehicle->license_plate,
+        ]);
+
+        QuocTinRealtimeService::emit('vehicles', 'invoice_item', 'SYNCED', $vehicle->id, [
+            'apartment_id' => $vehicle->apartment_id,
+        ]);
+
+        return [
+            'vehicle' => $vehicle,
+            'invoice_sync' => $invoiceSync,
+        ];
     }
 
     /**
@@ -232,6 +273,8 @@ class VehicleService
      */
     public function updateVehicle(string $id, array $data): Vehicle
     {
+        QuocTinRealtimeService::assertNotInCooldown('vehicles');
+
         $vehicle = Vehicle::find($id);
         if (! $vehicle) {
             throw new VehicleNotFoundException('Phương tiện không tồn tại hoặc đã bị xóa.');
@@ -249,76 +292,98 @@ class VehicleService
             $data['monthly_parking_fee'] = $pricing['monthly_parking_fee'];
         }
 
-        try {
-            $vehicle->update($data);
-        } catch (QueryException $e) {
-            if ($e->errorInfo[1] === 1062 || str_contains($e->getMessage(), 'Duplicate entry') || str_contains($e->getMessage(), 'license_plate')) {
-                throw new VehicleConflictException("Biển số xe '{$data['license_plate']}' đã được đăng ký bởi phương tiện khác.", 409);
+        $updatedCount = DB::transaction(function () use ($vehicle, $data, $oldLicensePlate) {
+            try {
+                $vehicle->update($data);
+            } catch (QueryException $e) {
+                if ($e->errorInfo[1] === 1062 || str_contains($e->getMessage(), 'Duplicate entry') || str_contains($e->getMessage(), 'license_plate')) {
+                    throw new VehicleConflictException("Biển số xe '{$data['license_plate']}' đã được đăng ký bởi phương tiện khác.", 409);
+                }
+                throw $e;
             }
-            throw $e;
-        }
 
-        // Cập nhật mục phí trong hóa đơn kỳ hiện hành nếu chưa thanh toán
-        $currentPeriod = Carbon::now()->format('Y-m');
-        $invoice = DB::table('invoices')
-            ->where('apartment_id', $vehicle->apartment_id)
-            ->where('billing_period', $currentPeriod)
-            ->where('status', '!=', 'PAID')
-            ->whereNull('deleted_at')
-            ->first();
+            // Cập nhật mục phí trong hóa đơn kỳ hiện hành nếu chưa thanh toán
+            $currentPeriod = Carbon::now()->format('Y-m');
+            $invoice = DB::table('invoices')
+                ->where('apartment_id', $vehicle->apartment_id)
+                ->where('billing_period', $currentPeriod)
+                ->where('status', '!=', 'PAID')
+                ->whereNull('deleted_at')
+                ->first();
 
-        if ($invoice) {
-            $category = strtoupper($vehicle->vehicle_category);
-            $serviceCode = ($category === 'CAR') ? 'PARKING_CAR' : 'PARKING_MOTORBIKE';
-            $categoryLabel = ($category === 'CAR') ? 'ô tô' : 'xe máy';
-            $newItemDescription = "Phí gửi xe {$categoryLabel} - {$vehicle->license_plate}";
+            $syncCount = 0;
+            if ($invoice) {
+                $category = strtoupper($vehicle->vehicle_category);
+                $serviceCode = ($category === 'CAR') ? 'PARKING_CAR' : 'PARKING_MOTORBIKE';
+                $categoryLabel = ($category === 'CAR') ? 'ô tô' : 'xe máy';
+                $newItemDescription = "Phí gửi xe {$categoryLabel} - {$vehicle->license_plate}";
 
-            $pricing = $this->getPricingForCategory($category);
-            $vatPct = $pricing['vat_percentage'];
-            $unitPrice = (float) $vehicle->monthly_parking_fee;
-            $amountBeforeTax = $unitPrice;
-            $vatAmount = round($amountBeforeTax * ($vatPct / 100), 2);
-            $totalLineAmount = $amountBeforeTax + $vatAmount;
+                $pricing = $this->getPricingForCategory($category);
+                $vatPct = $pricing['vat_percentage'];
+                $unitPrice = (float) $vehicle->monthly_parking_fee;
+                $amountBeforeTax = $unitPrice;
+                $vatAmount = round($amountBeforeTax * ($vatPct / 100), 2);
+                $totalLineAmount = $amountBeforeTax + $vatAmount;
 
-            $updatedCount = DB::table('invoice_items')
-                ->where('invoice_id', $invoice->id)
-                ->where(function ($q) use ($oldLicensePlate, $vehicle) {
-                    $q->where('item_description', 'like', "%{$oldLicensePlate}%")
-                        ->orWhere('item_description', 'like', "%{$vehicle->license_plate}%");
-                })
-                ->update([
-                    'service_code' => $serviceCode,
-                    'item_description' => $newItemDescription,
-                    'unit_price' => $unitPrice,
-                    'amount_before_tax' => $amountBeforeTax,
-                    'vat_percentage' => $vatPct,
-                    'vat_amount' => $vatAmount,
-                    'total_line_amount' => $totalLineAmount,
-                ]);
-
-            if ($updatedCount > 0) {
-                $totals = DB::table('invoice_items')
+                $syncCount = DB::table('invoice_items')
                     ->where('invoice_id', $invoice->id)
-                    ->selectRaw('SUM(amount_before_tax) as subtotal, SUM(vat_amount) as tax, SUM(total_line_amount) as total')
-                    ->first();
-
-                $subtotal = (float) ($totals->subtotal ?? 0.00);
-                $tax = (float) ($totals->tax ?? 0.00);
-                $total = (float) ($totals->total ?? 0.00);
-
-                DB::table('invoices')
-                    ->where('id', $invoice->id)
+                    ->where(function ($q) use ($oldLicensePlate, $vehicle) {
+                        $q->where('item_description', 'like', "%{$oldLicensePlate}%")
+                            ->orWhere('item_description', 'like', "%{$vehicle->license_plate}%");
+                    })
                     ->update([
-                        'subtotal_amount' => $subtotal,
-                        'tax_amount' => $tax,
-                        'total_amount' => $total,
-                        'remaining_balance' => DB::raw('total_amount - paid_amount'),
-                        'updated_at' => Carbon::now(),
+                        'service_code' => $serviceCode,
+                        'item_description' => $newItemDescription,
+                        'unit_price' => $unitPrice,
+                        'amount_before_tax' => $amountBeforeTax,
+                        'vat_percentage' => $vatPct,
+                        'vat_amount' => $vatAmount,
+                        'total_line_amount' => $totalLineAmount,
                     ]);
+
+                if ($syncCount > 0) {
+                    $totals = DB::table('invoice_items')
+                        ->where('invoice_id', $invoice->id)
+                        ->selectRaw('SUM(amount_before_tax) as subtotal, SUM(vat_amount) as tax, SUM(total_line_amount) as total')
+                        ->first();
+
+                    $subtotal = (float) ($totals->subtotal ?? 0.00);
+                    $tax = (float) ($totals->tax ?? 0.00);
+                    $total = (float) ($totals->total ?? 0.00);
+
+                    DB::table('invoices')
+                        ->where('id', $invoice->id)
+                        ->update([
+                            'subtotal_amount' => $subtotal,
+                            'tax_amount' => $tax,
+                            'total_amount' => $total,
+                            'remaining_balance' => DB::raw('total_amount - paid_amount'),
+                            'updated_at' => Carbon::now(),
+                        ]);
+                }
             }
+
+            return $syncCount;
+        });
+
+        // Nạp relations SAU KHI commit transaction
+        $vehicle->load(['apartment', 'owner', 'approver']);
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'UPDATED', $vehicle->id, [
+            'apartment_id' => $vehicle->apartment_id,
+            'vehicle_category' => $vehicle->vehicle_category,
+            'is_active' => (bool) $vehicle->is_active,
+            'license_plate' => $vehicle->license_plate,
+            'updated_at' => $vehicle->updated_at?->toIso8601String(),
+        ]);
+
+        if ($updatedCount > 0) {
+            QuocTinRealtimeService::emit('vehicles', 'invoice_item', 'SYNCED', $vehicle->id, [
+                'apartment_id' => $vehicle->apartment_id,
+            ]);
         }
 
-        return $vehicle->fresh(['apartment', 'owner', 'approver']);
+        return $vehicle;
     }
 
     /**
@@ -326,12 +391,23 @@ class VehicleService
      */
     public function deleteVehicle(string $id): bool
     {
+        QuocTinRealtimeService::assertNotInCooldown('vehicles');
+
         $vehicle = Vehicle::find($id);
         if (! $vehicle) {
             throw new VehicleNotFoundException('Phương tiện không tồn tại hoặc đã bị xóa.');
         }
 
-        return (bool) $vehicle->delete();
+        $apartmentId = $vehicle->apartment_id;
+        $deleted = (bool) $vehicle->delete();
+
+        if ($deleted) {
+            QuocTinRealtimeService::emit('vehicles', 'vehicle', 'DELETED', $id, [
+                'apartment_id' => $apartmentId,
+            ]);
+        }
+
+        return $deleted;
     }
 
     /**
@@ -339,6 +415,8 @@ class VehicleService
      */
     public function toggleActive(string $id): Vehicle
     {
+        QuocTinRealtimeService::assertNotInCooldown('vehicles');
+
         $vehicle = Vehicle::find($id);
         if (! $vehicle) {
             throw new VehicleNotFoundException('Phương tiện không tồn tại hoặc đã bị xóa.');
@@ -347,7 +425,16 @@ class VehicleService
         $vehicle->is_active = ! $vehicle->is_active;
         $vehicle->save();
 
-        return $vehicle->fresh(['apartment', 'owner', 'approver']);
+        $fresh = $vehicle->fresh(['apartment', 'owner', 'approver']);
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'UPDATED', $fresh->id, [
+            'apartment_id' => $fresh->apartment_id,
+            'is_active' => (bool) $fresh->is_active,
+            'license_plate' => $fresh->license_plate,
+            'updated_at' => $fresh->updated_at?->toIso8601String(),
+        ]);
+
+        return $fresh;
     }
 
     /**
@@ -355,20 +442,37 @@ class VehicleService
      */
     public function approveVehicle(string $id, string $approvedByUserId): Vehicle
     {
+        QuocTinRealtimeService::assertNotInCooldown('vehicles');
+
         $vehicle = Vehicle::find($id);
         if (! $vehicle) {
             throw new VehicleNotFoundException('Phương tiện không tồn tại hoặc đã bị xóa.');
         }
 
-        $vehicle->approved_by = $approvedByUserId;
-        $vehicle->approved_at = now();
-        $vehicle->is_active = true;
-        $vehicle->save();
+        DB::transaction(function () use ($vehicle, $approvedByUserId) {
+            $vehicle->approved_by = $approvedByUserId;
+            $vehicle->approved_at = now();
+            $vehicle->is_active = true;
+            $vehicle->save();
 
-        // Tự động đẩy phí vào kỳ hóa đơn hiện tại khi duyệt xe
-        $this->syncVehicleParkingFeeToInvoice($vehicle);
+            // Tự động đẩy phí vào kỳ hóa đơn hiện tại khi duyệt xe
+            $this->syncVehicleParkingFeeToInvoice($vehicle);
+        });
 
-        return $vehicle->fresh(['apartment', 'owner', 'approver']);
+        $vehicle->load(['apartment', 'owner', 'approver']);
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'APPROVED', $vehicle->id, [
+            'apartment_id' => $vehicle->apartment_id,
+            'is_active' => true,
+            'license_plate' => $vehicle->license_plate,
+            'updated_at' => $vehicle->updated_at?->toIso8601String(),
+        ]);
+
+        QuocTinRealtimeService::emit('vehicles', 'invoice_item', 'SYNCED', $vehicle->id, [
+            'apartment_id' => $vehicle->apartment_id,
+        ]);
+
+        return $vehicle;
     }
 
     /**
@@ -520,11 +624,13 @@ class VehicleService
      */
     public function getApartmentsForFilter(): array
     {
-        return DB::table('apartments')
-            ->select('id', 'apartment_number')
-            ->whereNull('deleted_at')
-            ->orderBy('apartment_number')
-            ->get()
-            ->toArray();
+        return Cache::remember('apartments_filter_options', 3600, function () {
+            return DB::table('apartments')
+                ->select('id', 'apartment_number')
+                ->whereNull('deleted_at')
+                ->orderBy('apartment_number')
+                ->get()
+                ->toArray();
+        });
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Middleware\AuthenticateBearer;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -14,43 +15,17 @@ use Illuminate\Validation\ValidationException;
 class RbacService
 {
     /**
-     * Xác định người dùng từ Request (Hỗ trợ Laravel Auth, X-User-Id, Bearer token, session token)
+     * Xác định người dùng từ Request đã xác thực (Hỗ trợ Laravel Auth, Bearer token qua bảng user_sessions)
      */
     public static function resolveUser(Request $request): ?object
     {
-        if ($user = $request->user()) {
-            return $user;
+        $user = $request->user() ?? Auth::user();
+        $token = trim((string) $request->bearerToken());
+        if (! $user && $token !== '') {
+            $user = AuthenticateBearer::resolveSessionUser($token);
         }
 
-        if (Auth::check()) {
-            return Auth::user();
-        }
-
-        $userId = $request->header('X-User-Id') ?? $request->query('user_id');
-        if ($userId) {
-            return User::find($userId) ?? DB::table('users')->where('id', $userId)->first();
-        }
-
-        $userEmail = $request->header('X-User-Email');
-        if ($userEmail) {
-            return User::where('email', $userEmail)->first() ?? DB::table('users')->where('email', $userEmail)->first();
-        }
-
-        // Kiểm tra Bearer token nếu có mapping
-        $authHeader = $request->header('Authorization');
-        if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
-            $token = substr($authHeader, 7);
-            if (str_contains($token, 'admin')) {
-                return User::where('username', 'admin')->first() ?? DB::table('users')->where('username', 'admin')->first();
-            }
-
-            $session = DB::table('user_sessions')->where('session_token', $token)->where('is_active', 1)->first();
-            if ($session) {
-                return User::find($session->user_id) ?? DB::table('users')->where('id', $session->user_id)->first();
-            }
-        }
-
-        return null;
+        return $user?->status === 'ACTIVE' ? $user : null;
     }
 
     /**
@@ -227,11 +202,23 @@ class RbacService
             ]);
         }
 
+        $upperCodes = array_map(fn ($p) => is_string($p) ? strtoupper(trim($p)) : $p, $permissionIds);
+
         // Tìm các Permission ID thực tế
         $resolvedIds = Permission::whereIn('id', $permissionIds)
             ->orWhereIn('permission_code', $permissionIds)
+            ->orWhereIn('permission_code', $upperCodes)
             ->pluck('id')
             ->toArray();
+
+        // Hỗ trợ alias 'special' / 'SPECIAL' để cấp quyền người đặc biệt
+        if (in_array('SPECIAL', $upperCodes, true)) {
+            $specialIds = Permission::where('permission_code', 'SPECIAL')
+                ->orWhere('permission_code', 'SYSTEM:SPECIAL')
+                ->pluck('id')
+                ->toArray();
+            $resolvedIds = array_values(array_unique(array_merge($resolvedIds, $specialIds)));
+        }
 
         $oldPerms = DB::table('role_permissions')
             ->where('role_id', $role->id)

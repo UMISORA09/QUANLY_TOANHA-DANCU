@@ -8,6 +8,7 @@ import {
   Users,
   User,
   MessageSquare,
+  ClipboardCheck,
   HelpCircle,
   PhoneCall,
   LogOut,
@@ -32,9 +33,21 @@ import {
   Check,
   Compass
 } from 'lucide-react';
-import { api } from '../Services/api';
+import { api, AmenityBookingNotification } from '../Services/api';
+import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
+import { ResidentAnnouncementPanel } from '../Components/ResidentAnnouncementPanel';
+import { useResidentAnnouncements } from '../Hooks/useResidentAnnouncements';
+import { ResidentAnnouncementNotices } from '../Components/ResidentAnnouncementNotices';
+import { TicketNotificationList, useTicketNotifications } from '../Components/TicketNotifications';
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
+import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
+import { ResidentTemporaryRegistrationPanel } from '../Components/ResidentTemporaryRegistrationPanel';
+import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
+import { ResidentSuggestionPanel } from '../Components/ResidentSuggestionPanel';
+import { ResidentSatisfactionSurveyPanel } from '../Components/ResidentSatisfactionSurveyPanel';
+import { ResidentPushNotificationToggle } from '../Components/ResidentPushNotificationToggle';
+import { ResidentParcelWidget } from '../Components/ResidentParcelWidget';
 
 export interface ResidentHomeProps {
   onLogout?: () => void;
@@ -61,21 +74,44 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   userRole,
   residentType = 'OWNER',
 }) => {
+  const ticketNotices = useTicketNotifications();
+  const announcementNotices = useResidentAnnouncements('filter=unread');
+  const openAnnouncement = (id: string) => {
+    const url = new URL('/cu-dan', window.location.origin); url.searchParams.set('tab', 'news'); url.searchParams.set('announcement', id);
+    window.history.pushState({}, '', url); setActiveMenuId('news'); window.dispatchEvent(new PopStateEvent('popstate')); setIsNotificationOpen(false);
+  };
+  const notices = useAmenityNotifications('resident');
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const openAmenityNotice = async (item: AmenityBookingNotification) => {
+    const target = new URL(item.deepLink, window.location.origin);
+    if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
+    notices.waitForDetail(item);
+    window.history.pushState({}, '', '/cu-dan' + target.search);
+    setActiveMenuId('amenities');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    setIsNotificationOpen(false);
+    notices.setAlert(null);
+
+  };
   const [activeMenuId, setActiveMenuId] = useState<string>(() => {
     try {
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab) return urlTab;
+      if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) return 'tickets';
     } catch {
       // ignore
     }
     return residentType === 'TENANT' ? 'rentals' : 'overview';
   });
+  const [feedbackSubTab, setFeedbackSubTab] = useState<'suggestions' | 'surveys'>('suggestions');
 
   useEffect(() => {
     try {
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab) {
         setActiveMenuId(urlTab);
+      } else if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) {
+        setActiveMenuId('tickets');
       } else if (residentType === 'TENANT') {
         setActiveMenuId('rentals');
       }
@@ -85,7 +121,16 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   }, [residentType]);
 
   useEffect(() => {
-    const syncTab = () => setActiveMenuId(new URLSearchParams(window.location.search).get('tab') || (residentType === 'TENANT' ? 'rentals' : 'overview'));
+    const syncTab = () => {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab) {
+        setActiveMenuId(tab);
+      } else if (window.location.pathname.includes('/tickets') || window.location.pathname.includes('/su-co')) {
+        setActiveMenuId('tickets');
+      } else {
+        setActiveMenuId(residentType === 'TENANT' ? 'rentals' : 'overview');
+      }
+    };
     window.addEventListener('popstate', syncTab);
     return () => window.removeEventListener('popstate', syncTab);
   }, [residentType]);
@@ -130,7 +175,9 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
     { id: 'tickets', label: 'Báo cáo sự cố', icon: AlertCircle, badge: '2' },
     { id: 'amenities', label: 'Đặt tiện ích', icon: Sparkles },
     { id: 'visitors', label: 'Khai báo khách', icon: Users },
+    { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an' },
     { id: 'profile', label: 'Thông tin cá nhân', icon: User },
+    { id: 'news', label: 'Bảng tin / Thông báo', icon: FileText },
     { id: 'community', label: 'Cộng đồng cư dân', icon: MessageSquare },
     { id: 'feedback', label: 'Góp ý & Khảo sát', icon: FileText },
     { id: 'contact_pet', label: 'Liên hệ & Thú cưng', icon: PhoneCall },
@@ -225,6 +272,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
       statusText={residentType === 'TENANT' ? 'Cổng khách thuê & tìm căn hộ' : 'Cổng dịch vụ cư dân trực tuyến'}
+      unreadNotificationCount={notices.unreadCount + ticketNotices.unread + (announcementNotices.data?.unread_count || 0)}
+      onNotificationClick={() => { setIsNotificationOpen((value) => !value); notices.retry(); ticketNotices.retry(); announcementNotices.retry(); }}
       extraTopbarActions={
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200/80 text-xs font-medium text-neutral-800 bg-white/85 backdrop-blur-md shadow-xs hover:border-sky-300 transition-colors">
           <Building className="w-3.5 h-3.5 text-sky-600" />
@@ -240,6 +289,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
         </div>
       }
     >
+      {notices.alert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{notices.alert.title}</p><p className="mt-1 text-xs text-neutral-600">{notices.alert.message}</p></div><button type="button" aria-label="Đóng cảnh báo tiện ích" onClick={() => notices.setAlert(null)} className="rounded-lg p-1"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openAmenityNotice(notices.alert!)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
+      {isNotificationOpen && <section aria-label="Thông báo cư dân" className="max-h-[calc(100dvh-6rem)] overflow-y-auto fixed top-20 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-neutral-200 bg-white p-4 shadow-lg"><div className="flex justify-between"><h2 className="font-bold text-sm">Thông báo cư dân · {notices.unreadCount + ticketNotices.unread + (announcementNotices.data?.unread_count || 0)} chưa đọc</h2><button type="button" aria-label="Đóng thông báo cư dân" onClick={() => setIsNotificationOpen(false)}><X className="h-4 w-4" /></button></div><label className="my-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo tiện ích chưa đọc</label><div className="max-h-[45vh] space-y-2 overflow-y-auto">{notices.loading && <p role="status" className="text-xs">Đang tải thông báo…</p>}{notices.error && <p role="alert" className="text-xs text-rose-700">Không thể tải thông báo. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}{!notices.loading && !notices.error && notices.items.length === 0 && <p className="text-xs text-neutral-500">Chưa có thông báo tiện ích.</p>}{notices.items.map((item) => <button type="button" key={item.id} onClick={() => void openAmenityNotice(item)} className={`w-full rounded-xl border p-3 text-left text-xs ${item.isRead ? 'border-neutral-200' : 'border-emerald-200 bg-emerald-50'}`}><span className="block font-semibold">{item.title}</span><span className="mt-1 block">{item.message}</span><span className="mt-1 block text-neutral-500">{item.timeAgo}</span></button>)}</div><div className="mt-3 flex justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div><TicketNotificationList feed={ticketNotices} /><ResidentAnnouncementNotices feed={announcementNotices} onOpen={openAnnouncement} /></section>}
       <div className="p-6 sm:p-8 lg:p-10">
         {/* ================= VIEW 1: TÒA NHÀ & CĂN HỘ CHO THUÊ ================= */}
         {activeMenuId === 'rentals' ? (
@@ -499,6 +550,48 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           </div>
         ) : activeMenuId === 'amenities' ? (
           <ResidentAmenityBookingPanel />
+        ) : activeMenuId === 'visitors' ? (
+          <ResidentVisitorRegistrationPanel />
+        ) : activeMenuId === 'temporary_registrations' ? (
+          <ResidentTemporaryRegistrationPanel />
+        ) : activeMenuId === 'news' ? (
+          <ResidentAnnouncementPanel />
+        ) : activeMenuId === 'tickets' ? (
+          <ResidentTicketPanel onNavigateOverview={() => selectMenu('overview')} />
+        ) : activeMenuId === 'feedback' || activeMenuId === 'surveys' ? (
+          <div className="max-w-6xl mx-auto space-y-6">
+            {/* Sub-tab navigation for Góp ý & Khảo sát */}
+            <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2">
+              <button
+                onClick={() => setFeedbackSubTab('suggestions')}
+                className={`flex items-center gap-2 py-3 px-4 font-semibold text-sm border-b-2 transition-all ${
+                  feedbackSubTab === 'suggestions'
+                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                Hòm thư Góp ý (F12)
+              </button>
+              <button
+                onClick={() => setFeedbackSubTab('surveys')}
+                className={`flex items-center gap-2 py-3 px-4 font-semibold text-sm border-b-2 transition-all ${
+                  feedbackSubTab === 'surveys'
+                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                Khảo sát Mức độ Hài lòng CSAT (F13)
+              </button>
+            </div>
+
+            {feedbackSubTab === 'suggestions' ? (
+              <ResidentSuggestionPanel />
+            ) : (
+              <ResidentSatisfactionSurveyPanel />
+            )}
+          </div>
         ) : activeMenuId === 'overview' ? (
           /* ================= VIEW 2: TỔNG QUAN CƯ DÂN ================= */
           <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
@@ -532,6 +625,12 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
               </button>
             </div>
 
+            {/* Web Push Notification Activation for Resident */}
+            <ResidentPushNotificationToggle />
+
+            {/* Resident Parcels & PIN Pickup Codes Widget */}
+            <ResidentParcelWidget />
+
             {/* 4 Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
@@ -552,7 +651,11 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
+              <div
+                onClick={() => selectMenu('tickets')}
+                className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between cursor-pointer group"
+                title="Bấm để xem danh sách yêu cầu sự cố"
+              >
                 <div className="flex items-center justify-between text-xs text-neutral-500 font-medium">
                   <span>Yêu cầu đang xử lý</span>
                   <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
@@ -588,10 +691,14 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
+              <div
+                onClick={() => setActiveMenuId('visitors')}
+                className="p-5 rounded-2xl border border-neutral-200/80 bg-white/80 backdrop-blur-md shadow-xs hover:shadow-lg transition-all flex flex-col justify-between cursor-pointer group"
+                title="Bấm để mở Quản lý khai báo khách viếng thăm"
+              >
                 <div className="flex items-center justify-between text-xs text-neutral-500 font-medium">
-                  <span>Khách đã khai báo</span>
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                  <span className="group-hover:text-neutral-900 transition-colors">Khách đã khai báo</span>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100 group-hover:bg-indigo-600 group-hover:text-white transition-all">
                     <Users className="w-3.5 h-3.5" />
                   </div>
                 </div>
@@ -602,7 +709,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                 </div>
                 <div className="text-xs text-neutral-400 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                  <span>Trong tháng này</span>
+                  <span>Trong tháng này · Xem chi tiết →</span>
                 </div>
               </div>
             </div>
@@ -644,7 +751,11 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
                           </span>
                         </td>
                       </tr>
-                      <tr className="hover:bg-neutral-50/80 transition-colors">
+                      <tr
+                        onClick={() => selectMenu('tickets')}
+                        className="hover:bg-neutral-50/80 transition-colors cursor-pointer"
+                        title="Bấm để xem danh sách sự cố"
+                      >
                         <td className="py-3.5 px-4 font-semibold text-neutral-900 flex items-center gap-2">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                           Sửa vòi nước phòng tắm

@@ -107,7 +107,9 @@ class User extends Authenticatable
     {
         $roleList = is_array($roles) ? $roles : [$roles];
 
-        $userRoleCodes = $this->roles->pluck('role_code')->toArray();
+        $userRoleCodes = $this->relationLoaded('roles')
+            ? $this->roles->pluck('role_code')->toArray()
+            : $this->roles()->pluck('role_code')->toArray();
 
         foreach ($roleList as $r) {
             if (in_array(strtoupper(trim($r)), $userRoleCodes, true)) {
@@ -143,6 +145,22 @@ class User extends Authenticatable
             return $this->cachedPermissions;
         }
 
+        // Nếu người dùng có vai trò tùy chỉnh riêng (CUSTOM_USER_...), lấy chính xác các quyền từ vai trò riêng đó
+        $customRole = $this->roles()->where('role_code', 'LIKE', 'CUSTOM_USER_%')->first();
+        if ($customRole) {
+            $permissions = Permission::query()
+                ->join('role_permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('role_permissions.role_id', $customRole->id)
+                ->pluck('permissions.permission_code')
+                ->unique()
+                ->values()
+                ->toArray();
+
+            $this->cachedPermissions = $permissions;
+
+            return $this->cachedPermissions;
+        }
+
         // Tải các quyền từ các vai trò chưa bị xóa
         $permissions = Permission::query()
             ->join('role_permissions', 'permissions.id', '=', 'role_permissions.permission_id')
@@ -159,6 +177,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Xóa cache danh sách quyền hạn in-memory
+     */
+    public function clearPermissionCache(): void
+    {
+        $this->cachedPermissions = null;
+    }
+
+    /**
      * Kiểm tra người dùng có quyền cụ thể hay không (hasPermission)
      */
     public function hasPermission(string $permission): bool
@@ -169,8 +195,18 @@ class User extends Authenticatable
         }
 
         $allPerms = $this->getAllPermissions();
+        $target = strtoupper(trim($permission));
 
-        return in_array(strtoupper(trim($permission)), $allPerms, true);
+        if (in_array($target, $allPerms, true)) {
+            return true;
+        }
+
+        // Hỗ trợ kiểm tra quyền người đặc biệt ('special' hoặc 'SPECIAL')
+        if ($target === 'SPECIAL') {
+            return in_array('SPECIAL', $allPerms, true) || in_array('SYSTEM:SPECIAL', $allPerms, true);
+        }
+
+        return false;
     }
 
     /**

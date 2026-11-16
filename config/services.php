@@ -42,4 +42,10 @@ return [
         'deploy_branch' => env('GIT_DEPLOY_BRANCH'),
     ],
 
+    'vapid' => [
+        'public_key' => env('VAPID_PUBLIC_KEY'),
+        'private_key' => env('VAPID_PRIVATE_KEY'),
+        'subject' => env('VAPID_SUBJECT', 'mailto:admin@cassavas.vn'),
+    ],
+
 ];

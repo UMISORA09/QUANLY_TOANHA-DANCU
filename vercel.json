@@ -1,13 +1,20 @@
 {
   "version": 2,
   "framework": null,
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
   "outputDirectory": "public",
   "functions": {
     "api/index.php": {
-      "runtime": "vercel-php@0.8.0"
+      "runtime": "vercel-php@0.8.0",
+      "maxDuration": 60
     }
   },
   "routes": [
+    {
+      "src": "^/(?:index\\.html)?$",
+      "dest": "/api/index.php"
+    },
     {
       "handle": "filesystem"
     },
@@ -18,6 +25,7 @@
   ],
   "env": {
     "APP_ENV": "production",
+    "APP_DEBUG": "false",
     "APP_CONFIG_CACHE": "/tmp/config.php",
     "APP_EVENTS_CACHE": "/tmp/events.php",
     "APP_PACKAGES_CACHE": "/tmp/packages.php",
@@ -27,8 +35,6 @@
     "CACHE_STORE": "array",
     "SESSION_DRIVER": "cookie",
     "LOG_CHANNEL": "stderr",
-    "LARAVEL_STORAGE_PATH": "/tmp/storage",
-    "DB_CONNECTION": "sqlite",
-    "DB_DATABASE": "/tmp/storage/database.sqlite"
+    "LARAVEL_STORAGE_PATH": "/tmp/storage"
   }
 }
