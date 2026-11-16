@@ -287,12 +287,29 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
             if (reason === null) return;
 
             const res = await invoiceApi.bulkCancelInvoices(selectedInvoiceIds, reason || 'Hủy hàng loạt bởi quản trị viên');
-            showToast('success', res.message || `Đã hủy thành công ${res.data.cancelled_count} hóa đơn.`);
+            if (res.success) {
+                showToast('success', res.message || `Đã hủy thành công ${res.data.cancelled_count} hóa đơn.`);
+            } else {
+                showToast('error', res.message || 'Có hóa đơn không thể hủy.');
+            }
             setSelectedInvoiceIds([]);
             fetchInvoices();
             fetchSummary();
         } catch (err: any) {
             showToast('error', err.message || 'Lỗi khi hủy hàng loạt hóa đơn');
+        }
+    };
+
+    // Mở Modal Xem chi tiết hóa đơn (tải chi tiết items & payments từ API)
+    const handleOpenDetailModal = async (inv: InvoiceModel) => {
+        setDetailInvoice(inv);
+        try {
+            const res = await invoiceApi.getInvoiceDetail(inv.id);
+            if (res.success && res.data) {
+                setDetailInvoice(res.data);
+            }
+        } catch (err) {
+            console.error('Không thể tải chi tiết hóa đơn:', err);
         }
     };
 
@@ -1021,7 +1038,7 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                                     {/* Nút Xem chi tiết */}
                                                     <button
                                                         type="button"
-                                                        onClick={() => setDetailInvoice(inv)}
+                                                        onClick={() => handleOpenDetailModal(inv)}
                                                         className="p-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                                                         title="Xem chi tiết hóa đơn"
                                                     >
