@@ -51,6 +51,7 @@ use App\Http\Controllers\TicketManagementController;
 use App\Http\Controllers\TicketRatingController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
+use App\Http\Controllers\ZoneController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -862,6 +863,37 @@ Route::get('/admin/buildings', function () {
 });
 Route::get('/admin/apartments', function () {
     return view('welcome');
+});
+
+// ==========================================
+// QUẢN LÝ KHỐI TÒA NHÀ & ZONE (CHỨC NĂNG 1 - XUANHOA)
+// ==========================================
+Route::get('api/v1/zones/public', [ZoneController::class, 'publicIndex']);
+
+Route::prefix('api/v1/manager')->middleware(['auth.bearer'])->group(function () {
+    Route::get('zones', [ZoneController::class, 'index'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::post('zones', [ZoneController::class, 'store'])->middleware('permission:BUILDING:MANAGE|ZONE:CREATE|ZONE:MANAGE');
+    Route::get('zones/{id}', [ZoneController::class, 'show'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::put('zones/{id}', [ZoneController::class, 'update'])->middleware('permission:BUILDING:MANAGE|ZONE:UPDATE|ZONE:MANAGE');
+    Route::delete('zones/{id}', [ZoneController::class, 'destroy'])->middleware('permission:BUILDING:MANAGE|ZONE:DELETE|ZONE:MANAGE');
+});
+
+Route::prefix('api/v1')->middleware(['auth.bearer'])->group(function () {
+    Route::get('zones', [ZoneController::class, 'index'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::post('zones', [ZoneController::class, 'store'])->middleware('permission:BUILDING:MANAGE|ZONE:CREATE|ZONE:MANAGE');
+    Route::get('zones/{id}', [ZoneController::class, 'show'])->middleware('permission:BUILDING:VIEW|ZONE:VIEW');
+    Route::put('zones/{id}', [ZoneController::class, 'update'])->middleware('permission:BUILDING:MANAGE|ZONE:UPDATE|ZONE:MANAGE');
+    Route::delete('zones/{id}', [ZoneController::class, 'destroy'])->middleware('permission:BUILDING:MANAGE|ZONE:DELETE|ZONE:MANAGE');
+});
+
+Route::get('/quan-ly/zones', function () {
+    return view('welcome');
+});
+Route::get('/admin/zones', function () {
+    return redirect('/quan-ly/zones');
+});
+Route::get('/quan-ly/khoi-nha', function () {
+    return redirect('/quan-ly/zones');
 });
 
 // ==========================================

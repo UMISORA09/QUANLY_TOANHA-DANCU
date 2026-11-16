@@ -56,9 +56,13 @@ class ResidentAuthorizationTest extends TestCase
     protected function createUserWithRole(string $roleCode, array $attributes = []): array
     {
         $rand = Str::lower(Str::random(8));
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         $user = User::create(array_merge([
             'username' => 'usr_'.strtolower($roleCode).'_'.$rand,
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'usr_'.strtolower($roleCode).'_'.$rand.'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'User '.$roleCode.' '.$rand,
@@ -89,9 +93,13 @@ class ResidentAuthorizationTest extends TestCase
     protected function createUserWithCustomPermissions(array $permissionCodes, ?string $baseRoleCode = null, array $userAttributes = []): array
     {
         $rand = Str::lower(Str::random(8));
+        do {
+            $phone = '08'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         $user = User::create(array_merge([
             'username' => 'custom_usr_'.$rand,
-            'phone_number' => '08'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'custom_'.$rand.'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Custom Resident User '.$rand,
@@ -150,12 +158,17 @@ class ResidentAuthorizationTest extends TestCase
     {
         $block = DB::table('blocks')->first();
         $floor = DB::table('floors')->first();
+        $blockId = $block->id ?? (string) Str::uuid();
+
+        do {
+            $aptNum = substr($code.'-'.rand(1000, 9999).'-'.Str::upper(Str::random(4)), 0, 30);
+        } while (DB::table('apartments')->where('block_id', $blockId)->where('apartment_number', $aptNum)->exists());
 
         return Apartment::create([
             'id' => (string) Str::uuid(),
-            'block_id' => $block->id ?? (string) Str::uuid(),
+            'block_id' => $blockId,
             'floor_id' => $floor->id ?? (string) Str::uuid(),
-            'apartment_number' => $code.'-'.rand(1000, 9999),
+            'apartment_number' => $aptNum,
             'room_type' => '2_BEDROOM',
             'gross_floor_area_sqm' => 70.0,
             'net_usable_area_sqm' => 65.0,
@@ -169,10 +182,13 @@ class ResidentAuthorizationTest extends TestCase
     protected function createCandidateUser(): User
     {
         $rand = Str::lower(Str::random(8));
+        do {
+            $phone = '07'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
 
         return User::create([
             'username' => 'cand_'.$rand,
-            'phone_number' => '07'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'cand_'.$rand.'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Candidate User '.$rand,
@@ -452,9 +468,13 @@ class ResidentAuthorizationTest extends TestCase
             ['id' => (string) Str::uuid(), 'role_id' => $customRole->id, 'permission_id' => $viewPermId, 'created_at' => now()],
         ]);
 
+        do {
+            $wardPhone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $wardPhone)->exists());
+
         $user = User::create([
             'username' => 'ward_user_'.Str::random(6),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $wardPhone,
             'email' => 'ward_'.Str::random(6).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Can Bo To Dan Pho',

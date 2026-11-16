@@ -20,9 +20,13 @@ class ResidentRestoreTest extends TestCase
      */
     protected function createAdminUser(): array
     {
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         $user = User::create([
             'username' => 'adm_rst_'.Str::random(8),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'adm_rst_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Admin Restore Tester',
@@ -63,9 +67,13 @@ class ResidentRestoreTest extends TestCase
      */
     protected function createCandidateUser(string $name = 'Nguyen Van Candidate'): User
     {
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         return User::create([
             'username' => 'cand_'.Str::random(8),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'cand_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => $name,
@@ -80,12 +88,17 @@ class ResidentRestoreTest extends TestCase
     {
         $block = DB::table('blocks')->first();
         $floor = DB::table('floors')->first();
+        $blockId = $block->id ?? (string) Str::uuid();
+
+        do {
+            $aptNum = substr($code.'-'.rand(1000, 9999).'-'.Str::upper(Str::random(4)), 0, 30);
+        } while (DB::table('apartments')->where('block_id', $blockId)->where('apartment_number', $aptNum)->exists());
 
         return Apartment::create([
             'id' => (string) Str::uuid(),
-            'block_id' => $block->id ?? (string) Str::uuid(),
+            'block_id' => $blockId,
             'floor_id' => $floor->id ?? (string) Str::uuid(),
-            'apartment_number' => $code.'-'.rand(1000, 9999),
+            'apartment_number' => $aptNum,
             'room_type' => '2_BEDROOM',
             'gross_floor_area_sqm' => 75.0,
             'net_usable_area_sqm' => 68.0,

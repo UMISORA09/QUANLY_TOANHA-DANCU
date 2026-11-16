@@ -21,9 +21,13 @@ class ResidentTemporaryRegistrationTest extends TestCase
      */
     protected function createAdminOrManagerUser(string $roleCode = 'SUPER_ADMIN'): array
     {
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         $user = User::create([
             'username' => 'adm_tr_'.Str::random(8),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'adm_tr_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => $roleCode === 'SUPER_ADMIN' ? 'Super Admin User' : 'Building Manager User',
@@ -66,12 +70,17 @@ class ResidentTemporaryRegistrationTest extends TestCase
     {
         $block = DB::table('blocks')->first();
         $floor = DB::table('floors')->first();
+        $blockId = $block->id ?? (string) Str::uuid();
+
+        do {
+            $aptNum = substr($code.'-'.rand(1000, 9999).'-'.Str::upper(Str::random(4)), 0, 30);
+        } while (DB::table('apartments')->where('block_id', $blockId)->where('apartment_number', $aptNum)->exists());
 
         return Apartment::create([
             'id' => (string) Str::uuid(),
-            'block_id' => $block->id ?? (string) Str::uuid(),
+            'block_id' => $blockId,
             'floor_id' => $floor->id ?? (string) Str::uuid(),
-            'apartment_number' => $code.'-'.rand(1000, 9999),
+            'apartment_number' => $aptNum,
             'room_type' => '2_BEDROOM',
             'gross_floor_area_sqm' => 75.0,
             'net_usable_area_sqm' => 68.0,
@@ -84,13 +93,21 @@ class ResidentTemporaryRegistrationTest extends TestCase
      */
     protected function createResidentUser(Apartment $apt, bool $isHead = true, string $residentType = 'OWNER'): array
     {
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
+        do {
+            $cccd = '079'.rand(100000000, 999999999);
+        } while (DB::table('users')->where('national_id_number', $cccd)->exists());
+
         $user = User::create([
             'username' => 'res_tr_'.Str::random(8),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'res_tr_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Cu Dan '.($isHead ? 'Chu Ho ' : 'Thanh Vien ').Str::random(4),
-            'national_id_number' => '079'.rand(100000000, 999999999),
+            'national_id_number' => $cccd,
             'status' => 'ACTIVE',
         ]);
 
