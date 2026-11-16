@@ -354,4 +354,85 @@ class BuildingApartmentManagementTest extends TestCase
             'id' => $apt->id,
         ]);
     }
+
+    /**
+     * Test 12: Thao tác Zone CRUD làm mất hiệu lực cache blocks ngay lập tức và tăng data_version
+     */
+    public function test_12_zone_crud_invalidates_blocks_cache_immediately_and_bumps_version(): void
+    {
+        // 1. Lấy version hiện tại và nạp trước cache cho GET /api/v1/blocks (TTL 120s)
+        $resV0 = $this->withHeaders($this->authHeaders())->getJson('/api/v1/buildings/version');
+        $resV0->assertStatus(200);
+        $v0 = (int) $resV0->json('version');
+
+        $resPrime = $this->withHeaders($this->authHeaders())->getJson('/api/v1/blocks');
+        $resPrime->assertStatus(200);
+        $initialCodes = collect($resPrime->json('data'))->pluck('block_code')->all();
+        $this->assertNotContains('TEST-CACHE-BLK', $initialCodes);
+
+        // 2. Tạo khối tòa nhà mới qua POST /api/v1/zones
+        $createPayload = [
+            'zone_code' => 'TEST-CACHE-BLK',
+            'zone_name' => 'Khối Test Cache Mới',
+            'floor_count' => 12,
+            'status' => 'ACTIVE',
+        ];
+        $resCreate = $this->withHeaders($this->authHeaders())->postJson('/api/v1/zones', $createPayload);
+        $resCreate->assertStatus(201)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data_version', $v0 + 1);
+
+        $blockId = $resCreate->json('data.id');
+
+        // Khẳng định heartbeat version đã tăng lên v0 + 1
+        $resV1 = $this->withHeaders($this->authHeaders())->getJson('/api/v1/buildings/version');
+        $resV1->assertStatus(200)->assertJsonPath('version', $v0 + 1);
+
+        // Khẳng định GET /api/v1/blocks trả về khối mới ngay lập tức (không bị kẹt cache cũ 120s)
+        $resBlocksAfterCreate = $this->withHeaders($this->authHeaders())->getJson('/api/v1/blocks');
+        $resBlocksAfterCreate->assertStatus(200);
+        $codesAfterCreate = collect($resBlocksAfterCreate->json('data'))->pluck('block_code')->all();
+        $this->assertContains('TEST-CACHE-BLK', $codesAfterCreate);
+
+        // 3. Cập nhật tên khối qua PUT /api/v1/zones/{id}
+        $updatePayload = [
+            'zone_name' => 'Khối Test Cache Đã Đổi Tên',
+            'floor_count' => 12,
+            'version' => 1,
+        ];
+        $resUpdate = $this->withHeaders($this->authHeaders())->putJson("/api/v1/zones/{$blockId}", $updatePayload);
+        $resUpdate->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data_version', $v0 + 2);
+
+        // Khẳng định heartbeat version đã tăng lên v0 + 2
+        $resV2 = $this->withHeaders($this->authHeaders())->getJson('/api/v1/buildings/version');
+        $resV2->assertStatus(200)->assertJsonPath('version', $v0 + 2);
+
+        // Khẳng định GET /api/v1/blocks trả về tên khối mới ngay lập tức
+        $resBlocksAfterUpdate = $this->withHeaders($this->authHeaders())->getJson('/api/v1/blocks');
+        $resBlocksAfterUpdate->assertStatus(200);
+        $updatedBlock = collect($resBlocksAfterUpdate->json('data'))->firstWhere('block_code', 'TEST-CACHE-BLK');
+        $this->assertNotNull($updatedBlock);
+        $this->assertEquals('Khối Test Cache Đã Đổi Tên', $updatedBlock['block_name']);
+
+        // 4. Xóa mềm khối qua DELETE /api/v1/zones/{id}
+        $resDelete = $this->withHeaders($this->authHeaders())->deleteJson("/api/v1/zones/{$blockId}");
+        $resDelete->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data_version', $v0 + 3);
+
+        // Khẳng định heartbeat version đã tăng lên v0 + 3
+        $resV3 = $this->withHeaders($this->authHeaders())->getJson('/api/v1/buildings/version');
+        $resV3->assertStatus(200)->assertJsonPath('version', $v0 + 3);
+
+        // Khẳng định GET /api/v1/blocks không còn chứa khối đã xóa ngay lập tức
+        $resBlocksAfterDelete = $this->withHeaders($this->authHeaders())->getJson('/api/v1/blocks');
+        $resBlocksAfterDelete->assertStatus(200);
+        $codesAfterDelete = collect($resBlocksAfterDelete->json('data'))->pluck('block_code')->all();
+        $this->assertNotContains('TEST-CACHE-BLK', $codesAfterDelete);
+
+        // Dọn dẹp an toàn
+        Block::withTrashed()->where('block_code', 'TEST-CACHE-BLK')->forceDelete();
+    }
 }
