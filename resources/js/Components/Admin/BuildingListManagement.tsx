@@ -1412,15 +1412,6 @@ export const BuildingListManagement: React.FC<BuildingListManagementProps> = ({
             <>
               <button
                 type="button"
-                onClick={() => setShowBatchModal(true)}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white shadow-sm transition-all active:scale-[0.98] cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Khởi tạo theo tầng</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={handleOpenCreateModal}
                 className="inline-flex items-center justify-center gap-1 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 shadow-2xs transition-all active:scale-[0.98] cursor-pointer"
               >
@@ -1435,6 +1426,15 @@ export const BuildingListManagement: React.FC<BuildingListManagementProps> = ({
               >
                 <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                 <span>Thêm tầng</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowBatchModal(true)}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Khởi tạo theo tầng</span>
               </button>
 
               <button
