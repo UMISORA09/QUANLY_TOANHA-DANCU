@@ -9,7 +9,7 @@ export interface PricingTier {
 }
 
 export type BillingType = 'TIERED_USAGE' | 'FIXED_MONTHLY' | 'UNIT_PRICE_USAGE';
-export type MeterType = 'ELECTRICITY' | 'COLD_WATER' | 'HOT_WATER' | 'GAS' | null;
+export type MeterType = 'ELECTRICITY' | 'WATER' | 'COLD_WATER' | 'HOT_WATER' | 'GAS' | null;
 
 export interface ServicePricingConfig {
     id: string;
@@ -69,28 +69,25 @@ class ServicePricingApiService {
     private baseUrl = '/api/v1/pricing-configs';
 
     private getAuthHeaders(): HeadersInit {
-        let token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+        let token = localStorage.getItem('smart_cassavas_token') || localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
         if (!token) {
-            const adminAuth = localStorage.getItem('admin_auth_user');
-            const userSession = localStorage.getItem('smart_user_session');
-            if (adminAuth || userSession) {
+            const sessionStr = localStorage.getItem('smartcassavas_session') || localStorage.getItem('admin_auth_user') || localStorage.getItem('smart_user_session');
+            if (sessionStr) {
                 try {
-                    const session = JSON.parse(adminAuth || userSession || '{}');
-                    token = session.token || session.access_token || 'smart_token_admin_demo';
+                    const session = JSON.parse(sessionStr);
+                    token = session.token || session.access_token;
                 } catch {
-                    token = 'smart_token_admin_demo';
+                    // ignore
                 }
-            } else {
-                token = 'smart_token_admin_demo';
             }
         }
 
-        const authToken = token || 'smart_token_admin_demo';
+        const authToken = token || '';
 
         return {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            Authorization: authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`,
+            ...(authToken ? { Authorization: authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}` } : {}),
         };
     }
 
@@ -117,17 +114,19 @@ class ServicePricingApiService {
         return data;
     }
 
-    async getPricingConfigs(params?: { search?: string; billing_type?: string; meter_type?: string; is_active?: boolean }): Promise<{ success: boolean; data: ServicePricingConfig[]; total: number }> {
+    async getPricingConfigs(params?: { search?: string; billing_type?: string; meter_type?: string; is_active?: boolean; page?: number; per_page?: number }): Promise<{ success: boolean; data: ServicePricingConfig[]; meta?: any; total: number }> {
         const query = new URLSearchParams();
         if (params?.search) query.append('search', params.search);
         if (params?.billing_type && params.billing_type !== 'ALL') query.append('billing_type', params.billing_type);
         if (params?.meter_type && params.meter_type !== 'ALL') query.append('meter_type', params.meter_type);
         if (params?.is_active !== undefined) query.append('is_active', String(params.is_active));
+        if (params?.page) query.append('page', String(params.page));
+        if (params?.per_page) query.append('per_page', String(params.per_page));
 
         const queryString = query.toString();
         const endpoint = queryString ? `?${queryString}` : '';
 
-        return this.request<{ success: boolean; data: ServicePricingConfig[]; total: number }>(endpoint, {
+        return this.request<{ success: boolean; data: ServicePricingConfig[]; meta?: any; total: number }>(endpoint, {
             method: 'GET',
         });
     }

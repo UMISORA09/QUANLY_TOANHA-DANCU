@@ -32,7 +32,7 @@ class PaymentController extends Controller
         $validated = $request->validate([
             'invoice_id' => ['required', 'string'],
             'amount_paid' => ['required', 'numeric', 'min:1'],
-            'payment_gateway' => ['nullable', 'string', 'in:CASH,BANK_TRANSFER,VIETQR_BANK_TRANSFER,VIETQR,VNPAY,MOMO'],
+            'payment_gateway' => ['nullable', 'string', 'in:CASH,BANK_TRANSFER,VIETQR_BANK_TRANSFER,VIETQR,VNPAY,MOMO,POS'],
             'gateway_transaction_id' => ['nullable', 'string', 'max:120'],
             'idempotency_key' => ['nullable', 'string', 'max:100'],
             'payer_user_id' => ['nullable', 'string'],

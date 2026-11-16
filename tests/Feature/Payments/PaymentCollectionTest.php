@@ -9,6 +9,8 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReceipt;
 use App\Models\User;
+use App\Services\PaymentCollectionService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -313,5 +315,222 @@ class PaymentCollectionTest extends TestCase
         $data = $response->json('data');
         $this->assertCount(1, $data['data']);
         $this->assertEquals('CASH', $data['data'][0]['payment_gateway']);
+    }
+
+    public function test_concurrent_or_double_full_collection_rejects_second_attempt_and_does_not_overpay(): void
+    {
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-202612-CONCURRENT',
+            'apartment_id' => $this->apartment->id,
+            'resident_user_id' => $this->adminUser->id,
+            'billing_period' => '2026-12',
+            'issue_date' => '2026-12-05',
+            'due_date' => '2026-12-25',
+            'subtotal_amount' => 1000000,
+            'tax_amount' => 0,
+            'total_amount' => 1000000,
+            'paid_amount' => 0,
+            'remaining_balance' => 1000000,
+            'status' => 'ISSUED',
+        ]);
+
+        $service = app(PaymentCollectionService::class);
+
+        // Lần 1: Thu toàn bộ thành công
+        $res1 = $service->collectPayment([
+            'invoice_id' => $invoice->id,
+            'amount_paid' => 1000000,
+            'payment_gateway' => 'CASH',
+        ], (string) $this->adminUser->id);
+
+        $this->assertEquals('PAID', $res1['invoice']->status);
+        $this->assertEquals(1000000, $res1['invoice']->paid_amount);
+
+        // Lần 2: Cùng gọi thu toàn bộ trên hóa đơn đó -> phải bị từ chối
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Hóa đơn đã được thanh toán toàn bộ.');
+
+        $service->collectPayment([
+            'invoice_id' => $invoice->id,
+            'amount_paid' => 1000000,
+            'payment_gateway' => 'CASH',
+        ], (string) $this->adminUser->id);
+    }
+
+    public function test_race_condition_second_request_rejected_when_balance_reduced_under_lock(): void
+    {
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-202701-RACE',
+            'apartment_id' => $this->apartment->id,
+            'resident_user_id' => $this->adminUser->id,
+            'billing_period' => '2027-01',
+            'issue_date' => '2027-01-05',
+            'due_date' => '2027-01-25',
+            'subtotal_amount' => 1000000,
+            'tax_amount' => 0,
+            'total_amount' => 1000000,
+            'paid_amount' => 0,
+            'remaining_balance' => 1000000,
+            'status' => 'ISSUED',
+        ]);
+
+        $service = app(PaymentCollectionService::class);
+
+        // Request 1 thu 700,000
+        $service->collectPayment([
+            'invoice_id' => $invoice->id,
+            'amount_paid' => 700000,
+            'payment_gateway' => 'CASH',
+        ]);
+
+        // Request 2 cố thu 500,000 (lớn hơn số dư còn lại 300,000 sau khi khóa)
+        try {
+            $service->collectPayment([
+                'invoice_id' => $invoice->id,
+                'amount_paid' => 500000,
+                'payment_gateway' => 'CASH',
+            ]);
+            $this->fail('Expected DomainException was not thrown');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('không được lớn hơn dư nợ còn lại', $e->getMessage());
+        }
+
+        $fresh = $invoice->fresh();
+        $this->assertEquals(700000, $fresh->paid_amount);
+        $this->assertEquals(300000, $fresh->remaining_balance);
+        $this->assertLessThanOrEqual($fresh->total_amount, $fresh->paid_amount);
+    }
+
+    public function test_collect_payment_with_pos_gateway_succeeds(): void
+    {
+        $payload = [
+            'invoice_id' => $this->invoice->id,
+            'amount' => 500000,
+            'payment_method' => 'POS',
+            'notes' => 'Quẹt thẻ qua máy POS tại quầy',
+        ];
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payments/collect', $payload);
+
+        $response->assertSuccessful();
+
+        $data = $response->json('data');
+        $this->assertEquals('POS', $data['payment']['payment_gateway']);
+        $this->assertEquals(500000, $data['invoice']['paid_amount']);
+
+        $this->assertDatabaseHas('payments', [
+            'invoice_id' => $this->invoice->id,
+            'amount_paid' => 500000,
+            'payment_gateway' => 'POS',
+            'payment_status' => 'SUCCESS',
+        ]);
+    }
+
+    public function test_sequential_receipt_numbers_are_unique_and_incrementing(): void
+    {
+        $service = app(PaymentCollectionService::class);
+
+        $r1 = $service->collectPayment([
+            'invoice_id' => $this->invoice->id,
+            'amount_paid' => 100000,
+            'payment_gateway' => 'CASH',
+        ]);
+
+        $r2 = $service->collectPayment([
+            'invoice_id' => $this->invoice->id,
+            'amount_paid' => 100000,
+            'payment_gateway' => 'CASH',
+        ]);
+
+        $r3 = $service->collectPayment([
+            'invoice_id' => $this->invoice->id,
+            'amount_paid' => 100000,
+            'payment_gateway' => 'CASH',
+        ]);
+
+        $num1 = $r1['receipt']->receipt_number;
+        $num2 = $r2['receipt']->receipt_number;
+        $num3 = $r3['receipt']->receipt_number;
+
+        $prefix = 'BL-'.Carbon::now()->format('Ym').'-';
+        $this->assertStringStartsWith($prefix, $num1);
+        $this->assertStringStartsWith($prefix, $num2);
+        $this->assertStringStartsWith($prefix, $num3);
+
+        $seq1 = (int) substr($num1, -5);
+        $seq2 = (int) substr($num2, -5);
+        $seq3 = (int) substr($num3, -5);
+
+        $this->assertEquals($seq1 + 1, $seq2);
+        $this->assertEquals($seq2 + 1, $seq3);
+        $this->assertNotEquals($num1, $num2);
+        $this->assertNotEquals($num2, $num3);
+    }
+
+    public function test_idempotency_key_is_scoped_to_invoice(): void
+    {
+        $sharedKey = 'IDEMP-SHARED-KEY-123';
+
+        // Payment 1 cho invoice 1
+        $res1 = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payments/collect', [
+            'invoice_id' => $this->invoice->id,
+            'amount' => 200000,
+            'payment_method' => 'CASH',
+            'idempotency_key' => $sharedKey,
+        ]);
+        $res1->assertStatus(201);
+        $payment1Id = $res1->json('data.payment.id');
+
+        // Gửi lại cho invoice 1 cùng key -> trả về đúng payment lần 1, không tạo mới
+        $res1Retry = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payments/collect', [
+            'invoice_id' => $this->invoice->id,
+            'amount' => 200000,
+            'payment_method' => 'CASH',
+            'idempotency_key' => $sharedKey,
+        ]);
+        $res1Retry->assertStatus(200);
+        $this->assertTrue($res1Retry->json('data.is_duplicate'));
+        $this->assertEquals($payment1Id, $res1Retry->json('data.payment.id'));
+        $this->assertEquals(1, Payment::where('invoice_id', $this->invoice->id)->where('idempotency_key', $sharedKey)->count());
+
+        // Tạo hóa đơn thứ 2 cho kỳ khác (hoặc căn hộ khác)
+        $invoice2 = Invoice::create([
+            'invoice_number' => 'INV-202611-002',
+            'apartment_id' => $this->apartment->id,
+            'resident_user_id' => $this->adminUser->id,
+            'billing_period' => '2026-11',
+            'issue_date' => '2026-11-05',
+            'due_date' => '2026-11-25',
+            'subtotal_amount' => 500000,
+            'tax_amount' => 0,
+            'total_amount' => 500000,
+            'paid_amount' => 0,
+            'remaining_balance' => 500000,
+            'status' => 'ISSUED',
+        ]);
+
+        // Gửi cho invoice 2 dùng cùng key -> không bị nhận nhầm là trùng với invoice 1
+        $res2 = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payments/collect', [
+            'invoice_id' => $invoice2->id,
+            'amount' => 250000,
+            'payment_method' => 'CASH',
+            'idempotency_key' => $sharedKey,
+        ]);
+        $res2->assertStatus(201);
+        $this->assertFalse($res2->json('data.is_duplicate') ?? false);
+        $this->assertNotEquals($payment1Id, $res2->json('data.payment.id'));
+        $this->assertEquals($invoice2->id, $res2->json('data.payment.invoice_id'));
     }
 }

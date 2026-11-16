@@ -335,7 +335,7 @@ export const ServicePricingManagement: React.FC = () => {
     // Mở Modal Mô phỏng Tính Tiền
     const handleOpenSimulateModal = async (config: ServicePricingConfig) => {
         setSimulateConfig(config);
-        const defaultUsage = config.meter_type === 'ELECTRICITY' ? 120 : (config.meter_type === 'COLD_WATER' ? 22 : 75);
+        const defaultUsage = config.meter_type === 'ELECTRICITY' ? 120 : (config.meter_type === 'COLD_WATER' || config.meter_type === 'WATER' ? 22 : 75);
         setSimulateUsage(defaultUsage);
         setIsSimulateModalOpen(true);
         executeSimulation(config.id, defaultUsage);
@@ -573,14 +573,14 @@ export const ServicePricingManagement: React.FC = () => {
                                                     <div className={`p-2 rounded-xl border ${
                                                         item.meter_type === 'ELECTRICITY'
                                                             ? 'bg-amber-50 border-amber-200 text-amber-600'
-                                                            : item.meter_type === 'COLD_WATER'
+                                                            : (item.meter_type === 'COLD_WATER' || item.meter_type === 'WATER')
                                                             ? 'bg-sky-50 border-sky-200 text-sky-600'
                                                             : item.service_code.includes('MANAGEMENT')
                                                             ? 'bg-indigo-50 border-indigo-200 text-indigo-600'
                                                             : 'bg-purple-50 border-purple-200 text-purple-600'
                                                     }`}>
                                                         {item.meter_type === 'ELECTRICITY' && <Zap className="w-4 h-4" />}
-                                                        {item.meter_type === 'COLD_WATER' && <Droplets className="w-4 h-4" />}
+                                                        {(item.meter_type === 'COLD_WATER' || item.meter_type === 'WATER') && <Droplets className="w-4 h-4" />}
                                                         {item.service_code.includes('MANAGEMENT') && <Building2 className="w-4 h-4" />}
                                                         {!item.meter_type && !item.service_code.includes('MANAGEMENT') && <Car className="w-4 h-4" />}
                                                     </div>
@@ -854,7 +854,7 @@ export const ServicePricingManagement: React.FC = () => {
                                                 icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
                                             },
                                             {
-                                                value: 'COLD_WATER',
+                                                value: 'WATER',
                                                 label: 'Đồng hồ Nước Sạch (m3)',
                                                 description: 'Đồng hồ đo khối lượng nước sạch sinh hoạt',
                                                 icon: <Droplets className="w-3.5 h-3.5 text-sky-500" />,
