@@ -53,6 +53,7 @@ import { PageLoadingFallback } from '../Components/Common/PageLoadingFallback';
 import { ticketStatuses } from '../Components/TicketManagementPanel';
 
 const BuildingListManagement = lazy(() => import('../Components/Admin/BuildingListManagement').then(m => ({ default: m.BuildingListManagement })));
+const ZoneManager = lazy(() => import('../Components/Admin/ZoneManager').then(m => ({ default: m.ZoneManager })));
 const AmenityManagement = lazy(() => import('./Admin/AmenityManagement').then(m => ({ default: m.AmenityManagement })));
 const AnnouncementManagement = lazy(() => import('../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
 const TicketManagementPanel = lazy(() => import('../Components/TicketManagementPanel').then(m => ({ default: m.TicketManagementPanel })));
@@ -329,11 +330,21 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     ) {
       return 'surveys';
     }
+    if (
+      path === '/quan-ly/zones' ||
+      path === '/quan-ly/khoi-nha' ||
+      path === '/admin/zones' ||
+      path.startsWith('/quan-ly/zones') ||
+      path.startsWith('/admin/zones')
+    ) {
+      return 'zones';
+    }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
     if (tabParam) {
+      if (tabParam === 'zones' || tabParam === 'khoi-nha' || tabParam === 'khoi_nha') return 'zones';
       if (tabParam === 'buildings') return 'blocks';
       if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
       if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'meter_readings';
@@ -343,6 +354,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
     // 3. Prop initialTab được truyền từ component cha (nếu có giá trị cụ thể khác overview)
     if (initialTab && initialTab !== 'overview') {
+      if (initialTab === 'zones' || initialTab === 'khoi-nha') return 'zones';
       if (initialTab === 'pricing' || initialTab === 'don_gia') return 'pricing_configs';
       if (initialTab === 'metering' || initialTab === 'meter-readings' || initialTab === 'chot-chi-so' || initialTab === 'chot_chi_so') return 'meter_readings';
       if (initialTab === 'schedules' || initialTab === 'shifts' || initialTab === 'xep-ca' || initialTab === 'lich-truc') return 'schedules';
@@ -846,6 +858,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
           ) : activeMenuId === 'residents' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <ResidentManagement embedded={true} />
+            </div>
+          ) : activeMenuId === 'zones' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <ZoneManager />
             </div>
           ) : activeMenuId === 'blocks' || activeMenuId === 'apartments' || activeMenuId === 'buildings' ? (
             <div className="w-full max-w-[2000px] mx-auto transition-all duration-300 ease-in-out">
