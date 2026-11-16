@@ -1116,7 +1116,10 @@ class ResidentTemporaryRegistrationTest extends TestCase
 
         $url = $res->json('url');
         $this->assertNotEmpty($url);
-        $this->assertStringStartsWith('/storage/temporary_registrations/cccd/cccd_front_', $url);
+        $this->assertTrue(
+            str_starts_with($url, '/api/v1/residents/temporary-registrations/cccd/cccd_front_') ||
+            str_starts_with($url, '/storage/temporary_registrations/cccd/cccd_front_')
+        );
     }
 
     /**

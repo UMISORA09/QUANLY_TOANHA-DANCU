@@ -3,6 +3,7 @@
 namespace Tests\Feature\Vehicles;
 
 use App\Models\Apartment;
+use App\Models\Resident;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -56,6 +57,16 @@ class VehicleManagementTest extends TestCase
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Nguyễn Chủ Xe '.Str::random(4),
             'status' => 'ACTIVE',
+        ]);
+
+        Resident::create([
+            'apartment_id' => $this->testApartment->id,
+            'user_id' => $this->testOwner->id,
+            'resident_type' => 'OWNER',
+            'is_head_of_household' => true,
+            'stay_start_date' => now()->subMonths(6)->toDateString(),
+            'stay_end_date' => null,
+            'is_active' => true,
         ]);
     }
 
