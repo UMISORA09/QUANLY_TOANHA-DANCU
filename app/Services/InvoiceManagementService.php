@@ -118,7 +118,7 @@ class InvoiceManagementService
             'items.meterReading.meter',
             'payments.receipt',
             'batch',
-        ]);
+        ])->whereIn('status', ['ISSUED', 'PARTIAL', 'PAID', 'OVERDUE']);
 
         if ($apartmentId) {
             $query->where('apartment_id', $apartmentId);
@@ -131,15 +131,8 @@ class InvoiceManagementService
             });
         }
 
-        // Ưu tiên kỳ phí hiện tại
-        $invoice = (clone $query)->where('billing_period', $targetPeriod)->first();
-
-        // Nếu không có hóa đơn tháng hiện tại, lấy hóa đơn mới nhất gần nhất
-        if (! $invoice) {
-            $invoice = $query->orderBy('billing_period', 'desc')->first();
-        }
-
-        return $invoice;
+        // Chỉ lấy đúng kỳ phí mục tiêu, không fallback về kỳ cũ
+        return $query->where('billing_period', $targetPeriod)->first();
     }
 
     /**
