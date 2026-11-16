@@ -32,6 +32,19 @@ Quá trình tự động thực hiện:
 1. **`smart_cassavas_db`**: Khởi chạy MySQL 8.0, tự động import dữ liệu ban đầu từ `dump_quanly_toanha.sql`.
 2. **`smart_cassavas_app`**: Container PHP 8.4 + Node 22 tự động cài đặt Composer/NPM dependencies, build frontend Vite và chạy ứng dụng Laravel.
 3. **`smart_cassavas_phpmyadmin`**: Khởi chạy giao diện phpMyAdmin để quản lý cơ sở dữ liệu.
+4. **Elasticsearch**: Tự khởi động cùng hệ thống, có volume dữ liệu riêng; app và scheduler chờ dịch vụ sẵn sàng. Không cần thêm `--profile search`.
+
+Nếu đã có file `.env` từ phiên bản cũ, đặt `SEARCH_DRIVER=elasticsearch` và `ELASTICSEARCH_HOSTS=http://elasticsearch:9200` trước khi chạy lại `docker compose up -d`. Với bản cài mới, các giá trị này đã có trong `.env.example`.
+
+Kiểm tra Elasticsearch sau khi khởi động:
+
+```bash
+docker compose ps elasticsearch
+docker compose exec app php artisan search:sync-indexes --check-only
+```
+
+Container mới có thể chưa có index/dữ liệu tìm kiếm. Dùng lệnh đồng bộ hiện có của phân hệ cần kiểm thử; không tự chạy `--flush` hoặc đồng bộ database Production. Volume Elasticsearch được giữ khi dừng/khởi động lại; `docker compose down -v` sẽ xóa cả volume dữ liệu.
+
 
 ---
 
@@ -40,6 +53,7 @@ Quá trình tự động thực hiện:
 | Dịch vụ | Địa chỉ | Thông tin đăng nhập |
 | :--- | :--- | :--- |
 | **Giao diện Web** | [http://localhost:8000](http://localhost:8000) | Trực tiếp trên trình duyệt |
+| **Elasticsearch local** | [http://localhost:9200](http://localhost:9200) | Chỉ truy cập trên máy chạy Docker; trong container dùng `http://elasticsearch:9200` |
 | **phpMyAdmin** | [http://localhost:8888](http://localhost:8888) | Server: `db`, User: `root`, Password: `123567`, Database: `quanly_toanha` |
 | **MySQL Database Port** | `localhost:3306` | User: `root`, Password: `123567`, Database: `quanly_toanha` |
 

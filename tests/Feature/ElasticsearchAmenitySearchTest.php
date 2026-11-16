@@ -29,6 +29,10 @@ class ElasticsearchAmenitySearchTest extends TestCase
         parent::setUp();
         $this->createBookingFixture();
         config(['search.default' => 'elasticsearch', 'search.drivers.elasticsearch.amenities_index' => 'amenities_test']);
+        DB::table('jobs')->whereIn('queue', [
+            'amenity-search', 'booking-code-search', 'ticket-search',
+            'announcement-search', 'suggestion-search', 'survey-search',
+        ])->delete();
         foreach (DB::table('amenities')->pluck('id') as $id) {
             DB::table('amenity_search_states')->updateOrInsert(['amenity_id' => $id], [
                 'desired_version' => 1, 'published_version' => 1, 'status' => 'synced', 'created_at' => now(), 'updated_at' => now(),
