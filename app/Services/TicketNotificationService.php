@@ -48,7 +48,7 @@ class TicketNotificationService
         }
     }
 
-    public function changed(Ticket $ticket, string $action): void
+    public function changed(Ticket $ticket, string $action, ?User $actor = null): void
     {
         $block = DB::table('apartments')->where('id', $ticket->apartment_id)->value('block_id');
         $ids = [];
@@ -65,6 +65,8 @@ class TicketNotificationService
                 }
                 $ids[] = $ticket->current_technician_user_id;
             }
+        } elseif ($action === 'close') {
+            $ids = [$ticket->creator_user_id, $ticket->coordinator_user_id, $ticket->current_technician_user_id];
         } elseif ($action === 'assign') {
             $ids[] = $ticket->current_technician_user_id;
         } elseif (in_array($action, ['reopen', 'cancel', 'confirm'], true)) {
@@ -75,11 +77,26 @@ class TicketNotificationService
         if ($action === 'cancel') {
             $ids[] = $ticket->creator_user_id;
         }
-        $labels = ['created' => 'Yêu cầu sự cố mới', 'receive' => 'Đã tiếp nhận yêu cầu', 'assign' => 'Bạn được giao xử lý sự cố', 'start' => 'Kỹ thuật viên đang xử lý', 'resolve' => 'Sự cố đã khắc phục, chờ nghiệm thu', 'reopen' => 'Cư dân phản hồi chưa đạt', 'cancel' => 'Yêu cầu đã hủy', 'confirm' => 'Cư dân đã nghiệm thu'];
+        $labels = ['created' => 'Yêu cầu sự cố mới', 'receive' => 'Đã tiếp nhận yêu cầu', 'assign' => 'Bạn được giao xử lý sự cố', 'start' => 'Kỹ thuật viên đang xử lý', 'resolve' => 'Sự cố đã khắc phục, chờ nghiệm thu', 'reopen' => 'Cư dân phản hồi chưa đạt', 'cancel' => 'Yêu cầu đã hủy', 'confirm' => 'Cư dân đã nghiệm thu', 'close' => 'Admin đã đóng yêu cầu thay cư dân'];
         foreach (array_unique(array_filter($ids)) as $id) {
             $user = User::where('status', 'ACTIVE')->find($id);
-            if (! $user) {
+            if (! $user || ($action === 'close' && $id === $actor?->id)) {
                 continue;
+            }
+            if ($action === 'close') {
+                $access = app(TicketAccessService::class);
+                try {
+                    $access->view($user, $ticket);
+                    if (! $access->manager($user) && ! $access->technician($user)) {
+                        $access->resident($user, $ticket);
+                    }
+                } catch (HttpExceptionInterface $exception) {
+                    if (! in_array($exception->getStatusCode(), [403, 404], true)) {
+                        throw $exception;
+                    }
+
+                    continue;
+                }
             }
             $resident = $id === $ticket->creator_user_id;
             if (! $resident && ! $user->isSuperAdmin()) {

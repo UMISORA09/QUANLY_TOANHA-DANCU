@@ -29,17 +29,19 @@ const statusBadge = (ticket: ManagedTicket) => (
   </span>
 );
 const blank = { title: '', description: '', location: '', category_id: '', priority: 'MEDIUM', preferred_service_time: '', block_id: '', apartment_id: '', reporter_user_id: '', version: 1, idempotency_key: '' };
-const workflowLabels: Record<string, string> = { receive: 'Tiếp nhận', assign: 'Phân công kỹ thuật', start: 'Bắt đầu xử lý', resolve: 'Báo đã khắc phục', cancel: 'Hủy yêu cầu' };
+const workflowLabels: Record<string, string> = { receive: 'Tiếp nhận', assign: 'Phân công kỹ thuật', start: 'Bắt đầu xử lý', resolve: 'Báo đã khắc phục', cancel: 'Hủy yêu cầu', close: 'Đóng thay cư dân' };
 
 const workflowButtonStyles: Record<string, string> = {
   receive: 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-xs',
   assign: 'bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600 shadow-xs',
   start: 'bg-amber-600 text-white hover:bg-amber-700 border-amber-600 shadow-xs',
+  close: 'bg-blue-800 text-white hover:bg-blue-900 border-blue-800',
   resolve: 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600 shadow-xs',
   cancel: 'border-rose-200 text-rose-700 hover:bg-rose-50 shadow-2xs',
 };
 
 const workflowSubmitStyles: Record<string, string> = {
+  close: 'bg-blue-800 text-white hover:bg-blue-900 border-blue-800',
   receive: 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600',
   assign: 'bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600',
   start: 'bg-amber-600 text-white hover:bg-amber-700 border-amber-600',
@@ -146,7 +148,8 @@ export function TicketManagementPanel() {
     || (mode === 'create' && (!form.apartment_id || !form.reporter_user_id || !form.category_id))
     || (mode === 'workflow' && action === 'receive' && !form.priority)
     || (mode === 'workflow' && action === 'assign' && !technician)
-    || ((mode === 'archive' || (mode === 'workflow' && ['cancel', 'resolve'].includes(action))) && reason.trim().length < 5);
+    || (mode === 'workflow' && action === 'close' && !selected?.actions.close)
+    || ((mode === 'archive' || (mode === 'workflow' && ['cancel', 'resolve', 'close'].includes(action))) && reason.trim().length < 5);
   useTicketNotificationRefresh(() => { reload(); if (selected && !mode) void open(selected.id); });
 
   return <section className="feature-controls mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6 lg:p-8">
@@ -502,6 +505,7 @@ export function TicketManagementPanel() {
         {mode === 'workflow' ? (
           <>
             <p className="text-sm font-medium text-slate-700">Xác nhận thao tác với {selected?.ticket_number}.</p>
+            {action === 'close' && <p role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Bạn đang đóng yêu cầu thay cư dân. Lý do và người thực hiện sẽ được lưu trong lịch sử; đây không phải xác nhận nghiệm thu của cư dân.</p>}
             {action === 'receive' && <CustomSelect variant="feature" overlay {...selectAppearance} label="Mức độ ưu tiên" required value={form.priority} onChange={value => setForm({ ...form, priority: value })} options={selectOptions(ticketPriorities)} placeholder="Chọn mức độ ưu tiên" />}
             {action === 'assign' && (
               <CustomSelect variant="feature"
@@ -522,15 +526,17 @@ export function TicketManagementPanel() {
               </p>
             )}
             <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
-              {action === 'cancel' ? 'Lý do hủy (ít nhất 5 ký tự)' : action === 'resolve' ? 'Ghi chú khắc phục (ít nhất 5 ký tự)' : 'Ghi chú xử lý (không bắt buộc)'}
+              {action === 'close' ? 'Lý do đóng thay cư dân (ít nhất 5 ký tự)' : action === 'cancel' ? 'Lý do hủy (ít nhất 5 ký tự)' : action === 'resolve' ? 'Ghi chú khắc phục (ít nhất 5 ký tự)' : 'Ghi chú xử lý (không bắt buộc)'}
               <textarea
-                required={['cancel', 'resolve'].includes(action)}
+                required={['cancel', 'resolve', 'close'].includes(action)}
                 minLength={5}
                 maxLength={500}
                 className={input}
                 value={reason}
+                aria-invalid={!!fields.reason}
                 onChange={(event) => setReason(event.target.value)}
               />
+              {fields.reason && <span role="alert" className="block text-xs text-rose-700">{fields.reason[0]}</span>}
             </label>
           </>
         ) : mode === 'archive' ? (
