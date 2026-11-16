@@ -477,8 +477,8 @@ export const SuggestionManagementPanel: React.FC = () => {
                 <th className="px-4 py-3.5 text-right">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {isLoading ? (
+            <tbody aria-busy={isLoading} className="divide-y divide-neutral-100">
+              {isLoading && suggestions.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-neutral-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-emerald-600 mb-2" />

@@ -1,5 +1,6 @@
 User-agent: *
 Disallow: /api/
+Allow: /api/v1/public/
 Disallow: /admin
 Disallow: /quan-ly
 Disallow: /cu-dan
