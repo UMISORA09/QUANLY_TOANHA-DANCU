@@ -25,7 +25,7 @@ class ReceptionParcelService
      * @param  array<string, mixed>  $filters
      * @return array{data: LengthAwarePaginator, kpis: array<string, int>}
      */
-    public function getParcels(array $filters = [], int $perPage = 15): array
+    public function getParcels(array $filters = [], int $perPage = 15, ?object $user = null): array
     {
         $query = Parcel::query()
             ->with([
@@ -60,8 +60,26 @@ class ReceptionParcelService
             }
         }
 
-        // 2. Lọc theo căn hộ (apartment_id)
-        if (! empty($filters['apartment_id'])) {
+        // 2. Phân quyền dữ liệu và lọc theo căn hộ (apartment_id):
+        // - Nhân viên (Lễ tân/Bảo vệ/Admin): Xem toàn bộ bưu phẩm hoặc lọc theo apartment_id tùy chọn.
+        // - Cư dân (Resident): CHỈ được xem bưu phẩm thuộc căn hộ của mình.
+        if ($user && ! $this->isStaff($user)) {
+            $userApartmentIds = $this->resolveResidentApartmentIds($user);
+
+            if (empty($userApartmentIds)) {
+                $query->whereRaw('1 = 0');
+            } else {
+                if (! empty($filters['apartment_id'])) {
+                    if (in_array($filters['apartment_id'], $userApartmentIds, true)) {
+                        $query->where('apartment_id', $filters['apartment_id']);
+                    } else {
+                        $query->whereRaw('1 = 0');
+                    }
+                } else {
+                    $query->whereIn('apartment_id', $userApartmentIds);
+                }
+            }
+        } elseif (! empty($filters['apartment_id'])) {
             $query->where('apartment_id', $filters['apartment_id']);
         }
 
@@ -255,18 +273,9 @@ class ReceptionParcelService
             ]);
         }
 
-        // 3. Xác định nhân viên tiếp nhận (từ phiên đăng nhập của server, KHÔNG tin ID frontend gửi)
-        $staffId = $staffUser?->id;
-        if (! $staffId) {
-            // Fallback lấy nhân viên lễ tân/admin đầu tiên nếu chạy CLI/Unit Test không có session
-            $staffId = User::whereHas('roles', function ($q) {
-                $q->whereIn('roles.role_code', ['RECEPTIONIST', 'STAFF', 'ADMIN', 'SUPER_ADMIN', 'SECURITY_GUARD']);
-            })->value('id') ?? User::value('id');
-
-            if (! $staffId) {
-                throw new \RuntimeException('Không tìm thấy tài khoản nhân viên hợp lệ để ghi nhận phiếu tiếp nhận.');
-            }
-        }
+        // 3. Xác định nhân viên tiếp nhận (bắt buộc phải là nhân viên hợp lệ, không fallback)
+        $this->assertStaffAuthorized($staffUser, 'receive');
+        $staffId = $staffUser->id;
 
         // 4. Liên kết người nhận (recipient_user_id) nếu có hoặc tìm theo SĐT cư dân trong căn hộ
         $recipientUserId = $data['recipient_user_id'] ?? null;
@@ -395,8 +404,10 @@ class ReceptionParcelService
      *
      * @throws ValidationException|Throwable
      */
-    public function updateParcel(string $id, array $data, ?User $staffUser = null, ?UploadedFile $newPhotoFile = null): Parcel
+    public function updateParcel(string $id, array $data, ?object $staffUser = null, ?UploadedFile $newPhotoFile = null): Parcel
     {
+        $this->assertStaffAuthorized($staffUser, 'update');
+
         $parcel = Parcel::findOrFail($id);
 
         // Không cho phép sửa nếu bưu phẩm đã hoàn tất bàn giao (tránh can thiệp module check-out của thành viên khác)
@@ -501,8 +512,10 @@ class ReceptionParcelService
      *
      * @throws ValidationException|Throwable
      */
-    public function deleteParcel(string $id, ?User $staffUser = null): bool
+    public function deleteParcel(string $id, ?object $staffUser = null): bool
     {
+        $this->assertStaffAuthorized($staffUser, 'delete');
+
         $parcel = Parcel::findOrFail($id);
 
         if (in_array($parcel->status, ['DELIVERED', 'RETURNED'])) {
@@ -550,8 +563,10 @@ class ReceptionParcelService
      *
      * @return array<int, array{id: string, full_name: string, phone_number: ?string, apartment_number: ?string}>
      */
-    public function searchRecipients(string $keyword, ?string $apartmentId = null, int $limit = 10): array
+    public function searchRecipients(string $keyword, ?string $apartmentId = null, int $limit = 10, ?object $staffUser = null): array
     {
+        $this->assertStaffAuthorized($staffUser, 'view');
+
         $keyword = trim($keyword);
         $query = Resident::query()
             ->with([
@@ -594,8 +609,10 @@ class ReceptionParcelService
      *
      * @return array<int, array{id: string, apartment_number: string, block_name: ?string}>
      */
-    public function searchApartments(string $keyword = '', int $limit = 15): array
+    public function searchApartments(string $keyword = '', int $limit = 15, ?object $staffUser = null): array
     {
+        $this->assertStaffAuthorized($staffUser, 'view');
+
         $keyword = trim($keyword);
         $query = Apartment::query()
             ->with(['block:id,block_name,block_code'])
@@ -731,7 +748,7 @@ class ReceptionParcelService
     /**
      * Danh sách role được phép thao tác nghiệp vụ bưu phẩm
      */
-    protected const ALLOWED_STAFF_ROLES = [
+    public const ALLOWED_STAFF_ROLES = [
         'RECEPTIONIST',
         'SECURITY_GUARD',
         'BUILDING_MANAGER',
@@ -739,6 +756,57 @@ class ReceptionParcelService
         'ADMIN',
         'SUPER_ADMIN',
     ];
+
+    /**
+     * Kiểm tra người dùng có phải là nhân viên vận hành hay không
+     */
+    public function isStaff(?object $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return true;
+        }
+
+        if (method_exists($user, 'hasRole')) {
+            foreach (self::ALLOWED_STAFF_ROLES as $role) {
+                if ($user->hasRole($role)) {
+                    return true;
+                }
+            }
+        }
+
+        return DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->where('user_roles.user_id', $user->id)
+            ->whereIn('roles.role_code', self::ALLOWED_STAFF_ROLES)
+            ->exists();
+    }
+
+    /**
+     * Xác định danh sách căn hộ mà cư dân đang sinh sống / sở hữu
+     *
+     * @return array<int, string>
+     */
+    public function resolveResidentApartmentIds(object $user): array
+    {
+        $residentAptIds = DB::table('residents')
+            ->where('user_id', $user->id)
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->pluck('apartment_id')
+            ->toArray();
+
+        $curResAptIds = DB::table('apartments')
+            ->where('current_resident_user_id', $user->id)
+            ->whereNull('deleted_at')
+            ->pluck('id')
+            ->toArray();
+
+        return array_values(array_unique(array_filter(array_merge($residentAptIds, $curResAptIds))));
+    }
 
     /**
      * Kiểm tra quyền nhân viên lễ tân / bảo vệ / quản lý thực hiện nghiệp vụ bưu phẩm
@@ -784,7 +852,7 @@ class ReceptionParcelService
             return;
         }
 
-        abort(403, 'Bạn không có quyền thực hiện nghiệp vụ bàn giao / check-out bưu phẩm.');
+        abort(403, 'Bạn không có quyền thực hiện nghiệp vụ này.');
     }
 
     /**
@@ -798,9 +866,7 @@ class ReceptionParcelService
      */
     public function handoverParcel(string $id, array $data = [], ?object $staffUser = null): Parcel
     {
-        if ($staffUser) {
-            $this->assertStaffAuthorized($staffUser, 'checkout');
-        }
+        $this->assertStaffAuthorized($staffUser, 'checkout');
 
         $now = Carbon::now();
 
@@ -826,15 +892,25 @@ class ReceptionParcelService
                 abort(409, "Kiện hàng đang ở trạng thái [{$parcel->status}], không đủ điều kiện bàn giao.");
             }
 
-            // 3. Xác minh mã PIN nếu frontend có gửi mã đối chiếu
-            if (! empty($data['pin_code']) && trim($data['pin_code']) !== trim($parcel->pickup_pin_code)) {
+            // 3. Bắt buộc cung cấp ít nhất một phương thức xác minh hợp lệ theo nghiệp vụ: PIN hoặc QR
+            $pinInput = trim((string) ($data['pin_code'] ?? ''));
+            $qrInput = trim((string) ($data['qr_code'] ?? ''));
+
+            if ($pinInput === '' && $qrInput === '') {
+                throw ValidationException::withMessages([
+                    'verification' => ['Bắt buộc cung cấp ít nhất một phương thức xác minh hợp lệ (Mã PIN hoặc Mã QR) để bàn giao bưu phẩm.'],
+                ]);
+            }
+
+            // 4. Xác minh mã PIN nếu được cung cấp
+            if ($pinInput !== '' && $pinInput !== trim((string) $parcel->pickup_pin_code)) {
                 throw ValidationException::withMessages([
                     'pin_code' => ['Mã PIN nhận hàng không chính xác.'],
                 ]);
             }
 
-            // 4. Xác minh mã QR nếu frontend có gửi mã đối chiếu
-            if (! empty($data['qr_code']) && trim($data['qr_code']) !== trim($parcel->pickup_qr_code)) {
+            // 5. Xác minh mã QR nếu được cung cấp
+            if ($qrInput !== '' && $qrInput !== trim((string) $parcel->pickup_qr_code)) {
                 throw ValidationException::withMessages([
                     'qr_code' => ['Mã QR nhận hàng không chính xác.'],
                 ]);
@@ -908,8 +984,10 @@ class ReceptionParcelService
      *
      * @return array{parcel: Parcel, can_checkout: bool}|null
      */
-    public function lookupParcel(string $code): ?array
+    public function lookupParcel(string $code, ?object $staffUser = null): ?array
     {
+        $this->assertStaffAuthorized($staffUser, 'checkout');
+
         $clean = trim($code);
         if ($clean === '') {
             return null;
@@ -968,9 +1046,20 @@ class ReceptionParcelService
      *
      * @return array{success: bool, message: string, parcel: Parcel, recipient_user_id: ?string}
      */
-    public function remindResident(string $id, ?User $staffUser = null): array
+    public function remindResident(string|Parcel $parcelOrId, ?object $staffUser = null): array
     {
-        $parcel = Parcel::with(['apartment', 'recipientUser'])->findOrFail($id);
+        if ($staffUser !== null) {
+            $this->assertStaffAuthorized($staffUser, 'update');
+        }
+
+        if ($parcelOrId instanceof Parcel) {
+            $parcel = $parcelOrId;
+            if (! $parcel->relationLoaded('apartment') || ! $parcel->relationLoaded('recipientUser')) {
+                $parcel->load(['apartment', 'recipientUser']);
+            }
+        } else {
+            $parcel = Parcel::with(['apartment', 'recipientUser'])->findOrFail($parcelOrId);
+        }
 
         // Xác định cư dân nhận (ưu tiên recipient_user_id, sau đó tìm theo recipient_phone)
         $residentUser = $parcel->recipientUser;
@@ -1054,19 +1143,24 @@ class ReceptionParcelService
      *
      * @return array{success: bool, count: int, message: string}
      */
-    public function remindAllExpiring(?User $staffUser = null): array
+    public function remindAllExpiring(?object $staffUser = null): array
     {
+        if ($staffUser !== null) {
+            $this->assertStaffAuthorized($staffUser, 'update');
+        }
         $threeDaysAgo = Carbon::now()->subDays(3);
         $fiveDaysAgo = Carbon::now()->subDays(5);
 
-        $expiringParcels = Parcel::whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+        // Sử dụng cursor() kết hợp eager-load để tối ưu bộ nhớ và triệt tiêu N+1 queries khi nhắc nhở hàng loạt
+        $expiringParcels = Parcel::with(['apartment', 'recipientUser'])
+            ->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
             ->where('received_at', '<=', $threeDaysAgo)
             ->where('received_at', '>=', $fiveDaysAgo)
-            ->get();
+            ->cursor();
 
         $count = 0;
         foreach ($expiringParcels as $parcel) {
-            $this->remindResident($parcel->id, $staffUser);
+            $this->remindResident($parcel, $staffUser);
             $count++;
         }
 

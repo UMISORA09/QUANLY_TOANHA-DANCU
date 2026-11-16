@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class TicketWorkflowService
 {
@@ -47,6 +48,10 @@ class TicketWorkflowService
                     'receive' => 'RECEIVED', 'start', 'reopen' => 'IN_PROGRESS', 'resolve' => 'RESOLVED', 'confirm' => 'CLOSED', 'cancel' => 'CANCELLED'
                 };
                 if ($action === 'receive') {
+                    if (! in_array($data['priority'] ?? null, ['LOW', 'MEDIUM', 'HIGH', 'URGENT'], true)) {
+                        throw ValidationException::withMessages(['priority' => 'Vui lòng chọn mức độ ưu tiên khi tiếp nhận yêu cầu.']);
+                    }
+                    $ticket->priority = $data['priority'];
                     $ticket->coordinator_user_id = $user->id;
                 }
                 if ($action === 'resolve') {

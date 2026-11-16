@@ -26,6 +26,6 @@
         @vite(['resources/css/app.css', 'resources/js/app.tsx'])
     </head>
     <body class="antialiased bg-[#FAFAFA] text-[#171717] min-h-screen">
-        <div id="app">@isset($html)<main class="public-guide mx-auto max-w-4xl px-6 py-12">{!! $html !!}</main>@endisset</div>
+        <div id="app">@isset($html)<main class="public-guide mx-auto max-w-4xl px-6 py-12">{!! $html !!}@if ($canonical === config('public_content.url').'/home')<nav aria-label="Tài nguyên lập trình viên"><a href="/docs">SMART CASSAVAS API</a> · <a href="/mcp">SMART CASSAVAS MCP Server</a> · <a href="/cli">SMART CASSAVAS CLI</a> · <a href="https://github.com/UMISORA09/QUANLY_TOANHA-DANCU">GitHub dự án</a></nav>@endif</main>@endisset</div>
     </body>
 </html>

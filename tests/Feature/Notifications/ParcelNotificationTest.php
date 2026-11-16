@@ -158,7 +158,7 @@ class ParcelNotificationTest extends TestCase
             'recipient_user_id' => $this->resident->id,
             'parcel_photo_url' => 'https://sample.com/parcel_photo.jpg',
             'pickup_pin_code' => '123456',
-            'pickup_qr_code' => 'QR_123456',
+            'pickup_qr_code' => 'QR_'.Str::random(10),
             'received_by_staff_id' => $this->receptionist->id,
             'status' => 'RECEIVED_AT_RECEPTION',
             'received_at' => now(),

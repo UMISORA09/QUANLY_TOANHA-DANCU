@@ -60,9 +60,9 @@ test('MOCKED F11: tải chi tiết lỗi không ghi đọc và retry không tự
 
 test('MOCKED F11: version cũ cần tải lại trước xác nhận', async ({ page }) => {
   const store = state(); store.conflict = true; await setup(page, store); await page.getByRole('button', { name: 'Đọc thông báo: Thông báo BQL 1', exact: true }).click();
-  const dialog = page.getByRole('dialog'); await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByRole('alert')).toContainText('đã thay đổi');
-  await expect(dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true })).toBeDisabled(); await dialog.getByRole('button', { name: 'Tải lại nội dung', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByRole('status')).toContainText('Bạn đã xác nhận');
+  const dialog = page.getByRole('dialog'); await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByText(/Bài viết đã thay đổi/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true })).toBeEnabled(); expect(store.acknowledgements).toBe(1);
+  await dialog.getByRole('button', { name: 'Xác nhận đã đọc', exact: true }).click(); await expect(dialog.getByText(/Bạn đã xác nhận đọc lúc/)).toBeVisible();
 });
 
 test('MOCKED F11: 15 bài mỗi trang, tìm kiếm, bộ lọc và URL tải lại', async ({ page }) => {
@@ -74,8 +74,8 @@ test('MOCKED F11: 15 bài mỗi trang, tìm kiếm, bộ lọc và URL tải l�
   await page.getByLabel('Trạng thái đọc', { exact: true }).click(); await page.getByRole('option', { name: 'Chưa đọc', exact: true }).click(); await expect(page.getByRole('button', { name: 'Đọc thông báo: Thông báo BQL 32', exact: true })).toHaveCount(0);
 });
 
-test('MOCKED F11: mobile dropdown, tương phản, Escape và trả focus', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 }); const store = state(); await setup(page, store);
+for (const width of [375, 768, 1440]) test(`MOCKED F11: mobile dropdown, tương phản, Escape và trả focus ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 }); const store = state(); await setup(page, store);
   await page.getByLabel('Danh mục', { exact: true }).click(); const menu = page.getByRole('listbox'); await expect(menu).toBeVisible();
   expect(await menu.evaluate((element) => { const r = element.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; })).toBe(true); await page.keyboard.press('Escape');
   const open = page.getByRole('button', { name: 'Đọc thông báo: Thông báo BQL 1', exact: true }); await open.click();

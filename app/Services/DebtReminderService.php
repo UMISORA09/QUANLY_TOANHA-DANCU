@@ -54,8 +54,8 @@ class DebtReminderService
             'sent_by_user_id' => $staffUserId,
         ]);
 
-        // Đẩy vào Laravel Queue xử lý bất đồng bộ
-        SendDebtReminderEmailJob::dispatch($log->id);
+        // Đẩy vào Laravel Queue (kết nối database) để xử lý nền tức thì, không nghẽn HTTP
+        SendDebtReminderEmailJob::dispatch($log->id)->onConnection('database');
 
         Log::info("Dispatched debt reminder job for invoice {$invoice->invoice_number} (Log ID: {$log->id})");
 
@@ -104,24 +104,30 @@ class DebtReminderService
     /**
      * Tự động quét và đẩy queue nhắc nợ định kỳ (cho Scheduler & Artisan Command)
      */
-    public function autoDispatchScheduledReminders(bool $overdueOnly = true, int $daysBeforeDue = 3): int
+    public function autoDispatchScheduledReminders(bool $overdueOnly = true, int $daysBeforeDue = 3, int $minDaysOverdue = 0): int
     {
         $query = Invoice::with(['apartment.block', 'residentUser'])
             ->whereIn('status', ['ISSUED', 'PARTIAL', 'OVERDUE'])
             ->where('remaining_balance', '>', 0);
 
         if ($overdueOnly) {
-            $query->where(function ($q) {
-                $q->where('status', 'OVERDUE')
-                    ->orWhere('due_date', '<', Carbon::today()->format('Y-m-d'));
-            });
+            if ($minDaysOverdue > 0) {
+                $cutoffDate = Carbon::today()->subDays($minDaysOverdue)->format('Y-m-d');
+                $query->where('due_date', '<=', $cutoffDate);
+            } else {
+                $query->where(function ($q) {
+                    $q->where('status', 'OVERDUE')
+                        ->orWhere('due_date', '<', Carbon::today()->format('Y-m-d'));
+                });
+            }
         } else {
             $maxDueDate = Carbon::today()->addDays($daysBeforeDue)->format('Y-m-d');
             $query->where('due_date', '<=', $maxDueDate);
         }
 
-        // Bỏ qua các hóa đơn đã được gửi nhắc nợ trong vòng 24 giờ qua để tránh spam
+        // Bỏ qua các hóa đơn đã được gửi nhắc nợ thành công hoặc đang chờ xử lý trong vòng 24 giờ qua để tránh spam
         $recentRemindedInvoiceIds = DebtReminderLog::where('created_at', '>=', Carbon::now()->subHours(24))
+            ->whereIn('channel_status', ['SENT', 'QUEUED'])
             ->pluck('invoice_id')
             ->toArray();
 
@@ -199,13 +205,24 @@ class DebtReminderService
         $totalDebtReminded = (float) DebtReminderLog::sum('debt_amount');
         $overdueRemindersCount = DebtReminderLog::where('days_overdue', '>', 0)->count();
 
-        $unremindedOverdueCount = Invoice::whereIn('status', ['ISSUED', 'PARTIAL', 'OVERDUE'])
+        // Tính số hóa đơn nợ quá hạn chưa được gửi nhắc nợ thành công trong vòng 24h qua
+        $recentRemindedIds = DebtReminderLog::where('created_at', '>=', Carbon::now()->subHours(24))
+            ->whereIn('channel_status', ['SENT', 'QUEUED'])
+            ->pluck('invoice_id')
+            ->toArray();
+
+        $unremindedQuery = Invoice::whereIn('status', ['ISSUED', 'PARTIAL', 'OVERDUE'])
             ->where('remaining_balance', '>', 0)
             ->where(function ($q) {
                 $q->where('status', 'OVERDUE')
                     ->orWhere('due_date', '<', Carbon::today()->format('Y-m-d'));
-            })
-            ->count();
+            });
+
+        if (! empty($recentRemindedIds)) {
+            $unremindedQuery->whereNotIn('id', $recentRemindedIds);
+        }
+
+        $unremindedOverdueCount = $unremindedQuery->count();
 
         $successRate = $totalReminders > 0 ? round(($sentCount / $totalReminders) * 100, 1) : 100.0;
 
@@ -289,7 +306,7 @@ class DebtReminderService
             'error_message' => null,
         ]);
 
-        SendDebtReminderEmailJob::dispatch($log->id);
+        SendDebtReminderEmailJob::dispatch($log->id)->onConnection('database');
 
         return $log;
     }

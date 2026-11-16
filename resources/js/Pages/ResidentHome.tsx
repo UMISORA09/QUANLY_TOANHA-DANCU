@@ -42,6 +42,7 @@ import { TicketNotificationList, useTicketNotifications } from '../Components/Ti
 import { AppLayout } from '../Components/Layout/AppLayout';
 import { ResidentAmenityBookingPanel } from '../Components/ResidentAmenityBookingPanel';
 import { ResidentVisitorRegistrationPanel } from '../Components/ResidentVisitorRegistrationPanel';
+import { ResidentTemporaryRegistrationPanel } from '../Components/ResidentTemporaryRegistrationPanel';
 import { ResidentTicketPanel } from '../Components/ResidentTicketPanel';
 import { ResidentSuggestionPanel } from '../Components/ResidentSuggestionPanel';
 import { ResidentSatisfactionSurveyPanel } from '../Components/ResidentSatisfactionSurveyPanel';
@@ -84,12 +85,13 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
   const openAmenityNotice = async (item: AmenityBookingNotification) => {
     const target = new URL(item.deepLink, window.location.origin);
     if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
+    notices.waitForDetail(item);
     window.history.pushState({}, '', '/cu-dan' + target.search);
     setActiveMenuId('amenities');
     window.dispatchEvent(new PopStateEvent('popstate'));
     setIsNotificationOpen(false);
     notices.setAlert(null);
-    await notices.markRead(item);
+
   };
   const [activeMenuId, setActiveMenuId] = useState<string>(() => {
     try {
@@ -173,6 +175,7 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
     { id: 'tickets', label: 'Báo cáo sự cố', icon: AlertCircle, badge: '2' },
     { id: 'amenities', label: 'Đặt tiện ích', icon: Sparkles },
     { id: 'visitors', label: 'Khai báo khách', icon: Users },
+    { id: 'temporary_registrations', label: 'Tạm trú / Tạm vắng', icon: FileText, badge: 'Công an' },
     { id: 'profile', label: 'Thông tin cá nhân', icon: User },
     { id: 'news', label: 'Bảng tin / Thông báo', icon: FileText },
     { id: 'community', label: 'Cộng đồng cư dân', icon: MessageSquare },
@@ -549,6 +552,8 @@ export const ResidentHome: React.FC<ResidentHomeProps> = ({
           <ResidentAmenityBookingPanel />
         ) : activeMenuId === 'visitors' ? (
           <ResidentVisitorRegistrationPanel />
+        ) : activeMenuId === 'temporary_registrations' ? (
+          <ResidentTemporaryRegistrationPanel />
         ) : activeMenuId === 'news' ? (
           <ResidentAnnouncementPanel />
         ) : activeMenuId === 'tickets' ? (

@@ -20,8 +20,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Sử dụng công cụ cài đặt extensions chính thức
-ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+# Sử dụng công cụ cài đặt extensions chính thức qua Docker Hub image layer để tránh lỗi mạng 504 Gateway Timeout
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
 
 # Cài đặt PHP extensions: bổ sung redis phục vụ cache, session, queue hiệu năng cao
 RUN chmod +x /usr/local/bin/install-php-extensions && \

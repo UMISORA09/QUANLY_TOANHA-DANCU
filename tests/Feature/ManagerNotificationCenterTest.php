@@ -65,6 +65,39 @@ class ManagerNotificationCenterTest extends TestCase
         $this->getJson($url.'?category=TICKET')->assertJsonPath('unread_count', 18);
     }
 
+    public function test_summary_returns_only_metadata_and_read_all_preserves_other_recipients(): void
+    {
+        $this->ticket();
+        $url = '/api/v1/manager/notifications';
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken);
+        $this->getJson($url.'?summary=1')->assertOk()->assertJsonCount(0, 'items')
+            ->assertJsonPath('unread_count', 1)->assertJsonStructure(['category_activity' => ['TICKET']]);
+        $other = $this->staff('SUPER_ADMIN', null, false);
+        $row = (array) DB::table('user_in_app_notifications')->where('recipient_user_id', $this->adminUser->id)->first();
+        $row['id'] = (string) Str::uuid();
+        $row['recipient_user_id'] = $other->id;
+        DB::table('user_in_app_notifications')->insert($row);
+        $this->postJson($url.'/read-all')->assertOk()->assertJsonPath('unread_count', 0);
+        $readAt = DB::table('user_in_app_notifications')->where('recipient_user_id', $this->adminUser->id)->value('read_at');
+        $this->postJson($url.'/read-all')->assertOk();
+        $this->assertEquals($readAt, DB::table('user_in_app_notifications')->where('recipient_user_id', $this->adminUser->id)->value('read_at'));
+        $this->assertEquals(0, DB::table('user_in_app_notifications')->where('id', $row['id'])->value('is_read'));
+        $this->withHeader('Authorization', 'Bearer '.$this->residentToken)->postJson($url.'/read-all')->assertForbidden();
+        $this->withHeader('Authorization', '')->postJson($url.'/read-all')->assertUnauthorized();
+    }
+
+    public function test_suggestion_category_can_be_filtered(): void
+    {
+        $this->ticket();
+        $row = (array) DB::table('user_in_app_notifications')->where('recipient_user_id', $this->adminUser->id)->first();
+        $row['id'] = (string) Str::uuid();
+        $row['category'] = 'SUGGESTION';
+        $row['deep_link_url'] = '/quan-ly?tab=suggestions&suggestion_id='.(string) Str::uuid();
+        DB::table('user_in_app_notifications')->insert($row);
+        $this->withHeader('Authorization', 'Bearer '.$this->adminToken)->getJson('/api/v1/manager/notifications?category=SUGGESTION')
+            ->assertOk()->assertJsonCount(1, 'items')->assertJsonPath('items.0.category', 'SUGGESTION');
+    }
+
     public function test_read_is_private_idempotent_and_requires_staff_authentication(): void
     {
         $this->ticket();

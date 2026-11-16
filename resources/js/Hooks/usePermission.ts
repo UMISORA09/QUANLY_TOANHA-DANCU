@@ -68,6 +68,16 @@ export function can(permission: string): boolean {
     return parts.some((p) => permissions.includes(p));
   }
 
+  // Hỗ trợ kiểm tra quyền người đặc biệt ('special' hoặc 'SPECIAL')
+  if (cleanPerm === 'SPECIAL') {
+    return (
+      permissions.includes('SPECIAL') ||
+      permissions.includes('SYSTEM:SPECIAL') ||
+      permissions.includes('USER:SPECIAL') ||
+      permissions.some((p) => p.endsWith(':SPECIAL'))
+    );
+  }
+
   return permissions.includes(cleanPerm);
 }
 
@@ -113,6 +123,14 @@ export function usePermission() {
       if (cleanPerm.includes('|')) {
         const parts = cleanPerm.split('|').map((p) => p.trim());
         return parts.some((p) => state.permissions.includes(p));
+      }
+      if (cleanPerm === 'SPECIAL') {
+        return (
+          state.permissions.includes('SPECIAL') ||
+          state.permissions.includes('SYSTEM:SPECIAL') ||
+          state.permissions.includes('USER:SPECIAL') ||
+          state.permissions.some((p) => p.endsWith(':SPECIAL'))
+        );
       }
       return state.permissions.includes(cleanPerm);
     },

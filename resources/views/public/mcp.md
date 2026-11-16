@@ -1,4 +1,4 @@
-# SMART CASSAVAS MCP
+# SMART CASSAVAS MCP Server — Giao thức Model Context Protocol
 
 Kết nối trợ lý với hướng dẫn công khai về quản lý tòa nhà, đăng ký tiện ích và báo cáo sự cố.
 

@@ -13,6 +13,7 @@ const SUGGESTION_TTL = 60 * 1000; // 60s
 
 export interface Category {
   id: string;
+  version: number;
   category_name: string;
   category_code: string;
   icon_name?: string | null;
@@ -424,6 +425,7 @@ export interface ParcelDetailResponse {
 
 export interface TimeSlot {
   id: string;
+  version: number;
   amenity_id: string;
   day_of_week: number;
   slot_start_time: string;
@@ -435,6 +437,7 @@ export interface TimeSlot {
 }
 export interface Blackout {
   id: string;
+  version: number;
   amenity_id: string;
   blackout_date: string;
   start_time?: string | null;
@@ -551,6 +554,8 @@ class ApiService {
     window.dispatchEvent(new Event('AUTH_SESSION_CHANGED'));
   }
 
+  private inflightGetRequests = new Map<string, Promise<{ data: any; etag: string | null; notModified: boolean }>>();
+
   /**
    * Enhanced HTTP Request with ETag support & automatic header propagation
    */
@@ -561,6 +566,13 @@ class ApiService {
   ): Promise<{ data: T | null; etag: string | null; notModified: boolean }> {
     const url = `${API_BASE_URL}${endpoint}`;
     const token = this.getToken();
+
+    const isGet = !options.method || options.method.toUpperCase() === 'GET';
+    const dedupeKey = isGet && !etag && !options.signal && !options.headers && options.cache !== 'no-store' ? `GET:${url}:${token || ''}` : null;
+
+    if (dedupeKey && this.inflightGetRequests.has(dedupeKey)) {
+      return this.inflightGetRequests.get(dedupeKey)! as Promise<{ data: T | null; etag: string | null; notModified: boolean }>;
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -580,39 +592,51 @@ class ApiService {
       headers['If-None-Match'] = etag;
     }
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+    const executeFetch = async (): Promise<{ data: T | null; etag: string | null; notModified: boolean }> => {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers,
+        });
 
-      if (response.status === 304) {
-        return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        if (response.status === 304) {
+          return { data: null, etag: response.headers.get('ETag') || etag || null, notModified: true };
+        }
+
+        if (response.status === 204) {
+          return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
+        }
+
+        const newEtag = response.headers.get('ETag');
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
+          const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+          error.status = response.status;
+          error.data = data;
+          error.errors = data?.errors;
+          throw error;
+        }
+
+        return { data: data as T, etag: newEtag, notModified: false };
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return { data: null, etag: null, notModified: true };
+        }
+        throw err;
       }
+    };
 
-      if (response.status === 204) {
-        return { data: {} as T, etag: response.headers.get('ETag'), notModified: false };
-      }
+    const fetchPromise = executeFetch();
 
-      const newEtag = response.headers.get('ETag');
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const msg = data?.detail || data?.message || `Yêu cầu thất bại (${response.status})`;
-        const error: any = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-        error.status = response.status;
-        error.data = data;
-        error.errors = data?.errors;
-        throw error;
-      }
-
-      return { data: data as T, etag: newEtag, notModified: false };
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        return { data: null, etag: null, notModified: true };
-      }
-      throw err;
+    if (dedupeKey) {
+      this.inflightGetRequests.set(dedupeKey, fetchPromise);
+      const clearInflight = () => { this.inflightGetRequests.delete(dedupeKey); };
+      void fetchPromise.then(clearInflight, clearInflight);
     }
+
+    return fetchPromise;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -786,8 +810,13 @@ class ApiService {
   async getCategories(forceRefresh: boolean = false): Promise<Category[]> {
     const key = 'amenities:categories';
     const cached = amenityCache.get<Category[]>(key);
+    if (forceRefresh) {
+      const data = await this.request<Category[]>('/admin/amenity-categories', { cache: 'no-store' });
+      amenityCache.set(key, data, null, 10 * 60 * 1000);
+      return data;
+    }
 
-    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.isFresh) {
+    if (!forceRefresh && cached.exists && Array.isArray(cached.data) && cached.data.length > 0 && cached.data.every((category) => typeof category.version === 'number') && cached.isFresh) {
       return cached.data;
     }
 
@@ -835,6 +864,7 @@ class ApiService {
   async updateCategory(
     id: string,
     payload: {
+      version: number;
       category_name: string;
       category_code: string;
       icon_name?: string | null;
@@ -850,9 +880,10 @@ class ApiService {
     return result;
   }
 
-  async deleteCategory(id: string): Promise<void> {
+  async deleteCategory(id: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenity-categories/${id}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateCategories();
     amenityCache.broadcastMutation('CATEGORY_CHANGED', id);
@@ -1120,10 +1151,19 @@ class ApiService {
     return item;
   }
 
-  async createAmenity(payload: Partial<Amenity>): Promise<Amenity> {
+  async amenityGalleryImage(path: string, signal: AbortSignal): Promise<Blob> {
+    if (!/^\/api\/v1\/admin\/amenity-images\/(local|s3|supabase)\/[a-f0-9-]{36}\.(jpg|png|webp)$/.test(path)) throw new Error('Đường dẫn ảnh tiện ích không hợp lệ.');
+    const response = await fetch(API_BASE_URL + path.slice('/api/v1'.length), { signal, cache: 'no-store', headers: { Authorization: 'Bearer ' + (this.getToken() || '') } });
+    if (!response.ok) throw new Error('Không tải được ảnh tiện ích.');
+    return response.blob();
+  }
+
+  async createAmenity(payload: Partial<Amenity>, files: File[] = []): Promise<Amenity> {
+    const body = new FormData();
+    if (files.length) { body.append('payload', JSON.stringify(payload)); files.forEach(file => body.append('gallery_files[]', file)); }
     const result = await this.request<Amenity>('/admin/amenities', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: files.length ? body : JSON.stringify(payload),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
@@ -1131,10 +1171,12 @@ class ApiService {
     return result;
   }
 
-  async updateAmenity(id: string, payload: Partial<Amenity>): Promise<Amenity> {
+  async updateAmenity(id: string, payload: Partial<Amenity>, files: File[] = []): Promise<Amenity> {
+    const body = new FormData();
+    if (files.length) { body.append('payload', JSON.stringify(payload)); body.append('_method', 'PUT'); files.forEach(file => body.append('gallery_files[]', file)); }
     const result = await this.request<Amenity>(`/admin/amenities/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+      method: files.length ? 'POST' : 'PUT',
+      body: files.length ? body : JSON.stringify(payload),
     });
     suggestionCache.clear();
     amenityCache.invalidateAmenities();
@@ -1171,14 +1213,14 @@ class ApiService {
   }
 
   // ================= TIME SLOTS =================
-  async getTimeSlots(amenityId: string): Promise<TimeSlot[]> {
+  async getTimeSlots(amenityId: string, forceRefresh = false): Promise<TimeSlot[]> {
     const key = `amenity:${amenityId}:slots`;
     const lookup = amenityCache.get<TimeSlot[]>(key);
-    if (lookup.exists && lookup.data && lookup.isFresh) {
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.data.every((item) => typeof item.version === 'number') && lookup.isFresh) {
       return lookup.data;
     }
 
-    const slots = await this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`);
+    const slots = await this.request<TimeSlot[]>(`/admin/amenities/${amenityId}/time-slots`, { cache: 'no-store' });
     amenityCache.set(key, slots, null, 5 * 60 * 1000);
     return slots;
   }
@@ -1208,6 +1250,7 @@ class ApiService {
     amenityId: string,
     slotId: string,
     payload: {
+      version: number;
       day_of_week: number;
       slot_start_time: string;
       slot_end_time: string;
@@ -1226,10 +1269,10 @@ class ApiService {
     return result;
   }
 
-  async patchTimeSlotStatus(amenityId: string, slotId: string, is_active: boolean): Promise<TimeSlot> {
+  async patchTimeSlotStatus(amenityId: string, slotId: string, is_active: boolean, version: number): Promise<TimeSlot> {
     const result = await this.request<TimeSlot>(`/admin/amenities/${amenityId}/time-slots/${slotId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active }),
+      body: JSON.stringify({ is_active, version }),
     });
     amenityCache.invalidateSlots(amenityId);
     amenityCache.invalidateAmenities();
@@ -1237,9 +1280,10 @@ class ApiService {
     return result;
   }
 
-  async deleteTimeSlot(amenityId: string, slotId: string): Promise<void> {
+  async deleteTimeSlot(amenityId: string, slotId: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenities/${amenityId}/time-slots/${slotId}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateSlots(amenityId);
     amenityCache.invalidateAmenities();
@@ -1248,14 +1292,14 @@ class ApiService {
   }
 
   // ================= BLACKOUTS =================
-  async getBlackouts(amenityId: string): Promise<Blackout[]> {
+  async getBlackouts(amenityId: string, forceRefresh = false): Promise<Blackout[]> {
     const key = `amenity:${amenityId}:blackouts`;
     const lookup = amenityCache.get<Blackout[]>(key);
-    if (lookup.exists && lookup.data && lookup.isFresh) {
+    if (!forceRefresh && lookup.exists && lookup.data && lookup.data.every((item) => typeof item.version === 'number') && lookup.isFresh) {
       return lookup.data;
     }
 
-    const blackouts = await this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`);
+    const blackouts = await this.request<Blackout[]>(`/admin/amenities/${amenityId}/blackouts`, { cache: 'no-store' });
     amenityCache.set(key, blackouts, null, 5 * 60 * 1000);
     return blackouts;
   }
@@ -1285,6 +1329,7 @@ class ApiService {
     amenityId: string,
     blackoutId: string,
     payload: {
+      version: number;
       blackout_date: string;
       start_time?: string | null;
       end_time?: string | null;
@@ -1303,9 +1348,10 @@ class ApiService {
     return result;
   }
 
-  async deleteBlackout(amenityId: string, blackoutId: string): Promise<void> {
+  async deleteBlackout(amenityId: string, blackoutId: string, version: number): Promise<void> {
     const result = await this.request<void>(`/admin/amenities/${amenityId}/blackouts/${blackoutId}`, {
       method: 'DELETE',
+      body: JSON.stringify({ version }),
     });
     amenityCache.invalidateBlackouts(amenityId);
     amenityCache.broadcastMutation('AMENITY_BLACKOUT_CHANGED', amenityId, blackoutId);
@@ -1842,6 +1888,50 @@ class ApiService {
     });
   }
 
+  async getUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      data: {
+        user_id: string;
+        username: string;
+        full_name: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`);
+  }
+
+  async syncUserPermissions(id: string, permissions: string[]) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    });
+  }
+
+  async resetUserPermissions(id: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      data: {
+        user_id: string;
+        username: string;
+        is_customized: boolean;
+        permissions: string[];
+      };
+    }>(`/users/${id}/permissions`, {
+      method: 'DELETE',
+    });
+  }
+
   async getRoles() {
     return this.request<{ success: boolean; data: RoleRbac[] }>('/roles');
   }
@@ -2233,7 +2323,7 @@ class ApiService {
     return this.request<{ data: ManagedTicket[]; current_page: number; last_page: number; total: number }>(`/admin/tickets?${params}`, { signal });
   }
   async getTicketOptions() { return this.request<TicketOptions>('/admin/tickets/options'); }
-  async getManagedTicket(id: string) { return this.request<ManagedTicket>(`/admin/tickets/${id}`); }
+  async getManagedTicket(id: string, signal?: AbortSignal) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { signal, cache: 'no-store' }); }
   async createManagedTicket(payload: Record<string, unknown>) { return this.request<ManagedTicket>('/admin/tickets', { method: 'POST', body: JSON.stringify(payload) }); }
   async updateManagedTicket(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
   async archiveTicket(id: string, version: number, reason: string) { return this.request<{ success: boolean }>(`/admin/tickets/${id}`, { method: 'DELETE', body: JSON.stringify({ version, reason }) }); }
@@ -2241,11 +2331,13 @@ class ApiService {
   async removeManagedTicketImage(id: string, attachmentId: string, version: number) { return this.request<ManagedTicket>(`/admin/tickets/${id}/attachments/${attachmentId}`, { method: 'DELETE', body: JSON.stringify({ version }) }); }
   async performTicketAction(id: string, payload: Record<string, unknown>) { return this.request<ManagedTicket>(`/admin/tickets/${id}/workflow`, { method: 'POST', body: JSON.stringify(payload) }); }
   async getTicketNotifications(page = 1, signal?: AbortSignal) { return this.request<{ items: TicketNotification[]; unread_count: number; page: number; total_pages: number }>(`/ticket-notifications?page=${page}`, { signal }); }
-  async getManagerNotifications(page: number, category: string, unread: boolean, signal?: AbortSignal) {
+  async getManagerNotifications(page: number, category: string, unread: boolean, signal?: AbortSignal, summary = false) {
     const query = new URLSearchParams({ page: String(page), unread: unread ? '1' : '0' });
     if (category) query.set('category', category);
-    return this.request<{ items: ManagerNotification[]; unread_count: number; latest_id: string | null; page: number; total_pages: number }>(`/manager/notifications?${query}`, { signal, cache: 'no-store' });
+    if (summary) query.set('summary', '1');
+    return this.request<{ items: ManagerNotification[]; unread_count: number; latest_id: string | null; category_activity?: Record<string, string>; page: number; total_pages: number }>(`/manager/notifications?${query}`, { signal, cache: 'no-store' });
   }
+  async readAllManagerNotifications() { return this.request<{ unread_count: number }>('/manager/notifications/read-all', { method: 'POST', cache: 'no-store' }); }
   async readManagerNotification(id: string) { return this.request<{ unread_count: number }>(`/manager/notifications/${encodeURIComponent(id)}/read`, { method: 'POST', cache: 'no-store' }); }
   async readTicketNotification(id: string) { return this.request(`/ticket-notifications/${id}/read`, { method: 'POST' }); }
 
@@ -2289,8 +2381,8 @@ class ApiService {
     return this.request<TicketListResponse>(`/resident/tickets${query}`, { signal });
   }
 
-  async getResidentTicketDetail(id: string) {
-    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`);
+  async getResidentTicketDetail(id: string, signal?: AbortSignal) {
+    return this.request<{ success: boolean; data: TicketItem }>(`/resident/tickets/${id}`, { signal, cache: 'no-store' });
   }
 
   async createResidentTicket(payload: FormData | Record<string, any>, idempotencyKey?: string) {
@@ -2404,7 +2496,7 @@ class ApiService {
 
   // ================= F12: HÒM THƯ GÓP Ý & PHÂN TÍCH CẢM XÚC =================
   async getResidentSuggestionBoxes(): Promise<{ success: boolean; data: SuggestionBoxItem[] }> {
-    return this.request('/resident/suggestion-boxes');
+    return this.request('/resident/suggestion-boxes', { cache: 'no-store' });
   }
 
   async submitResidentSuggestion(formData: FormData): Promise<{ success: boolean; message: string; data: SuggestionItem; anonymous_token?: string; replayed?: boolean }> {
@@ -2470,7 +2562,7 @@ class ApiService {
   }
 
   async getResidentSurveyDetails(id: string): Promise<{ status: string; data: ResidentSurveyDetailResponse }> {
-    return this.request(`/resident/surveys/${id}`);
+    return this.request(`/resident/surveys/${id}`, { cache: 'no-store' });
   }
 
   async submitResidentSurvey(id: string, answers: Record<string, any>, idempotencyKey?: string): Promise<{ status: string; message: string; data: { response_id: string; submitted_at: string } }> {
@@ -2494,6 +2586,10 @@ class ApiService {
     return this.request(`/management/surveys${qStr ? `?${qStr}` : ''}`);
   }
 
+  async getManagementSurveyDetail(id: string, signal?: AbortSignal): Promise<{ status: string; data: SatisfactionSurveyItem }> {
+    return this.request(`/management/surveys/${id}`, { signal, cache: 'no-store' });
+  }
+
   async getManagementSurveyKpis(): Promise<{ status: string; data: SurveyOverviewKpis }> {
     return this.request('/management/surveys/kpis');
   }
@@ -2514,11 +2610,11 @@ class ApiService {
     });
   }
 
-  async toggleManagementSurveyStatus(id: string, isActive: boolean): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
+  async toggleManagementSurveyStatus(id: string, isActive: boolean, version: number): Promise<{ status: string; message: string; data: SatisfactionSurveyItem }> {
     return this.request(`/management/surveys/${id}/toggle-status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_active: isActive }),
+      body: JSON.stringify({ is_active: isActive, version }),
     });
   }
 
@@ -2547,7 +2643,7 @@ export interface ManagedTicket extends TicketItem {
   actions: Record<string, boolean>;
 }
 export interface TicketNotification { id: string; title: string; body_message: string; deep_link_url: string; is_read: boolean | number; created_at: string; }
-export interface ManagerNotification extends TicketNotification { category: 'TICKET' | 'AMENITY_BOOKING'; }
+export interface ManagerNotification extends TicketNotification { category: 'TICKET' | 'AMENITY_BOOKING' | 'SUGGESTION'; }
 export interface TicketOptions {
   categories: TicketCategoryItem[];
   blocks: { id: string; block_name: string }[];
