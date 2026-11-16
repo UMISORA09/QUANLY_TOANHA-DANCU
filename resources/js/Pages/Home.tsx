@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import {
   Menu as MenuData,
@@ -30,8 +30,6 @@ import {
   UserPlus as UserPlusData,
   Activity as ActivityData,
   ChevronRight as ChevronRightData,
-  Play as PlayData,
-  Pause as PauseData,
   Car as CarData
 } from 'lucide';
 import {
@@ -57,8 +55,6 @@ import {
   Zap,
   Lock,
   PhoneCall,
-  Play,
-  Pause,
   Car,
   ChevronDown,
   LogOut,
@@ -66,7 +62,6 @@ import {
   LayoutDashboard
 } from 'lucide-react';
 import { api } from '../Services/api';
-const Building3DModel = lazy(() => import('../Components/Building3DModel').then(m => ({ default: m.Building3DModel })));
 import { AuthModal, UserRole } from '../Components/AuthModal';
 
 type WorkspaceTab = 'overview' | 'residents' | 'billing' | 'maintenance';
@@ -225,7 +220,6 @@ export const Home: React.FC<HomeProps> = ({
   const [copiedStatus, setCopiedStatus] = useState(false);
 
   // Advanced motion & simulation states
-  const [isAutoSimulating, setIsAutoSimulating] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 600, y: 300 });
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [carPassAnimation, setCarPassAnimation] = useState(false);
@@ -278,9 +272,8 @@ export const Home: React.FC<HomeProps> = ({
 
   // Auto-simulation loop: sequentially morphs icons and toggles modes
   useEffect(() => {
-    if (!isAutoSimulating) return;
-    const tabs: WorkspaceTab[] = ['overview', 'residents', 'billing', 'maintenance'];
     let step = 0;
+    let carAnimationTimeout: ReturnType<typeof setTimeout> | undefined;
     const interval = setInterval(() => {
       step = (step + 1) % 4;
       if (step === 0) {
@@ -289,7 +282,7 @@ export const Home: React.FC<HomeProps> = ({
       } else if (step === 1) {
         setGateLocked(false);
         setCarPassAnimation(true);
-        setTimeout(() => setCarPassAnimation(false), 2000);
+        carAnimationTimeout = setTimeout(() => setCarPassAnimation(false), 2000);
         setActiveTab('residents');
       } else if (step === 2) {
         setHighAlertMode((prev) => !prev);
@@ -300,8 +293,11 @@ export const Home: React.FC<HomeProps> = ({
         setActiveTab('maintenance');
       }
     }, 2400);
-    return () => clearInterval(interval);
-  }, [isAutoSimulating]);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(carAnimationTimeout);
+    };
+  }, []);
 
   const handleCardMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -389,17 +385,6 @@ export const Home: React.FC<HomeProps> = ({
               className="text-sm font-semibold text-neutral-900 transition-colors relative py-1 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-neutral-900"
             >
               Trang chủ
-            </a>
-            <a
-              href="#model3d"
-              onClick={(e) => {
-                e.preventDefault();
-                scrollToSection('model3d');
-              }}
-              className="text-sm font-medium text-neutral-600 hover:text-neutral-950 transition-colors flex items-center gap-1.5"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-              <span>Mô hình 3D</span>
             </a>
             <a
               href="#features"
@@ -743,17 +728,6 @@ export const Home: React.FC<HomeProps> = ({
               Trang chủ
             </a>
             <a
-              href="#model3d"
-              onClick={(e) => {
-                e.preventDefault();
-                scrollToSection('model3d');
-                setIsMobileMenuOpen(false);
-              }}
-              className="block px-3 py-2 text-base font-medium text-neutral-700 hover:bg-neutral-50 rounded-md"
-            >
-              Mô hình 3D Digital Twin
-            </a>
-            <a
               href="#features"
               onClick={(e) => {
                 e.preventDefault();
@@ -1028,13 +1002,6 @@ export const Home: React.FC<HomeProps> = ({
                 />
               </button>
 
-              <button
-                onClick={() => scrollToSection('model3d')}
-                className="inline-flex items-center justify-center gap-2 glass-pill hover:bg-white active:scale-[0.98] text-neutral-900 font-semibold text-sm px-5 py-3.5 rounded-sm border border-neutral-300/80 shadow-xs hover:border-neutral-400 transition-all group"
-              >
-                <Building2 className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
-                <span>Mô hình 3D Live</span>
-              </button>
 
               {currentUser ? (
                 <button
@@ -1052,75 +1019,6 @@ export const Home: React.FC<HomeProps> = ({
                   Tạo tài khoản
                 </button>
               )}
-            </div>
-
-            {/* Quick Glass Role Showcase Bar matching user screenshot */}
-            <div className="pt-2">
-              <div className="glass-panel rounded-xl p-3 sm:p-3.5 border border-white/80 shadow-xs relative overflow-hidden group">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                  <span className="text-[11px] font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Truy cập nhanh theo vai trò
-                  </span>
-                  <span className="text-[10px] text-neutral-500 font-mono">
-                    Chọn vai trò để vào thẳng
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openAuth('login', 'manager')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-sky-500 hover:bg-sky-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
-                  >
-                    <div className="w-6 h-6 rounded bg-sky-100 flex items-center justify-center text-sky-800 text-xs font-bold shrink-0">
-                      🏢
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-neutral-900 leading-tight">Quản lý</div>
-                      <div className="text-[10px] text-sky-700 truncate">Vận hành (/quan-ly)</div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openAuth('login', 'resident')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-emerald-500 hover:bg-emerald-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
-                  >
-                    <div className="w-6 h-6 rounded bg-emerald-100 flex items-center justify-center text-emerald-800 text-xs font-bold shrink-0">
-                      👥
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-neutral-900 leading-tight">Cư dân</div>
-                      <div className="text-[10px] text-emerald-700 truncate">Căn hộ (/cu-dan)</div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openAuth('login', 'receptionist')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-indigo-500 hover:bg-indigo-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
-                  >
-                    <div className="w-6 h-6 rounded bg-indigo-100 flex items-center justify-center text-indigo-800 text-xs font-bold shrink-0">
-                      📋
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-neutral-900 leading-tight">Lễ tân</div>
-                      <div className="text-[10px] text-indigo-700 truncate">Khách & Xe (/le-tan)</div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openAuth('login', 'admin')}
-                    className="glass-role-card p-2 rounded-lg text-left hover:border-amber-500 hover:bg-amber-50/40 transition-all flex items-center gap-2 group/btn cursor-pointer"
-                  >
-                    <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center text-amber-800 text-xs font-bold shrink-0">
-                      🛡️
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-neutral-900 leading-tight">Admin</div>
-                      <div className="text-[10px] text-amber-700 truncate">Chuyển cổng (/admin)</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
             </div>
 
             {/* Micro Cloud Highlights */}
@@ -1701,24 +1599,6 @@ export const Home: React.FC<HomeProps> = ({
                     </span>
                   </div>
 
-                  {/* Auto-Cycle Showcase Button */}
-                  <button
-                    onClick={() => setIsAutoSimulating(!isAutoSimulating)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all shadow-xs active:scale-95 ${
-                      isAutoSimulating
-                        ? 'bg-rose-500 text-white shadow-rose-500/30 animate-pulse'
-                        : 'bg-neutral-900 text-white hover:bg-neutral-800'
-                    }`}
-                    title="Bật/Tắt tự động chuyển động tất cả biểu tượng morphing liên tục"
-                  >
-                    <MorphIcon
-                      icon={isAutoSimulating ? PauseData : PlayData}
-                      size={12}
-                      strokeWidth={2.5}
-                      spring="bouncy"
-                    />
-                    <span>{isAutoSimulating ? 'Dừng tự động' : 'Tự động trình diễn'}</span>
-                  </button>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1836,79 +1716,6 @@ export const Home: React.FC<HomeProps> = ({
 
         </div>
       </main>
-
-      {/* ================= 3D DIGITAL TWIN ARCHITECTURAL MODEL ================= */}
-      <section id="model3d" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24 border-t border-neutral-200/80 relative">
-        <div className="space-y-4 mb-10">
-          <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full glass-pill text-xs font-bold text-neutral-800 tracking-wider uppercase shadow-xs">
-            <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-            <span className="animate-text-light-brand font-bold">Bản sao kỹ thuật số 3D • Digital Twin</span>
-          </div>
-
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div>
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-neutral-950 animate-text-light">
-                Trực quan hóa toàn bộ tòa nhà trong không gian 3D.
-              </h2>
-              <p className="text-base sm:text-lg text-neutral-600 max-w-2xl mt-2.5 font-normal leading-relaxed">
-                Khám phá tháp đôi 26 tầng, giám sát năng lượng, cảm biến an ninh PCCC, thang máy kính xuyên thấu và trạng thái phân tầng trong thời gian thực.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={() => setBuildingNightMode(!buildingNightMode)}
-                className="px-3.5 py-2 rounded-lg glass-pill text-xs font-semibold text-neutral-800 hover:text-neutral-950 border border-neutral-300 shadow-xs hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-              >
-                <MorphIcon
-                  icon={buildingNightMode ? MoonData : SunData}
-                  size={14}
-                  strokeWidth={2}
-                  spring="snappy"
-                  className={buildingNightMode ? 'text-indigo-600' : 'text-amber-500'}
-                />
-                <span>{buildingNightMode ? 'Chế độ Đêm' : 'Chế độ Ngày'}</span>
-              </button>
-
-              <button
-                onClick={() => setHighAlertMode(!highAlertMode)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-semibold border shadow-xs hover:scale-105 active:scale-95 transition-all flex items-center gap-2 ${
-                  highAlertMode
-                    ? 'bg-amber-500 text-slate-950 border-amber-600 font-bold'
-                    : 'glass-pill text-neutral-800 border-neutral-300'
-                }`}
-              >
-                <MorphIcon
-                  icon={highAlertMode ? ShieldAlertData : ShieldCheckData}
-                  size={14}
-                  strokeWidth={2}
-                  spring="bouncy"
-                  className={highAlertMode ? 'text-slate-950' : 'text-blue-600'}
-                />
-                <span>{highAlertMode ? 'Radar Quét 24/7' : 'Quét An ninh'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 3D Model Component */}
-        <Suspense
-          fallback={
-            <div className="w-full h-[520px] rounded-3xl bg-neutral-900/40 border border-neutral-800 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs font-mono text-neutral-400">Đang tải mô hình 3D tòa nhà...</span>
-              </div>
-            </div>
-          }
-        >
-          <Building3DModel
-            nightMode={buildingNightMode}
-            highAlert={highAlertMode}
-            isCompact={false}
-          />
-        </Suspense>
-      </section>
 
       {/* ================= CORE CAPABILITIES / NĂNG LỰC CỐT LÕI ================= */}
       <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24 border-t border-neutral-200/80">

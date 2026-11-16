@@ -38,6 +38,7 @@ test.use({ screenshot: 'off', video: 'off', trace: 'off' });
 
 test('production bundle excludes demo passwords and quick-login instructions', () => {
   expect(bundle).not.toMatch(/["']123567["']/);
+  expect(bundle).not.toContain('Admin@123456');
   expect(bundle).not.toContain('MK mẫu:');
   expect(bundle).not.toContain('Tài khoản dùng thử nhanh:');
   expect(bundle).not.toContain('Chọn một vai trò để vào thẳng khu vực làm việc.');

@@ -53,6 +53,7 @@ const ROLE_DEMOS: Record<
     subtitle: string;
     email: string;
     phone: string;
+    password: string;
     icon: any;
     morphIcon: any;
   }
@@ -62,6 +63,7 @@ const ROLE_DEMOS: Record<
     subtitle: 'Vận hành & tài chính',
     email: 'quanly@cassavas.vn',
     phone: '0900000002',
+    password: import.meta.env.DEV ? '123567' : '',
     icon: LayoutGrid,
     morphIcon: LayoutDashboardData,
   },
@@ -70,6 +72,7 @@ const ROLE_DEMOS: Record<
     subtitle: 'Cư dân & căn hộ',
     email: 'nguyenvanan@cassavas.vn',
     phone: '0901234567',
+    password: import.meta.env.DEV ? '123567' : '',
     icon: Users,
     morphIcon: UsersData,
   },
@@ -78,6 +81,7 @@ const ROLE_DEMOS: Record<
     subtitle: 'Khách & gói hàng',
     email: 'letan@cassavas.vn',
     phone: '0900000004',
+    password: import.meta.env.DEV ? '123567' : '',
     icon: Receipt,
     morphIcon: ReceiptData,
   },
@@ -86,6 +90,7 @@ const ROLE_DEMOS: Record<
     subtitle: 'Quản trị hệ thống',
     email: 'admin@cassavas.vn',
     phone: '0900000001',
+    password: import.meta.env.DEV ? 'Admin@123456' : '',
     icon: ShieldCheck,
     morphIcon: ShieldCheckData,
   },
@@ -139,7 +144,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (import.meta.env.DEV && initialRole && ROLE_DEMOS[initialRole]) {
       setSelectedRole(initialRole);
       setLoginIdentifier(ROLE_DEMOS[initialRole].email);
-      setPassword('123567');
+      setPassword(ROLE_DEMOS[initialRole].password);
     }
   }, [initialMode, initialRole, isOpen]);
 
@@ -163,9 +168,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setSelectedRole(roleKey);
     const demo = ROLE_DEMOS[roleKey];
     setLoginIdentifier(demo.email);
-    setPassword('123567');
+    setPassword(demo.password);
     setErrorMessage(null);
-    setToastMessage(`Đã chọn: ${demo.title} • Tài khoản: ${demo.email} (Mật khẩu: 123567)`);
+    setToastMessage(`Đã chọn: ${demo.title} • Tài khoản: ${demo.email} (Mật khẩu: ${demo.password})`);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -416,7 +421,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     Mật khẩu
                   </label>
                   {import.meta.env.DEV && <span className="text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded font-mono">
-                    MK mẫu: 123567
+                    MK mẫu: {selectedRole ? ROLE_DEMOS[selectedRole].password : 'Chọn tài khoản mẫu'}
                   </span>}
                 </div>
                 <div className="relative">
