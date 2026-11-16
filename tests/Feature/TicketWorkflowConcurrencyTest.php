@@ -265,4 +265,51 @@ class TicketWorkflowConcurrencyTest extends TestCase
             $this->assertSame(1, DB::table('audit_logs')->where('record_id', $rating->id)->count());
         }
     }
+
+    public function test_two_admin_closures_commit_only_one_history_and_notification(): void
+    {
+        $this->createTicket('RESOLVED');
+        $this->secondUser->assignRole('SUPER_ADMIN');
+        $path = '/api/v1/admin/tickets/'.$this->ticketId.'/workflow';
+        $payload = ['action' => 'close', 'version' => 1, 'reason' => 'QA quản trị đóng thay cư dân'];
+        $this->assertSame([200, 409], $this->race([[$path, $this->adminToken, $payload, 'POST'], [$path, $this->secondToken, $payload, 'POST']], 'tickets', $this->ticketId));
+        $this->assertSame(2, Ticket::findOrFail($this->ticketId)->version);
+        $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $this->ticketId)->where('new_status', 'CLOSED')->count());
+        $this->assertSame(1, DB::table('user_in_app_notifications')->where('deep_link_url', 'like', '%'.$this->ticketId.'%')->where('title', 'like', 'Admin đã đóng yêu cầu thay cư dân%')->count());
+    }
+
+    public function test_admin_close_and_resident_reopen_commit_only_one_change(): void
+    {
+        $this->createTicket('RESOLVED');
+        $this->assertSame([200, 409], $this->race([
+            ['/api/v1/admin/tickets/'.$this->ticketId.'/workflow', $this->adminToken, ['action' => 'close', 'version' => 1, 'reason' => 'QA đóng thay sau sửa chữa'], 'POST'],
+            ['/api/v1/resident/tickets/'.$this->ticketId.'/reopen', $this->residentToken, ['version' => 1, 'reason' => 'QA cư dân yêu cầu kiểm tra lại'], 'POST'],
+        ], 'tickets', $this->ticketId));
+        $this->assertSame(2, Ticket::findOrFail($this->ticketId)->version);
+        $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $this->ticketId)->where('action_type', 'STATUS_CHANGED')->count());
+    }
+
+    public function test_admin_close_and_resident_confirm_commit_only_one_change(): void
+    {
+        $this->createTicket('RESOLVED');
+        $this->assertSame([200, 409], $this->race([
+            ['/api/v1/admin/tickets/'.$this->ticketId.'/workflow', $this->adminToken, ['action' => 'close', 'version' => 1, 'reason' => 'QA đóng thay sau sửa chữa'], 'POST'],
+            ['/api/v1/resident/tickets/'.$this->ticketId.'/confirm', $this->residentToken, ['version' => 1], 'POST'],
+        ], 'tickets', $this->ticketId));
+        $this->assertSame('CLOSED', Ticket::findOrFail($this->ticketId)->status);
+        $this->assertSame(2, Ticket::findOrFail($this->ticketId)->version);
+        $this->assertSame(1, DB::table('ticket_history')->where('ticket_id', $this->ticketId)->where('action_type', 'STATUS_CHANGED')->count());
+    }
+
+    public function test_admin_close_serializes_with_new_comment(): void
+    {
+        $this->createTicket('RESOLVED');
+        $statuses = $this->race([
+            ['/api/v1/admin/tickets/'.$this->ticketId.'/workflow', $this->adminToken, ['action' => 'close', 'version' => 1, 'reason' => 'QA quản trị đóng thay cư dân'], 'POST'],
+            ['/api/v1/tickets/'.$this->ticketId.'/comments', $this->residentToken, ['id' => (string) Str::uuid(), 'comment_text' => 'QA trao đổi khi quản trị đóng', 'is_internal_staff_note' => false], 'POST'],
+        ], 'tickets', $this->ticketId);
+        $this->assertContains($statuses, [[200, 201], [200, 409]]);
+        $this->assertSame($statuses === [200, 201] ? 1 : 0, DB::table('ticket_comments')->where('ticket_id', $this->ticketId)->count());
+        $this->assertSame('CLOSED', Ticket::findOrFail($this->ticketId)->status);
+    }
 }
