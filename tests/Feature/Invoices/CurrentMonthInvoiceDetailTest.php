@@ -9,9 +9,11 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\PaymentReceipt;
+use App\Models\Role;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CurrentMonthInvoiceDetailTest extends TestCase
@@ -202,14 +204,15 @@ class CurrentMonthInvoiceDetailTest extends TestCase
 
     public function test_get_current_month_invoice_returns_404_if_none_exists(): void
     {
-        // Tạo apartment không có hóa đơn
+        // Tạo apartment của chính resident nhưng không có hóa đơn nào
         $emptyApartment = Apartment::create([
             'block_id' => $this->block->id,
             'floor_id' => $this->floor->id,
             'apartment_number' => 'A-EMPTY',
             'net_usable_area_sqm' => 50.0,
             'gross_floor_area_sqm' => 55.0,
-            'status' => 'VACANT',
+            'current_resident_user_id' => $this->residentUser->id,
+            'status' => 'OCCUPIED',
         ]);
 
         $response = $this->withHeaders([
@@ -221,6 +224,198 @@ class CurrentMonthInvoiceDetailTest extends TestCase
             ->assertJson([
                 'success' => false,
                 'message' => 'Không tìm thấy hóa đơn cho kỳ phí hiện tại.',
+            ]);
+    }
+
+    public function test_does_not_fallback_to_previous_month_invoice_and_returns_404(): void
+    {
+        // Căn hộ của cư dân chỉ có hóa đơn của 2 tháng trước, không có tháng hiện tại
+        $pastPeriod = Carbon::now()->subMonths(2)->format('Y-m');
+        $apartmentPast = Apartment::create([
+            'block_id' => $this->block->id,
+            'floor_id' => $this->floor->id,
+            'apartment_number' => 'A-PAST-ONLY',
+            'net_usable_area_sqm' => 60.0,
+            'gross_floor_area_sqm' => 65.0,
+            'current_resident_user_id' => $this->residentUser->id,
+            'status' => 'OCCUPIED',
+        ]);
+
+        Invoice::create([
+            'invoice_number' => 'HD-'.$pastPeriod.'-PAST',
+            'apartment_id' => $apartmentPast->id,
+            'resident_user_id' => $this->residentUser->id,
+            'billing_period' => $pastPeriod,
+            'issue_date' => Carbon::now()->subMonths(2)->startOfMonth()->format('Y-m-d'),
+            'due_date' => Carbon::now()->subMonths(2)->startOfMonth()->addDays(20)->format('Y-m-d'),
+            'subtotal_amount' => 1000000,
+            'tax_amount' => 100000,
+            'total_amount' => 1100000,
+            'paid_amount' => 1100000,
+            'remaining_balance' => 0,
+            'status' => 'PAID',
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/invoices/current-month?apartment_id={$apartmentPast->id}");
+
+        $response->assertStatus(404)
+            ->assertJson([
+                'success' => false,
+                'message' => 'Không tìm thấy hóa đơn cho kỳ phí hiện tại.',
+            ]);
+    }
+
+    public function test_cancelled_current_month_invoice_returns_404(): void
+    {
+        $this->currentInvoice->update(['status' => 'CANCELLED']);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/invoices/current-month?apartment_id={$this->apartment->id}");
+
+        $response->assertStatus(404)
+            ->assertJson([
+                'success' => false,
+                'message' => 'Không tìm thấy hóa đơn cho kỳ phí hiện tại.',
+            ]);
+    }
+
+    public function test_draft_current_month_invoice_returns_404(): void
+    {
+        $this->currentInvoice->update(['status' => 'DRAFT']);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/invoices/current-month?apartment_id={$this->apartment->id}");
+
+        $response->assertStatus(404)
+            ->assertJson([
+                'success' => false,
+                'message' => 'Không tìm thấy hóa đơn cho kỳ phí hiện tại.',
+            ]);
+    }
+
+    public function test_valid_statuses_current_month_invoice_returns_200(): void
+    {
+        foreach (['ISSUED', 'PARTIAL', 'PAID', 'OVERDUE'] as $validStatus) {
+            $this->currentInvoice->update(['status' => $validStatus]);
+
+            $response = $this->withHeaders([
+                'Authorization' => 'Bearer '.$this->token,
+                'Accept' => 'application/json',
+            ])->getJson("/api/v1/invoices/current-month?apartment_id={$this->apartment->id}");
+
+            $response->assertStatus(200)
+                ->assertJson([
+                    'success' => true,
+                    'data' => [
+                        'status' => $validStatus,
+                    ],
+                ]);
+        }
+    }
+
+    public function test_resident_cannot_view_another_residents_apartment_invoice(): void
+    {
+        // Cư dân B với căn hộ khác
+        $residentB = User::factory()->create([
+            'email' => 'resident.b@cassavas.com',
+            'full_name' => 'Cư Dân B',
+            'status' => 'ACTIVE',
+        ]);
+
+        $apartmentB = Apartment::create([
+            'block_id' => $this->block->id,
+            'floor_id' => $this->floor->id,
+            'apartment_number' => 'B-909',
+            'net_usable_area_sqm' => 90.0,
+            'gross_floor_area_sqm' => 95.0,
+            'current_resident_user_id' => $residentB->id,
+            'status' => 'OCCUPIED',
+        ]);
+
+        Invoice::create([
+            'invoice_number' => 'HD-'.Carbon::now()->format('Y-m').'-B909',
+            'apartment_id' => $apartmentB->id,
+            'resident_user_id' => $residentB->id,
+            'billing_period' => Carbon::now()->format('Y-m'),
+            'issue_date' => Carbon::now()->startOfMonth()->format('Y-m-d'),
+            'due_date' => Carbon::now()->startOfMonth()->addDays(20)->format('Y-m-d'),
+            'subtotal_amount' => 2000000,
+            'tax_amount' => 200000,
+            'total_amount' => 2200000,
+            'paid_amount' => 0,
+            'remaining_balance' => 2200000,
+            'status' => 'ISSUED',
+        ]);
+
+        // Cư dân A (token) cố xem hóa đơn của căn hộ B -> 403
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/invoices/current-month?apartment_id={$apartmentB->id}");
+
+        $response->assertStatus(403)
+            ->assertJson([
+                'success' => false,
+                'message' => 'Bạn không có quyền xem hóa đơn của căn hộ này.',
+            ]);
+    }
+
+    public function test_resident_can_view_own_apartment_invoice_with_apartment_id(): void
+    {
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->token,
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/invoices/current-month?apartment_id={$this->apartment->id}");
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'id' => $this->currentInvoice->id,
+                    'apartment_id' => $this->apartment->id,
+                ],
+            ]);
+    }
+
+    public function test_admin_or_accountant_can_view_any_apartment_invoice(): void
+    {
+        $adminUser = User::factory()->create([
+            'email' => 'manager.building@cassavas.com',
+            'full_name' => 'Ban Quản Lý Tòa Nhà',
+            'status' => 'ACTIVE',
+        ]);
+
+        $role = Role::firstOrCreate(
+            ['role_code' => 'BUILDING_MANAGER'],
+            ['role_name' => 'Ban Quản Lý Tòa Nhà', 'status' => 'ACTIVE']
+        );
+
+        DB::table('user_roles')->updateOrInsert(
+            ['user_id' => $adminUser->id, 'role_id' => $role->id],
+            ['assigned_at' => now()]
+        );
+
+        $adminToken = $this->issueTestBearerToken($adminUser);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$adminToken,
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/invoices/current-month?apartment_id={$this->apartment->id}");
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'id' => $this->currentInvoice->id,
+                    'apartment_id' => $this->apartment->id,
+                ],
             ]);
     }
 

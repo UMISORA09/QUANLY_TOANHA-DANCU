@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Apartment;
+use App\Models\Invoice;
+use App\Models\User;
 use App\Services\InvoiceManagementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -69,7 +72,26 @@ class InvoiceManagementController extends Controller
     {
         $apartmentId = $request->query('apartment_id');
         $billingPeriod = $request->query('billing_period');
-        $userId = $request->user()?->id ? (string) $request->user()->id : null;
+        $user = $request->user();
+
+        // Kiểm tra quyền sở hữu căn hộ đối với cư dân (tránh xem trộm căn hộ người khác)
+        if ($apartmentId && $user) {
+            $isStaffOrAdmin = $user->hasRole(['SUPER_ADMIN', 'BUILDING_MANAGER', 'ACCOUNTANT'])
+                || $user->isSuperAdmin();
+
+            if (! $isStaffOrAdmin) {
+                $hasAccess = $this->userHasAccessToApartment($user, (string) $apartmentId);
+                if (! $hasAccess) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bạn không có quyền xem hóa đơn của căn hộ này.',
+                        'data' => null,
+                    ], 403);
+                }
+            }
+        }
+
+        $userId = $user?->id ? (string) $user->id : null;
 
         $invoice = $this->invoiceService->getCurrentMonthInvoice($userId, $apartmentId, $billingPeriod);
 
@@ -86,6 +108,29 @@ class InvoiceManagementController extends Controller
             'message' => 'Lấy chi tiết hóa đơn tháng hiện tại thành công.',
             'data' => $invoice,
         ]);
+    }
+
+    /**
+     * Kiểm tra quyền sở hữu/cư trú của người dùng đối với căn hộ
+     */
+    protected function userHasAccessToApartment(User $user, string $apartmentId): bool
+    {
+        $isResident = Apartment::where('id', $apartmentId)
+            ->where(function ($q) use ($user) {
+                $q->where('current_resident_user_id', $user->id)
+                    ->orWhereHas('residents', function ($rq) use ($user) {
+                        $rq->where('user_id', $user->id)->where('is_active', 1);
+                    });
+            })
+            ->exists();
+
+        if ($isResident) {
+            return true;
+        }
+
+        return Invoice::where('apartment_id', $apartmentId)
+            ->where('resident_user_id', $user->id)
+            ->exists();
     }
 
     /**
