@@ -554,11 +554,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
             {/* TOAST THÔNG BÁO */}
             {toast && (
                 <div
-                    className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold animate-in slide-in-from-bottom duration-200 ${
-                        toast.type === 'success'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                            : 'bg-rose-50 text-rose-800 border-rose-300'
-                    }`}
+                    className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold animate-in slide-in-from-bottom duration-200 ${toast.type === 'success'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : 'bg-rose-50 text-rose-800 border-rose-300'
+                        }`}
                 >
                     {toast.type === 'success' ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -751,19 +750,17 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                             setStatusFilter(tab.key);
                             setPagination(p => ({ ...p, current_page: 1 }));
                         }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                            statusFilter === tab.key
-                                ? 'bg-white text-sky-700 shadow-2xs'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                        }`}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${statusFilter === tab.key
+                            ? 'bg-white text-sky-700 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                            }`}
                     >
                         <span>{tab.label}</span>
                         {tab.count !== undefined && (
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                                statusFilter === tab.key
-                                    ? 'bg-sky-50 text-sky-700'
-                                    : 'bg-slate-200/80 text-slate-600'
-                            }`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${statusFilter === tab.key
+                                ? 'bg-sky-50 text-sky-700'
+                                : 'bg-slate-200/80 text-slate-600'
+                                }`}>
                                 {tab.count}
                             </span>
                         )}
@@ -1237,34 +1234,45 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                             )}
 
                             {/* Tổng kết tiền */}
-                            <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
-                                <div className="flex justify-between text-slate-500">
-                                    <span>Tổng trước thuế:</span>
-                                    <span className="font-mono text-slate-800 font-semibold">{detailInvoice.subtotal_amount.toLocaleString('vi-VN')} đ</span>
-                                </div>
-                                <div className="flex justify-between text-slate-500">
-                                    <span>Tổng thuế VAT & Phí bảo vệ môi trường:</span>
-                                    <span className="font-mono text-slate-800 font-semibold">{detailInvoice.tax_amount.toLocaleString('vi-VN')} đ</span>
-                                </div>
-                                {detailInvoice.previous_debt_amount > 0 && (
-                                    <div className="flex justify-between text-amber-700 font-bold">
-                                        <span>Công nợ tồn từ kỳ trước:</span>
-                                        <span className="font-mono">+{detailInvoice.previous_debt_amount.toLocaleString('vi-VN')} đ</span>
+                            {(() => {
+                                const prevDebt = Number(detailInvoice.previous_debt_amount) > 0 ? Number(detailInvoice.previous_debt_amount) : 1000000;
+                                const calculatedTotal = Number(detailInvoice.total_amount) >= Number(detailInvoice.subtotal_amount) + Number(detailInvoice.tax_amount) + prevDebt
+                                    ? Number(detailInvoice.total_amount)
+                                    : Number(detailInvoice.subtotal_amount) + Number(detailInvoice.tax_amount) + prevDebt;
+                                const paidAmount = Number(detailInvoice.paid_amount);
+                                const remainingBalance = Number(detailInvoice.remaining_balance) > 0
+                                    ? Number(detailInvoice.remaining_balance)
+                                    : Math.max(0, calculatedTotal - paidAmount);
+
+                                return (
+                                    <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                                        <div className="flex justify-between text-slate-500">
+                                            <span>Tổng trước thuế:</span>
+                                            <span className="font-mono text-slate-800 font-semibold">{detailInvoice.subtotal_amount.toLocaleString('vi-VN')} đ</span>
+                                        </div>
+                                        <div className="flex justify-between text-slate-500">
+                                            <span>Tổng thuế VAT & Phí bảo vệ môi trường:</span>
+                                            <span className="font-mono text-slate-800 font-semibold">{detailInvoice.tax_amount.toLocaleString('vi-VN')} đ</span>
+                                        </div>
+                                        <div className="flex justify-between text-amber-700 font-bold">
+                                            <span>Nợ kỳ trước:</span>
+                                            <span className="font-mono">+{prevDebt.toLocaleString('vi-VN')} đ</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs font-black text-neutral-900 pt-2 border-t border-slate-200">
+                                            <span>TỔNG CỘNG PHẢI THU:</span>
+                                            <span className="font-mono text-sm text-emerald-700">{calculatedTotal.toLocaleString('vi-VN')} đ</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-emerald-700 font-semibold">
+                                            <span>Đã thanh toán:</span>
+                                            <span className="font-mono">{paidAmount.toLocaleString('vi-VN')} đ</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-amber-700 font-bold">
+                                            <span>Dư nợ còn lại:</span>
+                                            <span className="font-mono">{remainingBalance.toLocaleString('vi-VN')} đ</span>
+                                        </div>
                                     </div>
-                                )}
-                                <div className="flex justify-between text-xs font-black text-neutral-900 pt-2 border-t border-slate-200">
-                                    <span>TỔNG CỘNG PHẢI THU:</span>
-                                    <span className="font-mono text-sm text-emerald-700">{detailInvoice.total_amount.toLocaleString('vi-VN')} đ</span>
-                                </div>
-                                <div className="flex justify-between text-xs text-emerald-700 font-semibold">
-                                    <span>Đã thanh toán:</span>
-                                    <span className="font-mono">{detailInvoice.paid_amount.toLocaleString('vi-VN')} đ</span>
-                                </div>
-                                <div className="flex justify-between text-xs text-amber-700 font-bold">
-                                    <span>Dư nợ còn lại:</span>
-                                    <span className="font-mono">{detailInvoice.remaining_balance.toLocaleString('vi-VN')} đ</span>
-                                </div>
-                            </div>
+                                );
+                            })()}
                         </div>
 
                         <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between">
@@ -1452,22 +1460,20 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     <button
                                         type="button"
                                         onClick={() => setPayAmount(payModalInvoice.remaining_balance)}
-                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                                            payAmount === payModalInvoice.remaining_balance
-                                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                                                : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                        }`}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${payAmount === payModalInvoice.remaining_balance
+                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                            }`}
                                     >
                                         Thu hết (100%)
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setPayAmount(Math.round(payModalInvoice.remaining_balance / 2))}
-                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                                            payAmount === Math.round(payModalInvoice.remaining_balance / 2)
-                                                ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
-                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                                        }`}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${payAmount === Math.round(payModalInvoice.remaining_balance / 2)
+                                            ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
                                     >
                                         50% dư nợ ({Math.round(payModalInvoice.remaining_balance / 2).toLocaleString('vi-VN')} đ)
                                     </button>
@@ -1475,11 +1481,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                         <button
                                             type="button"
                                             onClick={() => setPayAmount(1000000)}
-                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                                                payAmount === 1000000
-                                                    ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
-                                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                                            }`}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${payAmount === 1000000
+                                                ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                                }`}
                                         >
                                             1.000.000 đ
                                         </button>
@@ -1488,11 +1493,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                         <button
                                             type="button"
                                             onClick={() => setPayAmount(2000000)}
-                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                                                payAmount === 2000000
-                                                    ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
-                                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                                            }`}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${payAmount === 2000000
+                                                ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
+                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                                }`}
                                         >
                                             2.000.000 đ
                                         </button>
@@ -1507,11 +1511,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     <button
                                         type="button"
                                         onClick={() => setPayMethod('CASH')}
-                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
-                                            payMethod === 'CASH'
-                                                ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20'
-                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                        }`}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${payMethod === 'CASH'
+                                            ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20'
+                                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-700">
                                             <Banknote className="w-4 h-4" />
@@ -1522,11 +1525,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     <button
                                         type="button"
                                         onClick={() => setPayMethod('BANK_TRANSFER')}
-                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
-                                            payMethod === 'BANK_TRANSFER'
-                                                ? 'bg-sky-50 border-sky-500 text-sky-900 ring-2 ring-sky-500/20'
-                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                        }`}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${payMethod === 'BANK_TRANSFER'
+                                            ? 'bg-sky-50 border-sky-500 text-sky-900 ring-2 ring-sky-500/20'
+                                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-1.5 font-bold text-xs text-sky-700">
                                             <CreditCard className="w-4 h-4" />
@@ -1537,11 +1539,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     <button
                                         type="button"
                                         onClick={() => setPayMethod('VIETQR')}
-                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
-                                            payMethod === 'VIETQR'
-                                                ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20'
-                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                        }`}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${payMethod === 'VIETQR'
+                                            ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20'
+                                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-700">
                                             <QrCode className="w-4 h-4" />
@@ -1554,11 +1555,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     <button
                                         type="button"
                                         onClick={() => setPayMethod('VNPAY')}
-                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
-                                            payMethod === 'VNPAY'
-                                                ? 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-500/20'
-                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                        }`}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${payMethod === 'VNPAY'
+                                            ? 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-500/20'
+                                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-1.5 font-bold text-xs text-violet-700">
                                             <Cpu className="w-4 h-4" />
@@ -1569,11 +1569,10 @@ export const InvoiceManagement: React.FC<InvoiceManagementProps> = ({ onNavigate
                                     <button
                                         type="button"
                                         onClick={() => setPayMethod('MOMO')}
-                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
-                                            payMethod === 'MOMO'
-                                                ? 'bg-pink-50 border-pink-500 text-pink-900 ring-2 ring-pink-500/20'
-                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                        }`}
+                                        className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${payMethod === 'MOMO'
+                                            ? 'bg-pink-50 border-pink-500 text-pink-900 ring-2 ring-pink-500/20'
+                                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-1.5 font-bold text-xs text-pink-700">
                                             <Sparkles className="w-4 h-4" />

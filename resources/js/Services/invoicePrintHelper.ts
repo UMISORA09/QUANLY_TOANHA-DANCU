@@ -352,7 +352,7 @@ export const generateInvoicePrintHtml = (invoice: InvoiceModel): string => {
             </div>
             ${Number(invoice.previous_debt_amount) > 0 ? `
                 <div class="calc-row" style="color:#b45309;font-weight:600;">
-                    <span>Công nợ tồn kỳ trước:</span>
+                    <span>Nợ kỳ trước:</span>
                     <span style="font-family:monospace;">+${formatVnd(invoice.previous_debt_amount)}</span>
                 </div>
             ` : ''}

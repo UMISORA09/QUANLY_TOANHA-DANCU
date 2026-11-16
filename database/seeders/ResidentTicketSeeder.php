@@ -130,7 +130,7 @@ class ResidentTicketSeeder extends Seeder
                 'id' => $userId,
                 'username' => 'nguyenvanan',
                 'email' => 'nguyenvanan@cassavas.vn',
-                'password_hash' => Hash::make('password123'),
+                'password_hash' => Hash::make('123567'),
                 'full_name' => 'Nguyễn Văn An',
                 'phone_number' => '0901234567',
                 'status' => 'ACTIVE',

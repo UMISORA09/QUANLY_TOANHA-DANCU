@@ -347,7 +347,9 @@ class InvoiceSampleSeeder extends Seeder
             $user = $userMap[$def['apt']];
             $apartment = $aptMap[$def['apt']];
 
-            $totalAmount = $def['total'];
+            $serviceAmount = $def['total'];
+            $previousDebt = 1000000;
+            $totalAmount = $serviceAmount + $previousDebt;
             $paidAmount = $def['paid'];
             $remaining = max(0, $totalAmount - $paidAmount);
 
@@ -359,10 +361,10 @@ class InvoiceSampleSeeder extends Seeder
                     'billing_period' => $def['period'],
                     'issue_date' => $def['issue_date'],
                     'due_date' => $def['due_date'],
-                    'subtotal_amount' => round($totalAmount / 1.1),
-                    'tax_amount' => round($totalAmount - ($totalAmount / 1.1)),
+                    'subtotal_amount' => round($serviceAmount / 1.1),
+                    'tax_amount' => round($serviceAmount - ($serviceAmount / 1.1)),
                     'discount_amount' => 0,
-                    'previous_debt_amount' => 0,
+                    'previous_debt_amount' => $previousDebt,
                     'total_amount' => $totalAmount,
                     'paid_amount' => $paidAmount,
                     'remaining_balance' => $remaining,
@@ -375,9 +377,9 @@ class InvoiceSampleSeeder extends Seeder
             InvoiceItem::where('invoice_id', $invoice->id)->delete();
 
             // Sinh khoản mục chi phí thực tế
-            $mgmtPreTax = round($totalAmount * 0.45 / 1.1);
-            $elecPreTax = round($totalAmount * 0.35 / 1.1);
-            $waterPreTax = round($totalAmount / 1.1) - $mgmtPreTax - $elecPreTax;
+            $mgmtPreTax = round($serviceAmount * 0.45 / 1.1);
+            $elecPreTax = round($serviceAmount * 0.35 / 1.1);
+            $waterPreTax = round($serviceAmount / 1.1) - $mgmtPreTax - $elecPreTax;
 
             InvoiceItem::create([
                 'invoice_id' => $invoice->id,

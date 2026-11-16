@@ -27,7 +27,7 @@ class RealisticBuildingDataSeeder extends Seeder
         }
 
         $now = Carbon::now();
-        $defaultPassword = Hash::make('Cassavas@2026');
+        $defaultPassword = Hash::make('123567');
 
         // =========================================================================
         // 1. TÀI KHOẢN MẠNG XÃ HỘI THỰC TẾ (GOOGLE & FACEBOOK USERS)

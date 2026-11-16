@@ -185,7 +185,7 @@ class SharedDemoDataSeeder extends Seeder
                     'email' => 'admin@demo.local',
                     'phone_number' => '0900000001',
                     'full_name' => 'Quản Trị Viên Hệ Thống',
-                    'password' => 'Admin@123456',
+                    'password' => '123567',
                     'role' => 'SUPER_ADMIN',
                     'gender' => 'MALE',
                 ],
@@ -194,7 +194,7 @@ class SharedDemoDataSeeder extends Seeder
                     'email' => 'manager@demo.local',
                     'phone_number' => '0900000002',
                     'full_name' => 'Ban Quản Lý Tòa Nhà',
-                    'password' => 'Manager@123456',
+                    'password' => '123567',
                     'role' => 'BUILDING_MANAGER',
                     'gender' => 'FEMALE',
                 ],
@@ -203,7 +203,7 @@ class SharedDemoDataSeeder extends Seeder
                     'email' => 'accountant@demo.local',
                     'phone_number' => '0900000003',
                     'full_name' => 'Kế Toán Viên Tòa Nhà',
-                    'password' => 'Accountant@123456',
+                    'password' => '123567',
                     'role' => 'ACCOUNTANT',
                     'gender' => 'FEMALE',
                 ],
@@ -212,7 +212,7 @@ class SharedDemoDataSeeder extends Seeder
                     'email' => 'receptionist@demo.local',
                     'phone_number' => '0900000004',
                     'full_name' => 'Nhân Viên Lễ Tân Sảnh',
-                    'password' => 'Receptionist@123456',
+                    'password' => '123567',
                     'role' => 'RECEPTIONIST',
                     'gender' => 'FEMALE',
                 ],
@@ -221,7 +221,7 @@ class SharedDemoDataSeeder extends Seeder
                     'email' => 'security@demo.local',
                     'phone_number' => '0900000005',
                     'full_name' => 'Đội Trưởng Bảo Vệ',
-                    'password' => 'Security@123456',
+                    'password' => '123567',
                     'role' => 'SECURITY_GUARD',
                     'gender' => 'MALE',
                 ],
@@ -230,7 +230,7 @@ class SharedDemoDataSeeder extends Seeder
                     'email' => 'resident.owner@demo.local',
                     'phone_number' => '0900000010',
                     'full_name' => 'Nguyễn Văn An (Chủ hộ)',
-                    'password' => 'Resident@123456',
+                    'password' => '123567',
                     'role' => 'RESIDENT_OWNER',
                     'gender' => 'MALE',
                 ],
@@ -239,7 +239,7 @@ class SharedDemoDataSeeder extends Seeder
                     'email' => 'resident.member@demo.local',
                     'phone_number' => '0900000011',
                     'full_name' => 'Nguyễn Thị Mai (Thành viên)',
-                    'password' => 'Resident@123456',
+                    'password' => '123567',
                     'role' => 'RESIDENT_MEMBER',
                     'gender' => 'FEMALE',
                 ],
@@ -493,7 +493,7 @@ class SharedDemoDataSeeder extends Seeder
                         'id' => $ownerId,
                         'username' => $ownerUsername,
                         'phone_number' => $ownerPhone,
-                        'password_hash' => Hash::make('Resident@123456'),
+                        'password_hash' => Hash::make('123567'),
                         'full_name' => $name,
                         'gender' => $gender,
                         'status' => 'ACTIVE',
@@ -546,7 +546,7 @@ class SharedDemoDataSeeder extends Seeder
                         'id' => $memId,
                         'username' => $memUsername,
                         'phone_number' => $memPhone,
-                        'password_hash' => Hash::make('Resident@123456'),
+                        'password_hash' => Hash::make('123567'),
                         'full_name' => $memName,
                         'gender' => $memGender,
                         'status' => $userStatus,
@@ -588,7 +588,7 @@ class SharedDemoDataSeeder extends Seeder
                     'id' => $childId,
                     'username' => 'resident.child',
                     'phone_number' => '0900000012',
-                    'password_hash' => Hash::make('Resident@123456'),
+                    'password_hash' => Hash::make('123567'),
                     'full_name' => 'Nguyễn Minh Quân (Con)',
                     'gender' => 'MALE',
                     'status' => 'ACTIVE',
@@ -635,13 +635,14 @@ class SharedDemoDataSeeder extends Seeder
                 $parkingFee = 150000.00;
                 $subtotal = $mgntFee + $waterFee + $parkingFee;
                 $vat = round($subtotal * 0.1, 2);
-                $total = $subtotal + $vat;
+                $prevDebt = 1000000.00;
+                $total = $subtotal + $vat + $prevDebt;
 
                 $paid = 0.00;
                 if ($status === 'PAID') {
-                    $paid = $total;
+                    $paid = $subtotal + $vat;
                 } elseif ($status === 'PARTIALLY_PAID') {
-                    $paid = round($total / 2, 2);
+                    $paid = round(($subtotal + $vat) / 2, 2);
                 }
                 $remaining = max(0.00, round($total - $paid, 2));
                 $dueDate = ($status === 'OVERDUE') ? '2026-08-15' : '2026-10-15';
@@ -667,7 +668,7 @@ class SharedDemoDataSeeder extends Seeder
                         'subtotal_amount' => $subtotal,
                         'tax_amount' => $vat,
                         'discount_amount' => 0.00,
-                        'previous_debt_amount' => 0.00,
+                        'previous_debt_amount' => 1000000.00,
                         'total_amount' => $total,
                         'paid_amount' => $paid,
                         'remaining_balance' => $remaining,
