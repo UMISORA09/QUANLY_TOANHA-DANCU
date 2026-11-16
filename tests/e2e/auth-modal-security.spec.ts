@@ -67,6 +67,10 @@ for (const view of ['modal', 'login']) {
       await route.fulfill({ status: 401, json: { message: 'QA credentials verified' } });
     });
     await page.goto(`${origin}/qa/auth-modal?view=${view}&role=admin`);
+    const password = page.locator('input[type="password"]').first();
+    await password.fill('qa-stale-autofill');
+    await page.getByRole('button', { name: /^Admin/ }).click();
+    await expect(password).toHaveValue('123567');
     await page.locator('button[type="submit"]').first().click();
     await expect(page.getByText('QA credentials verified').last()).toBeVisible();
   });
