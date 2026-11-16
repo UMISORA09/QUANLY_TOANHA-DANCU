@@ -412,4 +412,202 @@ class RbacManagementTest extends TestCase
 
         $this->assertEquals(1, $count);
     }
+
+    /**
+     * 16. Cấp, lưu và thu hồi quyền người đặc biệt (special) trong ma trận RBAC
+     */
+    public function test_16_can_assign_and_revoke_special_permission_in_matrix(): void
+    {
+        [$admin, $token] = $this->createRbacUser('SUPER_ADMIN');
+
+        $role = Role::create([
+            'role_code' => 'TEST_SPECIAL_'.Str::upper(Str::random(6)),
+            'role_name' => 'Vai trò kiểm thử người đặc biệt',
+            'is_system_role' => false,
+        ]);
+
+        $specialPerm = Permission::firstOrCreate(
+            ['permission_code' => 'SYSTEM:SPECIAL'],
+            [
+                'id' => (string) Str::uuid(),
+                'module' => 'SYSTEM',
+                'permission_name' => 'Người đặc biệt (special)',
+                'description' => 'Quyền người đặc biệt với thẩm quyền quản trị đặc thù',
+                'created_at' => now(),
+            ]
+        );
+
+        // 1. Cấp quyền special cho vai trò
+        $assignResponse = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson("/api/v1/rbac/roles/{$role->id}/permissions", [
+                'permissions' => [$specialPerm->permission_code],
+            ]);
+
+        $assignResponse->assertStatus(200);
+
+        $this->assertDatabaseHas('role_permissions', [
+            'role_id' => $role->id,
+            'permission_id' => $specialPerm->id,
+        ]);
+
+        // 2. Kiểm tra đọc lại quyền qua getRolePermissions
+        $getResponse = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson("/api/v1/rbac/roles/{$role->id}/permissions");
+
+        $getResponse->assertStatus(200);
+        $permissions = collect($getResponse->json('data.permissions'));
+        $this->assertTrue($permissions->contains('permission_code', 'SYSTEM:SPECIAL'));
+
+        // 3. Kiểm tra User gắn vai trò có quyền special
+        [$testUser] = $this->createRbacUser($role->role_code);
+        $this->assertTrue($testUser->hasPermission('special'));
+        $this->assertTrue($testUser->hasPermission('SYSTEM:SPECIAL'));
+
+        // 4. Thu hồi quyền special
+        $revokeResponse = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson("/api/v1/rbac/roles/{$role->id}/permissions", [
+                'permissions' => [],
+            ]);
+
+        $revokeResponse->assertStatus(200);
+        $this->assertDatabaseMissing('role_permissions', [
+            'role_id' => $role->id,
+            'permission_id' => $specialPerm->id,
+        ]);
+
+        // Reset cache quyền của test user
+        $testUser = User::find($testUser->id);
+        $this->assertFalse($testUser->hasPermission('special'));
+    }
+
+    /**
+     * 17. Ma trận phân quyền hỗ trợ đầy đủ 7 quyền (create, delete, edit, download, upload, view, special)
+     */
+    public function test_17_matrix_preserves_six_core_permissions_and_supports_special(): void
+    {
+        [$admin, $token] = $this->createRbacUser('SUPER_ADMIN');
+
+        $role = Role::create([
+            'role_code' => 'TEST_7PERMS_'.Str::upper(Str::random(6)),
+            'role_name' => 'Vai trò kiểm thử 7 quyền',
+            'is_system_role' => false,
+        ]);
+
+        $coreCodes = [
+            'USER:CREATE',    // 1. Thêm (create)
+            'USER:DELETE',    // 2. Xóa (delete)
+            'USER:UPDATE',    // 3. Sửa (edit)
+            'REPORT:EXPORT',  // 4. Tải về (download)
+            'USER:UPLOAD',    // 5. Tải lên (upload)
+            'USER:VIEW',      // 6. Xem (view)
+            'SYSTEM:SPECIAL', // 7. Người đặc biệt (special)
+        ];
+
+        // Đảm bảo các quyền tồn tại
+        foreach ($coreCodes as $code) {
+            $parts = explode(':', $code);
+            Permission::firstOrCreate(
+                ['permission_code' => $code],
+                [
+                    'id' => (string) Str::uuid(),
+                    'module' => $parts[0],
+                    'permission_name' => 'Quyền '.$code,
+                    'created_at' => now(),
+                ]
+            );
+        }
+
+        // Cấp đồng thời cả 7 quyền
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson("/api/v1/rbac/roles/{$role->id}/permissions", [
+                'permissions' => $coreCodes,
+            ]);
+
+        $response->assertStatus(200);
+
+        // Xác nhận cả 7 quyền đều được lưu chính xác trong database
+        foreach ($coreCodes as $code) {
+            $perm = Permission::where('permission_code', $code)->first();
+            $this->assertDatabaseHas('role_permissions', [
+                'role_id' => $role->id,
+                'permission_id' => $perm->id,
+            ]);
+        }
+    }
+
+    /**
+     * Test 18: Phân quyền riêng cho từng tài khoản người dùng theo ma trận 7 quyền
+     */
+    public function test_18_can_assign_and_retrieve_user_specific_permissions_in_matrix(): void
+    {
+        [$admin, $token] = $this->createRbacUser('SUPER_ADMIN');
+        [$targetUser] = $this->createRbacUser('RESIDENT');
+
+        // 1. Kiểm tra lấy quyền ban đầu của người dùng (chưa tùy chỉnh)
+        $initialRes = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson("/api/v1/rbac/users/{$targetUser->id}/permissions");
+
+        $initialRes->assertStatus(200);
+        $this->assertFalse($initialRes->json('data.is_customized'));
+
+        // 2. Cấu hình phân quyền riêng cho tài khoản theo ma trận 7 quyền
+        $customPerms = [
+            'USER:CREATE',
+            'USER:DELETE',
+            'USER:UPDATE',
+            'REPORT:EXPORT',
+            'USER:UPLOAD',
+            'USER:VIEW',
+            'SYSTEM:SPECIAL',
+        ];
+
+        foreach ($customPerms as $code) {
+            $parts = explode(':', $code);
+            Permission::firstOrCreate(
+                ['permission_code' => $code],
+                [
+                    'id' => (string) Str::uuid(),
+                    'module' => $parts[0],
+                    'permission_name' => 'Quyền '.$code,
+                    'created_at' => now(),
+                ]
+            );
+        }
+
+        $syncRes = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson("/api/v1/rbac/users/{$targetUser->id}/permissions", [
+                'permissions' => $customPerms,
+            ]);
+
+        $syncRes->assertStatus(200);
+        $this->assertTrue($syncRes->json('data.is_customized'));
+
+        // 3. Tải lại quyền hạn của tài khoản
+        $getRes = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson("/api/v1/rbac/users/{$targetUser->id}/permissions");
+
+        $getRes->assertStatus(200);
+        $this->assertTrue($getRes->json('data.is_customized'));
+        $retrievedPerms = $getRes->json('data.permissions');
+
+        foreach ($customPerms as $code) {
+            $this->assertContains($code, $retrievedPerms);
+        }
+
+        // Kiểm tra thực tế trên User model
+        $freshUser = User::find($targetUser->id);
+        $this->assertTrue($freshUser->hasPermission('SYSTEM:SPECIAL'));
+        $this->assertTrue($freshUser->hasPermission('special'));
+        $this->assertTrue($freshUser->hasPermission('USER:CREATE'));
+
+        // 4. Khôi phục quyền mặc định theo vai trò cho tài khoản
+        $resetRes = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->deleteJson("/api/v1/rbac/users/{$targetUser->id}/permissions");
+
+        $resetRes->assertStatus(200);
+        $this->assertFalse($resetRes->json('data.is_customized'));
+
+        $freshUserAfterReset = User::find($targetUser->id);
+        $this->assertFalse($freshUserAfterReset->hasPermission('SYSTEM:SPECIAL'));
+    }
 }

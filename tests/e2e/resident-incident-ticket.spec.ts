@@ -284,7 +284,8 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(page.locator('#ticket-title-input')).toBeVisible();
     await expect(page.locator('#ticket-category-select')).toBeVisible();
     await expect(page.locator('#ticket-location-input')).toBeVisible();
-    await expect(page.locator('#ticket-priority-select')).toBeVisible();
+    await expect(page.locator('#ticket-priority-select')).toHaveCount(0);
+    await expect(page.getByText('Ban quản lý sẽ xác nhận mức độ ưu tiên khi tiếp nhận yêu cầu.', { exact: true })).toBeVisible();
     await expect(page.locator('#ticket-description-textarea')).toBeVisible();
     await expect(page.locator('#ticket-submit-btn')).toBeVisible();
 
@@ -308,9 +309,7 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await page.click('button:has-text("Khu vực bếp")');
     await expect(page.locator('#ticket-location-input')).toHaveValue('Khu vực bếp');
 
-    // Chọn mức độ ưu tiên
-    await page.locator('#ticket-priority-select').click();
-    await page.getByRole('option', { name: 'Ưu tiên cao', exact: true }).click();
+    await expect(page.locator('#ticket-priority-select')).toHaveCount(0);
 
     // Nhập mô tả
     await page.fill(
@@ -394,11 +393,39 @@ test.describe('Resident Incident Ticket Feature E2E Tests', () => {
     await expect(opener).toBeFocused();
     await page.getByRole('button', { name: 'Chỉnh sửa', exact: true }).click();
     const edit = page.getByRole('dialog', { name: 'Sửa yêu cầu', exact: true });
-    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).click();
-    await edit.getByLabel('Ưu tiên yêu cầu', { exact: true }).press('Escape');
+    await expect(edit.getByLabel('Ưu tiên yêu cầu', { exact: true })).toHaveCount(0);
+    await expect(edit).toContainText('Mức độ ưu tiên do ban quản lý xác nhận.');
     await expect(edit).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(edit).toHaveCount(0);
     expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
   });
+});
+
+test('Resident ticket: stale edit reloads latest without discarding draft', async ({ page }) => {
+  await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'resident', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-token'); });
+  let ticket = { id: 'qa-occ', ticket_number: 'TCK-OCC', title: 'Sự cố ban đầu', description: 'Kiểm tra nước rò', location: 'Bếp', category_id: 'cat', status: 'NEW', priority: 'HIGH', version: 1, attachments: [], history: [] };
+  let writes = 0;
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/resident/tickets/qa-occ')) {
+      if (route.request().method() === 'PATCH') {
+        writes++; const payload = route.request().postDataJSON(); expect(payload.version).toBe(writes === 1 ? 1 : 2);
+        if (writes === 1) { ticket = { ...ticket, title: 'Nội dung mới trên máy chủ', version: 2 }; return route.fulfill({ status: 409, json: { message: 'Yêu cầu đã thay đổi' } }); }
+        return route.fulfill({ json: { success: true, data: { ...ticket, ...payload, version: 3 } } });
+      }
+      return route.fulfill({ json: { success: true, data: ticket } });
+    }
+    return route.fulfill({ json: { success: true, data: [], items: [], unread_count: 0 } });
+  });
+  await page.goto('/cu-dan?tab=tickets&ticket_id=qa-occ');
+  await page.getByRole('button', { name: 'Chỉnh sửa', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Sửa yêu cầu', exact: true });
+  await edit.getByLabel('Tiêu đề sự cố').fill('Nội dung đang soạn');
+  await edit.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Yêu cầu đã được cập nhật' })).toContainText('Nội dung mới trên máy chủ');
+  await expect(edit.getByLabel('Tiêu đề sự cố')).toHaveValue('Nội dung đang soạn'); expect(writes).toBe(1);
+  await page.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập' }).click();
+  await edit.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(edit).not.toBeVisible(); expect(writes).toBe(2);
 });

@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\QuocTinRealtimeService;
 use App\Services\RbacService;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -90,13 +91,20 @@ Broadcast::channel('quoc-tin.vehicles', function ($user) {
 
 // 6. RFID Cards Channel
 Broadcast::channel('quoc-tin.rfid-cards', function ($user) {
-    if (! $user) {
-        return false;
-    }
+    return QuocTinRealtimeService::isUserAuthorizedForChannel($user, 'quoc-tin.rfid-cards');
+});
 
-    if (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN') || $user->hasRole('BUILDING_MANAGER') || $user->hasRole('RECEPTIONIST') || $user->hasRole('SECURITY_GUARD'))) {
-        return true;
-    }
+// 7. Visitors Channel
+Broadcast::channel('quoc-tin.visitors', function ($user) {
+    return QuocTinRealtimeService::isUserAuthorizedForChannel($user, 'quoc-tin.visitors');
+});
 
-    return (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) || true;
+// 8. Parcels Channel
+Broadcast::channel('quoc-tin.parcels', function ($user) {
+    return QuocTinRealtimeService::isUserAuthorizedForChannel($user, 'quoc-tin.parcels');
+});
+
+// 9. Schedules Channel
+Broadcast::channel('quoc-tin.schedules', function ($user) {
+    return QuocTinRealtimeService::isUserAuthorizedForChannel($user, 'quoc-tin.schedules');
 });

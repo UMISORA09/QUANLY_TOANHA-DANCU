@@ -31,10 +31,40 @@ import {
 import { api, TemporaryRegistrationItem, ApartmentSummaryItem, ResidentItem } from '../../Services/api';
 import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
 import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
+import { CustomSelect, SelectOption } from '../../Components/Common/CustomSelect';
 
 interface TemporaryRegistrationManagementProps {
   embedded?: boolean;
 }
+
+/**
+ * Định dạng ngày theo chuẩn Việt Nam dd/MM/yyyy an toàn, chống lệch múi giờ Asia/Ho_Chi_Minh
+ */
+const formatDateVN = (dateStr?: string | null, includeTime: boolean = false): string => {
+  if (!dateStr || typeof dateStr !== 'string' || dateStr.trim() === '') return '—';
+  const trimmed = dateStr.trim();
+
+  // Xử lý chuỗi định dạng thuần YYYY-MM-DD (tránh bị lệch ngày do UTC midnight)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split('-');
+    return `${d}/${m}/${y}`;
+  }
+
+  try {
+    const dt = new Date(trimmed);
+    if (isNaN(dt.getTime())) return dateStr;
+
+    return new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      ...(includeTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+    }).format(dt);
+  } catch {
+    return dateStr;
+  }
+};
 
 export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationManagementProps> = ({
   embedded = false,
@@ -768,259 +798,270 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
           </div>
 
           {/* Type Filter */}
-          <select
-            value={filterType}
-            onChange={(e) => {
-              setFilterType(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
-          >
-            <option value="">Tất cả loại đăng ký</option>
-            <option value="TEMPORARY_STAY">Đăng ký Tạm trú</option>
-            <option value="TEMPORARY_ABSENCE">Thông báo Tạm vắng</option>
-          </select>
+          <div className="w-48">
+            <CustomSelect
+              value={filterType}
+              onChange={(val) => {
+                setFilterType(val);
+                setCurrentPage(1);
+              }}
+              options={[
+                { value: '', label: 'Tất cả loại đăng ký' },
+                { value: 'TEMPORARY_STAY', label: 'Đăng ký Tạm trú' },
+                { value: 'TEMPORARY_ABSENCE', label: 'Thông báo Tạm vắng' },
+              ]}
+              placeholder="Tất cả loại đăng ký"
+              searchable={false}
+            />
+          </div>
 
           {/* Status Filter */}
-          <select
-            value={filterStatus}
-            onChange={(e) => {
-              setFilterStatus(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
-          >
-            <option value="">Tất cả trạng thái Công An</option>
-            <option value="PENDING_POLICE_SUBMISSION">Chờ nộp Công An</option>
-            <option value="SUBMITTED_TO_POLICE">Đã gửi Công An</option>
-            <option value="APPROVED">Đã phê duyệt</option>
-            <option value="REJECTED">Đã từ chối</option>
-          </select>
+          <div className="w-56">
+            <CustomSelect
+              value={filterStatus}
+              onChange={(val) => {
+                setFilterStatus(val);
+                setCurrentPage(1);
+              }}
+              options={[
+                { value: '', label: 'Tất cả trạng thái Công An' },
+                { value: 'PENDING_POLICE_SUBMISSION', label: 'Chờ nộp Công An' },
+                { value: 'SUBMITTED_TO_POLICE', label: 'Đã gửi Công An' },
+                { value: 'APPROVED', label: 'Đã phê duyệt' },
+                { value: 'REJECTED', label: 'Đã từ chối' },
+              ]}
+              placeholder="Tất cả trạng thái Công An"
+              searchable={false}
+            />
+          </div>
 
           {/* Apartment Filter */}
-          <select
-            value={filterApartmentId}
-            onChange={(e) => {
-              setFilterApartmentId(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium max-w-[200px]"
-          >
-            <option value="">Tất cả căn hộ</option>
-            {apartments.map((apt) => (
-              <option key={apt.id} value={apt.id}>
-                Căn hộ {apt.apartment_number}
-              </option>
-            ))}
-          </select>
+          <div className="w-48">
+            <CustomSelect
+              value={filterApartmentId}
+              onChange={(val) => {
+                setFilterApartmentId(val);
+                setCurrentPage(1);
+              }}
+              options={[
+                { value: '', label: 'Tất cả căn hộ' },
+                ...apartments.map((apt) => ({
+                  value: apt.id,
+                  label: `Căn hộ ${apt.apartment_number}`,
+                })),
+              ]}
+              placeholder="Tất cả căn hộ"
+              searchable={true}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4">Cư Dân Kê Khai</th>
-                <th className="py-3.5 px-4">Căn Hộ</th>
-                <th className="py-3.5 px-4">Loại Đăng Ký</th>
-                <th className="py-3.5 px-4">Thời Hạn Lưu Trú</th>
-                <th className="py-3.5 px-4">Lý Do</th>
-                <th className="py-3.5 px-4">Trạng Thái Công An</th>
-                <th className="py-3.5 px-4">Mã Tiếp Nhận CA</th>
-                <th className="py-3.5 px-4">Người Duyệt</th>
-                <th className="py-3.5 px-4 text-right">Thao Tác</th>
+      {/* Desktop Main Table (Không bị tràn ngang trên 1024px, 1280px, 1440px, 1920px) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hidden lg:block">
+        <table className="w-full table-fixed text-left border-collapse min-w-0">
+          <colgroup>
+            <col className="w-[28%]" />
+            <col className="w-[18%]" />
+            <col className="w-[21%]" />
+            <col className="w-[18%]" />
+            <col className="w-[15%]" />
+          </colgroup>
+          <thead>
+            <tr className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <th className="py-3.5 px-4">Cư Dân & Căn Hộ</th>
+              <th className="py-3.5 px-4">Loại & Thời Hạn</th>
+              <th className="py-3.5 px-4">Lý Do Đăng Ký</th>
+              <th className="py-3.5 px-4">Trạng Thái & Mã CA</th>
+              <th className="py-3.5 px-4 text-right">Người Duyệt & Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-sm">
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />
+                  <span>Đang tải dữ liệu hồ sơ tạm trú / tạm vắng...</span>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />
-                    <span>Đang tải dữ liệu hồ sơ tạm trú / tạm vắng...</span>
-                  </td>
-                </tr>
-              ) : registrations.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
-                    <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                    <p className="font-semibold text-slate-600">Không tìm thấy hồ sơ nào</p>
-                    <p className="text-xs text-slate-400 mt-1">Thử thay đổi bộ lọc hoặc tạo hồ sơ mới.</p>
-                  </td>
-                </tr>
-              ) : (
-                registrations.map((item) => {
-                  const user = item.resident?.user;
-                  const isStay = item.registration_type === 'TEMPORARY_STAY';
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Resident Info */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-xs text-indigo-600 overflow-hidden">
-                            {user?.avatar_url ? (
-                              <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              user?.full_name?.charAt(0)?.toUpperCase() || 'U'
-                            )}
+            ) : registrations.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-slate-400">
+                  <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="font-semibold text-slate-600">Không tìm thấy hồ sơ nào</p>
+                  <p className="text-xs text-slate-400 mt-1">Thử thay đổi bộ lọc hoặc tạo hồ sơ mới.</p>
+                </td>
+              </tr>
+            ) : (
+              registrations.map((item) => {
+                const user = item.resident?.user;
+                const isStay = item.registration_type === 'TEMPORARY_STAY';
+                return (
+                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                    {/* Cột 1: Cư Dân & Căn Hộ */}
+                    <td className="py-3.5 px-4 align-top">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-xs text-indigo-600 overflow-hidden shrink-0 mt-0.5">
+                          {user?.avatar_url ? (
+                            <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            user?.full_name?.charAt(0)?.toUpperCase() || 'U'
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-900 text-sm leading-tight break-words">
+                              {user?.full_name || 'N/A'}
+                            </span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                              P.{item.apartment?.apartment_number || 'N/A'}
+                            </span>
                           </div>
-                          <div>
-                            <div className="font-bold text-slate-900">{user?.full_name || 'N/A'}</div>
-                            <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
-                              <span>CCCD: {user?.national_id_number || 'Chưa cập nhật'}</span>
-                              <span>·</span>
-                              <span>{user?.phone_number || ''}</span>
-                            </div>
+                          <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className="font-mono">CCCD: <strong className="text-slate-700">{user?.national_id_number || 'Chưa có'}</strong></span>
+                            <span>•</span>
+                            <span className="font-mono">{user?.phone_number || 'Chưa có SĐT'}</span>
                           </div>
                         </div>
-                      </td>
+                      </div>
+                    </td>
 
-                      {/* Apartment */}
-                      <td className="py-3.5 px-4">
-                        <span className="font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg text-xs border border-slate-200">
-                          {item.apartment?.apartment_number || 'N/A'}
-                        </span>
-                      </td>
-
-                      {/* Type Badge */}
-                      <td className="py-3.5 px-4">
+                    {/* Cột 2: Loại & Thời Hạn */}
+                    <td className="py-3.5 px-4 align-top">
+                      <div>
                         {isStay ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                             Tạm Trú
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                             Tạm Vắng
                           </span>
                         )}
-                      </td>
+                      </div>
+                      <div className="text-xs text-slate-600 mt-1.5 space-y-0.5">
+                        <div className="text-[11px]">Từ: <strong className="text-slate-800 font-mono">{formatDateVN(item.start_date)}</strong></div>
+                        <div className="text-[11px]">Đến: <strong className="text-slate-800 font-mono">{formatDateVN(item.end_date)}</strong></div>
+                      </div>
+                    </td>
 
-                      {/* Dates */}
-                      <td className="py-3.5 px-4 text-xs text-slate-600">
-                        <div>Từ: <strong className="text-slate-800">{item.start_date}</strong></div>
-                        <div className="mt-0.5">Đến: <strong className="text-slate-800">{item.end_date}</strong></div>
-                      </td>
+                    {/* Cột 3: Lý Do Đăng Ký */}
+                    <td className="py-3.5 px-4 align-top">
+                      <div className="text-xs text-slate-600 break-words line-clamp-3 leading-relaxed" title={item.reason}>
+                        {item.reason || '—'}
+                      </div>
+                    </td>
 
-                      {/* Reason */}
-                      <td className="py-3.5 px-4 max-w-[200px] truncate text-slate-600 text-xs" title={item.reason}>
-                        {item.reason}
-                      </td>
-
-                      {/* Police Status Badge */}
-                      <td className="py-3.5 px-4">
+                    {/* Cột 4: Trạng Thái & Mã Công An */}
+                    <td className="py-3.5 px-4 align-top">
+                      <div>
                         {item.police_status === 'APPROVED' && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
                             <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" />
                             Đã Phê Duyệt
                           </span>
                         )}
                         {item.police_status === 'REJECTED' && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                             <XCircle className="w-3.5 h-3.5 text-rose-600" />
                             Đã Từ Chối
                           </span>
                         )}
                         {item.police_status === 'SUBMITTED_TO_POLICE' && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                             <Send className="w-3.5 h-3.5 text-indigo-600" />
                             Đã Gửi Công An
                           </span>
                         )}
                         {(item.police_status === 'PENDING_POLICE_SUBMISSION' || item.police_status === 'PENDING') && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
                             <Clock className="w-3.5 h-3.5 text-slate-500" />
                             Chờ Nộp Công An
                           </span>
                         )}
-                      </td>
-
-                      {/* Police Reference Code */}
-                      <td className="py-3.5 px-4 font-mono text-xs text-slate-700">
+                      </div>
+                      <div className="mt-1.5">
                         {item.police_reference_code ? (
-                          <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-indigo-700 font-bold">
-                            {item.police_reference_code}
+                          <span className="text-[11px] font-mono font-bold text-indigo-700 bg-indigo-50/70 border border-indigo-200/80 px-1.5 py-0.5 rounded inline-block break-all" title={item.police_reference_code}>
+                            CA: {item.police_reference_code}
                           </span>
                         ) : (
-                          <span className="text-slate-400 italic">Chưa có mã</span>
+                          <span className="text-[11px] text-slate-400 italic">Chưa có mã CA</span>
                         )}
-                      </td>
+                      </div>
+                    </td>
 
-                      {/* Reviewer */}
-                      <td className="py-3.5 px-4 text-xs text-slate-500">
-                        {item.reviewer ? (
-                          <div>
-                            <div className="font-semibold text-slate-800">{item.reviewer.full_name}</div>
-                            <div className="text-[10px] text-slate-400">{item.reviewed_at ? item.reviewed_at.split('T')[0] : ''}</div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Chưa duyệt</span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setActionNotes(item.notes || '');
-                              setActionPoliceCode(item.police_reference_code || '');
-                              setIsDetailModalOpen(true);
-                            }}
-                            className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 transition"
-                            title="Xem chi tiết"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          {(item.police_status === 'PENDING' || item.police_status === 'PENDING_POLICE_SUBMISSION') && (
-                            <>
-                              <button
-                                onClick={() => handleOpenEdit(item)}
-                                disabled={isCooldownActive}
-                                className={`p-1.5 rounded-lg transition ${
-                                  isCooldownActive
-                                    ? 'text-slate-300 opacity-50 cursor-not-allowed'
-                                    : 'hover:bg-amber-50 text-slate-600 hover:text-amber-600'
-                                }`}
-                                title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Chỉnh sửa hồ sơ'}
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleOpenDelete(item)}
-                                disabled={isCooldownActive}
-                                className={`p-1.5 rounded-lg transition ${
-                                  isCooldownActive
-                                    ? 'text-slate-300 opacity-50 cursor-not-allowed'
-                                    : 'hover:bg-rose-50 text-slate-600 hover:text-rose-600'
-                                }`}
-                                title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Xóa hồ sơ'}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
-                          <button
-                            onClick={() => handleExportForm(item)}
-                            className="p-1.5 rounded-lg hover:bg-sky-50 text-slate-600 hover:text-sky-600 transition"
-                            title="Xuất Biểu Mẫu CT01 (Công An)"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
+                    {/* Cột 5: Người Duyệt & Thao Tác */}
+                    <td className="py-3.5 px-4 align-top text-right">
+                      {item.reviewer ? (
+                        <div className="text-xs text-right mb-2">
+                          <div className="font-semibold text-slate-800 truncate" title={item.reviewer.full_name}>{item.reviewer.full_name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{formatDateVN(item.reviewed_at)}</div>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-400 italic text-right mb-2">Chưa duyệt</div>
+                      )}
 
-        {/* Pagination Bar */}
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => {
+                            setSelectedItem(item);
+                            setActionNotes(item.notes || '');
+                            setActionPoliceCode(item.police_reference_code || '');
+                            setIsDetailModalOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 transition"
+                          title="Xem chi tiết"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {(item.police_status === 'PENDING' || item.police_status === 'PENDING_POLICE_SUBMISSION') && (
+                          <>
+                            <button
+                              onClick={() => handleOpenEdit(item)}
+                              disabled={isCooldownActive}
+                              className={`p-1.5 rounded-lg transition ${
+                                isCooldownActive
+                                  ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                                  : 'hover:bg-amber-50 text-slate-600 hover:text-amber-600'
+                              }`}
+                              title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Chỉnh sửa hồ sơ'}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenDelete(item)}
+                              disabled={isCooldownActive}
+                              className={`p-1.5 rounded-lg transition ${
+                                isCooldownActive
+                                  ? 'text-slate-300 opacity-50 cursor-not-allowed'
+                                  : 'hover:bg-rose-50 text-slate-600 hover:text-rose-600'
+                              }`}
+                              title={isCooldownActive ? `Đang tạm khóa chỉnh sửa (${remainingSeconds}s)` : 'Xóa hồ sơ'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => handleExportForm(item)}
+                          className="p-1.5 rounded-lg hover:bg-sky-50 text-slate-600 hover:text-sky-600 transition"
+                          title="Xuất Biểu Mẫu CT01 (Công An)"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+
+        {/* Pagination Bar for Desktop */}
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
           <span>
             Hiển thị <strong>{registrations.length}</strong> trên tổng số <strong>{totalCount}</strong> hồ sơ
@@ -1042,6 +1083,198 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
               className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition"
             >
               Trang sau
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile & Tablet Card Layout (Hiển thị thẻ khi màn hình < 1024px, 768px, 390px - Không giấu dữ liệu) */}
+      <div className="space-y-3 block lg:hidden">
+        {loading ? (
+          <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />
+            <span className="text-xs">Đang tải dữ liệu hồ sơ...</span>
+          </div>
+        ) : registrations.length === 0 ? (
+          <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400">
+            <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <p className="font-semibold text-slate-600 text-sm">Không tìm thấy hồ sơ nào</p>
+            <p className="text-xs text-slate-400 mt-1">Thử thay đổi bộ lọc hoặc tạo hồ sơ mới.</p>
+          </div>
+        ) : (
+          registrations.map((item) => {
+            const user = item.resident?.user;
+            const isStay = item.registration_type === 'TEMPORARY_STAY';
+            return (
+              <div key={item.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3 hover:border-indigo-300 transition-all">
+                {/* Header card: Cư dân, Căn hộ, Loại */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-xs text-indigo-600 shrink-0">
+                      {user?.avatar_url ? (
+                        <img src={user.avatar_url} alt="" className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        user?.full_name?.charAt(0)?.toUpperCase() || 'U'
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 text-sm leading-tight truncate">
+                        {user?.full_name || 'N/A'}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        Căn hộ: <strong className="text-indigo-700 font-bold">P.{item.apartment?.apartment_number || 'N/A'}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0">
+                    {isStay ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Tạm Trú
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Tạm Vắng
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Chi tiết liên hệ & Thời hạn */}
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Định Danh</span>
+                    <div className="text-slate-700 font-mono mt-0.5">CCCD: {user?.national_id_number || '—'}</div>
+                    <div className="text-slate-700 font-mono mt-0.5">SĐT: {user?.phone_number || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Thời Hạn</span>
+                    <div className="text-slate-700 font-mono mt-0.5">Từ: <strong>{formatDateVN(item.start_date)}</strong></div>
+                    <div className="text-slate-700 font-mono mt-0.5">Đến: <strong>{formatDateVN(item.end_date)}</strong></div>
+                  </div>
+                </div>
+
+                {/* Lý do */}
+                <div className="text-xs text-slate-600 bg-slate-50/50 p-2 rounded-lg border border-slate-100">
+                  <span className="font-semibold text-slate-700">Lý do: </span>
+                  <span className="break-words">{item.reason || '—'}</span>
+                </div>
+
+                {/* Trạng thái Công An & Người duyệt */}
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+                  <div>
+                    {item.police_status === 'APPROVED' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                        <CheckCircle2 className="w-3 h-3 text-sky-600" /> Đã Phê Duyệt
+                      </span>
+                    )}
+                    {item.police_status === 'REJECTED' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        <XCircle className="w-3 h-3 text-rose-600" /> Đã Từ Chối
+                      </span>
+                    )}
+                    {item.police_status === 'SUBMITTED_TO_POLICE' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        <Send className="w-3 h-3 text-indigo-600" /> Đã Gửi Công An
+                      </span>
+                    )}
+                    {(item.police_status === 'PENDING_POLICE_SUBMISSION' || item.police_status === 'PENDING') && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                        <Clock className="w-3 h-3 text-slate-500" /> Chờ Nộp CA
+                      </span>
+                    )}
+                    {item.police_reference_code && (
+                      <span className="ml-1.5 font-mono text-[10px] font-bold text-indigo-700">
+                        {item.police_reference_code}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] text-slate-400 text-right">
+                    {item.reviewer ? (
+                      <span>Duyệt: <strong className="text-slate-600">{item.reviewer.full_name}</strong> ({formatDateVN(item.reviewed_at)})</span>
+                    ) : (
+                      <span className="italic">Chưa duyệt</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card Actions */}
+                <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      setSelectedItem(item);
+                      setActionNotes(item.notes || '');
+                      setActionPoliceCode(item.police_reference_code || '');
+                      setIsDetailModalOpen(true);
+                    }}
+                    className="flex-1 py-1.5 px-2 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center gap-1 hover:bg-indigo-100 transition"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Chi Tiết</span>
+                  </button>
+                  {(item.police_status === 'PENDING' || item.police_status === 'PENDING_POLICE_SUBMISSION') && (
+                    <>
+                      <button
+                        onClick={() => handleOpenEdit(item)}
+                        disabled={isCooldownActive}
+                        className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-1 ${
+                          isCooldownActive
+                            ? 'border-slate-200 text-slate-300 opacity-50 cursor-not-allowed'
+                            : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        }`}
+                        title="Chỉnh sửa hồ sơ"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Sửa</span>
+                      </button>
+                      <button
+                        onClick={() => handleOpenDelete(item)}
+                        disabled={isCooldownActive}
+                        className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-1 ${
+                          isCooldownActive
+                            ? 'border-slate-200 text-slate-300 opacity-50 cursor-not-allowed'
+                            : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                        }`}
+                        title="Xóa hồ sơ"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Xóa</span>
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => handleExportForm(item)}
+                    className="py-1.5 px-3 rounded-xl bg-sky-50 text-sky-700 font-bold text-xs flex items-center justify-center gap-1 hover:bg-sky-100 border border-sky-200 transition"
+                    title="Xuất Biểu Mẫu CT01 (Công An)"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>CT01</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {/* Mobile Pagination Bar */}
+        <div className="p-3 bg-white rounded-2xl border border-slate-200 flex flex-col sm:flex-row gap-2 items-center justify-between text-xs text-slate-500">
+          <span>Hiển thị <strong>{registrations.length}</strong> / <strong>{totalCount}</strong> hồ sơ</span>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+              className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 disabled:opacity-40 font-medium"
+            >
+              Trước
+            </button>
+            <span className="font-semibold text-slate-700">{currentPage} / {totalPages || 1}</span>
+            <button
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+              className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 disabled:opacity-40 font-medium"
+            >
+              Sau
             </button>
           </div>
         </div>
@@ -1121,23 +1354,23 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
                       </button>
                     )}
                   </div>
-                  <select
+                  <CustomSelect
                     value={createForm.apartment_id}
-                    onChange={(e) => {
-                      setCreateForm({ ...createForm, apartment_id: e.target.value, resident_id: '' });
+                    onChange={(val) => {
+                      setCreateForm({ ...createForm, apartment_id: val, resident_id: '' });
                       setResidentSearchKeyword('');
                     }}
-                    className={`w-full px-3.5 py-2.5 text-sm bg-slate-50 border rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition ${
-                      formErrors.apartment_id ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
-                    }`}
-                  >
-                    <option value="">-- Chọn căn hộ (hoặc chọn cư dân bên cạnh trước) --</option>
-                    {apartments.map((apt) => (
-                      <option key={apt.id} value={apt.id}>
-                        Căn hộ {apt.apartment_number} {apt.residents_count > 0 ? `(${apt.residents_count} cư dân)` : '(Chưa có cư dân)'}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: '-- Chọn căn hộ (hoặc chọn cư dân bên cạnh trước) --' },
+                      ...apartments.map((apt) => ({
+                        value: apt.id,
+                        label: `Căn hộ ${apt.apartment_number} ${apt.residents_count > 0 ? `(${apt.residents_count} cư dân)` : '(Chưa có cư dân)'}`,
+                      })),
+                    ]}
+                    placeholder="-- Chọn căn hộ --"
+                    overlay={true}
+                    searchable={true}
+                  />
                   {formErrors.apartment_id && <p className="text-xs text-rose-500 mt-1">{formErrors.apartment_id}</p>}
                 </div>
 
@@ -1174,33 +1407,28 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
                     )}
                   </div>
 
-                  <select
+                  <CustomSelect
                     disabled={loadingResidents}
                     value={createForm.resident_id}
-                    onChange={(e) => handleSelectResident(e.target.value)}
-                    className={`w-full px-3.5 py-2.5 text-sm bg-slate-50 border rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 transition ${
-                      formErrors.resident_id ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200'
-                    }`}
-                  >
-                    {availableResidents.length === 0 ? (
-                      createForm.apartment_id ? (
-                        <option value="" disabled>-- Căn hộ này chưa có cư dân nào --</option>
-                      ) : (
-                        <option value="" disabled>-- Không tìm thấy cư dân phù hợp --</option>
-                      )
-                    ) : (
-                      <option value="">
-                        {createForm.apartment_id
-                          ? `-- Chọn cư dân căn hộ (${availableResidents.length} người) --`
-                          : `-- Chọn cư dân (${availableResidents.length} người, tự điền căn hộ) --`}
-                      </option>
-                    )}
-                    {availableResidents.map((r: ResidentItem) => (
-                      <option key={r.id} value={r.id}>
-                        {r.user?.full_name || 'N/A'} {r.apartment?.apartment_number ? `(Căn ${r.apartment.apartment_number})` : ''} - CCCD: {r.user?.national_id_number || 'Chưa có'} {r.user?.phone_number ? `- SĐT: ${r.user.phone_number}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => handleSelectResident(val)}
+                    options={[
+                      {
+                        value: '',
+                        label: availableResidents.length === 0
+                          ? (createForm.apartment_id ? '-- Căn hộ này chưa có cư dân nào --' : '-- Không tìm thấy cư dân phù hợp --')
+                          : (createForm.apartment_id
+                            ? `-- Chọn cư dân căn hộ (${availableResidents.length} người) --`
+                            : `-- Chọn cư dân (${availableResidents.length} người, tự điền căn hộ) --`),
+                      },
+                      ...availableResidents.map((r: ResidentItem) => ({
+                        value: r.id,
+                        label: `${r.user?.full_name || 'N/A'} ${r.apartment?.apartment_number ? `(Căn ${r.apartment.apartment_number})` : ''} - CCCD: ${r.user?.national_id_number || 'Chưa có'} ${r.user?.phone_number ? `- SĐT: ${r.user.phone_number}` : ''}`,
+                      })),
+                    ]}
+                    placeholder="-- Chọn cư dân --"
+                    overlay={true}
+                    searchable={true}
+                  />
                   {formErrors.resident_id && <p className="text-xs text-rose-500 mt-1">{formErrors.resident_id}</p>}
 
                   {/* Cảnh báo nếu căn hộ đã chọn có 0 cư dân */}
@@ -1421,8 +1649,8 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
                 <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1.5">
                   <p className="font-bold text-slate-700 text-sm">Căn Hộ: {selectedItem.apartment?.apartment_number}</p>
                   <p className="text-slate-500">Loại: <strong className="text-slate-700">{selectedItem.registration_type === 'TEMPORARY_STAY' ? 'Đăng ký Tạm trú' : 'Thông báo Tạm vắng'}</strong></p>
-                  <p className="text-slate-500">Thời hạn: <strong className="text-slate-700">{selectedItem.start_date} → {selectedItem.end_date}</strong></p>
-                  <p className="text-slate-500">Ngày tạo: <strong className="text-slate-700">{selectedItem.created_at.split('T')[0]}</strong></p>
+                  <p className="text-slate-500">Thời hạn: <strong className="text-slate-700 font-mono">{formatDateVN(selectedItem.start_date)} → {formatDateVN(selectedItem.end_date)}</strong></p>
+                  <p className="text-slate-500">Ngày tạo: <strong className="text-slate-700 font-mono">{formatDateVN(selectedItem.created_at, true)}</strong></p>
                 </div>
               </div>
 

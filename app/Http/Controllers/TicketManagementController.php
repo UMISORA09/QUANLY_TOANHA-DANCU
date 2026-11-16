@@ -25,7 +25,14 @@ class TicketManagementController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate(['page' => 'nullable|integer|min:1', 'search' => 'nullable|string|max:100', 'status' => 'nullable|in:NEW,RECEIVED,IN_PROGRESS,RESOLVED,CLOSED,CANCELLED', 'priority' => 'nullable|in:LOW,MEDIUM,HIGH,URGENT', 'category_id' => 'nullable|uuid', 'block_id' => 'nullable|uuid']);
-        $query = $this->tickets->access->scope($request->user(), Ticket::query())->with(['category', 'apartment.block', 'creator:id,full_name', 'technician:id,full_name']);
+        $query = $this->tickets->access->scope($request->user(), Ticket::query())->with([
+            'category',
+            'apartment.block',
+            'creator:id,full_name',
+            'technician:id,full_name,email',
+            'attachments',
+            'rating',
+        ]);
         foreach (['status', 'priority', 'category_id'] as $key) {
             if (! empty($data[$key])) {
                 $query->where($key, $data[$key]);
@@ -102,7 +109,7 @@ class TicketManagementController extends Controller
 
     public function workflow(Request $request, string $id): JsonResponse
     {
-        $data = $request->validate(['version' => 'required|integer|min:1', 'action' => 'required|in:receive,assign,start,resolve,cancel', 'technician_user_id' => 'required_if:action,assign|nullable|uuid', 'note' => 'required_if:action,resolve|nullable|string|min:5|max:500', 'reason' => 'required_if:action,cancel|nullable|string|min:5|max:500']);
+        $data = $request->validate(['version' => 'required|integer|min:1', 'action' => 'required|in:receive,assign,start,resolve,cancel', 'priority' => 'required_if:action,receive|in:LOW,MEDIUM,HIGH,URGENT', 'technician_user_id' => 'required_if:action,assign|nullable|uuid', 'note' => 'required_if:action,resolve|nullable|string|min:5|max:500', 'reason' => 'required_if:action,cancel|nullable|string|min:5|max:500']);
         app(TicketWorkflowService::class)->perform($request->user(), $id, $data['action'], (int) $data['version'], $data);
 
         return response()->json($this->tickets->detail($request->user(), $id));

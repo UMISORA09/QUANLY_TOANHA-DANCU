@@ -115,6 +115,7 @@ for (const resident of [false]) {
 
 for (const [width, height] of [[375, 812], [390, 844], [768, 1024], [1024, 768], [1440, 900]]) {
   test(`Ticket quản lý: form, combobox bàn phím và phiên bản ${width}px`, async ({ page }) => {
+    await page.clock.install();
     await page.setViewportSize({ width, height });
     await page.addInitScript(() => {
       localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'admin', name: 'Admin QA', email: 'qa@example.test' }));
@@ -158,6 +159,7 @@ for (const [width, height] of [[375, 812], [390, 844], [768, 1024], [1024, 768],
       return rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth && document.elementFromPoint(rect.left + rect.width / 2, rect.bottom - 8)?.closest('[role="listbox"]') === element;
     })).toBe(true);
     await category.press('Home');
+    await page.clock.fastForward(100);
     await expect(page.getByRole('option', { name: 'Điện nước', exact: true })).toBeFocused();
     await category.press('End');
     const lastCategory = page.getByRole('option', { name: 'Danh mục QA 29', exact: true });
@@ -243,7 +245,9 @@ test('Ticket: chặn phân công thiếu người, giữ ghi chú khi lỗi và 
     if (path.endsWith('/workflow')) { writes++; return route.fulfill({ status: 422, json: { message: 'Chưa thể hủy yêu cầu. Vui lòng thử lại.' } }); }
     if (path.endsWith('/tickets/qa-ticket')) {
       if (route.request().method() === 'PATCH') {
-        writes++; ticket = { ...ticket, title: 'Nội dung từ người phụ trách', version: 2 };
+        writes++;
+        if (writes > 2) { expect(route.request().postDataJSON().version).toBe(2); return route.fulfill({ json: { ...ticket, ...route.request().postDataJSON(), version: 3 } }); }
+        ticket = { ...ticket, title: 'Nội dung từ người phụ trách', version: 2 };
         return route.fulfill({ status: 409, json: { message: 'Yêu cầu đã thay đổi.' } });
       }
       return route.fulfill({ json: ticket });
@@ -275,8 +279,12 @@ test('Ticket: chặn phân công thiếu người, giữ ghi chú khi lỗi và 
   await expect(edit.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Nội dung đang nhập');
   await expect(edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true })).toBeDisabled();
   expect(writes).toBe(2);
-  await edit.getByRole('button', { name: 'Xem bản mới nhất', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'TCK-QA-001', exact: true })).toContainText('Nội dung từ người phụ trách');
+  await expect(edit).toContainText('Nội dung từ người phụ trách');
+  await edit.getByRole('button', { name: 'Đã xem bản mới, tiếp tục sửa bản nhập', exact: true }).click();
+  await expect(edit.getByLabel('Tiêu đề', { exact: true })).toHaveValue('Nội dung đang nhập');
+  await expect(edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true })).toBeEnabled();
+  await edit.getByRole('button', { name: 'Lưu yêu cầu', exact: true }).click();
+  await expect(edit).not.toBeVisible(); expect(writes).toBe(3);
 });
 
 test('Ticket: tải lại ảnh lỗi HTTP, ảnh hỏng và đóng ảnh phóng to bằng bàn phím', async ({ page }) => {
@@ -357,7 +365,7 @@ test('Thông báo đầu tiên tự làm mới danh sách sau khi trước đó 
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/manager/notifications')) {
       notifications++;
-      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], latest_id: notifications === 1 ? null : 'notification-qa', unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
+      return route.fulfill({ json: { items: notifications === 1 ? [] : [{ id: 'notification-qa', title: 'Yêu cầu mới', body_message: 'Có yêu cầu cần tiếp nhận.', is_read: false, deep_link_url: '/admin?tab=tickets' }], category_activity: notifications === 1 ? {} : { TICKET: '1:2026-11-06T09:00:00Z' }, latest_id: notifications === 1 ? null : 'notification-qa', unread_count: notifications === 1 ? 0 : 1, page: 1, total_pages: 1 } });
     }
     if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
     if (path.endsWith('/tickets')) { lists++; return route.fulfill({ json: { data: [], current_page: 1, last_page: 1, total: 0 } }); }
@@ -426,10 +434,15 @@ for (const actor of [
     await noticeButton('Liên kết không hợp lệ').click();
     await expect(feed.getByRole('alert')).toContainText(actor.role === 'resident' ? 'Liên kết thông báo sự cố không hợp lệ' : 'Liên kết thông báo không hợp lệ');
     expect(reads).toBe(0);
+    const failedRead = page.waitForResponse((response) => response.url().endsWith('/notice-qa/read'));
     await noticeButton('Sự cố vừa được cập nhật').click();
-    await expect(feed.getByRole('alert')).toContainText('Chưa thể đánh dấu đã đọc');
-    await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'overview');
+    expect((await failedRead).status()).toBe(500);
+    await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'tickets');
+    await expect(page.getByText('Yêu cầu mở từ chuông', { exact: true })).toBeVisible();
     await expect(bell).toHaveAttribute('aria-label', `Thông báo hệ thống (${otherUnread + 1} chưa đọc)`);
+    expect(reads).toBe(1);
+    await page.goto(actor.portal + '?tab=overview');
+    await bell.click();
     await noticeButton('Sự cố vừa được cập nhật').click();
     await expect(page).toHaveURL((url) => url.pathname === actor.portal && url.searchParams.get('tab') === 'tickets' && url.searchParams.get('ticket_id') === 'qa-ticket');
     await expect(page.getByText('Yêu cầu mở từ chuông', { exact: true })).toBeVisible();
@@ -467,3 +480,74 @@ for (const width of [375, 1440]) {
     expect((await colors(save)).background).not.toBe('rgb(255, 255, 255)');
   });
 }
+
+for (const width of [375, 768, 1440]) test('MOCKED F8 shared UI: technician workflow keeps draft on network error ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'technician', name: 'Kỹ thuật QA' }));
+    localStorage.setItem('smart_cassavas_token', 'qa-ui-technician');
+    localStorage.setItem('smart_cassavas_user', JSON.stringify({ id: 'qa-technician', full_name: 'Kỹ thuật QA', roles: ['TECHNICIAN'], permissions: ['TICKET:VIEW', 'TICKET:UPDATE'] }));
+  });
+  let ticket = { id: 'qa-tech-ticket', ticket_number: 'TCK-TECH-QA', title: 'Sự cố được giao', description: 'Kiểm tra kỹ thuật', status: 'RECEIVED', priority: 'MEDIUM', version: 3, created_at: '2026-11-01T00:00:00Z', apartment: { apartment_number: 'QA-01' }, attachments: [], history: [], actions: { start: true } };
+  let writes = 0;
+  await page.route('**/api/**', async route => {
+    const request = route.request(); const path = new URL(request.url()).pathname;
+    if (path.endsWith('/qa-tech-ticket/workflow')) {
+      writes++; const payload = request.postDataJSON();
+      expect(payload.action).toBe('start'); expect(payload.version).toBe(3);
+      if (writes === 1) return route.fulfill({ status: 503, json: { message: 'Mất kết nối QA' } });
+      ticket = { ...ticket, status: 'IN_PROGRESS', version: 4, actions: { start: false } };
+      return route.fulfill({ json: ticket });
+    }
+    if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
+    if (path.endsWith('/tickets/qa-tech-ticket')) return route.fulfill({ json: ticket });
+    if (path.endsWith('/tickets')) return route.fulfill({ json: { data: [ticket], current_page: 1, last_page: 1, total: 1 } });
+    return route.fulfill({ json: { items: [], data: [], unread_count: 0 } });
+  });
+  await page.goto('/quan-ly?tab=tickets');
+  await expect(page.getByRole('heading', { name: 'Yêu cầu / Sự cố', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Thêm yêu cầu hộ cư dân', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
+  await page.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Bắt đầu xử lý', exact: true });
+  const notes = dialog.getByRole('textbox', { name: 'Ghi chú xử lý (không bắt buộc)', exact: true });
+  await notes.fill('Đang kiểm tra hiện trường');
+  await dialog.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Mất kết nối QA');
+  await expect(notes).toHaveValue('Đang kiểm tra hiện trường');
+  expect(writes).toBe(1);
+  expect(await dialog.evaluate(element => element.getBoundingClientRect().width <= innerWidth)).toBe(true);
+  await dialog.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
+  await expect(dialog).toHaveCount(0); expect(writes).toBe(2);
+});
+
+for (const width of [375, 768, 1440]) test('Manager receives ticket with explicit priority and preserves it after network failure ' + width, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await page.addInitScript(() => { localStorage.setItem('smartcassavas_session', JSON.stringify({ role: 'manager', name: 'QA' })); localStorage.setItem('smart_cassavas_token', 'qa-receive'); });
+  let ticket = { id: 'qa-receive', ticket_number: 'TCK-RECEIVE', title: 'Sự cố QA', description: 'Cần tiếp nhận', status: 'NEW', priority: 'MEDIUM', version: 1, attachments: [], history: [], actions: { receive: true } };
+  let writes = 0;
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/qa-receive/workflow')) {
+      writes++; expect(route.request().postDataJSON()).toMatchObject({ action: 'receive', priority: 'HIGH', version: 1 });
+      if (writes === 1) return route.fulfill({ status: 503, json: { message: 'Mất kết nối QA' } });
+      ticket = { ...ticket, status: 'RECEIVED', priority: 'HIGH', version: 2, actions: { receive: false } };
+      return route.fulfill({ json: ticket });
+    }
+    if (path.endsWith('/tickets/options')) return route.fulfill({ json: { categories: [], blocks: [], apartments: [], residents: [], can_create: false } });
+    if (path.endsWith('/tickets/qa-receive')) return route.fulfill({ json: ticket });
+    if (path.endsWith('/tickets')) return route.fulfill({ json: { data: [ticket], current_page: 1, last_page: 1, total: 1 } });
+    return route.fulfill({ json: { items: [], data: [], unread_count: 0 } });
+  });
+  await page.goto('/quan-ly?tab=tickets');
+  await page.getByRole('button', { name: 'Xem chi tiết', exact: true }).click();
+  await page.getByRole('button', { name: 'Tiếp nhận', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Tiếp nhận', exact: true });
+  const submit = dialog.getByRole('button', { name: 'Tiếp nhận', exact: true });
+  await expect(submit).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Mức độ ưu tiên', exact: true }).click();
+  await page.getByRole('option', { name: 'Cao', exact: true }).click();
+  await submit.click(); await expect(dialog).toContainText('Mất kết nối QA');
+  await expect(dialog.getByRole('button', { name: 'Mức độ ưu tiên', exact: true })).toContainText('Cao');
+  await submit.click(); await expect(dialog).toHaveCount(0); expect(writes).toBe(2);
+});

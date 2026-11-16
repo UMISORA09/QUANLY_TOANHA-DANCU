@@ -4,6 +4,7 @@ use App\Http\Middleware\AuthenticateBearer;
 use App\Http\Middleware\CheckModuleCooldown;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\LockAmenityConfiguration;
+use App\Http\Middleware\MeasurePerformanceMiddleware;
 use App\Http\Middleware\RequestIdMiddleware;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
@@ -21,6 +22,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
         $middleware->append(RequestIdMiddleware::class);
+        $middleware->append(MeasurePerformanceMiddleware::class);
         $middleware->validateCsrfTokens(except: [
             'api/*',
             'health',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Role;
 use App\Models\User;
 use App\Services\QuocTinRealtimeService;
 use App\Services\RbacService;
@@ -9,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class UserController extends Controller
 {
@@ -307,6 +309,124 @@ class UserController extends Controller
             'success' => true,
             'message' => 'Cập nhật vai trò người dùng thành công.',
             'data' => $user->roles,
+        ]);
+    }
+
+    /**
+     * Lấy danh sách quyền hạn thực tế của một tài khoản người dùng
+     */
+    public function getUserPermissions(string $id): JsonResponse
+    {
+        $user = User::findOrFail($id);
+        $customRole = $user->roles()->where('role_code', 'LIKE', 'CUSTOM_USER_%')->first();
+        $permissions = $user->getAllPermissions();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'user_id' => $user->id,
+                'username' => $user->username,
+                'full_name' => $user->full_name,
+                'is_customized' => $customRole !== null,
+                'permissions' => $permissions,
+            ],
+        ]);
+    }
+
+    /**
+     * Cập nhật danh sách phân quyền riêng cho từng tài khoản người dùng theo ma trận 7 quyền
+     */
+    public function syncUserPermissions(Request $request, string $id): JsonResponse
+    {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+
+        $user = User::findOrFail($id);
+        $actor = $request->user();
+
+        $validated = $request->validate([
+            'permissions' => 'required|array',
+            'permissions.*' => 'string',
+        ]);
+
+        // Tìm hoặc tạo vai trò riêng cho tài khoản người dùng này
+        $customRoleCode = 'CUSTOM_USER_'.substr(str_replace('-', '', $user->id), 0, 12);
+        $role = Role::firstOrCreate(
+            ['role_code' => $customRoleCode],
+            [
+                'role_name' => 'Quyền riêng: '.($user->full_name ?: $user->username),
+                'description' => 'Vai trò phân quyền tùy chỉnh dành riêng cho tài khoản @'.$user->username,
+                'is_system_role' => false,
+            ]
+        );
+
+        // Đảm bảo vai trò riêng này được gán cho người dùng
+        $existingRoleIds = DB::table('user_roles')->where('user_id', $user->id)->pluck('role_id')->toArray();
+        if (! in_array($role->id, $existingRoleIds, true)) {
+            DB::table('user_roles')->insert([
+                'id' => (string) Str::uuid(),
+                'user_id' => $user->id,
+                'role_id' => $role->id,
+                'is_primary' => 0,
+                'assigned_at' => now(),
+                'assigned_by' => $actor?->id,
+            ]);
+        }
+
+        // Đồng bộ quyền hạn vào vai trò riêng của tài khoản
+        $this->rbacService->syncRolePermissions($role, $validated['permissions'], $actor, $request);
+
+        // Xóa cache quyền hạn in-memory
+        $user->clearPermissionCache();
+
+        QuocTinRealtimeService::emit('rbac', 'user_permission', 'UPDATED', $id, ['user_id' => $id]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Cập nhật phân quyền thành công cho tài khoản {$user->full_name}.",
+            'data' => [
+                'user_id' => $user->id,
+                'username' => $user->username,
+                'is_customized' => true,
+                'permissions' => $user->getAllPermissions(),
+            ],
+        ]);
+    }
+
+    /**
+     * Khôi phục quyền hạn mặc định theo vai trò cho tài khoản (xóa phân quyền riêng)
+     */
+    public function resetUserPermissions(Request $request, string $id): JsonResponse
+    {
+        QuocTinRealtimeService::assertNotInCooldown('rbac');
+
+        $user = User::findOrFail($id);
+
+        $customRoleCode = 'CUSTOM_USER_'.substr(str_replace('-', '', $user->id), 0, 12);
+        $role = Role::where('role_code', $customRoleCode)->first();
+
+        if ($role) {
+            DB::table('user_roles')
+                ->where('user_id', $user->id)
+                ->where('role_id', $role->id)
+                ->delete();
+
+            DB::table('role_permissions')->where('role_id', $role->id)->delete();
+            $role->delete();
+        }
+
+        $user->clearPermissionCache();
+
+        QuocTinRealtimeService::emit('rbac', 'user_permission', 'RESET', $id, ['user_id' => $id]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Đã khôi phục quyền mặc định theo vai trò cho tài khoản {$user->full_name}.",
+            'data' => [
+                'user_id' => $user->id,
+                'username' => $user->username,
+                'is_customized' => false,
+                'permissions' => $user->getAllPermissions(),
+            ],
         ]);
     }
 }

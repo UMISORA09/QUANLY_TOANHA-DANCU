@@ -1,3 +1,4 @@
+import '../../css/scss/feature-controls.scss';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
 import api, { type TicketRatingResponse } from '@/Services/api';
@@ -22,7 +23,7 @@ export function TicketRating({ ticketId, version }: { ticketId: string; version:
     return () => controller.abort();
   }, [ticketId, version, retry]);
 
-  return <section className="ticket-rating" aria-label="Đánh giá sau xử lý sự cố">
+  return <section className="feature-controls ticket-rating" aria-label="Đánh giá sau xử lý sự cố">
     <h3>Đánh giá sau xử lý sự cố</h3>
     {error && <div role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => setRetry(value => value + 1)}>Tải lại đánh giá</button></div>}
     {!result && !error && <p role="status">Đang tải đánh giá…</p>}
@@ -35,9 +36,25 @@ export function TicketRating({ ticketId, version }: { ticketId: string; version:
       if (!stars) { setError('Vui lòng chọn từ 1 đến 5 sao.'); return; }
       readGeneration.current++;
       setBusy(true); setError('');
+      const previousResult = result;
+      // Optimistic update: instantly render the completed rating state (<20ms perceived latency)
+      setResult({
+        ...result,
+        data: {
+          id: 'optimistic-pending',
+          ticket_id: ticketId,
+          rating_stars: stars,
+          review_comment: comment.trim() || null,
+          created_at: new Date().toISOString(),
+        },
+        can_rate: false,
+      });
       try {
-        setResult(await api.rateResidentTicket(ticketId, { version: result.ticket_version, rating_stars: stars, review_comment: comment }));
+        const serverData = await api.rateResidentTicket(ticketId, { version: result.ticket_version, rating_stars: stars, review_comment: comment });
+        setResult(serverData);
       } catch (err) {
+        // Rollback state if server returns conflict or error
+        setResult(previousResult);
         setError(err instanceof Error ? err.message : 'Chưa gửi được đánh giá. Vui lòng thử lại.');
       } finally { readGeneration.current++; setBusy(false); }
     }}>

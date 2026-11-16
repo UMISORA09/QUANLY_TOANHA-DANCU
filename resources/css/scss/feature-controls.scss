@@ -44,3 +44,8 @@
   > div { margin: 0; max-width: none; max-height: 92dvh; }
   form > div:last-child { position: sticky; bottom: -24px; background: #fff; padding-block: 16px; z-index: 1; }
 }
+
+.feature-ticket-dialog > div { overflow: hidden; }
+.feature-ticket-dialog > div > header > button { display: inline-flex; align-items: center; justify-content: center; }
+
+.feature-controls.feature-ticket-dialog, .feature-controls.feature-modal-shell { position: fixed; inset: 0; margin: auto; }

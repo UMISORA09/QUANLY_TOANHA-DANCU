@@ -8,9 +8,7 @@ import {
   RefreshCw,
   Clock,
   Building,
-  ShieldCheck,
   X,
-  ExternalLink,
   Sparkles,
   ChevronLeft,
   ChevronRight,
@@ -19,6 +17,7 @@ import {
 } from 'lucide-react';
 import api, { ParcelItem } from '../Services/api';
 import { useRealtimeSync } from '../Hooks/useRealtimeSync';
+import { CustomSelect } from './Common/CustomSelect';
 
 export const getParcelImageUrl = (url?: string | null): string => {
   if (!url) return '';
@@ -55,10 +54,34 @@ export const ResidentParcelWidget: React.FC = () => {
       return null;
     }
   });
+  const [carrierFilter, setCarrierFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const perPage = 4;
-  const totalPages = Math.max(1, Math.ceil(parcels.length / perPage));
-  const displayedParcels = parcels.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const filteredParcels = useMemo(() => {
+    if (!carrierFilter) return parcels;
+    const filter = carrierFilter.toUpperCase();
+    return parcels.filter((p) => {
+      const company = (p.courier_company || (p as any).carrier_name || '').toUpperCase();
+      if (company.includes(filter)) return true;
+      if (filter === 'SPX' && (company.includes('SHOPEE') || company.includes('SPX'))) return true;
+      if (
+        filter === 'GHTK' &&
+        (company.includes('TIẾT KIỆM') || company.includes('TIET KIEM') || company.includes('GHTK'))
+      ) {
+        return true;
+      }
+      if (filter === 'GHN' && (company.includes('NHANH') || company.includes('GHN'))) return true;
+      if (filter === 'VIETTEL' && company.includes('VIETTEL')) return true;
+      if (filter === 'J&T' && (company.includes('J&T') || company.includes('JT'))) return true;
+      if (filter === 'OTHER') {
+        const known = ['SPX', 'SHOPEE', 'GHTK', 'TIẾT KIỆM', 'TIET KIEM', 'GHN', 'NHANH', 'VIETTEL', 'J&T', 'JT'];
+        return !known.some((k) => company.includes(k));
+      }
+      return false;
+    });
+  }, [parcels, carrierFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredParcels.length / perPage));
+  const displayedParcels = filteredParcels.slice((currentPage - 1) * perPage, currentPage * perPage);
 
   // Đếm số kiện hàng gần hết hạn lưu trữ (3 - 5 ngày) để cảnh báo cư dân
   const expiringParcelsCount = useMemo(() => {
@@ -241,15 +264,39 @@ export const ResidentParcelWidget: React.FC = () => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={fetchResidentParcels}
-          disabled={loading}
-          className="p-2 text-neutral-500 hover:text-indigo-600 hover:bg-neutral-50 rounded-xl transition cursor-pointer disabled:opacity-50"
-          title="Làm mới danh sách bưu phẩm"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {parcels.length > 0 && (
+            <div className="w-44 sm:w-52">
+              <CustomSelect
+                value={carrierFilter}
+                onChange={(val) => {
+                  setCarrierFilter(val);
+                  setCurrentPage(1);
+                }}
+                options={[
+                  { value: '', label: 'Tất cả đơn vị VC' },
+                  { value: 'SPX', label: 'Shopee Express (SPX)' },
+                  { value: 'GHTK', label: 'Giao Hàng Tiết Kiệm' },
+                  { value: 'GHN', label: 'Giao Hàng Nhanh' },
+                  { value: 'VIETTEL', label: 'Viettel Post' },
+                  { value: 'J&T', label: 'J&T Express' },
+                  { value: 'OTHER', label: 'Khác' },
+                ]}
+                placeholder="Lọc đơn vị vận chuyển"
+                searchable={false}
+              />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={fetchResidentParcels}
+            disabled={loading}
+            className="p-2 text-neutral-500 hover:text-indigo-600 hover:bg-neutral-50 rounded-xl transition cursor-pointer disabled:opacity-50"
+            title="Làm mới danh sách bưu phẩm"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Danh sách bưu kiện */}

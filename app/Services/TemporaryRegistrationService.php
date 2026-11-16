@@ -19,8 +19,9 @@ class TemporaryRegistrationService
      * Danh sách hồ sơ tạm trú / tạm vắng kèm bộ lọc, tìm kiếm và phân trang
      *
      * @param  array<string, mixed>  $params
+     * @param  User|null  $scopedUser  Nếu được truyền, áp dụng data scoping theo căn hộ và quyền cư trú của người dùng
      */
-    public function list(array $params = []): LengthAwarePaginator
+    public function list(array $params = [], ?User $scopedUser = null): LengthAwarePaginator
     {
         $search = trim((string) ($params['search'] ?? ''));
         $apartmentId = trim((string) ($params['apartment_id'] ?? ''));
@@ -55,6 +56,44 @@ class TemporaryRegistrationService
                 'apartment:id,apartment_number,block_id,floor_id,room_type,status',
                 'reviewer:id,username,full_name,phone_number,email',
             ]);
+
+        // Áp dụng Data Scoping nếu người dùng là Cư dân (không phải Admin)
+        if ($scopedUser !== null) {
+            $userResidents = Resident::where('user_id', $scopedUser->id)
+                ->where('is_active', true)
+                ->get();
+
+            $headApartmentIds = $userResidents
+                ->filter(function ($r) use ($scopedUser) {
+                    return (bool) $r->is_head_of_household
+                        || $r->resident_type === 'OWNER'
+                        || (method_exists($scopedUser, 'hasRole') && $scopedUser->hasRole('RESIDENT_OWNER'));
+                })
+                ->pluck('apartment_id')
+                ->unique()
+                ->toArray();
+
+            $ownResidentIds = $userResidents->pluck('id')->unique()->toArray();
+
+            $query->where(function ($q) use ($headApartmentIds, $ownResidentIds) {
+                $hasCondition = false;
+                if (! empty($headApartmentIds)) {
+                    $q->whereIn('apartment_id', $headApartmentIds);
+                    $hasCondition = true;
+                }
+                if (! empty($ownResidentIds)) {
+                    if ($hasCondition) {
+                        $q->orWhereIn('resident_id', $ownResidentIds);
+                    } else {
+                        $q->whereIn('resident_id', $ownResidentIds);
+                    }
+                    $hasCondition = true;
+                }
+                if (! $hasCondition) {
+                    $q->whereRaw('1 = 0');
+                }
+            });
+        }
 
         // 1. Tìm kiếm theo Tên cư dân, Số điện thoại, CCCD/CMND, Số căn hộ, Mã hồ sơ Công An, Lý do
         if ($search !== '') {

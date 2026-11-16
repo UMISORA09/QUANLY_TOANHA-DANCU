@@ -41,6 +41,7 @@ class ResidentAmenityBookingConcurrencyTest extends TestCase
             DB::table('amenity_booking_payments')->whereIn('booking_id', $bookingIds)->delete();
             DB::table('amenity_bookings')->whereIn('amenity_id', $amenityIds)->delete();
             DB::table('amenity_time_slots')->whereIn('amenity_id', $amenityIds)->delete();
+            DB::table('amenity_blackouts')->whereIn('amenity_id', $amenityIds)->delete();
             DB::table('amenities')->whereIn('id', $amenityIds)->delete();
             DB::table('amenity_categories')->where('id', $this->categoryId)->delete();
             $userIds = [$this->residentUser->id, $this->secondUser->id, $this->adminUser->id];
@@ -298,5 +299,40 @@ class ResidentAmenityBookingConcurrencyTest extends TestCase
         }));
         $this->assertDatabaseHas('amenity_bookings', ['id' => $id, 'status' => 'CANCELLED', 'is_paid' => 0]);
         $this->assertDatabaseHas('amenity_booking_payments', ['booking_id' => $id, 'status' => 'REVIEW', 'refund_required' => 1]);
+    }
+
+    /** @return array<int, string> */
+    private function configurationAdministratorTokens(): array
+    {
+        $roleId = DB::table('user_roles')->where('user_id', $this->adminUser->id)->value('role_id');
+        DB::table('user_roles')->insert(['id' => (string) Str::uuid(), 'user_id' => $this->secondUser->id, 'role_id' => $roleId]);
+
+        return [$this->adminToken, $this->secondToken];
+    }
+
+    public function test_parallel_category_edits_accept_only_one_current_version(): void
+    {
+        $payload = ['version' => 1, 'category_name' => 'QA '.Str::random(10), 'category_code' => 'QA_'.Str::upper(Str::random(10))];
+        $statuses = $this->parallelRequests($this->configurationAdministratorTokens(), $payload, '/api/v1/admin/amenity-categories/'.$this->categoryId, null, 'PUT');
+        $this->assertSame([200, 409], $statuses);
+        $this->assertSame(2, DB::table('amenity_categories')->where('id', $this->categoryId)->value('version'));
+    }
+
+    public function test_parallel_slot_edits_accept_only_one_current_version(): void
+    {
+        $payload = ['version' => 1, 'day_of_week' => 1, 'slot_start_time' => '09:00', 'slot_end_time' => '10:00', 'max_bookings' => 2];
+        $statuses = $this->parallelRequests($this->configurationAdministratorTokens(), $payload, '/api/v1/admin/amenities/'.$this->amenityId.'/time-slots/'.$this->slotId, null, 'PUT');
+        $this->assertSame([200, 409], $statuses);
+        $this->assertSame(2, DB::table('amenity_time_slots')->where('id', $this->slotId)->value('version'));
+    }
+
+    public function test_parallel_blackout_edits_accept_only_one_current_version(): void
+    {
+        $id = (string) Str::uuid();
+        DB::table('amenity_blackouts')->insert(['id' => $id, 'amenity_id' => $this->amenityId, 'blackout_date' => $this->bookingDate, 'reason' => 'Lịch ban đầu']);
+        $payload = ['version' => 1, 'blackout_date' => $this->bookingDate, 'reason' => 'Lịch mới'];
+        $statuses = $this->parallelRequests($this->configurationAdministratorTokens(), $payload, '/api/v1/admin/amenities/'.$this->amenityId.'/blackouts/'.$id, null, 'PUT');
+        $this->assertSame([200, 409], $statuses);
+        $this->assertSame(2, DB::table('amenity_blackouts')->where('id', $id)->value('version'));
     }
 }

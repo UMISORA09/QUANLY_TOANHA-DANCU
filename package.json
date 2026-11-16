@@ -29,6 +29,9 @@
         "@laravel/multiplex": "^0.4.1"
     },
     "dependencies": {
+        "@astryxdesign/core": "0.7.15",
+        "@astryxdesign/theme-neutral": "0.7.15",
+        "@stylexjs/stylex": "0.19.2",
         "@supabase/supabase-js": "^2.118.0",
         "@tiptap/core": "3.32.0",
         "@tiptap/pm": "3.32.0",

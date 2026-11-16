@@ -6,7 +6,7 @@ use App\Models\Apartment;
 use App\Models\Parcel;
 use App\Models\User;
 use App\Services\ReceptionParcelService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -14,7 +14,7 @@ use Tests\TestCase;
 
 class ReceptionParcelCheckoutTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     protected ReceptionParcelService $service;
 
@@ -51,6 +51,7 @@ class ReceptionParcelCheckoutTest extends TestCase
                 'id' => $floorId,
                 'block_id' => $blockId,
                 'floor_number' => 5,
+                'floor_code' => 'FL-05',
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -92,8 +93,10 @@ class ReceptionParcelCheckoutTest extends TestCase
         }
 
         DB::table('user_roles')->insert([
+            'id' => (string) Str::uuid(),
             'user_id' => $user->id,
             'role_id' => $roleId,
+            'is_primary' => 1,
             'assigned_at' => now(),
         ]);
 
@@ -289,6 +292,213 @@ class ReceptionParcelCheckoutTest extends TestCase
                 'id' => $deliveredParcel->id,
                 'status' => 'DELIVERED',
             ],
+        ]);
+    }
+
+    /**
+     * Helper tạo phiên đăng nhập hợp lệ cho người dùng
+     */
+    protected function createSessionForUser(User $user): string
+    {
+        $token = 'smart_token_'.$user->id.'_'.Str::random(40);
+        $tokenHash = hash('sha256', $token);
+
+        DB::table('user_sessions')->insert([
+            'id' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'refresh_token_hash' => $tokenHash,
+            'device_name' => 'PHPUnit Test',
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'PHPUnit',
+            'expires_at' => now()->addDays(1),
+            'is_revoked' => 0,
+            'created_at' => now(),
+        ]);
+
+        return $token;
+    }
+
+    /**
+     * P0 TEST: Từ chối bàn giao với HTTP 401 nếu request chưa xác thực (Guest)
+     */
+    public function test_checkout_unauthenticated_returns_401(): void
+    {
+        $parcel = Parcel::create([
+            'tracking_number' => 'UNAUTH_TEST_'.Str::random(6),
+            'courier_company' => 'Shopee Express',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Nguyễn Cư Dân',
+            'recipient_phone' => '0912345678',
+            'parcel_photo_url' => 'https://sample.com/parcel.jpg',
+            'pickup_pin_code' => '123456',
+            'pickup_qr_code' => 'QR_UNAUTH_'.Str::random(6),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $response = $this->postJson("/api/v1/reception/parcels/{$parcel->id}/check-out", [
+            'pin_code' => '123456',
+        ]);
+
+        $response->assertStatus(401);
+    }
+
+    /**
+     * P0 TEST: Từ chối token tự chế chứa UUID người dùng mà không có session hợp lệ -> 401
+     */
+    public function test_checkout_with_forged_uuid_token_returns_401(): void
+    {
+        $parcel = Parcel::create([
+            'tracking_number' => 'FORGED_TEST_'.Str::random(6),
+            'courier_company' => 'GHTK',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Nguyễn Cư Dân',
+            'recipient_phone' => '0912345678',
+            'parcel_photo_url' => 'https://sample.com/parcel.jpg',
+            'pickup_pin_code' => '654321',
+            'pickup_qr_code' => 'QR_FORGED_'.Str::random(6),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // Token tự tạo chứa UUID của receptionist nhưng không có bản ghi trong user_sessions
+        $fakeToken = 'smart_token_'.$this->receptionist->id.'_'.Str::random(40);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$fakeToken)
+            ->postJson("/api/v1/reception/parcels/{$parcel->id}/check-out", [
+                'pin_code' => '654321',
+            ]);
+
+        $response->assertStatus(401);
+    }
+
+    /**
+     * P0 TEST: Người dùng đã đăng nhập nhưng không có quyền (Cư dân) gọi bàn giao -> 403
+     */
+    public function test_checkout_unauthorized_role_returns_403(): void
+    {
+        $resident = $this->createStaffUser('RESIDENT_OWNER');
+        $parcel = Parcel::create([
+            'tracking_number' => 'FORBIDDEN_TEST_'.Str::random(6),
+            'courier_company' => 'VNPost',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Nguyễn Cư Dân',
+            'recipient_phone' => '0912345678',
+            'parcel_photo_url' => 'https://sample.com/parcel.jpg',
+            'pickup_pin_code' => '112233',
+            'pickup_qr_code' => 'QR_FORBIDDEN_'.Str::random(6),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $response = $this->actingAs($resident)->postJson("/api/v1/reception/parcels/{$parcel->id}/check-out", [
+            'pin_code' => '112233',
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    /**
+     * P0 TEST: Bắt buộc cung cấp ít nhất một phương thức xác minh (PIN hoặc QR); từ chối nếu bỏ trống cả hai -> 422
+     */
+    public function test_checkout_fails_with_422_if_both_pin_and_qr_are_empty(): void
+    {
+        $parcel = Parcel::create([
+            'tracking_number' => 'NO_CODE_TEST_'.Str::random(6),
+            'courier_company' => 'SPX',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Nguyễn Cư Dân',
+            'recipient_phone' => '0912345678',
+            'parcel_photo_url' => 'https://sample.com/parcel.jpg',
+            'pickup_pin_code' => '998877',
+            'pickup_qr_code' => 'QR_NO_CODE_'.Str::random(6),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $response = $this->actingAs($this->receptionist)->postJson("/api/v1/reception/parcels/{$parcel->id}/check-out", [
+            'collected_by_name' => 'Nguyễn Cư Dân',
+            'notes' => 'Không nhập mã PIN hay mã QR',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['verification']);
+    }
+
+    /**
+     * P0 TEST: Bàn giao bưu phẩm thành công khi xác minh bằng mã QR hợp lệ
+     */
+    public function test_checkout_succeeds_with_valid_qr_code(): void
+    {
+        $qrCode = 'QR_VERIFY_'.Str::random(10);
+        $parcel = Parcel::create([
+            'tracking_number' => 'QR_TEST_'.Str::random(6),
+            'courier_company' => 'Ninja Van',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Nguyễn Cư Dân',
+            'recipient_phone' => '0912345678',
+            'parcel_photo_url' => 'https://sample.com/parcel.jpg',
+            'pickup_pin_code' => '334455',
+            'pickup_qr_code' => $qrCode,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $response = $this->actingAs($this->receptionist)->postJson("/api/v1/reception/parcels/{$parcel->id}/check-out", [
+            'qr_code' => $qrCode,
+            'collected_by_name' => 'Người nhận xuất trình QR',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['success' => true]);
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $parcel->id,
+            'status' => 'DELIVERED',
+            'checkout_staff_id' => $this->receptionist->id,
+        ]);
+    }
+
+    /**
+     * P0 TEST: Kiểm tra route handover (/api/v1/reception/parcels/{id}/handover) với Bearer token hợp lệ
+     */
+    public function test_handover_route_with_valid_bearer_token_succeeds(): void
+    {
+        $token = $this->createSessionForUser($this->receptionist);
+        $pin = '889900';
+
+        $parcel = Parcel::create([
+            'tracking_number' => 'HANDOVER_ROUTE_'.Str::random(6),
+            'courier_company' => 'VNPost',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Lê Thị F',
+            'recipient_phone' => '0922222222',
+            'parcel_photo_url' => 'https://sample.com/parcel.jpg',
+            'pickup_pin_code' => $pin,
+            'pickup_qr_code' => 'QR_HANDOVER_'.Str::random(8),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/reception/parcels/{$parcel->id}/handover", [
+                'pin_code' => $pin,
+                'collected_by_name' => 'Lê Thị F',
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['success' => true]);
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $parcel->id,
+            'status' => 'DELIVERED',
+            'checkout_staff_id' => $this->receptionist->id,
         ]);
     }
 }

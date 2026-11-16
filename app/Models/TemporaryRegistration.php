@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Laravel\Scout\Searchable;
 
 class TemporaryRegistration extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, Searchable;
 
     protected $table = 'temporary_registrations';
 
@@ -37,6 +38,39 @@ class TemporaryRegistration extends Model
             'reviewed_at' => 'datetime',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * Tên search index
+     */
+    public function searchableAs(): string
+    {
+        return 'temporary_registrations';
+    }
+
+    /**
+     * Dữ liệu được index vào Search Engine (Meilisearch)
+     */
+    public function toSearchableArray(): array
+    {
+        $this->loadMissing(['resident.user', 'apartment.block']);
+
+        return [
+            'id' => (string) $this->id,
+            'resident_id' => (string) $this->resident_id,
+            'apartment_id' => (string) $this->apartment_id,
+            'registration_type' => $this->registration_type,
+            'police_status' => $this->police_status,
+            'police_reference_code' => $this->police_reference_code ?? '',
+            'resident_name' => $this->resident?->user?->full_name ?? '',
+            'resident_phone' => $this->resident?->user?->phone_number ?? '',
+            'apartment_number' => $this->apartment?->apartment_number ?? '',
+            'block_name' => $this->apartment?->block?->block_name ?? '',
+            'start_date' => $this->start_date?->format('Y-m-d'),
+            'end_date' => $this->end_date?->format('Y-m-d'),
+            'reason' => $this->reason ?? '',
+            'created_at' => $this->created_at?->timestamp,
         ];
     }
 
