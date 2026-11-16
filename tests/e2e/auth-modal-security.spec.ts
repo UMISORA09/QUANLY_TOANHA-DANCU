@@ -63,10 +63,14 @@ test('development login keeps the demo selector and role shortcut', async ({ pag
 for (const view of ['modal', 'login']) {
   test(`demo Admin credentials match the local seed in ${view}`, async ({ page }) => {
     await page.route('**/api/v1/auth/login', async route => {
-      expect(route.request().postDataJSON()).toMatchObject({ identifier: 'admin@cassavas.vn', password: 'Admin@123456' });
+      expect(route.request().postDataJSON()).toMatchObject({ identifier: 'admin@cassavas.vn', password: '123567' });
       await route.fulfill({ status: 401, json: { message: 'QA credentials verified' } });
     });
     await page.goto(`${origin}/qa/auth-modal?view=${view}&role=admin`);
+    const password = page.locator('input[type="password"]').first();
+    await password.fill('qa-stale-autofill');
+    await page.getByRole('button', { name: /^Admin/ }).click();
+    await expect(password).toHaveValue('123567');
     await page.locator('button[type="submit"]').first().click();
     await expect(page.getByText('QA credentials verified').last()).toBeVisible();
   });
@@ -80,7 +84,7 @@ for (const view of ['modal', 'login']) {
     await expect(page.getByText('Đăng nhập phản hồi quá lâu.', { exact: false }).last()).toBeVisible({ timeout: 20000 });
     await expect(page.locator('button[type="submit"]').first()).toBeEnabled();
     await expect(identifier).toHaveValue('admin@cassavas.vn');
-    await expect(password).toHaveValue('Admin@123456');
+    await expect(password).toHaveValue('123567');
     expect(requests).toBe(1);
     expect(await page.evaluate(() => localStorage.getItem('smart_cassavas_token'))).toBeNull();
     await expect(page.getByTestId('authenticated-role')).toBeEmpty();

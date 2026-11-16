@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\PricingTier;
 use App\Models\ServicePricingConfig;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -16,9 +18,8 @@ class ServicePricingService
      * Lấy danh sách cấu hình đơn giá có lọc và phân loại
      *
      * @param  array<string, mixed>  $filters
-     * @return Collection<int, ServicePricingConfig>
      */
-    public function listConfigs(array $filters = []): Collection
+    public function listConfigs(array $filters = []): LengthAwarePaginator
     {
         $query = ServicePricingConfig::with('tiers');
 
@@ -43,7 +44,9 @@ class ServicePricingService
             $query->where('meter_type', $filters['meter_type']);
         }
 
-        return $query->orderBy('service_code', 'asc')->get();
+        $perPage = min(100, max(1, (int) ($filters['per_page'] ?? 15)));
+
+        return $query->orderBy('service_code', 'asc')->paginate($perPage);
     }
 
     /**
@@ -67,33 +70,40 @@ class ServicePricingService
      */
     public function createConfig(array $data): ServicePricingConfig
     {
-        return DB::transaction(function () use ($data) {
-            $serviceCode = strtoupper(trim((string) $data['service_code']));
+        $serviceCode = strtoupper(trim((string) ($data['service_code'] ?? '')));
 
-            $exists = ServicePricingConfig::where('service_code', $serviceCode)->exists();
-            if ($exists) {
+        try {
+            return DB::transaction(function () use ($data, $serviceCode) {
+                $exists = ServicePricingConfig::where('service_code', $serviceCode)->exists();
+                if ($exists) {
+                    throw new InvalidArgumentException("Mã loại dịch vụ '{$serviceCode}' đã tồn tại trong hệ thống.");
+                }
+
+                $tiersData = $data['tiers'] ?? null;
+                unset($data['tiers']);
+
+                $data['id'] = $data['id'] ?? (string) Str::uuid();
+                $data['service_code'] = $serviceCode;
+                $data['is_active'] = isset($data['is_active']) ? (bool) $data['is_active'] : true;
+                $data['fixed_unit_price'] = (float) ($data['fixed_unit_price'] ?? 0);
+                $data['vat_percentage'] = (float) ($data['vat_percentage'] ?? 10.00);
+                $data['environmental_protection_fee_pct'] = (float) ($data['environmental_protection_fee_pct'] ?? 0.00);
+                $data['effective_from_date'] = $data['effective_from_date'] ?? now()->format('Y-m-d');
+
+                $config = ServicePricingConfig::create($data);
+
+                if (is_array($tiersData) && count($tiersData) > 0) {
+                    $this->syncTiers($config->id, $tiersData);
+                }
+
+                return $config->fresh('tiers');
+            });
+        } catch (QueryException $e) {
+            if (str_contains($e->getMessage(), 'service_code') || $e->getCode() == 23000) {
                 throw new InvalidArgumentException("Mã loại dịch vụ '{$serviceCode}' đã tồn tại trong hệ thống.");
             }
-
-            $tiersData = $data['tiers'] ?? null;
-            unset($data['tiers']);
-
-            $data['id'] = $data['id'] ?? (string) Str::uuid();
-            $data['service_code'] = $serviceCode;
-            $data['is_active'] = isset($data['is_active']) ? (bool) $data['is_active'] : true;
-            $data['fixed_unit_price'] = (float) ($data['fixed_unit_price'] ?? 0);
-            $data['vat_percentage'] = (float) ($data['vat_percentage'] ?? 10.00);
-            $data['environmental_protection_fee_pct'] = (float) ($data['environmental_protection_fee_pct'] ?? 0.00);
-            $data['effective_from_date'] = $data['effective_from_date'] ?? now()->format('Y-m-d');
-
-            $config = ServicePricingConfig::create($data);
-
-            if (is_array($tiersData) && count($tiersData) > 0) {
-                $this->syncTiers($config->id, $tiersData);
-            }
-
-            return $config->fresh('tiers');
-        });
+            throw $e;
+        }
     }
 
     /**
@@ -103,33 +113,49 @@ class ServicePricingService
      */
     public function updateConfig(string $id, array $data): ServicePricingConfig
     {
-        return DB::transaction(function () use ($id, $data) {
-            $config = $this->getConfig($id);
+        $newCode = ! empty($data['service_code']) ? strtoupper(trim((string) $data['service_code'])) : null;
 
-            if (! empty($data['service_code'])) {
-                $newCode = strtoupper(trim((string) $data['service_code']));
-                if ($newCode !== $config->service_code) {
-                    $exists = ServicePricingConfig::where('service_code', $newCode)
-                        ->where('id', '!=', $id)
-                        ->exists();
-                    if ($exists) {
-                        throw new InvalidArgumentException("Mã loại dịch vụ '{$newCode}' đã được sử dụng bởi cấu hình khác.");
+        try {
+            return DB::transaction(function () use ($id, $data, $newCode) {
+                $config = $this->getConfig($id);
+
+                if ($newCode) {
+                    if ($newCode !== $config->service_code) {
+                        $exists = ServicePricingConfig::where('service_code', $newCode)
+                            ->where('id', '!=', $id)
+                            ->exists();
+                        if ($exists) {
+                            throw new InvalidArgumentException("Mã loại dịch vụ '{$newCode}' đã được sử dụng bởi cấu hình khác.");
+                        }
+                        $data['service_code'] = $newCode;
                     }
-                    $data['service_code'] = $newCode;
                 }
+
+                // Kiểm tra ngày kết thúc hiệu lực
+                if (array_key_exists('effective_to_date', $data) && $data['effective_to_date'] !== null) {
+                    $fromDate = $data['effective_from_date'] ?? $config->effective_from_date;
+                    if ($fromDate && strtotime($data['effective_to_date']) < strtotime($fromDate)) {
+                        throw new InvalidArgumentException("Ngày kết thúc hiệu lực phải sau hoặc bằng ngày bắt đầu ({$fromDate}).");
+                    }
+                }
+
+                $tiersData = $data['tiers'] ?? null;
+                unset($data['tiers']);
+
+                $config->update($data);
+
+                if (is_array($tiersData)) {
+                    $this->syncTiers($config->id, $tiersData);
+                }
+
+                return $config->fresh('tiers');
+            });
+        } catch (QueryException $e) {
+            if ($newCode && (str_contains($e->getMessage(), 'service_code') || $e->getCode() == 23000)) {
+                throw new InvalidArgumentException("Mã loại dịch vụ '{$newCode}' đã được sử dụng bởi cấu hình khác.");
             }
-
-            $tiersData = $data['tiers'] ?? null;
-            unset($data['tiers']);
-
-            $config->update($data);
-
-            if (is_array($tiersData)) {
-                $this->syncTiers($config->id, $tiersData);
-            }
-
-            return $config->fresh('tiers');
-        });
+            throw $e;
+        }
     }
 
     /**

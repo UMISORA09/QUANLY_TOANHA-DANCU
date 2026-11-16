@@ -657,7 +657,7 @@ Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:vehicles'])->group
     Route::post('vehicles/{id}/reject', [VehicleController::class, 'reject']);
     Route::post('vehicles/{id}/sync-invoice', [VehicleController::class, 'syncInvoice']);
 });
-Route::get('vehicles/pricing-config', [ServicePricingController::class, 'pricingConfig']);
+Route::get('vehicles/pricing-config', [ServicePricingController::class, 'pricingConfig'])->middleware(['auth.bearer']);
 
 // ==========================================
 // CÀI ĐẶT ĐƠN GIÁ ĐIỆN, NƯỚC LŨY TIẾN & PHÍ QUẢN LÝ (CHỨC NĂNG 3 - XUANHOA)
