@@ -1,4 +1,4 @@
-# Tài liệu API SMART CASSAVAS
+# SMART CASSAVAS API — Tài liệu lập trình viên & AI Agents
 
 SMART CASSAVAS là nền tảng quản lý tòa nhà dành cho cư dân và nhân viên vận hành. Tài liệu công khai phục vụ việc tìm hiểu sản phẩm và kết nối trợ lý với nội dung giới thiệu; không cấp quyền đọc hồ sơ cư dân hay thực hiện giao dịch.
 
