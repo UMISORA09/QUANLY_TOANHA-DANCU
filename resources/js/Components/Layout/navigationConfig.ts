@@ -40,6 +40,7 @@ import {
   Activity,
   Zap,
   Tag,
+  Calculator,
 } from 'lucide-react';
 
 export type UserRole = 'manager' | 'resident' | 'receptionist' | 'admin' | 'dev';
@@ -84,6 +85,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'amenities', label: 'Quản lý tiện ích & Cấu hình slot', icon: Sparkles, badge: 'Live', badgeType: 'success' },
       { id: 'pricing_configs', label: 'Cài đặt đơn giá & Bậc thang', icon: Tag, badge: 'EVN', badgeType: 'info', isNew: true },
       { id: 'meter_readings', label: 'Chốt chỉ số điện & nước', icon: Zap, badge: 'IoT', badgeType: 'info', isNew: true },
+      { id: 'sinh_hoa_don', label: 'Sinh hóa đơn tự động', icon: Calculator, badge: 'Auto', badgeType: 'info', isNew: true },
       { id: 'billing', label: 'Thu phí & Hóa đơn', icon: CreditCard, badge: '86', badgeType: 'warning' },
       { id: 'maintenance', label: 'Kỹ thuật & Bảo trì', icon: Wrench, badge: '4' },
       { id: 'tickets', label: 'Phản ánh & Sự cố', icon: AlertCircle, badge: '12 mới', badgeType: 'danger' },
@@ -157,6 +159,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
       { id: 'pricing_configs', label: 'Cài đặt đơn giá & Bậc thang', icon: Tag, badge: 'EVN', badgeType: 'info', isNew: true },
       { id: 'meter_readings', label: 'Chốt chỉ số điện & nước', icon: Zap, badge: 'IoT', badgeType: 'info', isNew: true },
+      { id: 'sinh_hoa_don', label: 'Sinh hóa đơn tự động', icon: Calculator, badge: 'Hóa đơn', badgeType: 'info', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: FileText },
       { id: 'news', label: 'Bảng tin / Thông báo', icon: FileText },
@@ -180,6 +183,7 @@ export const NAVIGATION_CONFIGS: Record<UserRole, NavigationRoleConfig> = {
       { id: 'roles', label: 'Phân quyền RBAC', icon: Shield, badge: 'Đặc quyền', badgeType: 'warning' },
       { id: 'pricing_configs', label: 'Cài đặt đơn giá & Bậc thang', icon: Tag, badge: 'EVN', badgeType: 'info', isNew: true },
       { id: 'meter_readings', label: 'Chốt chỉ số điện & nước', icon: Zap, badge: 'IoT', badgeType: 'info', isNew: true },
+      { id: 'sinh_hoa_don', label: 'Sinh hóa đơn tự động', icon: Calculator, badge: 'Hóa đơn', badgeType: 'info', isNew: true },
       { id: 'ai_triage', label: 'AI Chatbot & Triage', icon: Bot, badge: 'AI Smart', badgeType: 'info' },
       { id: 'api_iot', label: 'API, Webhook & IoT', icon: Cpu, badge: '4 active', badgeType: 'success' },
       { id: 'schedules', label: 'Quản lý Xếp ca trực', icon: CalendarDays, badge: 'Ca trực', badgeType: 'info', isNew: true },

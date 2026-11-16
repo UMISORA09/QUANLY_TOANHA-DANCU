@@ -877,7 +877,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <MeterReadingManagement />
             </div>
-          ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' ? (
+          ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' || activeMenuId === 'billing' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <InvoiceManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
             </div>

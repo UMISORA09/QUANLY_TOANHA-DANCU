@@ -19,7 +19,10 @@ import {
     X,
     ChevronRight,
     ArrowUpRight,
-    Search
+    Search,
+    Download,
+    FileSpreadsheet,
+    Wifi
 } from 'lucide-react';
 import {
     invoiceBatchApi,
@@ -27,6 +30,7 @@ import {
     InvoicePreviewItem,
     InvoiceBatchModel
 } from '../../Services/invoiceBatchApi';
+import { useRealtimeSync } from '../../Hooks/useRealtimeSync';
 
 interface BlockOption {
     id: string;
@@ -86,10 +90,19 @@ export const InvoiceBatchGeneration: React.FC = () => {
         setTimeout(() => setToastMessage(null), 4000);
     };
 
-    // Tải danh sách Block
+    // Tải danh sách Block (có cache để tức thì 0ms)
     useEffect(() => {
         const fetchBlocks = async () => {
             try {
+                const cached = sessionStorage.getItem('smartcassavas_cached_blocks');
+                if (cached) {
+                    try {
+                        const parsed = JSON.parse(cached);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            setBlocks(parsed);
+                        }
+                    } catch {}
+                }
                 const token = localStorage.getItem('auth_token') || 'smart_token_admin_demo';
                 const res = await fetch('/api/v1/blocks', {
                     headers: {
@@ -99,7 +112,12 @@ export const InvoiceBatchGeneration: React.FC = () => {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setBlocks(data.data || []);
+                    if (data.data && Array.isArray(data.data)) {
+                        setBlocks(data.data);
+                        try {
+                            sessionStorage.setItem('smartcassavas_cached_blocks', JSON.stringify(data.data));
+                        } catch {}
+                    }
                 }
             } catch (err) {
                 console.error('Lỗi khi tải blocks:', err);
@@ -109,17 +127,17 @@ export const InvoiceBatchGeneration: React.FC = () => {
     }, []);
 
     // Tải lịch sử đợt sinh hóa đơn
-    const loadBatches = async () => {
-        setBatchesLoading(true);
+    const loadBatches = async (silent: boolean = false) => {
+        if (!silent) setBatchesLoading(true);
         try {
             const res = await invoiceBatchApi.getBatches({
                 billing_period: billingPeriod,
             });
             setBatches(res.data.data);
         } catch (err: any) {
-            showToast('error', err.message || 'Không thể tải lịch sử các đợt');
+            if (!silent) showToast('error', err.message || 'Không thể tải lịch sử các đợt');
         } finally {
-            setBatchesLoading(false);
+            if (!silent) setBatchesLoading(false);
         }
     };
 
@@ -129,15 +147,124 @@ export const InvoiceBatchGeneration: React.FC = () => {
         }
     }, [activeTab, billingPeriod]);
 
-    // Chạy xem trước (Dry-run preview)
-    const handleRunPreview = async () => {
-        if (!billingPeriod) {
-            showToast('error', 'Vui lòng chọn kỳ tính phí (tháng/năm).');
+    // Xuất bảng dự toán Excel chuẩn form biểu tòa nhà
+    const handleExportPreviewExcel = () => {
+        if (!previewData || !previewData.preview_items || previewData.preview_items.length === 0) {
+            showToast('error', 'Chưa có dữ liệu dự toán để xuất Excel.');
             return;
         }
 
-        setPreviewLoading(true);
-        setGenerationResult(null);
+        const blockName = selectedBlockId
+            ? blocks.find(b => b.id === selectedBlockId)?.block_name || 'Khối được chọn'
+            : 'Toàn Bộ Tòa Nhà';
+
+        const rowsHtml = previewData.preview_items.map((item, idx) => `
+            <tr>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${idx + 1}</td>
+                <td style="font-weight: bold; border: 1px solid #cbd5e1; padding: 6px;">${item.apartment_number}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 6px;">${item.block_name}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 6px;">${item.resident_name || 'N/A'}</td>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${item.has_electricity_reading ? 'Có số' : 'Chưa ghi'}</td>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${item.has_water_reading ? 'Có số' : 'Chưa ghi'}</td>
+                <td style="text-align: right; border: 1px solid #cbd5e1; padding: 6px;">${item.subtotal_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: right; border: 1px solid #cbd5e1; padding: 6px;">${item.tax_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: right; border: 1px solid #cbd5e1; padding: 6px;">${item.previous_debt_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: right; font-weight: bold; color: #047857; border: 1px solid #cbd5e1; padding: 6px;">${item.total_amount.toLocaleString('vi-VN')}</td>
+                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 6px;">${item.has_existing_invoice ? `Đã có HĐ (${item.existing_invoice_number || ''})` : 'Sẵn sàng tạo'}</td>
+            </tr>
+        `).join('');
+
+        const excelHtml = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+                <style>
+                    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #0f172a; }
+                    .header-title { font-size: 16pt; font-weight: bold; color: #0369a1; text-align: center; }
+                    .header-sub { font-size: 11pt; font-style: italic; color: #475569; text-align: center; }
+                    .kpi-table { margin-bottom: 15px; border-collapse: collapse; }
+                    .kpi-table td { padding: 4px 10px; }
+                    .data-table { border-collapse: collapse; width: 100%; }
+                    .th-header { background-color: #0284c7; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #0369a1; padding: 8px; }
+                    .total-row { background-color: #f1f5f9; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <table>
+                    <tr><td colspan="11" class="header-title">SMART CASSAVAS - BẢNG DỰ TOÁN SINH HÓA ĐƠN HÀNG LOẠT</td></tr>
+                    <tr><td colspan="11" class="header-sub">Kỳ tính phí: Tháng ${billingPeriod} | Phạm vi: ${blockName} | Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}</td></tr>
+                    <tr><td colspan="11"></td></tr>
+                </table>
+                <table class="kpi-table">
+                    <tr>
+                        <td><strong>Tổng số căn hộ:</strong> ${previewData.total_apartments} căn</td>
+                        <td><strong>Đủ điều kiện tạo:</strong> ${previewData.eligible_for_generation} căn</td>
+                        <td><strong>Đã có hóa đơn:</strong> ${previewData.existing_invoices_count} căn</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Dự kiến doanh thu:</strong> ${previewData.total_estimated_amount.toLocaleString('vi-VN')} đ</td>
+                        <td><strong>Thuế & Phí:</strong> ${previewData.total_estimated_tax.toLocaleString('vi-VN')} đ</td>
+                        <td><strong>Công nợ dồn:</strong> ${previewData.total_estimated_previous_debt.toLocaleString('vi-VN')} đ</td>
+                    </tr>
+                </table>
+                <br/>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="th-header">STT</th>
+                            <th class="th-header">Số Căn Hộ</th>
+                            <th class="th-header">Tòa Nhà</th>
+                            <th class="th-header">Chủ Hộ / Cư Dân</th>
+                            <th class="th-header">Điện</th>
+                            <th class="th-header">Nước</th>
+                            <th class="th-header">Trước Thuế (VNĐ)</th>
+                            <th class="th-header">Thuế & Phí (VNĐ)</th>
+                            <th class="th-header">Nợ Cũ (VNĐ)</th>
+                            <th class="th-header">Tổng Phải Thu (VNĐ)</th>
+                            <th class="th-header">Trạng Thái</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                        <tr class="total-row">
+                            <td colspan="6" style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">TỔNG CỘNG DỰ TOÁN:</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">${previewData.total_estimated_subtotal.toLocaleString('vi-VN')}</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">${previewData.total_estimated_tax.toLocaleString('vi-VN')}</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold;">${previewData.total_estimated_previous_debt.toLocaleString('vi-VN')}</td>
+                            <td style="text-align: right; border: 1px solid #cbd5e1; padding: 8px; font-weight: bold; color: #047857;">${previewData.total_estimated_amount.toLocaleString('vi-VN')}</td>
+                            <td style="border: 1px solid #cbd5e1;"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+
+        const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Du_Toan_Hoa_Don_${billingPeriod}.xls`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            if (document.body.contains(a)) document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 2000);
+        showToast('success', 'Đã tải bảng dự toán Excel thành công.');
+    };
+
+    // Chạy xem trước (Dry-run preview)
+    const handleRunPreview = async (silent: boolean = false) => {
+        if (!billingPeriod) {
+            if (!silent) showToast('error', 'Vui lòng chọn kỳ tính phí (tháng/năm).');
+            return;
+        }
+
+        if (!silent) {
+            setPreviewLoading(true);
+            setGenerationResult(null);
+        }
         try {
             const res = await invoiceBatchApi.previewBatch({
                 billing_period: billingPeriod,
@@ -146,13 +273,58 @@ export const InvoiceBatchGeneration: React.FC = () => {
                 overwrite_existing: overwriteExisting
             });
             setPreviewData(res.data);
-            showToast('success', `Đã phân tích xong dữ liệu dự toán cho ${res.data.total_apartments} căn hộ.`);
+            if (!silent) {
+                showToast('success', `Đã phân tích xong dữ liệu dự toán cho ${res.data.total_apartments} căn hộ.`);
+            }
         } catch (err: any) {
-            showToast('error', err.message || 'Lỗi khi tính toán dự toán');
+            if (!silent) {
+                showToast('error', err.message || 'Lỗi khi tính toán dự toán');
+            }
         } finally {
-            setPreviewLoading(false);
+            if (!silent) {
+                setPreviewLoading(false);
+            }
         }
     };
+
+    // Tự động phân tích dự toán khi vào tab hoặc thay đổi chu kỳ/tòa nhà
+    useEffect(() => {
+        if (activeTab === 'generation' && billingPeriod) {
+            handleRunPreview();
+        }
+    }, [billingPeriod, selectedBlockId]);
+
+    // Lắng nghe sự kiện Realtime / WebSocket từ hệ thống (Cập nhật liên tục 0ms không cần reload)
+    useRealtimeSync({
+        channel: [
+            'quoc-tin.invoices',
+            'invoices',
+            'meter_readings',
+            'quoc-tin.meter_readings',
+            'billing',
+            'invoice_generation'
+        ],
+        onEvent: () => {
+            if (activeTab === 'generation') {
+                handleRunPreview(true);
+            } else if (activeTab === 'history') {
+                loadBatches(true);
+            }
+        },
+    });
+
+    // Đồng bộ nền định kỳ liên tục (Realtime Heartbeat Polling không cần tải lại trang)
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (activeTab === 'generation' && billingPeriod) {
+                handleRunPreview(true);
+            } else if (activeTab === 'history') {
+                loadBatches(true);
+            }
+        }, 10000);
+
+        return () => clearInterval(timer);
+    }, [activeTab, billingPeriod, selectedBlockId, includePreviousDebt, overwriteExisting]);
 
     // Xác nhận và thực hiện phát hành hóa đơn thật
     const handleConfirmGenerate = async () => {
@@ -225,57 +397,46 @@ export const InvoiceBatchGeneration: React.FC = () => {
             )}
 
             {/* HEADER & TIÊU ĐỀ TRANG */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
-                <div>
-                    <div className="text-[11px] font-bold text-sky-600 font-mono tracking-wider uppercase flex items-center gap-1.5">
-                        <Calculator className="w-3.5 h-3.5" />
-                        <span>HỆ THỐNG KẾ TOÁN & HÓA ĐƠN · CHỨC NĂNG #6 (SINH HÓA ĐƠN TỰ ĐỘNG)</span>
-                    </div>
-                    <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight mt-1">
-                        Sinh Hóa Đơn Tự Động Hàng Loạt
-                    </h1>
-                    <p className="text-xs sm:text-sm text-slate-500 max-w-3xl font-medium mt-1">
-                        Hệ thống tự động tính toán lũy tiến điện, nước, phí quản lý vận hành, phí xe và công nợ kỳ trước an toàn bằng Database Transaction.
-                    </p>
+            <div className="pb-2 border-b border-slate-200/80">
+                <div className="text-[11px] font-bold text-sky-600 font-mono tracking-wider uppercase flex items-center gap-1.5">
+                    <Calculator className="w-3.5 h-3.5" />
+                    <span>HỆ THỐNG KẾ TOÁN & HÓA ĐƠN · CHỨC NĂNG #6 (SINH HÓA ĐƠN TỰ ĐỘNG)</span>
                 </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight mt-1">
+                    Sinh Hóa Đơn Tự Động Hàng Loạt
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 max-w-3xl font-medium mt-1">
+                    Hệ thống tự động tính toán lũy tiến điện, nước, phí quản lý vận hành, phí xe và công nợ kỳ trước an toàn bằng Database Transaction.
+                </p>
+            </div>
 
-                {/* Tabs Chuyển đổi & Nút Thao tác */}
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center bg-slate-100/70 p-1 rounded-xl">
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('generation')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                activeTab === 'generation'
-                                    ? 'bg-white text-sky-700 shadow-2xs'
-                                    : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>Phát Hành Kỳ Này</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('history')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                activeTab === 'history'
-                                    ? 'bg-white text-sky-700 shadow-2xs'
-                                    : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>Lịch Sử ({batches.length})</span>
-                        </button>
-                    </div>
-
+            {/* THANH ĐIỀU HƯỚNG TAB */}
+            <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+                {/* Tabs Chuyển đổi */}
+                <div className="flex items-center bg-slate-100/80 p-1 rounded-xl">
                     <button
                         type="button"
-                        onClick={activeTab === 'history' ? loadBatches : handleRunPreview}
-                        disabled={previewLoading || batchesLoading}
-                        title="Làm mới dữ liệu"
-                        className="p-2 rounded-xl text-slate-500 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-2xs transition-all active:scale-[0.98] cursor-pointer shrink-0"
+                        onClick={() => setActiveTab('generation')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'generation'
+                                ? 'bg-white text-sky-700 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                        }`}
                     >
-                        <RefreshCw className={`w-3.5 h-3.5 ${previewLoading || batchesLoading ? 'animate-spin text-sky-600' : ''}`} />
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Phát Hành Kỳ Này</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('history')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'history'
+                                ? 'bg-white text-sky-700 shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Lịch Sử ({batches.length})</span>
                     </button>
                 </div>
             </div>
@@ -447,7 +608,7 @@ export const InvoiceBatchGeneration: React.FC = () => {
                         <div className="flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
                             <button
                                 type="button"
-                                onClick={handleRunPreview}
+                                onClick={() => handleRunPreview()}
                                 disabled={previewLoading}
                                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition-all disabled:opacity-50 cursor-pointer"
                             >
@@ -557,16 +718,30 @@ export const InvoiceBatchGeneration: React.FC = () => {
                                         </h3>
                                     </div>
 
-                                    {/* Tìm kiếm */}
-                                    <div className="relative w-full sm:w-64">
-                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                        <input
-                                            type="text"
-                                            placeholder="Tìm mã căn, tên cư dân..."
-                                            value={previewSearch}
-                                            onChange={(e) => setPreviewSearch(e.target.value)}
-                                            className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-                                        />
+                                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                                        {/* Tìm kiếm */}
+                                        <div className="relative w-full sm:w-64">
+                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                            <input
+                                                type="text"
+                                                placeholder="Tìm mã căn, tên cư dân..."
+                                                value={previewSearch}
+                                                onChange={(e) => setPreviewSearch(e.target.value)}
+                                                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                                            />
+                                        </div>
+
+                                        {/* Nút Xuất Excel */}
+                                        <button
+                                            type="button"
+                                            onClick={handleExportPreviewExcel}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200/80 shadow-2xs transition-all shrink-0 cursor-pointer"
+                                            title="Tải bảng tính Excel kiểm tra số liệu dự toán"
+                                        >
+                                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span className="hidden sm:inline">Xuất Excel Dự Toán</span>
+                                            <span className="sm:hidden">Excel</span>
+                                        </button>
                                     </div>
                                 </div>
 
@@ -713,7 +888,7 @@ export const InvoiceBatchGeneration: React.FC = () => {
                         </div>
                         <button
                             type="button"
-                            onClick={loadBatches}
+                            onClick={() => loadBatches()}
                             disabled={batchesLoading}
                             className="p-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                         >
