@@ -34,9 +34,16 @@ class ReceptionPortalController extends Controller
             }
 
             $fiveDaysAgo = Carbon::now()->subDays(5);
+            $threeDaysAgo = Carbon::now()->subDays(3);
             $overdueParcelsCount = DB::table('parcels')
                 ->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
                 ->where('received_at', '<', $fiveDaysAgo)
+                ->count();
+
+            $expiringParcelsCount = DB::table('parcels')
+                ->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+                ->where('received_at', '<=', $threeDaysAgo)
+                ->where('received_at', '>=', $fiveDaysAgo)
                 ->count();
 
             if ($overdueParcelsCount === 0) {
@@ -86,7 +93,18 @@ class ReceptionPortalController extends Controller
             ];
 
             // 6. Thông báo lễ tân
-            $notifications = [
+            $notifications = [];
+            if ($expiringParcelsCount > 0) {
+                $notifications[] = [
+                    'id' => 'alert-expiring-parcels',
+                    'title' => 'Cảnh báo bưu phẩm gần hết hạn',
+                    'message' => "Có {$expiringParcelsCount} kiện hàng lưu kho 3-5 ngày chưa nhận. Vui lòng gửi nhắc nhở cư dân.",
+                    'timeAgo' => 'Cần xử lý ngay',
+                    'category' => 'PARCEL',
+                ];
+            }
+
+            $notifications = array_merge($notifications, [
                 [
                     'id' => '1',
                     'title' => 'Check-in khách',
@@ -108,13 +126,14 @@ class ReceptionPortalController extends Controller
                     'timeAgo' => '50 phút trước',
                     'category' => 'SECURITY',
                 ],
-            ];
+            ]);
 
             return response()->json([
                 'kpis' => [
                     'activeGuests' => $activeGuestsCount,
                     'activeGuestsNote' => 'Tất cả khu vực',
                     'pendingParcels' => $pendingParcelsCount,
+                    'expiringParcels' => $expiringParcelsCount,
                     'overdueParcelsNote' => "{$overdueParcelsCount} bưu phẩm quá hạn",
                     'pendingVehicles' => $pendingVehiclesCount,
                     'pendingVehiclesNote' => 'Cần kiểm tra giấy tờ',

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Services\RbacService;
 use App\Services\ReceptionVisitorService;
 use Illuminate\Http\JsonResponse;
@@ -17,19 +16,8 @@ class ReceptionVisitorController extends Controller
 
     protected function resolveAuthUser(Request $request): object
     {
-        $user = $request->user() ?? RbacService::resolveUser($request);
-        if (! $user) {
-            $bearer = $request->bearerToken();
-            if ($bearer === 'smart_token_reception_demo' || $bearer === 'smart_token_admin_demo' || $bearer === 'smart_token_manager_demo') {
-                $user = User::whereHas('roles', function ($q) {
-                    $q->whereIn('role_code', ['RECEPTIONIST', 'STAFF', 'ADMIN', 'SUPER_ADMIN', 'SECURITY_GUARD']);
-                })->first() ?? User::where('status', 'ACTIVE')->first();
-            }
-        }
-
-        if (! $user) {
-            abort(401, 'Yêu cầu đăng nhập tài khoản nhân viên để thực hiện thao tác.');
-        }
+        $user = RbacService::resolveUser($request);
+        abort_unless($user, 401, 'Yêu cầu đăng nhập để thực hiện thao tác.');
 
         return $user;
     }

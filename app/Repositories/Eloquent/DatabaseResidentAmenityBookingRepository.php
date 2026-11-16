@@ -21,8 +21,8 @@ class DatabaseResidentAmenityBookingRepository
             ->whereNull('residents.deleted_at')
             ->whereNull('apartments.deleted_at')
             ->whereNull('blocks.deleted_at')
-            ->whereDate('residents.stay_start_date', '<=', today())
-            ->where(fn (Builder $query) => $query->whereNull('residents.stay_end_date')->orWhereDate('residents.stay_end_date', '>=', today()))
+            ->where('residents.stay_start_date', '<=', today()->toDateString())
+            ->where(fn (Builder $query) => $query->whereNull('residents.stay_end_date')->orWhere('residents.stay_end_date', '>=', today()->toDateString()))
             ->select('apartments.id', 'apartments.apartment_number', 'apartments.block_id', 'blocks.block_name')
             ->orderBy('apartments.apartment_number')->get();
     }
@@ -37,6 +37,15 @@ class DatabaseResidentAmenityBookingRepository
             ->where(fn (Builder $query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $blockIds))
             ->select('amenities.*', 'amenity_categories.category_name', 'blocks.block_name')
             ->orderBy('amenities.amenity_name')->get();
+    }
+
+    /** @param array<int, string> $blockIds */
+    public function categories(array $blockIds): Collection
+    {
+        return DB::table('amenities')->join('amenity_categories', 'amenities.category_id', '=', 'amenity_categories.id')
+            ->where('amenities.is_active', 1)->whereNull('amenities.deleted_at')
+            ->where(fn (Builder $query) => $query->whereNull('amenities.block_id')->orWhereIn('amenities.block_id', $blockIds))
+            ->select('amenity_categories.id', 'amenity_categories.category_name')->distinct()->orderBy('amenity_categories.category_name')->get();
     }
 
     public function amenity(string $id, bool $lock = false): ?object
@@ -56,7 +65,7 @@ class DatabaseResidentAmenityBookingRepository
 
     public function blackouts(string $amenityId, string $date, bool $lock = false): Collection
     {
-        $query = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->whereDate('blackout_date', $date);
+        $query = DB::table('amenity_blackouts')->where('amenity_id', $amenityId)->where('blackout_date', $date);
 
         return ($lock ? $query->lockForUpdate() : $query)->get();
     }
@@ -64,7 +73,7 @@ class DatabaseResidentAmenityBookingRepository
     public function holdingBookings(string $amenityId, string $date, bool $lock = false): Collection
     {
         $query = DB::table('amenity_bookings')->where('amenity_id', $amenityId)
-            ->whereDate('booking_date', $date)->whereNull('deleted_at')->whereIn('status', self::HOLDING_STATUSES);
+            ->where('booking_date', $date)->whereNull('deleted_at')->whereIn('status', self::HOLDING_STATUSES);
 
         $query = AmenityBookingPaymentService::holdingQuery($query);
 

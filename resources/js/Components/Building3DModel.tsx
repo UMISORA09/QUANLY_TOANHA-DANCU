@@ -174,14 +174,7 @@ export const Building3DModel: React.FC<Building3DModelProps> = ({
               <span className="text-xs sm:text-sm font-bold tracking-tight">
                 MÔ HÌNH KIẾN TRÚC 3D DIGITAL TWIN
               </span>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live 60 FPS • BIM Level 2
-              </span>
             </div>
-            <p className="text-[11px] text-neutral-500 dark:text-slate-400">
-              Mô phỏng phối cảnh trục đo đa tầng • Tháp đôi Cassavas Tower 26 Tầng (92.4m)
-            </p>
           </div>
         </div>
 

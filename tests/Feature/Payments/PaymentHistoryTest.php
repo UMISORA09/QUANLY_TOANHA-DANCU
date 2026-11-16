@@ -47,7 +47,7 @@ class PaymentHistoryTest extends TestCase
             'status' => 'ACTIVE',
         ]);
 
-        $this->token = 'smart_token_'.$this->adminUser->id.'_invoice';
+        $this->token = $this->issueTestBearerToken($this->adminUser);
 
         $this->block = Block::firstOrCreate(
             ['block_code' => 'T-A'],

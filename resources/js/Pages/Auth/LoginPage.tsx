@@ -31,7 +31,7 @@ const DEMO_ROLES: Array<{
   email: string;
   pass: string;
   icon: any;
-}> = [
+}> = import.meta.env.DEV ? [
   {
     role: 'admin',
     title: 'Admin / IT',
@@ -64,7 +64,7 @@ const DEMO_ROLES: Array<{
     pass: '123567',
     icon: Users,
   },
-];
+] : [];
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess }) => {
   const [identifier, setIdentifier] = useState('');
@@ -85,6 +85,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
   };
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     try {
       const urlRole = new URLSearchParams(window.location.search).get('role');
       if (urlRole) {
@@ -176,9 +177,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                 SMART CASSAVAS
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </span>
-              <span className="text-[10px] tracking-wider text-neutral-600 font-medium -mt-1 uppercase">
-                Building OS
-              </span>
             </div>
           </a>
 
@@ -221,13 +219,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
             </div>
 
             {/* Quick Demo Selector */}
-            <div className="mb-6">
+            {import.meta.env.DEV && <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   Tài khoản dùng thử nhanh:
                 </span>
-                <span className="text-[10px] text-neutral-500 font-mono">1-click điền</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {DEMO_ROLES.map((item) => {
@@ -267,7 +264,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                   );
                 })}
               </div>
-            </div>
+            </div>}
 
             {/* Feedback Alerts */}
             {errorMessage && (

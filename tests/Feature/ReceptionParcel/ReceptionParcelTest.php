@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class ReceptionParcelTest extends TestCase
@@ -556,5 +557,337 @@ class ReceptionParcelTest extends TestCase
         $this->assertDatabaseHas('parcels', [
             'id' => $deliveredParcel->id,
         ]);
+    }
+
+    /**
+     * Test 16: Lọc bưu phẩm bằng mã PIN chính xác và tra cứu O(log N) bằng idx_parcels_pin_code
+     */
+    public function test_16_can_filter_and_lookup_parcels_by_exact_pin_code(): void
+    {
+        $uniquePin1 = (string) rand(100000, 899999);
+        $uniquePin2 = (string) rand(900000, 999999);
+
+        $parcel1 = Parcel::create([
+            'tracking_number' => 'PIN_TEST_1_'.Str::random(6),
+            'courier_company' => 'SPX',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận PIN 1',
+            'recipient_phone' => '0901234567',
+            'parcel_photo_url' => 'https://sample.com/p1.jpg',
+            'pickup_pin_code' => $uniquePin1,
+            'pickup_qr_code' => 'PKG-PIN-1-'.Str::random(8),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        $parcel2 = Parcel::create([
+            'tracking_number' => 'PIN_TEST_2_'.Str::random(6),
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận PIN 2',
+            'recipient_phone' => '0907654321',
+            'parcel_photo_url' => 'https://sample.com/p2.jpg',
+            'pickup_pin_code' => $uniquePin2,
+            'pickup_qr_code' => 'PKG-PIN-2-'.Str::random(8),
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // 1. Kiểm tra qua API với bộ lọc pin_code
+        $response = $this->actingAs($this->receptionist)->getJson("/api/v1/reception/parcels?pin_code={$uniquePin1}");
+        $response->assertStatus(200);
+        $data = $response->json('data');
+        $this->assertCount(1, $data);
+        $this->assertEquals($parcel1->id, $data[0]['id']);
+        $this->assertEquals($uniquePin1, $data[0]['pickup_pin_code']);
+
+        // 2. Kiểm tra phương thức tra cứu trực tiếp findParcelByPin
+        $foundParcel = $this->service->findParcelByPin($uniquePin2);
+        $this->assertNotNull($foundParcel);
+        $this->assertEquals($parcel2->id, $foundParcel->id);
+
+        // 3. Tra cứu mã PIN không tồn tại trả về null
+        $notFound = $this->service->findParcelByPin('000000');
+        $this->assertNull($notFound);
+    }
+
+    /**
+     * Test 17: Bộ lọc đơn vị vận chuyển hỗ trợ alias (Giao Hàng Nhanh -> GHN) và trạng thái (PENDING, EXPIRING_SOON, OVERDUE)
+     */
+    public function test_17_can_filter_by_courier_alias_and_status(): void
+    {
+        $uniqueSuffix = Str::random(6);
+
+        // Kiện GHN mới nhận hôm nay (< 3 ngày) -> PENDING
+        $pendingGhn = Parcel::create([
+            'tracking_number' => 'GHN_PENDING_'.$uniqueSuffix,
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận GHN 1',
+            'recipient_phone' => '0901111111',
+            'parcel_photo_url' => 'https://sample.com/ghn1.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-GHN-1-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // Kiện GHN lưu 4 ngày (3-5 ngày) -> EXPIRING_SOON
+        $expiringGhn = Parcel::create([
+            'tracking_number' => 'GHN_EXPIRING_'.$uniqueSuffix,
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận GHN 2',
+            'recipient_phone' => '0902222222',
+            'parcel_photo_url' => 'https://sample.com/ghn2.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-GHN-2-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now()->subDays(4),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // Kiện GHN lưu 7 ngày (> 5 ngày) -> OVERDUE
+        $overdueGhn = Parcel::create([
+            'tracking_number' => 'GHN_OVERDUE_'.$uniqueSuffix,
+            'courier_company' => 'GHN',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận GHN 3',
+            'recipient_phone' => '0903333333',
+            'parcel_photo_url' => 'https://sample.com/ghn3.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-GHN-3-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now()->subDays(7),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // Kiện Shopee Express (khác ĐVVC)
+        $pendingShopee = Parcel::create([
+            'tracking_number' => 'SHOPEE_'.$uniqueSuffix,
+            'courier_company' => 'Shopee Express',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Người Nhận Shopee',
+            'recipient_phone' => '0904444444',
+            'parcel_photo_url' => 'https://sample.com/shopee.jpg',
+            'pickup_pin_code' => (string) rand(100000, 999999),
+            'pickup_qr_code' => 'QR-SPX-'.$uniqueSuffix,
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_at' => now(),
+            'received_by_staff_id' => $this->receptionist->id,
+        ]);
+
+        // 1. Lọc theo hiển thị "Giao Hàng Nhanh (GHN)" phải khớp mã "GHN" trong DB
+        $resGhn = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&search='.$uniqueSuffix);
+        $resGhn->assertStatus(200);
+        $ghnItems = collect($resGhn->json('data'))->pluck('id')->all();
+        $this->assertContains($pendingGhn->id, $ghnItems);
+        $this->assertContains($expiringGhn->id, $ghnItems);
+        $this->assertContains($overdueGhn->id, $ghnItems);
+        $this->assertNotContains($pendingShopee->id, $ghnItems);
+
+        // 2. Lọc kết hợp 2 tiêu chí: "Giao Hàng Nhanh (GHN)" VÀ status = "PENDING"
+        $resGhnPending = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&status=PENDING&search='.$uniqueSuffix);
+        $resGhnPending->assertStatus(200);
+        $pendingItems = collect($resGhnPending->json('data'))->pluck('id')->all();
+        $this->assertContains($pendingGhn->id, $pendingItems);
+        $this->assertNotContains($expiringGhn->id, $pendingItems);
+        $this->assertNotContains($overdueGhn->id, $pendingItems);
+        $this->assertNotContains($pendingShopee->id, $pendingItems);
+
+        // 3. Lọc kết hợp: "Giao Hàng Nhanh (GHN)" VÀ status = "EXPIRING_SOON"
+        $resGhnExpiring = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&status=EXPIRING_SOON&search='.$uniqueSuffix);
+        $resGhnExpiring->assertStatus(200);
+        $expiringItems = collect($resGhnExpiring->json('data'))->pluck('id')->all();
+        $this->assertContains($expiringGhn->id, $expiringItems);
+        $this->assertNotContains($pendingGhn->id, $expiringItems);
+        $this->assertNotContains($overdueGhn->id, $expiringItems);
+
+        // 4. Lọc kết hợp: "Giao Hàng Nhanh (GHN)" VÀ status = "OVERDUE"
+        $resGhnOverdue = $this->actingAs($this->receptionist)
+            ->getJson('/api/v1/reception/parcels?courier_company='.urlencode('Giao Hàng Nhanh (GHN)').'&status=OVERDUE&search='.$uniqueSuffix);
+        $resGhnOverdue->assertStatus(200);
+        $overdueItems = collect($resGhnOverdue->json('data'))->pluck('id')->all();
+        $this->assertContains($overdueGhn->id, $overdueItems);
+        $this->assertNotContains($pendingGhn->id, $overdueItems);
+        $this->assertNotContains($expiringGhn->id, $overdueItems);
+    }
+
+    /**
+     * BUG-01 Test: Yêu cầu chưa xác thực (Unauthenticated) bị từ chối 401
+     */
+    public function test_unauthenticated_requests_to_parcel_apis_are_rejected(): void
+    {
+        $resGet = $this->getJson('/api/v1/reception/parcels');
+        $resGet->assertStatus(401);
+
+        $resPost = $this->postJson('/api/v1/reception/parcels', [
+            'tracking_number' => 'UNAUTH123',
+            'courier_company' => 'Shopee Express',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Test',
+            'recipient_phone' => '0901234567',
+        ]);
+        $resPost->assertStatus(401);
+    }
+
+    /**
+     * BUG-01 Test: Cư dân chỉ xem được danh sách bưu phẩm của căn hộ mình, không xem được bưu phẩm căn hộ khác
+     */
+    public function test_resident_only_sees_parcels_of_own_apartment(): void
+    {
+        $apartmentA = $this->apartment;
+        $apartmentB = $this->getOrCreateApartment('APT-OTHER-'.Str::random(4));
+
+        $parcelA = Parcel::create([
+            'tracking_number' => 'PARCEL_A_'.Str::random(6),
+            'courier_company' => 'Shopee Express',
+            'apartment_id' => $apartmentA->id,
+            'recipient_name' => 'Cư dân Căn A',
+            'recipient_phone' => $this->resident->phone_number,
+            'parcel_photo_url' => 'https://example.com/a.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '111111',
+            'pickup_qr_code' => 'PKG-A-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        $parcelB = Parcel::create([
+            'tracking_number' => 'PARCEL_B_'.Str::random(6),
+            'courier_company' => 'Lazada Express',
+            'apartment_id' => $apartmentB->id,
+            'recipient_name' => 'Cư dân Căn B',
+            'recipient_phone' => '0988888888',
+            'parcel_photo_url' => 'https://example.com/b.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '222222',
+            'pickup_qr_code' => 'PKG-B-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        // Cư dân A lấy danh sách bưu phẩm
+        $res = $this->actingAs($this->resident)
+            ->getJson('/api/v1/reception/parcels');
+
+        $res->assertStatus(200);
+        $ids = collect($res->json('data'))->pluck('id')->all();
+        $this->assertContains($parcelA->id, $ids);
+        $this->assertNotContains($parcelB->id, $ids);
+
+        // Thử lọc cố tình sang apartment_id của căn B
+        $resFiltered = $this->actingAs($this->resident)
+            ->getJson('/api/v1/reception/parcels?apartment_id='.$apartmentB->id);
+        $resFiltered->assertStatus(200);
+        $filteredIds = collect($resFiltered->json('data'))->pluck('id')->all();
+        $this->assertNotContains($parcelB->id, $filteredIds);
+    }
+
+    /**
+     * BUG-01 Test: Cư dân không thể xem chi tiết bưu phẩm (kèm mã PIN/QR) của căn hộ khác
+     */
+    public function test_resident_cannot_view_details_of_parcel_from_other_apartment(): void
+    {
+        $apartmentB = $this->getOrCreateApartment('APT-OTHER-'.Str::random(4));
+        $parcelB = Parcel::create([
+            'tracking_number' => 'PARCEL_SECRET_'.Str::random(6),
+            'courier_company' => 'Lazada Express',
+            'apartment_id' => $apartmentB->id,
+            'recipient_name' => 'Cư dân Căn B',
+            'recipient_phone' => '0988888888',
+            'parcel_photo_url' => 'https://example.com/secret.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '999888',
+            'pickup_qr_code' => 'PKG-SEC-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        // Cư dân A cố tình gọi show parcel của căn B
+        $response = $this->actingAs($this->resident)
+            ->getJson('/api/v1/reception/parcels/'.$parcelB->id);
+
+        $response->assertStatus(403);
+        $response->assertJson([
+            'success' => false,
+        ]);
+    }
+
+    /**
+     * BUG-01 Test: Cư dân bị từ chối 403 khi thực hiện các quyền của nhân viên (store, update, delete, lookup, search)
+     */
+    public function test_resident_cannot_perform_staff_only_actions(): void
+    {
+        $parcel = Parcel::create([
+            'tracking_number' => 'PARCEL_STAFF_'.Str::random(6),
+            'courier_company' => 'Shopee',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Tester',
+            'recipient_phone' => '0901234567',
+            'parcel_photo_url' => 'https://example.com/staff.jpg',
+            'status' => 'RECEIVED_AT_RECEPTION',
+            'received_by_staff_id' => $this->receptionist->id,
+            'pickup_pin_code' => '123456',
+            'pickup_qr_code' => 'PKG-TST-'.Str::random(8),
+            'received_at' => now(),
+        ]);
+
+        // Store
+        $resStore = $this->actingAs($this->resident)->postJson('/api/v1/reception/parcels', [
+            'tracking_number' => 'SPX'.rand(100000, 999999),
+            'courier_company' => 'Shopee',
+            'apartment_id' => $this->apartment->id,
+            'recipient_name' => 'Tester',
+            'recipient_phone' => '0901234567',
+        ]);
+        $resStore->assertStatus(403);
+
+        // Update
+        $resUpdate = $this->actingAs($this->resident)->putJson('/api/v1/reception/parcels/'.$parcel->id, [
+            'notes' => 'Hack note',
+        ]);
+        $resUpdate->assertStatus(403);
+
+        // Delete
+        $resDelete = $this->actingAs($this->resident)->deleteJson('/api/v1/reception/parcels/'.$parcel->id);
+        $resDelete->assertStatus(403);
+
+        // Lookup
+        $resLookup = $this->actingAs($this->resident)->getJson('/api/v1/reception/parcels/lookup?code=123456');
+        $resLookup->assertStatus(403);
+
+        // Search recipients
+        $resSearchRec = $this->actingAs($this->resident)->getJson('/api/v1/reception/parcels/recipients/search?search=test');
+        $resSearchRec->assertStatus(403);
+
+        // Search apartments
+        $resSearchApt = $this->actingAs($this->resident)->getJson('/api/v1/reception/parcels/apartments/search?search=test');
+        $resSearchApt->assertStatus(403);
+    }
+
+    /**
+     * BUG-01 Test: receiveParcel từ chối nếu không xác định được nhân viên (không fallback nhân viên ngẫu nhiên)
+     */
+    public function test_receive_parcel_rejects_without_staff_identity_and_does_not_fallback(): void
+    {
+        $this->expectException(HttpException::class);
+
+        $this->service->receiveParcel(
+            data: [
+                'tracking_number' => 'NO_STAFF_'.Str::random(6),
+                'courier_company' => 'SPX',
+                'apartment_id' => $this->apartment->id,
+                'recipient_name' => 'Test',
+                'recipient_phone' => '0901234567',
+            ],
+            staffUser: null
+        );
     }
 }

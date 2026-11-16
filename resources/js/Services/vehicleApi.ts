@@ -111,23 +111,14 @@ class VehicleApiService {
       }
     }
 
-    // Default fallback demo token for manager/reception/admin session if needed
     if (!bearerToken) {
       const isReceptionPath =
-        window.location.pathname.startsWith('/le-tan') ||
+        typeof window !== 'undefined' &&
+        (window.location.pathname.startsWith('/le-tan') ||
         window.location.pathname.startsWith('/an-ninh') ||
         window.location.pathname.startsWith('/bao-ve') ||
-        window.location.pathname.startsWith('/reception');
-      bearerToken = isReceptionPath ? 'smart_token_reception_demo' : 'smart_token_manager_demo';
-    }
-
-    // Save token if not yet saved so other operations can reuse it
-    try {
-      if (!localStorage.getItem('smart_cassavas_token')) {
-        localStorage.setItem('smart_cassavas_token', bearerToken);
-      }
-    } catch {
-      // ignore
+        window.location.pathname.startsWith('/reception'));
+      bearerToken = isReceptionPath ? 'smart_token_reception_demo' : '';
     }
 
     return {

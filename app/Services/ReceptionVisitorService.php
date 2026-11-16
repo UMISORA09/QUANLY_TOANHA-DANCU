@@ -91,9 +91,11 @@ class ReceptionVisitorService
             'total_registrations' => (int) ($kpiResult->total_registrations ?? 0),
         ];
 
-        // 2. Xây dựng truy vấn cơ sở với direct indexed JOIN (tránh unindexed derived subquery)
+        // 2. Xây dựng truy vấn cơ sở: JOIN với bản ghi check-in mới nhất của mỗi registration (tránh nhân bản 1-N)
         $query = DB::table('visitor_registrations')
-            ->leftJoin('visitor_checkin_logs as vcl', 'visitor_registrations.id', '=', 'vcl.registration_id')
+            ->leftJoin('visitor_checkin_logs as vcl', function ($join) {
+                $join->on('vcl.id', '=', DB::raw('(SELECT vcl_sub.id FROM visitor_checkin_logs vcl_sub WHERE vcl_sub.registration_id = visitor_registrations.id ORDER BY vcl_sub.checkin_time DESC, vcl_sub.created_at DESC, vcl_sub.id DESC LIMIT 1)'));
+            })
             ->leftJoin('apartments', 'visitor_registrations.apartment_id', '=', 'apartments.id')
             ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
             ->leftJoin('users as host_users', 'visitor_registrations.host_resident_user_id', '=', 'host_users.id')
@@ -198,7 +200,7 @@ class ReceptionVisitorService
                 WHEN vcl.checkout_time IS NOT NULL THEN 3
                 ELSE 4
             END ASC
-        ')->orderBy('visitor_registrations.expected_arrival_time', 'desc');
+        ')->orderBy('visitor_registrations.expected_arrival_time', 'desc')->orderBy('visitor_registrations.id');
 
         $rows = $query->offset($offset)->limit($perPage)->get();
 

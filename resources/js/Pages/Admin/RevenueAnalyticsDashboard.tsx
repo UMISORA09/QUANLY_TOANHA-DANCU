@@ -137,39 +137,39 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
         <div className="space-y-6 pb-12 animate-in fade-in duration-300">
             {/* TOAST THÔNG BÁO */}
             {toastMessage && (
-                <div className="fixed top-5 right-5 z-50 bg-slate-900 border border-indigo-500/50 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <div className="fixed top-5 right-5 z-50 bg-white border border-slate-200 text-slate-800 px-4 py-3 rounded-xl shadow-xl flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span className="text-xs font-semibold">{toastMessage}</span>
                 </div>
             )}
 
             {/* HEADER DASHBOARD */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
                 <div className="space-y-1">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                         <TrendingUp className="w-3.5 h-3.5" />
                         <span>BÁO CÁO TÀI CHÍNH & PHÂN TÍCH DOANH THU THÔNG MINH</span>
                     </div>
-                    <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2">
+                    <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                         Dashboard Thống Kê Doanh Thu & Thu Hồi Công Nợ
                     </h1>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-slate-500">
                         Theo dõi trực quan dòng tiền, tỷ lệ thu hồi nợ, cơ cấu phí dịch vụ và xu hướng 12 tháng qua biểu đồ tương tác.
                     </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
                     {/* Chọn Năm */}
-                    <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300">
-                        <Calendar className="w-3.5 h-3.5 text-indigo-400 mr-2" />
-                        <span className="text-slate-400 mr-2">Năm:</span>
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 shadow-2xs">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-600 mr-2" />
+                        <span className="text-slate-500 mr-2 font-medium">Năm:</span>
                         <select
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(Number(e.target.value))}
-                            className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+                            className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
                         >
                             {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map((y) => (
-                                <option key={y} value={y} className="bg-slate-900 text-white">
+                                <option key={y} value={y} className="bg-white text-slate-800">
                                     {y}
                                 </option>
                             ))}
@@ -177,19 +177,19 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                     </div>
 
                     {/* Chọn Kỳ Cụ Thể (Optional) */}
-                    <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300">
-                        <span className="text-slate-400 mr-2">Kỳ:</span>
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 shadow-2xs">
+                        <span className="text-slate-500 mr-2 font-medium">Kỳ:</span>
                         <select
                             value={selectedPeriod}
                             onChange={(e) => setSelectedPeriod(e.target.value)}
-                            className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
+                            className="bg-transparent text-slate-800 font-semibold focus:outline-none cursor-pointer"
                         >
-                            <option value="" className="bg-slate-900 text-slate-300">Toàn Năm {selectedYear}</option>
+                            <option value="" className="bg-white text-slate-700">Toàn Năm {selectedYear}</option>
                             {Array.from({ length: 12 }, (_, i) => {
                                 const m = String(i + 1).padStart(2, '0');
                                 const periodStr = `${selectedYear}-${m}`;
                                 return (
-                                    <option key={periodStr} value={periodStr} className="bg-slate-900 text-white">
+                                    <option key={periodStr} value={periodStr} className="bg-white text-slate-800">
                                         Tháng {m}/{selectedYear}
                                     </option>
                                 );
@@ -201,10 +201,10 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                     <button
                         type="button"
                         onClick={() => setReportModalOpen(true)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-teal-300 border border-teal-500/30 text-xs font-bold transition-all shadow-md"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-teal-700 border border-teal-200 text-xs font-bold transition-all shadow-2xs cursor-pointer"
                         title="Xuất báo cáo tài chính và công nợ ra Excel / PDF"
                     >
-                        <Download className="w-3.5 h-3.5 text-teal-400" />
+                        <Download className="w-3.5 h-3.5 text-teal-600" />
                         <span>Xuất Báo Cáo</span>
                     </button>
 
@@ -213,10 +213,10 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                         type="button"
                         onClick={loadData}
                         disabled={loading}
-                        className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-colors"
+                        className="p-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-2xs transition-colors cursor-pointer"
                         title="Tải lại dữ liệu"
                     >
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
+                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
                     </button>
 
                     {/* Nút Quay Lại */}
@@ -224,9 +224,9 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                         <button
                             type="button"
                             onClick={onBackToList}
-                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-colors"
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs text-xs font-bold transition-colors cursor-pointer"
                         >
-                            <ChevronLeft className="w-4 h-4" />
+                            <ChevronLeft className="w-4 h-4 text-slate-600" />
                             <span>Quay Lại Danh Sách</span>
                         </button>
                     )}
@@ -236,81 +236,81 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
             {/* 4 THẺ KPI METRICS TỔNG QUAN */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* THẺ 1: TỔNG DOANH THU PHÁT HÀNH */}
-                <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden group hover:border-indigo-500/40 transition-all">
-                    <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+                <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs relative overflow-hidden group hover:border-indigo-300 transition-all">
+                    <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
                         <span>TỔNG PHÁT HÀNH</span>
-                        <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                        <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-2xs">
                             <FileText className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-mono font-extrabold text-white mt-2">
+                    <div className="text-2xl font-mono font-extrabold text-slate-900 mt-2">
                         {formatCurrency(summary.total_billed)}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs mt-2">
                         {summary.billed_growth_pct >= 0 ? (
-                            <span className="flex items-center text-emerald-400 font-bold">
+                            <span className="flex items-center text-emerald-600 font-bold">
                                 <ArrowUpRight className="w-3.5 h-3.5" />
                                 +{summary.billed_growth_pct}%
                             </span>
                         ) : (
-                            <span className="flex items-center text-rose-400 font-bold">
+                            <span className="flex items-center text-rose-600 font-bold">
                                 <ArrowDownRight className="w-3.5 h-3.5" />
                                 {summary.billed_growth_pct}%
                             </span>
                         )}
-                        <span className="text-slate-500 text-[11px]">so với kỳ trước</span>
+                        <span className="text-slate-400 text-[11px]">so với kỳ trước</span>
                     </div>
                 </div>
 
                 {/* THẺ 2: TỔNG TIỀN THỰC THU */}
-                <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden group hover:border-emerald-500/40 transition-all">
-                    <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+                <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs relative overflow-hidden group hover:border-emerald-300 transition-all">
+                    <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
                         <span>ĐÃ THỰC THU</span>
-                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                        <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 shadow-2xs">
                             <CheckCircle2 className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-mono font-extrabold text-emerald-400 mt-2">
+                    <div className="text-2xl font-mono font-extrabold text-emerald-600 mt-2">
                         {formatCurrency(summary.total_collected)}
                     </div>
-                    <div className="flex items-center justify-between text-xs mt-2 text-slate-400">
+                    <div className="flex items-center justify-between text-xs mt-2 text-slate-500">
                         <span>{summary.paid_invoices} HĐ hoàn tất</span>
-                        <span className="font-mono text-emerald-400 font-bold">{summary.collection_rate}%</span>
+                        <span className="font-mono text-emerald-600 font-bold">{summary.collection_rate}%</span>
                     </div>
                 </div>
 
                 {/* THẺ 3: TỔNG CÔNG NỢ TỒN ĐỌNG */}
-                <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden group hover:border-amber-500/40 transition-all">
-                    <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+                <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs relative overflow-hidden group hover:border-amber-300 transition-all">
+                    <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
                         <span>CÔNG NỢ CÒN LẠI</span>
-                        <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                        <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 shadow-2xs">
                             <AlertCircle className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-mono font-extrabold text-amber-400 mt-2">
+                    <div className="text-2xl font-mono font-extrabold text-amber-600 mt-2">
                         {formatCurrency(summary.total_debt)}
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs mt-2 text-slate-400">
-                        <span className="text-rose-400 font-bold">{summary.overdue_invoices} HĐ quá hạn</span>
-                        <span className="text-slate-500 text-[11px]">cần gửi thông báo</span>
+                    <div className="flex items-center gap-1.5 text-xs mt-2 text-slate-500">
+                        <span className="text-rose-600 font-bold">{summary.overdue_invoices} HĐ quá hạn</span>
+                        <span className="text-slate-400 text-[11px]">cần gửi thông báo</span>
                     </div>
                 </div>
 
                 {/* THẺ 4: TỶ LỆ THU HỒI CÔNG NỢ */}
-                <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden group hover:border-sky-500/40 transition-all">
-                    <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+                <div className="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs relative overflow-hidden group hover:border-sky-300 transition-all">
+                    <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
                         <span>TỶ LỆ THU HỒI</span>
-                        <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
+                        <div className="p-2 rounded-xl bg-sky-50 text-sky-600 border border-sky-100 shadow-2xs">
                             <TrendingUp className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-mono font-extrabold text-sky-400 mt-2">
+                    <div className="text-2xl font-mono font-extrabold text-sky-600 mt-2">
                         {summary.collection_rate}%
                     </div>
                     {/* Thanh tiến độ */}
-                    <div className="w-full bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
+                    <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
                         <div
-                            className="bg-gradient-to-r from-sky-500 to-emerald-400 h-2 rounded-full transition-all duration-500"
+                            className="bg-gradient-to-r from-sky-500 to-emerald-500 h-2 rounded-full transition-all duration-500"
                             style={{ width: `${Math.min(100, summary.collection_rate)}%` }}
                         />
                     </div>
@@ -320,25 +320,25 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
             {/* PHẦN 2: BIỂU ĐỒ CHÍNH - XU HƯỚNG DOANH THU 12 THÁNG & CƠ CẤU DOANH THU */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* BIỂU ĐỒ 1: CỘT KÉP XU HƯỚNG DOANH THU 12 THÁNG ( chiếm 2 cột) */}
-                <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between">
+                <div className="lg:col-span-2 bg-white border border-slate-200/90 p-6 rounded-2xl shadow-xs flex flex-col justify-between">
                     <div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-800">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
                             <div className="flex items-center gap-2">
-                                <BarChart3 className="w-5 h-5 text-indigo-400" />
-                                <h3 className="font-bold text-white text-base">
+                                <BarChart3 className="w-5 h-5 text-indigo-600" />
+                                <h3 className="font-bold text-slate-900 text-base">
                                     Xu Hướng Doanh Thu Phát Hành & Thực Thu 12 Tháng (Năm {selectedYear})
                                 </h3>
                             </div>
                             <div className="flex items-center gap-4 text-xs font-semibold">
-                                <div className="flex items-center gap-1.5 text-indigo-300">
+                                <div className="flex items-center gap-1.5 text-indigo-600">
                                     <span className="w-3 h-3 rounded bg-indigo-500" />
                                     <span>Phát Hành</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 text-emerald-300">
+                                <div className="flex items-center gap-1.5 text-emerald-600">
                                     <span className="w-3 h-3 rounded bg-emerald-500" />
                                     <span>Thực Thu</span>
                                 </div>
-                                <div className="flex items-center gap-1.5 text-amber-300">
+                                <div className="flex items-center gap-1.5 text-amber-600">
                                     <span className="w-3 h-3 rounded bg-amber-500" />
                                     <span>Còn Nợ</span>
                                 </div>
@@ -362,8 +362,8 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                                     >
                                         {/* Hover Tooltip Popup */}
                                         {isHovered && (
-                                            <div className="absolute -top-24 z-30 bg-slate-950 border border-indigo-500/40 rounded-xl p-2.5 shadow-2xl text-[11px] whitespace-nowrap space-y-1 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
-                                                <div className="font-bold text-white border-b border-slate-800 pb-1">
+                                            <div className="absolute -top-24 z-30 bg-slate-900 border border-slate-800 rounded-xl p-2.5 shadow-2xl text-[11px] whitespace-nowrap space-y-1 pointer-events-none animate-in fade-in zoom-in-95 duration-150 text-white">
+                                                <div className="font-bold border-b border-slate-700 pb-1">
                                                     Kỳ {m.month} ({m.invoice_count} HĐ)
                                                 </div>
                                                 <div className="text-indigo-300">Phát hành: {formatCurrency(m.billed_amount)}</div>
@@ -377,23 +377,23 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                                         <div className="w-full flex items-end justify-center gap-1 h-48">
                                             {/* Cột Phát Hành */}
                                             <div
-                                                className="w-2.5 sm:w-3.5 bg-indigo-500/80 hover:bg-indigo-400 rounded-t transition-all duration-300"
+                                                className="w-2.5 sm:w-3.5 bg-indigo-500 hover:bg-indigo-600 rounded-t transition-all duration-300"
                                                 style={{ height: `${Math.max(4, billedHeight)}%` }}
                                             />
                                             {/* Cột Thực Thu */}
                                             <div
-                                                className="w-2.5 sm:w-3.5 bg-emerald-500/80 hover:bg-emerald-400 rounded-t transition-all duration-300"
+                                                className="w-2.5 sm:w-3.5 bg-emerald-500 hover:bg-emerald-600 rounded-t transition-all duration-300"
                                                 style={{ height: `${Math.max(4, collectedHeight)}%` }}
                                             />
                                             {/* Cột Nợ */}
                                             <div
-                                                className="w-1.5 sm:w-2 bg-amber-500/70 hover:bg-amber-400 rounded-t transition-all duration-300"
+                                                className="w-1.5 sm:w-2 bg-amber-400 hover:bg-amber-500 rounded-t transition-all duration-300"
                                                 style={{ height: `${Math.max(2, debtHeight)}%` }}
                                             />
                                         </div>
 
                                         {/* Nhãn Tháng */}
-                                        <div className="text-[11px] font-mono font-bold text-slate-400 mt-2 group-hover:text-white transition-colors">
+                                        <div className="text-[11px] font-mono font-bold text-slate-500 mt-2 group-hover:text-slate-900 transition-colors">
                                             {m.month_name}
                                         </div>
                                     </div>
@@ -402,18 +402,18 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                         </div>
                     </div>
 
-                    <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                         <span>Đơn vị: Đồng (VNĐ)</span>
-                        <span>Đỉnh thu cao nhất năm: <strong>{formatCurrency(maxMonthlyVal)}</strong></span>
+                        <span>Đỉnh thu cao nhất năm: <strong className="text-slate-800">{formatCurrency(maxMonthlyVal)}</strong></span>
                     </div>
                 </div>
 
                 {/* BIỂU ĐỒ 2: DONUT CHART CƠ CẤU DOANH THU THEO LOẠI PHÍ (1 cột) */}
-                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between">
+                <div className="bg-white border border-slate-200/90 p-6 rounded-2xl shadow-xs flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center gap-2 pb-4 border-b border-slate-800">
-                            <PieChart className="w-5 h-5 text-sky-400" />
-                            <h3 className="font-bold text-white text-base">Cơ Cấu Phân Bổ Nguồn Thu</h3>
+                        <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
+                            <PieChart className="w-5 h-5 text-sky-600" />
+                            <h3 className="font-bold text-slate-900 text-base">Cơ Cấu Phân Bổ Nguồn Thu</h3>
                         </div>
 
                         {/* Donut Chart Visual */}
@@ -421,14 +421,14 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                             <div className="relative w-44 h-44 flex items-center justify-center">
                                 <svg viewBox="0 0 200 200" className="w-full h-full transform -rotate-90">
                                     {donutSegments.length === 0 ? (
-                                        <circle cx="100" cy="100" r="65" fill="none" stroke="#334155" strokeWidth="25" />
+                                        <circle cx="100" cy="100" r="65" fill="none" stroke="#e2e8f0" strokeWidth="25" />
                                     ) : (
                                         donutSegments.map((seg, idx) => (
                                             <path
                                                 key={idx}
                                                 d={seg.pathData}
                                                 fill={seg.color}
-                                                className="hover:opacity-80 transition-opacity cursor-pointer"
+                                                className="hover:opacity-85 transition-opacity cursor-pointer"
                                             >
                                                 <title>{`${seg.label}: ${formatCurrency(seg.total_amount)} (${seg.percentage}%)`}</title>
                                             </path>
@@ -438,7 +438,7 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                                 {/* Tâm vòng tròn */}
                                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                                     <span className="text-[10px] text-slate-400 font-bold uppercase">TỔNG THU</span>
-                                    <span className="text-sm font-bold font-mono text-white">
+                                    <span className="text-sm font-bold font-mono text-slate-900">
                                         {formatMillions(totalCategoryRevenue)}
                                     </span>
                                 </div>
@@ -448,14 +448,14 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                         {/* Danh sách Chú thích (Legend) */}
                         <div className="space-y-2 text-xs">
                             {categories.map((cat) => (
-                                <div key={cat.item_type} className="flex items-center justify-between p-2 rounded-xl bg-slate-950/50 hover:bg-slate-800/50 transition-colors">
+                                <div key={cat.item_type} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-slate-100/80 transition-colors border border-slate-100">
                                     <div className="flex items-center gap-2">
-                                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                                        <span className="font-semibold text-slate-200">{cat.label}</span>
+                                        <span className="w-3 h-3 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: cat.color }} />
+                                        <span className="font-semibold text-slate-700">{cat.label}</span>
                                     </div>
                                     <div className="flex items-center gap-3 font-mono">
-                                        <span className="text-white font-bold">{formatCurrency(cat.total_amount)}</span>
-                                        <span className="text-slate-400 text-[11px] w-12 text-right">{cat.percentage}%</span>
+                                        <span className="text-slate-900 font-bold">{formatCurrency(cat.total_amount)}</span>
+                                        <span className="text-slate-500 text-[11px] w-12 text-right">{cat.percentage}%</span>
                                     </div>
                                 </div>
                             ))}
@@ -467,32 +467,32 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
             {/* PHẦN 3: PHƯƠNG THỨC THANH TOÁN & BẢNG TOP CĂN HỘ CÒN NỢ */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* CƠ CẤU PHƯƠNG THỨC THANH TOÁN (1 cột) */}
-                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between">
+                <div className="bg-white border border-slate-200/90 p-6 rounded-2xl shadow-xs flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center gap-2 pb-4 border-b border-slate-800">
-                            <CreditCard className="w-5 h-5 text-emerald-400" />
-                            <h3 className="font-bold text-white text-base">Phương Thức Thanh Toán</h3>
+                        <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
+                            <CreditCard className="w-5 h-5 text-emerald-600" />
+                            <h3 className="font-bold text-slate-900 text-base">Phương Thức Thanh Toán</h3>
                         </div>
 
                         <div className="space-y-4 mt-4">
                             {paymentMethods.length === 0 ? (
-                                <div className="py-8 text-center text-slate-500 text-xs">
+                                <div className="py-8 text-center text-slate-400 text-xs">
                                     Chưa có giao dịch thanh toán trong năm này.
                                 </div>
                             ) : (
                                 paymentMethods.map((pm) => (
                                     <div key={pm.gateway} className="space-y-1.5 text-xs">
                                         <div className="flex items-center justify-between">
-                                            <span className="font-semibold text-slate-300">{pm.label}</span>
-                                            <span className="font-mono text-white font-bold">{formatCurrency(pm.total_amount)} ({pm.percentage}%)</span>
+                                            <span className="font-semibold text-slate-700">{pm.label}</span>
+                                            <span className="font-mono text-slate-900 font-bold">{formatCurrency(pm.total_amount)} ({pm.percentage}%)</span>
                                         </div>
-                                        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                                             <div
                                                 className="h-2 rounded-full transition-all duration-500"
                                                 style={{ width: `${pm.percentage}%`, backgroundColor: pm.color }}
                                             />
                                         </div>
-                                        <div className="text-[10px] text-slate-500 text-right font-mono">
+                                        <div className="text-[10px] text-slate-400 text-right font-mono">
                                             {pm.transaction_count} giao dịch
                                         </div>
                                     </div>
@@ -503,21 +503,21 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                 </div>
 
                 {/* BẢNG TOP 5 CĂN HỘ CÒN NỢ ĐỌNG LỚN NHẤT (2 cột) */}
-                <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between">
+                <div className="lg:col-span-2 bg-white border border-slate-200/90 p-6 rounded-2xl shadow-xs flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                             <div className="flex items-center gap-2">
-                                <AlertCircle className="w-5 h-5 text-amber-400" />
-                                <h3 className="font-bold text-white text-base">
+                                <AlertCircle className="w-5 h-5 text-amber-600" />
+                                <h3 className="font-bold text-slate-900 text-base">
                                     Top 5 Căn Hộ Còn Nợ Đọng Nhiều Nhất
                                 </h3>
                             </div>
-                            <span className="text-xs text-slate-400">Cần ưu tiên nhắc nợ</span>
+                            <span className="text-xs text-slate-500">Cần ưu tiên nhắc nợ</span>
                         </div>
 
-                        <div className="overflow-x-auto mt-4">
-                            <table className="w-full text-left text-xs text-slate-300">
-                                <thead className="bg-slate-950/80 text-slate-400 uppercase border-b border-slate-800">
+                        <div className="overflow-x-auto mt-4 border border-slate-100 rounded-xl">
+                            <table className="w-full text-left text-xs text-slate-700">
+                                <thead className="bg-slate-50 text-slate-600 uppercase border-b border-slate-200 font-bold text-[10px]">
                                     <tr>
                                         <th className="py-2.5 px-3">Hạng</th>
                                         <th className="py-2.5 px-3">Căn Hộ</th>
@@ -527,45 +527,45 @@ export const RevenueAnalyticsDashboard: React.FC<RevenueAnalyticsDashboardProps>
                                         <th className="py-2.5 px-3 text-right">Tổng Nợ Còn Lại</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-800/60 font-mono">
+                                <tbody className="divide-y divide-slate-100 font-mono bg-white">
                                     {topDebtors.length === 0 ? (
                                         <tr>
-                                            <td colSpan={6} className="py-8 text-center text-slate-500 font-sans">
+                                            <td colSpan={6} className="py-8 text-center text-slate-400 font-sans">
                                                 Không có căn hộ nào nợ đọng! Tuyệt vời.
                                             </td>
                                         </tr>
                                     ) : (
                                         topDebtors.map((deb, index) => (
-                                            <tr key={deb.apartment_id} className="hover:bg-slate-800/40">
+                                            <tr key={deb.apartment_id} className="hover:bg-slate-50/80 transition-colors">
                                                 <td className="py-3 px-3">
                                                     <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center font-bold text-[10px] ${
                                                         index === 0
-                                                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                                            ? 'bg-rose-50 text-rose-600 border border-rose-200'
                                                             : index === 1
-                                                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                                                            : 'bg-slate-800 text-slate-400'
+                                                            ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                                                            : 'bg-slate-100 text-slate-600'
                                                     }`}>
                                                         {index + 1}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-3 font-bold text-white font-sans flex items-center gap-1.5">
-                                                    <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+                                                <td className="py-3 px-3 font-bold text-slate-900 font-sans flex items-center gap-1.5">
+                                                    <Building2 className="w-3.5 h-3.5 text-indigo-600" />
                                                     <span>{deb.apartment_number}</span>
-                                                    <span className="text-[11px] text-slate-500 font-normal">({deb.block_name})</span>
+                                                    <span className="text-[11px] text-slate-400 font-normal">({deb.block_name})</span>
                                                 </td>
                                                 <td className="py-3 px-3 font-sans">
-                                                    <div className="font-semibold text-slate-200">{deb.resident_name}</div>
+                                                    <div className="font-semibold text-slate-800">{deb.resident_name}</div>
                                                     <div className="text-[10px] text-slate-500">{deb.resident_phone}</div>
                                                 </td>
                                                 <td className="py-3 px-3 text-center">
-                                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
                                                         {deb.unpaid_invoice_count} HĐ
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-3 text-slate-400">
+                                                <td className="py-3 px-3 text-slate-500">
                                                     {deb.latest_due_date || '-'}
                                                 </td>
-                                                <td className="py-3 px-3 text-right font-extrabold text-rose-400 text-sm">
+                                                <td className="py-3 px-3 text-right font-extrabold text-rose-600 text-sm">
                                                     {formatCurrency(deb.total_debt)}
                                                 </td>
                                             </tr>

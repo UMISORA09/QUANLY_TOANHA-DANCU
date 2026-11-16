@@ -37,7 +37,7 @@ class BuildingApartmentManagementTest extends TestCase
             ['user_id' => $adminUser->id, 'role_id' => $role->id],
             ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
         );
-        $this->adminToken = 'smart_token_'.$adminUser->id.'_structure';
+        $this->adminToken = $this->issueTestBearerToken($adminUser);
     }
 
     protected function authHeaders(): array

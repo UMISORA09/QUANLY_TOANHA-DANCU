@@ -8,6 +8,7 @@ use App\Services\ReceptionParcelService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class ReceptionParcelController extends Controller
@@ -27,12 +28,14 @@ class ReceptionParcelController extends Controller
             'courier_company' => $request->query('courier_company'),
             'from_date' => $request->query('from_date'),
             'to_date' => $request->query('to_date'),
+            'pin_code' => $request->query('pin_code'),
             'search' => $request->query('search'),
         ];
 
         $perPage = min(100, max(1, (int) ($request->query('per_page', $request->query('limit', 15)))));
 
-        $result = $this->service->getParcels($filters, $perPage);
+        $user = $request->user() ?? RbacService::resolveUser($request);
+        $result = $this->service->getParcels($filters, $perPage, $user);
         $paginator = $result['data'];
 
         return response()->json([
@@ -64,7 +67,7 @@ class ReceptionParcelController extends Controller
             'notes' => 'nullable|string|max:1000',
             'recipient_user_id' => 'nullable|string',
             'parcel_photo_url' => 'nullable|string|max:500',
-            'photo' => 'nullable|file',
+            'photo' => 'nullable|file|image|mimes:jpeg,png,jpg,webp|max:10240',
         ]);
 
         $photoFile = $request->file('photo');
@@ -88,6 +91,11 @@ class ReceptionParcelController extends Controller
                 'message' => $e->validator->errors()->first() ?: 'Dữ liệu không hợp lệ.',
                 'errors' => $e->errors(),
             ], 422);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -99,7 +107,7 @@ class ReceptionParcelController extends Controller
     /**
      * Xem thông tin chi tiết một kiện hàng bưu phẩm
      */
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
         $parcel = Parcel::with([
             'apartment:id,apartment_number,block_id',
@@ -114,6 +122,17 @@ class ReceptionParcelController extends Controller
                 'success' => false,
                 'message' => 'Không tìm thấy kiện hàng bưu phẩm với ID đã cung cấp.',
             ], 404);
+        }
+
+        $user = $request->user() ?? RbacService::resolveUser($request);
+        if ($user && ! $this->service->isStaff($user)) {
+            $allowedApartmentIds = $this->service->resolveResidentApartmentIds($user);
+            if (! in_array((string) $parcel->apartment_id, $allowedApartmentIds, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bạn không có quyền truy cập thông tin bưu phẩm của căn hộ khác.',
+                ], 403);
+            }
         }
 
         return response()->json([
@@ -134,7 +153,7 @@ class ReceptionParcelController extends Controller
             'recipient_phone' => 'nullable|string|max:25',
             'stored_location_type' => 'nullable|string|in:RECEPTION_DESK,SMART_LOCKER,SECURITY_BOOTH',
             'notes' => 'nullable|string|max:1000',
-            'photo' => 'nullable|file',
+            'photo' => 'nullable|file|image|mimes:jpeg,png,jpg,webp|max:10240',
         ]);
 
         $newPhotoFile = $request->file('photo');
@@ -159,6 +178,11 @@ class ReceptionParcelController extends Controller
                 'message' => $e->validator->errors()->first() ?: 'Dữ liệu không hợp lệ.',
                 'errors' => $e->errors(),
             ], 422);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -189,6 +213,11 @@ class ReceptionParcelController extends Controller
                 'message' => $e->validator->errors()->first() ?: 'Không thể xóa kiện hàng.',
                 'errors' => $e->errors(),
             ], 422);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -202,16 +231,24 @@ class ReceptionParcelController extends Controller
      */
     public function searchRecipients(Request $request): JsonResponse
     {
-        $keyword = (string) ($request->query('search', $request->query('q', '')));
-        $apartmentId = $request->query('apartment_id');
-        $limit = min(20, max(1, (int) $request->query('limit', 10)));
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $keyword = (string) ($request->query('search', $request->query('q', '')));
+            $apartmentId = $request->query('apartment_id');
+            $limit = min(20, max(1, (int) $request->query('limit', 10)));
 
-        $recipients = $this->service->searchRecipients($keyword, $apartmentId, $limit);
+            $recipients = $this->service->searchRecipients($keyword, $apartmentId, $limit, $staffUser);
 
-        return response()->json([
-            'success' => true,
-            'data' => $recipients,
-        ], 200);
+            return response()->json([
+                'success' => true,
+                'data' => $recipients,
+            ], 200);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        }
     }
 
     /**
@@ -219,14 +256,171 @@ class ReceptionParcelController extends Controller
      */
     public function searchApartments(Request $request): JsonResponse
     {
-        $keyword = (string) ($request->query('search', $request->query('q', '')));
-        $limit = min(50, max(1, (int) $request->query('limit', 15)));
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $keyword = (string) ($request->query('search', $request->query('q', '')));
+            $limit = min(50, max(1, (int) $request->query('limit', 15)));
 
-        $apartments = $this->service->searchApartments($keyword, $limit);
+            $apartments = $this->service->searchApartments($keyword, $limit, $staffUser);
 
-        return response()->json([
-            'success' => true,
-            'data' => $apartments,
-        ], 200);
+            return response()->json([
+                'success' => true,
+                'data' => $apartments,
+            ], 200);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        }
+    }
+
+    /**
+     * Bàn giao và Check-out bưu phẩm cho cư dân
+     */
+    public function checkOut(Request $request, ?string $id = null): JsonResponse
+    {
+        $targetId = trim((string) ($id ?? $request->input('parcel_id') ?? $request->input('id') ?? ''));
+
+        if ($targetId === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui lòng cung cấp ID bưu phẩm cần bàn giao.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'parcel_id' => 'nullable|string',
+            'id' => 'nullable|string',
+            'collected_by_name' => 'nullable|string|max:150',
+            'pin_code' => 'nullable|string|max:20',
+            'qr_code' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:1000',
+            'collected_signature_url' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+
+            if (! $staffUser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Yêu cầu đăng nhập tài khoản nhân viên để thực hiện bàn giao bưu phẩm.',
+                    'error' => 'UNAUTHORIZED',
+                ], 401);
+            }
+
+            $parcel = $this->service->handoverParcel(
+                id: $targetId,
+                data: $validated,
+                staffUser: $staffUser
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Bàn giao kiện hàng [{$parcel->tracking_number}] cho cư dân thành công.",
+                'data' => $parcel,
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Dữ liệu xác thực không hợp lệ.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Lỗi khi thực hiện bàn giao kiện hàng.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Tra cứu bưu phẩm nhanh bằng mã PIN, mã QR hoặc mã vận đơn
+     */
+    public function lookup(Request $request): JsonResponse
+    {
+        $code = trim((string) ($request->query('code', $request->query('q', ''))));
+
+        if ($code === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui lòng cung cấp mã PIN, mã QR hoặc mã vận đơn cần tra cứu.',
+            ], 422);
+        }
+
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $result = $this->service->lookupParcel($code, $staffUser);
+
+            if (! $result) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Không tìm thấy kiện hàng nào khớp với mã [{$code}].",
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $result['parcel'],
+                'can_checkout' => $result['can_checkout'],
+            ], 200);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        }
+    }
+
+    /**
+     * Gửi thông báo nhắc nhở cư dân nhận kiện hàng gần hết hạn / quá hạn
+     */
+    public function remind(Request $request, string $id): JsonResponse
+    {
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $result = $this->service->remindResident($id, $staffUser);
+
+            return response()->json($result, 200);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Không thể gửi thông báo nhắc nhở.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Gửi thông báo nhắc nhở đồng loạt tất cả kiện hàng gần hết hạn
+     */
+    public function remindExpiring(Request $request): JsonResponse
+    {
+        try {
+            $staffUser = $request->user() ?? RbacService::resolveUser($request);
+            $result = $this->service->remindAllExpiring($staffUser);
+
+            return response()->json($result, 200);
+        } catch (HttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Không thể gửi thông báo nhắc nhở đồng loạt.',
+            ], 500);
+        }
     }
 }

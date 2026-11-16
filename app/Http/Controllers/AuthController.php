@@ -10,7 +10,6 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -48,37 +47,81 @@ class AuthController extends Controller
             'dev@smartcassavas.vn' => 'admin',
             'admin@cassavas.vn' => 'admin',
             'admin@smartcassavas.vn' => 'admin',
-            'quanly' => 'manager',
-            'quanly@cassavas.vn' => 'manager',
-            'quanly@smartcassavas.vn' => 'manager',
-            'letan' => 'receptionist',
-            'letan@cassavas.vn' => 'receptionist',
-            'letan@smartcassavas.vn' => 'receptionist',
+            'admin@demo.local' => 'admin',
+            'admin' => 'admin',
+            'manager' => 'quanly',
+            'manager@demo.local' => 'quanly',
+            'quanly' => 'quanly',
+            'quanly@cassavas.vn' => 'quanly',
+            'quanly@smartcassavas.vn' => 'quanly',
+            'receptionist' => 'letan',
+            'receptionist@demo.local' => 'letan',
+            'letan' => 'letan',
+            'letan@cassavas.vn' => 'letan',
+            'letan@smartcassavas.vn' => 'letan',
             'baove' => 'security',
             'baove@cassavas.vn' => 'security',
             'baove@smartcassavas.vn' => 'security',
             'security@cassavas.vn' => 'security',
+            'security@demo.local' => 'security',
+            'security' => 'security',
             'ketoan' => 'accountant',
             'ketoan@cassavas.vn' => 'accountant',
             'ketoan@smartcassavas.vn' => 'accountant',
             'accountant@cassavas.vn' => 'accountant',
+            'accountant@demo.local' => 'accountant',
+            'accountant' => 'accountant',
             'cudan' => 'nguyenvanan',
             'cudan@smartcassavas.vn' => 'nguyenvanan',
             'cudan@cassavas.vn' => 'nguyenvanan',
-            'resident' => 'resident.owner',
-            'cudan@demo.local' => 'resident.owner',
+            'cudan@demo.local' => 'nguyenvanan',
+            'resident' => 'nguyenvanan',
+            'resident.owner' => 'resident.owner',
+            'resident.owner@demo.local' => 'resident.owner',
+            'nguyenvanan' => 'nguyenvanan',
+            'nguyenvanan@cassavas.vn' => 'nguyenvanan',
+            'nguyenvanan@smartcassavas.vn' => 'nguyenvanan',
+            '0901234567' => 'nguyenvanan',
+            '0900000010' => 'resident.owner',
+            '0900000001' => 'admin',
+            '0900000002' => 'quanly',
+            '0900000004' => 'letan',
+            '0900000005' => 'security',
+            '0900000003' => 'accountant',
         ];
 
         $searchIdentifier = $aliasMap[$identifier] ?? $identifier;
 
         // Tìm user trong database theo username, email hoặc số điện thoại
         $user = User::with('roles:id,role_code')
-            ->where(function ($q) use ($searchIdentifier) {
-                $q->where('username', $searchIdentifier)
+            ->where(function ($q) use ($identifier, $searchIdentifier) {
+                $q->where('username', $identifier)
+                    ->orWhere('email', $identifier)
+                    ->orWhere('phone_number', $identifier)
+                    ->orWhere('username', $searchIdentifier)
                     ->orWhere('email', $searchIdentifier)
                     ->orWhere('phone_number', $searchIdentifier);
             })
             ->first();
+
+        // Fallback linh hoạt cho các tài khoản demo giữa các tên người dùng tương đương
+        if (! $user && in_array($searchIdentifier, ['nguyenvanan', 'resident.owner'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['nguyenvanan', 'resident.owner'])
+                ->first();
+        }
+
+        if (! $user && in_array($searchIdentifier, ['manager', 'quanly'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['manager', 'quanly'])
+                ->first();
+        }
+
+        if (! $user && in_array($searchIdentifier, ['receptionist', 'letan'], true)) {
+            $user = User::with('roles:id,role_code')
+                ->whereIn('username', ['receptionist', 'letan'])
+                ->first();
+        }
 
         if (! $user) {
             // Chống Timing Attack: chạy dummy bcrypt hash có hằng số thời gian
@@ -91,11 +134,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Kiểm tra mật khẩu chuẩn xác thực cryptographic hash hoặc fallback demo mật khẩu cho môi trường thử nghiệm
-        $isDemoFallbackPass = in_array($user->username, ['admin', 'manager', 'receptionist', 'security', 'resident.owner', 'resident.member', 'accountant', 'nguyenvanan', 'quanly', 'letan'], true)
-            && in_array($password, ['123567', '123456', 'Admin@123456', 'Manager@123456', 'Receptionist@123456', 'Security@123456', 'Resident@123456', 'Accountant@123456'], true);
-
-        $isValidPassword = (! empty($user->password_hash) && Hash::check($password, $user->password_hash)) || $isDemoFallbackPass;
+        $isValidPassword = ! empty($user->password_hash) && Hash::check($password, $user->password_hash);
 
         if (! $isValidPassword) {
             return response()->json([
@@ -201,34 +240,7 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user() ?? Auth::user();
-
-        // Nếu chưa được nạp qua middleware, thử giải mã từ Bearer token
-        if (! $user) {
-            $authHeader = $request->header('Authorization');
-            if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
-                $token = trim(substr($authHeader, 7));
-                $tokenHash = hash('sha256', $token);
-
-                $session = DB::table('user_sessions')
-                    ->where(function ($q) use ($token, $tokenHash) {
-                        $q->where('refresh_token_hash', $tokenHash)
-                            ->orWhere('refresh_token_hash', $token);
-                    })
-                    ->where('is_revoked', 0)
-                    ->where('expires_at', '>', now())
-                    ->first();
-
-                if ($session) {
-                    $user = User::with('roles:id,role_code')->find($session->user_id);
-                } elseif (str_starts_with($token, 'smart_token_')) {
-                    $parts = explode('_', $token);
-                    if (isset($parts[2]) && strlen($parts[2]) === 36) {
-                        $user = User::with('roles:id,role_code')->find($parts[2]);
-                    }
-                }
-            }
-        }
+        $user = $request->user();
 
         if (! $user) {
             return response()->json([
@@ -289,14 +301,9 @@ class AuthController extends Controller
             $token = trim(substr($authHeader, 7));
             $tokenHash = hash('sha256', $token);
 
-            try {
-                DB::table('user_sessions')
-                    ->where('refresh_token_hash', $tokenHash)
-                    ->orWhere('refresh_token_hash', $token)
-                    ->update(['is_revoked' => 1]);
-            } catch (\Throwable) {
-                // ignore
-            }
+            DB::table('user_sessions')
+                ->where('refresh_token_hash', $tokenHash)
+                ->update(['is_revoked' => 1]);
         }
 
         return response()->json([
@@ -364,7 +371,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => "Mã xác thực OTP đã được gửi tới email {$email}. Vui lòng kiểm tra hộp thư của bạn.",
             'email' => $email,
-            'debug_otp' => $otp,
+            'debug_otp' => null,
         ]);
     }
 
@@ -657,6 +664,7 @@ class AuthController extends Controller
             'quanly@cassavas.vn' => 'manager@demo.local',
             'letan@cassavas.vn' => 'receptionist@demo.local',
             'cudan@cassavas.vn' => 'nguyenvanan@cassavas.vn',
+            'nguyenvanan@cassavas.vn' => 'nguyenvanan@cassavas.vn',
             'dev@smartcassavas.vn' => 'admin@demo.local',
             'admin@smartcassavas.vn' => 'admin@demo.local',
             'quanly@smartcassavas.vn' => 'manager@demo.local',
@@ -670,6 +678,12 @@ class AuthController extends Controller
             ->orWhere('email', $email)
             ->orWhere('username', $targetEmail)
             ->orWhere('username', $email)
+            ->orWhere(function ($q) use ($email, $targetEmail) {
+                if (in_array($email, ['cudan@cassavas.vn', 'nguyenvanan@cassavas.vn'], true) || in_array($targetEmail, ['nguyenvanan@cassavas.vn'], true)) {
+                    $q->where('email', 'resident.owner@demo.local')
+                        ->orWhere('username', 'resident.owner');
+                }
+            })
             ->first();
 
         if (! $user) {
@@ -717,7 +731,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => "Mã xác thực OTP đã được gửi tới email {$email}. Vui lòng kiểm tra hộp thư của bạn.",
             'email' => $email,
-            'debug_otp' => app()->isLocal() ? $otp : null,
+            'debug_otp' => null,
         ]);
     }
 

@@ -16,7 +16,7 @@ class ManagementDashboardController extends Controller
      */
     public function overview(): JsonResponse
     {
-        $data = Cache::remember('management_dashboard:v1:overview', 120, function () {
+        $data = Cache::remember('management_dashboard:v2:overview', 120, function () {
             $today = Carbon::create(2026, 9, 15)->toDateString();
 
             // 1. KPI THỐNG KÊ
@@ -223,24 +223,6 @@ class ManagementDashboardController extends Controller
                 'updatedAt' => '2 ngày trước',
             ];
 
-            // 5. THÔNG BÁO VẬN HÀNH (NOTIFICATIONS) TỪ DATABASE
-            $notificationsRaw = DB::table('user_in_app_notifications')
-                ->whereNotIn('category', ['AMENITY', 'AMENITY_BOOKING'])
-                ->orderByDesc('created_at')
-                ->limit(5)
-                ->get();
-
-            $notifications = $notificationsRaw->map(function ($n) {
-                return [
-                    'id' => $n->id,
-                    'title' => $n->title,
-                    'message' => $n->body_message,
-                    'category' => $n->category,
-                    'isRead' => (bool) $n->is_read,
-                    'timeAgo' => 'Vừa xong',
-                ];
-            });
-
             return [
                 'success' => true,
                 'kpis' => [
@@ -257,9 +239,12 @@ class ManagementDashboardController extends Controller
                 'revenueSummary' => $revenueSummary,
                 'tickets' => $tickets,
                 'activities' => $activities,
-                'notifications' => $notifications,
+                'notifications' => [],
             ];
         });
+
+        // Ticket details are served exclusively by the authenticated, building-scoped API.
+        unset($data['tickets']);
 
         return response()->json($data);
     }

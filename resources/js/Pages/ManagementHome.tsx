@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import {
   LayoutDashboard,
   Building2,
@@ -46,29 +46,40 @@ import {
   UserPlus,
   Car,
   History,
-  CreditCard
+  CreditCard,
+  Banknote
 } from 'lucide-react';
-import { BuildingListManagement } from '../Components/Admin/BuildingListManagement';
-import { AmenityManagement } from './Admin/AmenityManagement';
-import { CicdDashboard } from '../Components/Cicd/CicdDashboard';
-import { RbacManagement } from './Admin/RbacManagement';
-import { ResidentManagement } from './Admin/ResidentManagement';
-import { TemporaryRegistrationManagement } from './Admin/TemporaryRegistrationManagement';
-import { AccountProvisioningManagement } from './Admin/AccountProvisioningManagement';
-import { VehicleManagement } from './Admin/VehicleManagement';
-import { ServicePricingManagement } from './Admin/ServicePricingManagement';
-import { MeterReadingManagement } from './Admin/MeterReadingManagement';
-import { InvoiceBatchGeneration } from './Admin/InvoiceBatchGeneration';
-import { InvoiceManagement } from './Admin/InvoiceManagement';
-import { PaymentHistoryManagement } from './Admin/PaymentHistoryManagement';
-import { RevenueAnalyticsDashboard } from './Admin/RevenueAnalyticsDashboard';
-import { FinancialReportManagement } from './Admin/FinancialReportManagement';
-import { InvoiceNavTabs } from '../Components/Admin/InvoiceNavTabs';
-import { RfidManagement } from './Admin/RfidManagement';
+import { PageLoadingFallback } from '../Components/Common/PageLoadingFallback';
+import { ticketStatuses } from '../Components/TicketManagementPanel';
+
+const BuildingListManagement = lazy(() => import('../Components/Admin/BuildingListManagement').then(m => ({ default: m.BuildingListManagement })));
+const AmenityManagement = lazy(() => import('./Admin/AmenityManagement').then(m => ({ default: m.AmenityManagement })));
+const AnnouncementManagement = lazy(() => import('../Components/AnnouncementManagement').then(m => ({ default: m.AnnouncementManagement })));
+const TicketManagementPanel = lazy(() => import('../Components/TicketManagementPanel').then(m => ({ default: m.TicketManagementPanel })));
+const CicdDashboard = lazy(() => import('../Components/Cicd/CicdDashboard').then(m => ({ default: m.CicdDashboard })));
+const RbacManagement = lazy(() => import('./Admin/RbacManagement').then(m => ({ default: m.RbacManagement })));
+const ResidentManagement = lazy(() => import('./Admin/ResidentManagement').then(m => ({ default: m.ResidentManagement })));
+const TemporaryRegistrationManagement = lazy(() => import('./Admin/TemporaryRegistrationManagement').then(m => ({ default: m.TemporaryRegistrationManagement })));
+const AccountProvisioningManagement = lazy(() => import('./Admin/AccountProvisioningManagement').then(m => ({ default: m.AccountProvisioningManagement })));
+const VehicleManagement = lazy(() => import('./Admin/VehicleManagement').then(m => ({ default: m.VehicleManagement })));
+const ServicePricingManagement = lazy(() => import('./Admin/ServicePricingManagement').then(m => ({ default: m.ServicePricingManagement })));
+const MeterReadingManagement = lazy(() => import('./Admin/MeterReadingManagement').then(m => ({ default: m.MeterReadingManagement })));
+const InvoiceBatchGeneration = lazy(() => import('./Admin/InvoiceBatchGeneration').then(m => ({ default: m.InvoiceBatchGeneration })));
+const InvoiceManagement = lazy(() => import('./Admin/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
+const PaymentCollectionPage = lazy(() => import('./Admin/PaymentCollectionPage').then(m => ({ default: m.PaymentCollectionPage })));
+const PaymentHistoryManagement = lazy(() => import('./Admin/PaymentHistoryManagement').then(m => ({ default: m.PaymentHistoryManagement })));
+const DebtReminderManagement = lazy(() => import('./Admin/DebtReminderManagement').then(m => ({ default: m.DebtReminderManagement })));
+const RevenueAnalyticsDashboard = lazy(() => import('./Admin/RevenueAnalyticsDashboard').then(m => ({ default: m.RevenueAnalyticsDashboard })));
+const FinancialReportManagement = lazy(() => import('./Admin/FinancialReportManagement').then(m => ({ default: m.FinancialReportManagement })));
+const RfidManagement = lazy(() => import('./Admin/RfidManagement').then(m => ({ default: m.RfidManagement })));
+const ManagementStaffSchedulePanel = lazy(() => import('../Components/ManagementStaffSchedulePanel'));
+const SuggestionManagementPanel = lazy(() => import('../Components/SuggestionManagementPanel').then(m => ({ default: m.SuggestionManagementPanel })));
+const SatisfactionSurveyManagementPanel = lazy(() => import('../Components/SatisfactionSurveyManagementPanel').then(m => ({ default: m.SatisfactionSurveyManagementPanel })));
 import { AppLayout } from '../Components/Layout/AppLayout';
-import { api, AmenityBookingNotification } from '../Services/api';
+import { api } from '../Services/api';
 import { amenityCache } from '../Services/amenityCache';
-import { useAmenityNotifications } from '../Hooks/useAmenityNotifications';
+import { ManagerNotificationCenter, useManagerNotifications } from '../Components/ManagerNotificationCenter';
+
 
 export interface ManagementHomeProps {
   onLogout?: () => void;
@@ -84,9 +95,9 @@ interface TicketItem {
   title: string;
   location: string;
   timeAgo?: string;
-  status: 'new' | 'processing' | 'received' | 'done';
+  status: string;
   statusText: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: string;
   description?: string;
   creatorName?: string;
   creatorPhone?: string;
@@ -173,6 +184,19 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       return 'rfid_cards';
     }
     if (
+      path === '/quan-ly/schedules' ||
+      path === '/admin/schedules' ||
+      path === '/quan-ly/xep-ca' ||
+      path === '/admin/xep-ca' ||
+      path === '/quan-ly/lich-truc' ||
+      path === '/admin/lich-truc' ||
+      path.startsWith('/quan-ly/schedules') ||
+      path.startsWith('/admin/schedules') ||
+      path.startsWith('/quan-ly/xep-ca')
+    ) {
+      return 'schedules';
+    }
+    if (
       path === '/quan-ly/blocks' ||
       path === '/admin/blocks' ||
       path === '/quan-ly/khoi-toa-nha' ||
@@ -243,13 +267,28 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       return 'payment_history';
     }
     if (
+      path === '/quan-ly/email-nhac-no' ||
+      path === '/admin/email-nhac-no' ||
+      path === '/quan-ly/debt-reminders' ||
+      path === '/admin/debt-reminders' ||
+      path.startsWith('/quan-ly/email-nhac-no') ||
+      path.startsWith('/quan-ly/debt-reminders')
+    ) {
+      return 'email_nhac_no';
+    }
+    if (
+      path === '/quan-ly/thu-tien-gach-no' ||
+      path === '/admin/thu-tien-gach-no' ||
+      path === '/quan-ly/thu-tien' ||
+      path === '/admin/thu-tien' ||
       path === '/quan-ly/thong-ke-doanh-thu' ||
       path === '/admin/thong-ke-doanh-thu' ||
       path === '/quan-ly/revenue-analytics' ||
       path === '/admin/revenue-analytics' ||
+      path.startsWith('/quan-ly/thu-tien-gach-no') ||
       path.startsWith('/quan-ly/thong-ke-doanh-thu')
     ) {
-      return 'revenue_analytics';
+      return 'thu_tien_gach_no';
     }
     if (
       path === '/quan-ly/bao-cao-tai-chinh' ||
@@ -272,6 +311,24 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     ) {
       return 'pricing_configs';
     }
+    if (
+      path === '/quan-ly/suggestions' ||
+      path === '/quan-ly/hom-thu-gop-y' ||
+      path === '/admin/suggestions' ||
+      path.startsWith('/quan-ly/suggestions') ||
+      path.startsWith('/admin/suggestions')
+    ) {
+      return 'suggestions';
+    }
+    if (
+      path === '/quan-ly/surveys' ||
+      path === '/quan-ly/khao-sat' ||
+      path === '/admin/surveys' ||
+      path.startsWith('/quan-ly/surveys') ||
+      path.startsWith('/admin/surveys')
+    ) {
+      return 'surveys';
+    }
 
     // 2. Kiểm tra URL query param: ?tab=xxx
     const urlParams = new URLSearchParams(window.location.search);
@@ -280,6 +337,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       if (tabParam === 'buildings') return 'blocks';
       if (tabParam === 'pricing' || tabParam === 'don_gia' || tabParam === 'don-gia') return 'pricing_configs';
       if (tabParam === 'metering' || tabParam === 'meter-readings' || tabParam === 'meter_readings' || tabParam === 'chot-chi-so' || tabParam === 'chot_chi_so') return 'meter_readings';
+      if (tabParam === 'schedules' || tabParam === 'shifts' || tabParam === 'xep-ca' || tabParam === 'lich-truc') return 'schedules';
       return tabParam;
     }
 
@@ -287,6 +345,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     if (initialTab && initialTab !== 'overview') {
       if (initialTab === 'pricing' || initialTab === 'don_gia') return 'pricing_configs';
       if (initialTab === 'metering' || initialTab === 'meter-readings' || initialTab === 'chot-chi-so' || initialTab === 'chot_chi_so') return 'meter_readings';
+      if (initialTab === 'schedules' || initialTab === 'shifts' || initialTab === 'xep-ca' || initialTab === 'lich-truc') return 'schedules';
       return initialTab;
     }
 
@@ -311,8 +370,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
 
   // Navigation & Interactive states
   const [activeMenuId, setActiveMenuId] = useState<string>(resolveInitialTab);
-  const [selectedBuilding, setSelectedBuilding] = useState<string>('Khu A - Tất cả tòa nhà');
-  const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = useState<boolean>(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
@@ -476,37 +533,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
   });
 
   // Notifications state
-  const notices = useAmenityNotifications('admin');
-  const { items: amenityNotifications, unreadCount: amenityUnreadCount, alert: bookingAlert, setAlert: setBookingAlert } = notices;
-  const [notifications, setNotifications] = useState<Array<{
-    id: string;
-    title: string;
-    message: string;
-    category?: string;
-    timeAgo?: string;
-    isRead?: boolean;
-  }>>([
-    { id: '1', title: 'Sự cố nước ban công', message: 'Căn hộ A012 yêu cầu kỹ thuật kiểm tra van tổng.', timeAgo: '10 phút trước', isRead: false },
-    { id: '2', title: 'Hóa đơn quá hạn', message: '8 hóa đơn dịch vụ tháng 8 chưa hoàn tất thanh toán.', timeAgo: '45 phút trước', isRead: false },
-    { id: '3', title: 'Đồng bộ chỉ số', message: 'Đã đồng bộ 270 chỉ số công tơ điện nước thông minh.', timeAgo: '2 giờ trước', isRead: false },
-    { id: '4', title: 'Lịch bảo trì thang máy', message: 'Đội kỹ thuật Otis tiến hành kiểm định thang T2 Tháp A.', timeAgo: '3 giờ trước', isRead: false },
-    { id: '5', title: 'Cư dân đăng ký mới', message: 'Hộ gia đình căn B1405 hoàn tất xác thực eKYC.', timeAgo: '5 giờ trước', isRead: false },
-  ]);
-
-  const displayedNotifications = [...amenityNotifications, ...notifications.filter((item) => !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || ''))];
-  const unreadNotificationCount = amenityUnreadCount + notifications.filter((item) => !item.isRead && !['AMENITY', 'AMENITY_BOOKING'].includes(item.category || '')).length;
-
-  const openBookingNotification = async (notification: AmenityBookingNotification) => {
-    const target = new URL(notification.deepLink, window.location.origin);
-    if (target.origin !== window.location.origin || target.searchParams.get('tab') !== 'amenities') return;
-    target.pathname = userRole === 'manager' ? '/quan-ly' : '/admin';
-    window.history.pushState({}, '', target.pathname + target.search);
-    setActiveMenuId('amenities');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    setIsNotificationOpen(false);
-    setBookingAlert(null);
-    await notices.markRead(notification);
-  };
+  const notices = useManagerNotifications(isNotificationOpen);
+  const unreadNotificationCount = notices.unread;
 
   // Sidebar Menu Items dynamically bound to Database KPIs and userRole
   const menuItems = useMemo(
@@ -526,10 +554,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         { id: 'invoices', label: 'Quản lý Hóa đơn', icon: Receipt, badge: String(kpis.unpaidInvoices) },
         { id: 'invoice_generation', label: 'Sinh Hóa đơn Tự động', icon: Layers, badge: 'Auto' },
         { id: 'payment_history', label: 'Lịch sử Giao dịch', icon: History, badge: null },
-        { id: 'revenue_analytics', label: 'Dashboard Doanh thu', icon: TrendingUp, badge: 'Chart' },
+        { id: 'thu_tien_gach_no', label: 'Thu Tiền & Gạch Nợ (CN8)', icon: Banknote, badge: 'Gạch Nợ' },
         { id: 'financial_reports', label: 'Báo cáo Tài chính', icon: FileSpreadsheet, badge: 'Excel/PDF' },
         { id: 'tickets', label: 'Yêu cầu / Sự cố', icon: Wrench, badge: String(kpis.activeTickets) },
-        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell, badge: `${unreadNotificationCount} mới` },
+        { id: 'news', label: 'Bảng tin / Thông báo', icon: Bell },
         { id: 'contracts', label: 'Hợp đồng & Chữ ký điện tử', icon: FileCheck, badge: null },
         { id: 'ekyc', label: 'eKYC & Xác thực CCCD', icon: ShieldCheck, badge: 'AI' },
         { id: 'assets', label: 'Tài sản & Bảo trì thiết bị', icon: ShieldAlert, badge: null },
@@ -561,49 +589,14 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
     [kpis, unreadNotificationCount, userRole]
   );
 
-  // Ticket Data matching database seed
-  const [tickets, setTickets] = useState<TicketItem[]>([
-    {
-      id: 'TK-1082',
-      title: 'Rò rỉ nước tại ban công',
-      location: 'Căn hộ A012 · 2 giờ trước',
-      status: 'new',
-      statusText: 'MỚI',
-      priority: 'high',
-    },
-    {
-      id: 'TK-1081',
-      title: 'Đăng ký thẻ cư dân mới',
-      location: 'Căn hộ A013 · 2 giờ trước',
-      status: 'processing',
-      statusText: 'ĐANG XỬ LÝ',
-      priority: 'medium',
-    },
-    {
-      id: 'TK-1080',
-      title: 'Đèn hành lang tầng 8',
-      location: 'Căn hộ A014 · 2 giờ trước',
-      status: 'processing',
-      statusText: 'ĐANG XỬ LÝ',
-      priority: 'medium',
-    },
-    {
-      id: 'TK-1079',
-      title: 'Khóa vân tay sảnh chính tháp B',
-      location: 'Căn hộ B201 · 3 giờ trước',
-      status: 'received',
-      statusText: 'ĐÃ TIẾP NHẬN',
-      priority: 'high',
-    },
-    {
-      id: 'TK-1078',
-      title: 'Khiếu nại tiếng ồn sau 22h',
-      location: 'Căn hộ C505 · Hôm qua',
-      status: 'done',
-      statusText: 'ĐÃ XONG',
-      priority: 'low',
-    },
-  ]);
+  const [tickets, setTickets] = useState<TicketItem[]>([]);
+  useEffect(() => {
+    let active = true;
+    api.getManagedTickets(new URLSearchParams({ page: '1' })).then((result) => {
+      if (active) setTickets(result.data.slice(0, 5).map((ticket) => ({ id: ticket.id, title: ticket.title, description: ticket.description, location: `Căn hộ ${ticket.apartment?.apartment_number || ''}`, status: ticket.status.toLowerCase(), statusText: ticketStatuses[ticket.status as keyof typeof ticketStatuses], priority: ticket.priority.toLowerCase(), creatorName: ticket.creator?.full_name, creatorPhone: ticket.creator?.phone_number || '' })));
+    }).catch(() => { if (active) setTickets([]); });
+    return () => { active = false; };
+  }, [activeMenuId]);
 
   // Activity Rows matching database seed
   const [activities, setActivities] = useState<ActivityRow[]>([
@@ -690,15 +683,10 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
         if (data.revenueSummary) {
           setRevenueSummary(data.revenueSummary);
         }
-        if (data.tickets?.length) {
-          setTickets(data.tickets);
-        }
         if (data.activities?.length) {
           setActivities(data.activities);
         }
-        if (data.notifications?.length) {
-          setNotifications(data.notifications);
-        }
+
         try {
           sessionStorage.setItem('smartcassavas_dashboard_cache', JSON.stringify(data));
         } catch {
@@ -790,8 +778,8 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       window.history.pushState({ tab: 'invoice_generation' }, '', `${basePath}/sinh-hoa-don`);
     } else if (normalizedId === 'payment_history' || normalizedId === 'lich_su_giao_dich') {
       window.history.pushState({ tab: 'payment_history' }, '', `${basePath}/lich-su-giao-dich`);
-    } else if (normalizedId === 'revenue_analytics' || normalizedId === 'thong_ke_doanh_thu') {
-      window.history.pushState({ tab: 'revenue_analytics' }, '', `${basePath}/thong-ke-doanh-thu`);
+    } else if (normalizedId === 'thu_tien_gach_no' || normalizedId === 'payment_collection' || normalizedId === 'thu_tien' || normalizedId === 'revenue_analytics' || normalizedId === 'thong_ke_doanh_thu') {
+      window.history.pushState({ tab: 'thu_tien_gach_no' }, '', `${basePath}/thu-tien-gach-no`);
     } else if (normalizedId === 'financial_reports' || normalizedId === 'bao_cao_tai_chinh') {
       window.history.pushState({ tab: 'financial_reports' }, '', `${basePath}/bao-cao-tai-chinh`);
     } else if (normalizedId === 'overview') {
@@ -823,125 +811,27 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
       userEmail={userEmail}
       onLogout={onLogout}
       onNavigateHome={onNavigateHome}
-      onNotificationClick={() => setIsNotificationOpen(!isNotificationOpen)}
+      onNotificationClick={() => { setIsNotificationOpen(!isNotificationOpen); notices.retry(); }}
       onHelpClick={() => setIsHelpOpen(!isHelpOpen)}
       unreadNotificationCount={unreadNotificationCount}
-      extraTopbarActions={
-        <>
-
-          {/* Building Selector Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsBuildingDropdownOpen(!isBuildingDropdownOpen)}
-              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-white/80 hover:bg-white text-xs font-semibold text-neutral-800 border border-slate-200/80 shadow-xs hover:shadow-sm transition-all cursor-pointer"
-            >
-              <Building className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-              <span className="max-w-[80px] sm:max-w-[140px] md:max-w-none truncate">{selectedBuilding}</span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${
-                  isBuildingDropdownOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            {isBuildingDropdownOpen && (
-              <>
-                <div
-                  onClick={() => setIsBuildingDropdownOpen(false)}
-                  className="fixed inset-0 z-40"
-                />
-                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white/95 backdrop-blur-2xl border border-white/80 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div className="text-[10px] uppercase font-bold text-slate-400 px-3 py-1.5 font-mono">
-                    Chọn phạm vi quản lý
-                  </div>
-                  {['Khu A - Tất cả tòa nhà', 'Khu B - Tháp Ruby', 'Khu C - Tháp Sapphire', 'Toàn bộ khu đô thị'].map(
-                    (bldg) => (
-                      <button
-                        key={bldg}
-                        type="button"
-                        onClick={() => {
-                          setSelectedBuilding(bldg);
-                          setIsBuildingDropdownOpen(false);
-                          showToast(`Đã chuyển bộ lọc: ${bldg}`);
-                        }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                          selectedBuilding === bldg
-                            ? 'bg-neutral-900 text-white'
-                            : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span>{bldg}</span>
-                        {selectedBuilding === bldg && <Check className="w-3.5 h-3.5 text-sky-400" />}
-                      </button>
-                    )
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </>
-      }
     >
       {/* Notifications Dropdown Panel */}
-      {bookingAlert && <div role="status" className="fixed bottom-5 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-emerald-200 bg-white p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-emerald-800">{bookingAlert.title}</p><p className="mt-1 text-xs text-neutral-600">{bookingAlert.message}</p></div><button type="button" aria-label="Đóng cảnh báo đăng ký mới" onClick={() => setBookingAlert(null)} className="rounded-lg p-1 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div><button type="button" onClick={() => void openBookingNotification(bookingAlert)} className="mt-3 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Xem đăng ký</button></div>}
-      {isNotificationOpen && (
-        <div className="fixed top-20 right-4 sm:right-10 w-80 sm:w-96 rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xs text-neutral-900">Thông báo vận hành</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-semibold">
-                {unreadNotificationCount} mới
-              </span>
+      {isNotificationOpen && <ManagerNotificationCenter feed={notices} onClose={() => setIsNotificationOpen(false)} />}
+      {activeMenuId !== 'overview' && activeMenuId !== 'dashboard' && activeMenuId !== 'tong_quan' ? (
+        <Suspense fallback={<PageLoadingFallback message="Đang nạp phân hệ..." />}>
+          {activeMenuId === 'news' ? (<div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 py-6"><AnnouncementManagement /></div>) : activeMenuId === 'tickets' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <TicketManagementPanel />
             </div>
-            <button
-              type="button"
-              onClick={() => setIsNotificationOpen(false)}
-              className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-1"
-            >
-              Đóng
-            </button>
-          </div>
-          <div className="relative mt-2">
-            <label className="mb-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={notices.unreadOnly} onChange={(event) => notices.setUnreadOnly(event.target.checked)} />Chỉ thông báo tiện ích chưa đọc</label>
-            {notices.error && <p role="alert" className="mb-2 text-xs text-rose-700">Không thể cập nhật thông báo tiện ích. <button type="button" onClick={notices.retry} className="underline">Thử lại</button></p>}
-            <div className="space-y-2 max-h-[260px] overflow-y-auto custom-scrollbar pr-1 pb-7">
-              {displayedNotifications.map((notif) => {
-                const isError = notif.category === 'TICKET' || notif.title.includes('Sự cố');
-                const isWarning = notif.category === 'BILLING' || notif.title.includes('quá hạn');
-                const isSuccess = notif.category === 'IOT' || notif.title.includes('Đồng bộ');
-                const isInfo = notif.category === 'MAINTENANCE' || notif.title.includes('bảo trì');
-
-                const badgeColor = isError
-                  ? 'text-rose-600'
-                  : isWarning
-                  ? 'text-amber-600'
-                  : isSuccess
-                  ? 'text-emerald-600'
-                  : isInfo
-                  ? 'text-sky-600'
-                  : 'text-purple-600';
-
-                return (
-                  <div
-                    key={notif.id}
-                    className="p-2.5 rounded-xl bg-slate-50/90 hover:bg-slate-100/90 transition-colors border border-slate-100 text-left"
-                  >
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span className={`font-semibold ${badgeColor}`}>{notif.title}</span>
-                      <span>{notif.timeAgo || 'Vừa xong'}</span>
-                    </div>
-                    <p className="text-xs text-slate-700 mt-0.5">{notif.message}</p>
-                    {notif.category === 'AMENITY_BOOKING' && <button type="button" onClick={() => void openBookingNotification(notif as AmenityBookingNotification)} className="mt-2 text-xs font-semibold text-emerald-700 underline">{notif.isRead ? 'Xem lại đăng ký' : 'Xem đăng ký'}</button>}
-                  </div>
-                );
-              })}
+          ) : activeMenuId === 'suggestions' || activeMenuId === 'gop_y' || activeMenuId === 'feedback' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <SuggestionManagementPanel />
             </div>
-            <div className="mt-2 flex items-center justify-between text-xs"><button type="button" disabled={notices.loading || notices.page <= 1} onClick={() => notices.setPage(notices.page - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo trước</button><span>{notices.page}/{notices.pages}</span><button type="button" disabled={notices.loading || notices.page >= notices.pages} onClick={() => notices.setPage(notices.page + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Thông báo sau</button></div>
-          </div>
-        </div>
-      )}
-          {activeMenuId === 'cicd' ? (
+          ) : activeMenuId === 'surveys' || activeMenuId === 'khao_sat' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <SatisfactionSurveyManagementPanel />
+            </div>
+          ) : activeMenuId === 'cicd' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 transition-all duration-300 ease-in-out">
               <CicdDashboard userRole={userRole} />
             </div>
@@ -989,7 +879,6 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'invoices' || activeMenuId === 'hoa_don' || activeMenuId === 'billing' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="invoices" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <InvoiceManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
             </div>
           ) : activeMenuId === 'sinh_hoa_don' || activeMenuId === 'invoice_generation' ? (
@@ -998,24 +887,37 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
             </div>
           ) : activeMenuId === 'payment_history' || activeMenuId === 'lich_su_giao_dich' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="payment_history" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
-              <PaymentHistoryManagement />
+              <PaymentHistoryManagement
+                onNavigateTab={(tab) => handleMenuClick(tab)}
+                onBackToList={() => handleMenuClick('invoices')}
+              />
             </div>
-          ) : activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
+          ) : activeMenuId === 'email_nhac_no' || activeMenuId === 'debt_reminders' || activeMenuId === 'nhac_no' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="revenue_analytics" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
-              <RevenueAnalyticsDashboard onBackToList={() => handleMenuClick('invoices')} />
+              <DebtReminderManagement
+                onNavigateTab={(tab) => handleMenuClick(tab)}
+                onBackToList={() => handleMenuClick('invoices')}
+              />
+            </div>
+          ) : activeMenuId === 'thu_tien_gach_no' || activeMenuId === 'payment_collection' || activeMenuId === 'thu_tien' || activeMenuId === 'revenue_analytics' || activeMenuId === 'thong_ke_doanh_thu' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <PaymentCollectionPage onBackToList={() => handleMenuClick('invoices')} />
             </div>
           ) : activeMenuId === 'financial_reports' || activeMenuId === 'bao_cao_tai_chinh' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
-              <InvoiceNavTabs activeTab="financial_reports" onTabChange={(tab) => handleMenuClick(tab)} unpaidCount={Number(kpis.unpaidInvoices) || 0} />
               <FinancialReportManagement onNavigateTab={(tab) => handleMenuClick(tab)} />
             </div>
-          ) : activeMenuId === 'rfid_cards' ? (
+          ) : activeMenuId === 'rfid_cards' || activeMenuId === 'rfid' || activeMenuId === 'the_rfid' ? (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
               <RfidManagement embedded={true} />
             </div>
-          ) : (
+          ) : activeMenuId === 'schedules' || activeMenuId === 'shifts' || activeMenuId === 'xep_ca' || activeMenuId === 'lich_truc' ? (
+            <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 transition-all duration-300 ease-in-out">
+              <ManagementStaffSchedulePanel embedded={true} />
+            </div>
+          ) : null}
+        </Suspense>
+      ) : (
             <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 space-y-6 transition-all duration-300 ease-in-out">
           {/* Top Title & Subtitle + Export Report Button */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
@@ -1348,7 +1250,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                   {tickets.map((ticket) => (
                     <div
                       key={ticket.id}
-                      onClick={() => setSelectedTicket(ticket)}
+                      onClick={() => handleMenuClick('tickets')}
                       className="p-3.5 rounded-xl bg-white/90 hover:bg-white border border-slate-200/70 hover:border-sky-300/60 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group relative"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1366,7 +1268,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
                           className={`text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-md shrink-0 ${
                             ticket.status === 'new'
                               ? 'bg-sky-100 text-sky-800 border border-sky-200 animate-pulse-subtle'
-                              : ticket.status === 'processing'
+                              : ticket.status === 'in_progress'
                               ? 'bg-amber-100 text-amber-800 border border-amber-200'
                               : ticket.status === 'received'
                               ? 'bg-purple-100 text-purple-800 border border-purple-200'
@@ -1384,7 +1286,7 @@ export const ManagementHome: React.FC<ManagementHomeProps> = ({
               {/* Bottom Quick Action */}
               <div className="pt-4 mt-4 border-t border-slate-100">
                 <button
-                  onClick={() => showToast('Mở biểu mẫu tiếp nhận yêu cầu hỗ trợ mới')}
+                  onClick={() => handleMenuClick('tickets')}
                   className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Wrench className="w-3.5 h-3.5 text-slate-500" />

@@ -32,7 +32,10 @@ export default defineConfig({
         rollupOptions: {
             output: {
                 manualChunks(id) {
-                    if (id.includes('node_modules/lucide-react')) {
+                    if (id.includes('node_modules/three')) {
+                        return 'three';
+                    }
+                    if (id.includes('node_modules/lucide-react') || id.includes('node_modules/lucide')) {
                         return 'icons';
                     }
                     if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {

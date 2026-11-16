@@ -268,9 +268,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate, onRegist
                 SMART CASSAVAS
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </span>
-              <span className="text-[10px] tracking-wider text-neutral-600 font-medium -mt-1 uppercase">
-                Building OS
-              </span>
             </div>
           </a>
 

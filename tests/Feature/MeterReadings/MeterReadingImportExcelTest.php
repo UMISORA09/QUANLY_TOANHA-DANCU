@@ -42,7 +42,7 @@ class MeterReadingImportExcelTest extends TestCase
             ['user_id' => $adminUser->id, 'role_id' => $role->id],
             ['id' => (string) Str::uuid(), 'is_primary' => 1, 'assigned_at' => now()]
         );
-        $this->adminToken = 'smart_token_'.$adminUser->id.'_import';
+        $this->adminToken = $this->issueTestBearerToken($adminUser);
 
         $block = Block::firstOrCreate(
             ['block_code' => 'T-A'],
@@ -372,6 +372,7 @@ class MeterReadingImportExcelTest extends TestCase
         if (! $batch) {
             $batch = MeterReadingBatch::create([
                 'batch_code' => 'BATCH-TEST-'.strtoupper(Str::random(5)),
+                'meter_type' => 'ELECTRICITY',
                 'billing_month_year' => '2027-05',
                 'file_name' => 'test.csv',
                 'total_records' => 1,

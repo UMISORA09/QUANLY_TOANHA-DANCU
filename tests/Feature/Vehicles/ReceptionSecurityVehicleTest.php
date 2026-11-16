@@ -301,18 +301,16 @@ class ReceptionSecurityVehicleTest extends TestCase
     }
 
     /**
-     * 6. Demo token fallback smart_token_reception_demo hoạt động chính xác
+     * 6. Demo token không có phiên phải bị từ chối
      */
-    public function test_reception_demo_token_fallback(): void
+    public function test_reception_demo_token_without_session_is_rejected(): void
     {
         $response = $this->withHeaders([
             'Authorization' => 'Bearer smart_token_reception_demo',
             'Accept' => 'application/json',
         ])->getJson('/api/v1/vehicles');
 
-        $response->assertStatus(200)
-            ->assertJson([
-                'success' => true,
-            ]);
+        $response->assertStatus(401)
+            ->assertJson(['error' => 'UNAUTHORIZED']);
     }
 }

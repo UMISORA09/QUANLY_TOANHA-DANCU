@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class ReceptionParcelService
@@ -24,7 +25,7 @@ class ReceptionParcelService
      * @param  array<string, mixed>  $filters
      * @return array{data: LengthAwarePaginator, kpis: array<string, int>}
      */
-    public function getParcels(array $filters = [], int $perPage = 15): array
+    public function getParcels(array $filters = [], int $perPage = 15, ?object $user = null): array
     {
         $query = Parcel::query()
             ->with([
@@ -45,7 +46,12 @@ class ReceptionParcelService
         // 1. Lọc theo trạng thái (status)
         if (! empty($filters['status']) && $filters['status'] !== 'ALL') {
             if ($filters['status'] === 'PENDING') {
-                $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED']);
+                $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+                    ->where('received_at', '>', Carbon::now()->subDays(3));
+            } elseif ($filters['status'] === 'EXPIRING_SOON') {
+                $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+                    ->where('received_at', '<=', Carbon::now()->subDays(3))
+                    ->where('received_at', '>=', Carbon::now()->subDays(5));
             } elseif ($filters['status'] === 'OVERDUE') {
                 $query->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
                     ->where('received_at', '<', Carbon::now()->subDays(5));
@@ -54,14 +60,60 @@ class ReceptionParcelService
             }
         }
 
-        // 2. Lọc theo căn hộ (apartment_id)
-        if (! empty($filters['apartment_id'])) {
+        // 2. Phân quyền dữ liệu và lọc theo căn hộ (apartment_id):
+        // - Nhân viên (Lễ tân/Bảo vệ/Admin): Xem toàn bộ bưu phẩm hoặc lọc theo apartment_id tùy chọn.
+        // - Cư dân (Resident): CHỈ được xem bưu phẩm thuộc căn hộ của mình.
+        if ($user && ! $this->isStaff($user)) {
+            $userApartmentIds = $this->resolveResidentApartmentIds($user);
+
+            if (empty($userApartmentIds)) {
+                $query->whereRaw('1 = 0');
+            } else {
+                if (! empty($filters['apartment_id'])) {
+                    if (in_array($filters['apartment_id'], $userApartmentIds, true)) {
+                        $query->where('apartment_id', $filters['apartment_id']);
+                    } else {
+                        $query->whereRaw('1 = 0');
+                    }
+                } else {
+                    $query->whereIn('apartment_id', $userApartmentIds);
+                }
+            }
+        } elseif (! empty($filters['apartment_id'])) {
             $query->where('apartment_id', $filters['apartment_id']);
         }
 
-        // 3. Lọc theo đơn vị vận chuyển (courier_company)
+        // 3. Lọc theo đơn vị vận chuyển (courier_company - Hỗ trợ alias linh hoạt giữa nhãn hiển thị và mã DB)
         if (! empty($filters['courier_company']) && $filters['courier_company'] !== 'ALL') {
-            $query->where('courier_company', $filters['courier_company']);
+            $courierCompany = trim($filters['courier_company']);
+            $normalizedCourier = mb_strtoupper($courierCompany, 'UTF-8');
+
+            if (str_contains($normalizedCourier, 'KHÁC') || $normalizedCourier === 'OTHER') {
+                $standardKeywords = [
+                    'GHN', 'GIAO HÀNG NHANH',
+                    'GHTK', 'TIẾT KIỆM',
+                    'SHOPEE', 'SPX',
+                    'VIETTEL',
+                    'J&T', 'JT', 'JNT',
+                    'VNPOST', 'BƯU ĐIỆN', 'VNP',
+                    'GRAB',
+                    'NINJA',
+                    'BE',
+                ];
+                $query->where(function ($q) use ($standardKeywords) {
+                    foreach ($standardKeywords as $kw) {
+                        $q->where('courier_company', 'not like', "%{$kw}%");
+                    }
+                });
+            } else {
+                $aliases = $this->resolveCourierAliases($courierCompany);
+                $query->where(function ($q) use ($aliases) {
+                    $q->whereIn('courier_company', $aliases);
+                    foreach ($aliases as $alias) {
+                        $q->orWhere('courier_company', 'like', "%{$alias}%");
+                    }
+                });
+            }
         }
 
         // 4. Lọc theo khoảng ngày tiếp nhận (Sargable datetime range)
@@ -72,7 +124,12 @@ class ReceptionParcelService
             $query->where('received_at', '<=', Carbon::parse($filters['to_date'])->endOfDay());
         }
 
-        // 5. Tìm kiếm (Mã vận đơn, Tên người nhận, SĐT, Căn hộ)
+        // 5. Lọc chính xác theo mã PIN nhận hàng (Hỗ trợ xác thực giao nhận / Kiosk Smart Locker qua B-Tree Index idx_parcels_pin_code)
+        if (! empty($filters['pin_code'])) {
+            $query->where('pickup_pin_code', trim($filters['pin_code']));
+        }
+
+        // 6. Tìm kiếm (Mã vận đơn, Tên người nhận, SĐT, Căn hộ)
         if (! empty($filters['search'])) {
             $search = trim($filters['search']);
             $query->where(function ($q) use ($search) {
@@ -103,28 +160,81 @@ class ReceptionParcelService
     }
 
     /**
+     * Chuẩn hóa từ khóa đơn vị vận chuyển thành danh sách các alias thực tế trong DB
+     *
+     * @return string[]
+     */
+    public function resolveCourierAliases(string $courier): array
+    {
+        $normalized = mb_strtoupper(trim($courier), 'UTF-8');
+
+        if (str_contains($normalized, 'GHN') || str_contains($normalized, 'GIAO HÀNG NHANH')) {
+            return ['GHN', 'Giao Hàng Nhanh', 'Giao Hàng Nhanh (GHN)'];
+        }
+
+        if (str_contains($normalized, 'GHTK') || str_contains($normalized, 'TIẾT KIỆM')) {
+            return ['GHTK', 'Giao Hàng Tiết Kiệm', 'Giao Hàng Tiết Kiệm (GHTK)'];
+        }
+
+        if (str_contains($normalized, 'SHOPEE') || str_contains($normalized, 'SPX')) {
+            return ['Shopee Express', 'SPX', 'SPX Express', 'Shopee'];
+        }
+
+        if (str_contains($normalized, 'VIETTEL')) {
+            return ['ViettelPost', 'Viettel Post', 'Viettel Post (VTP)', 'Viettel', 'VTP'];
+        }
+
+        if (str_contains($normalized, 'J&T') || str_contains($normalized, 'JNT') || str_contains($normalized, 'JT')) {
+            return ['J&T', 'J&T Express', 'J&TExpress', 'JNT', 'JT'];
+        }
+
+        if (str_contains($normalized, 'VNPOST') || str_contains($normalized, 'BƯU ĐIỆN') || str_contains($normalized, 'VNP')) {
+            return ['VNPost', 'Bưu điện VNPost', 'VNP', 'VN Post'];
+        }
+
+        if (str_contains($normalized, 'GRAB')) {
+            return ['GrabExpress', 'Grab Express', 'Grab'];
+        }
+
+        if (str_contains($normalized, 'NINJA')) {
+            return ['Ninja Van', 'NinjaVan', 'Ninja'];
+        }
+
+        if (str_contains($normalized, 'BE')) {
+            return ['BeDelivery', 'Be Delivery', 'Be'];
+        }
+
+        return [$courier];
+    }
+
+    /**
      * Tính toán các chỉ số KPI bưu phẩm tại quầy Lễ tân
      *
-     * @return array{pending_parcels: int, overdue_parcels: int, received_today: int, total_parcels: int}
+     * @return array{pending_parcels: int, expiring_parcels: int, overdue_parcels: int, received_today: int, delivered_today: int, total_parcels: int}
      */
     public function calculateKpis(): array
     {
+        $threeDaysAgo = Carbon::now()->subDays(3);
         $fiveDaysAgo = Carbon::now()->subDays(5);
         $todayStart = Carbon::today();
 
         $counts = DB::table('parcels')
             ->selectRaw("
                 COUNT(*) as total_parcels,
-                SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') THEN 1 ELSE 0 END) as pending_parcels,
+                SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') AND received_at > ? THEN 1 ELSE 0 END) as pending_parcels,
+                SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') AND received_at <= ? AND received_at >= ? THEN 1 ELSE 0 END) as expiring_parcels,
                 SUM(CASE WHEN status IN ('RECEIVED_AT_RECEPTION', 'RECEIVED') AND received_at < ? THEN 1 ELSE 0 END) as overdue_parcels,
-                SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) as received_today
-            ", [$fiveDaysAgo, $todayStart])
+                SUM(CASE WHEN received_at >= ? THEN 1 ELSE 0 END) as received_today,
+                SUM(CASE WHEN status = 'DELIVERED' AND collected_at >= ? THEN 1 ELSE 0 END) as delivered_today
+            ", [$threeDaysAgo, $threeDaysAgo, $fiveDaysAgo, $fiveDaysAgo, $todayStart, $todayStart])
             ->first();
 
         return [
             'pending_parcels' => (int) ($counts?->pending_parcels ?? 0),
+            'expiring_parcels' => (int) ($counts?->expiring_parcels ?? 0),
             'overdue_parcels' => (int) ($counts?->overdue_parcels ?? 0),
             'received_today' => (int) ($counts?->received_today ?? 0),
+            'delivered_today' => (int) ($counts?->delivered_today ?? 0),
             'total_parcels' => (int) ($counts?->total_parcels ?? 0),
         ];
     }
@@ -163,18 +273,9 @@ class ReceptionParcelService
             ]);
         }
 
-        // 3. Xác định nhân viên tiếp nhận (từ phiên đăng nhập của server, KHÔNG tin ID frontend gửi)
-        $staffId = $staffUser?->id;
-        if (! $staffId) {
-            // Fallback lấy nhân viên lễ tân/admin đầu tiên nếu chạy CLI/Unit Test không có session
-            $staffId = User::whereHas('roles', function ($q) {
-                $q->whereIn('roles.role_code', ['RECEPTIONIST', 'STAFF', 'ADMIN', 'SUPER_ADMIN', 'SECURITY_GUARD']);
-            })->value('id') ?? User::value('id');
-
-            if (! $staffId) {
-                throw new \RuntimeException('Không tìm thấy tài khoản nhân viên hợp lệ để ghi nhận phiếu tiếp nhận.');
-            }
-        }
+        // 3. Xác định nhân viên tiếp nhận (bắt buộc phải là nhân viên hợp lệ, không fallback)
+        $this->assertStaffAuthorized($staffUser, 'receive');
+        $staffId = $staffUser->id;
 
         // 4. Liên kết người nhận (recipient_user_id) nếu có hoặc tìm theo SĐT cư dân trong căn hộ
         $recipientUserId = $data['recipient_user_id'] ?? null;
@@ -303,8 +404,10 @@ class ReceptionParcelService
      *
      * @throws ValidationException|Throwable
      */
-    public function updateParcel(string $id, array $data, ?User $staffUser = null, ?UploadedFile $newPhotoFile = null): Parcel
+    public function updateParcel(string $id, array $data, ?object $staffUser = null, ?UploadedFile $newPhotoFile = null): Parcel
     {
+        $this->assertStaffAuthorized($staffUser, 'update');
+
         $parcel = Parcel::findOrFail($id);
 
         // Không cho phép sửa nếu bưu phẩm đã hoàn tất bàn giao (tránh can thiệp module check-out của thành viên khác)
@@ -409,8 +512,10 @@ class ReceptionParcelService
      *
      * @throws ValidationException|Throwable
      */
-    public function deleteParcel(string $id, ?User $staffUser = null): bool
+    public function deleteParcel(string $id, ?object $staffUser = null): bool
     {
+        $this->assertStaffAuthorized($staffUser, 'delete');
+
         $parcel = Parcel::findOrFail($id);
 
         if (in_array($parcel->status, ['DELIVERED', 'RETURNED'])) {
@@ -458,8 +563,10 @@ class ReceptionParcelService
      *
      * @return array<int, array{id: string, full_name: string, phone_number: ?string, apartment_number: ?string}>
      */
-    public function searchRecipients(string $keyword, ?string $apartmentId = null, int $limit = 10): array
+    public function searchRecipients(string $keyword, ?string $apartmentId = null, int $limit = 10, ?object $staffUser = null): array
     {
+        $this->assertStaffAuthorized($staffUser, 'view');
+
         $keyword = trim($keyword);
         $query = Resident::query()
             ->with([
@@ -502,8 +609,10 @@ class ReceptionParcelService
      *
      * @return array<int, array{id: string, apartment_number: string, block_name: ?string}>
      */
-    public function searchApartments(string $keyword = '', int $limit = 15): array
+    public function searchApartments(string $keyword = '', int $limit = 15, ?object $staffUser = null): array
     {
+        $this->assertStaffAuthorized($staffUser, 'view');
+
         $keyword = trim($keyword);
         $query = Apartment::query()
             ->with(['block:id,block_name,block_code'])
@@ -634,5 +743,431 @@ class ReceptionParcelService
         }
 
         return $photoFile->storeAs('parcels', $safeFileName, 'public');
+    }
+
+    /**
+     * Danh sách role được phép thao tác nghiệp vụ bưu phẩm
+     */
+    public const ALLOWED_STAFF_ROLES = [
+        'RECEPTIONIST',
+        'SECURITY_GUARD',
+        'BUILDING_MANAGER',
+        'MANAGER',
+        'ADMIN',
+        'SUPER_ADMIN',
+    ];
+
+    /**
+     * Kiểm tra người dùng có phải là nhân viên vận hành hay không
+     */
+    public function isStaff(?object $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return true;
+        }
+
+        if (method_exists($user, 'hasRole')) {
+            foreach (self::ALLOWED_STAFF_ROLES as $role) {
+                if ($user->hasRole($role)) {
+                    return true;
+                }
+            }
+        }
+
+        return DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->where('user_roles.user_id', $user->id)
+            ->whereIn('roles.role_code', self::ALLOWED_STAFF_ROLES)
+            ->exists();
+    }
+
+    /**
+     * Xác định danh sách căn hộ mà cư dân đang sinh sống / sở hữu
+     *
+     * @return array<int, string>
+     */
+    public function resolveResidentApartmentIds(object $user): array
+    {
+        $residentAptIds = DB::table('residents')
+            ->where('user_id', $user->id)
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->pluck('apartment_id')
+            ->toArray();
+
+        $curResAptIds = DB::table('apartments')
+            ->where('current_resident_user_id', $user->id)
+            ->whereNull('deleted_at')
+            ->pluck('id')
+            ->toArray();
+
+        return array_values(array_unique(array_filter(array_merge($residentAptIds, $curResAptIds))));
+    }
+
+    /**
+     * Kiểm tra quyền nhân viên lễ tân / bảo vệ / quản lý thực hiện nghiệp vụ bưu phẩm
+     */
+    public function assertStaffAuthorized(?object $user, string $action = 'checkout'): void
+    {
+        if (! $user) {
+            abort(401, 'Yêu cầu đăng nhập tài khoản nhân viên để thực hiện thao tác.');
+        }
+
+        // 1. Kiểm tra qua method hasRole nếu có trên User model
+        if (method_exists($user, 'hasRole')) {
+            foreach (self::ALLOWED_STAFF_ROLES as $role) {
+                if ($user->hasRole($role)) {
+                    return;
+                }
+            }
+        }
+
+        // 2. Kiểm tra trực tiếp bảng user_roles join roles
+        $userRoles = DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->where('user_roles.user_id', $user->id)
+            ->pluck('roles.role_code')
+            ->toArray();
+
+        foreach (self::ALLOWED_STAFF_ROLES as $role) {
+            if (in_array($role, $userRoles, true)) {
+                return;
+            }
+        }
+
+        // 3. Kiểm tra permission cụ thể qua RbacService
+        $permCode = match ($action) {
+            'checkout', 'handover' => 'PARCEL:CHECKOUT',
+            'receive', 'create' => 'PARCEL:RECEIVE',
+            'update' => 'PARCEL:UPDATE',
+            'delete' => 'PARCEL:DELETE',
+            default => 'PARCEL:VIEW',
+        };
+
+        if (RbacService::hasPermission($user, $permCode) || RbacService::hasPermission($user, 'RECEPTION:OPERATE')) {
+            return;
+        }
+
+        abort(403, 'Bạn không có quyền thực hiện nghiệp vụ này.');
+    }
+
+    /**
+     * Bàn giao và Check-out bưu phẩm cho cư dân với Concurrency Protection (Row-Level Locking)
+     *
+     * @param  string  $id  ID bưu phẩm
+     * @param  array<string, mixed>  $data  Dữ liệu bàn giao (collected_by_name, pin_code, qr_code, notes, collected_signature_url)
+     * @param  User|object|null  $staffUser  Nhân viên thực hiện bàn giao
+     *
+     * @throws HttpException|ValidationException|Throwable
+     */
+    public function handoverParcel(string $id, array $data = [], ?object $staffUser = null): Parcel
+    {
+        $this->assertStaffAuthorized($staffUser, 'checkout');
+
+        $now = Carbon::now();
+
+        // Bọc trong DB Transaction với Row-Level Locking (Pessimistic Lock) chống Race Condition
+        /** @var Parcel $updatedParcel */
+        $updatedParcel = DB::transaction(function () use ($id, $data, $staffUser, $now): Parcel {
+            /** @var Parcel|null $parcel */
+            $parcel = Parcel::where('id', $id)->lockForUpdate()->first();
+
+            if (! $parcel) {
+                abort(404, 'Không tìm thấy kiện hàng bưu phẩm trong hệ thống.');
+            }
+
+            // 1. Kiểm tra nếu bưu phẩm đã được bàn giao trước đó -> 409 Conflict
+            if ($parcel->status === 'DELIVERED') {
+                $collectedTime = $parcel->collected_at ? Carbon::parse($parcel->collected_at)->format('H:i d/m/Y') : 'trước đó';
+                $collector = $parcel->collected_by_name ? " cho {$parcel->collected_by_name}" : '';
+                abort(409, "Bưu phẩm [{$parcel->tracking_number}] đã được bàn giao{$collector} vào lúc {$collectedTime}.");
+            }
+
+            // 2. Kiểm tra trạng thái hiện tại có cho phép bàn giao hay không
+            if (! in_array($parcel->status, ['RECEIVED_AT_RECEPTION', 'RECEIVED'], true)) {
+                abort(409, "Kiện hàng đang ở trạng thái [{$parcel->status}], không đủ điều kiện bàn giao.");
+            }
+
+            // 3. Bắt buộc cung cấp ít nhất một phương thức xác minh hợp lệ theo nghiệp vụ: PIN hoặc QR
+            $pinInput = trim((string) ($data['pin_code'] ?? ''));
+            $qrInput = trim((string) ($data['qr_code'] ?? ''));
+
+            if ($pinInput === '' && $qrInput === '') {
+                throw ValidationException::withMessages([
+                    'verification' => ['Bắt buộc cung cấp ít nhất một phương thức xác minh hợp lệ (Mã PIN hoặc Mã QR) để bàn giao bưu phẩm.'],
+                ]);
+            }
+
+            // 4. Xác minh mã PIN nếu được cung cấp
+            if ($pinInput !== '' && $pinInput !== trim((string) $parcel->pickup_pin_code)) {
+                throw ValidationException::withMessages([
+                    'pin_code' => ['Mã PIN nhận hàng không chính xác.'],
+                ]);
+            }
+
+            // 5. Xác minh mã QR nếu được cung cấp
+            if ($qrInput !== '' && $qrInput !== trim((string) $parcel->pickup_qr_code)) {
+                throw ValidationException::withMessages([
+                    'qr_code' => ['Mã QR nhận hàng không chính xác.'],
+                ]);
+            }
+
+            // 5. Chuẩn bị dữ liệu cập nhật bàn giao
+            $collectedByName = trim((string) ($data['collected_by_name'] ?? ''));
+            if ($collectedByName === '') {
+                $collectedByName = $parcel->recipient_name;
+            }
+
+            $notes = trim((string) ($data['notes'] ?? ''));
+            $newNotes = $parcel->notes;
+            if ($notes !== '') {
+                $newNotes = trim($parcel->notes ? "{$parcel->notes} | Bàn giao: {$notes}" : "Bàn giao: {$notes}");
+            }
+
+            // 6. Ghi nhận thời gian Server và cập nhật trạng thái DELIVERED
+            $parcel->update([
+                'status' => 'DELIVERED',
+                'collected_at' => $now,
+                'collected_by_name' => $collectedByName,
+                'collected_signature_url' => $data['collected_signature_url'] ?? $parcel->collected_signature_url,
+                'checkout_staff_id' => $staffUser?->id,
+                'notes' => $newNotes,
+            ]);
+
+            return $parcel;
+        });
+
+        // Eager-load quan hệ cần thiết
+        $updatedParcel->load([
+            'apartment:id,apartment_number,block_id',
+            'apartment.block:id,block_name,block_code',
+            'recipientUser:id,full_name,phone_number',
+            'receivedByStaff:id,full_name',
+            'checkoutStaff:id,full_name',
+        ]);
+
+        // Phát Realtime Event CHECKED_OUT tới kênh quoc-tin.parcels SAU COMMIT THÀNH CÔNG
+        try {
+            QuocTinRealtimeService::emit(
+                module: 'parcels',
+                entity: 'parcel',
+                action: 'CHECKED_OUT',
+                entityId: $updatedParcel->id,
+                extra: [
+                    'id' => $updatedParcel->id,
+                    'tracking_number' => $updatedParcel->tracking_number,
+                    'recipient_name' => $updatedParcel->recipient_name,
+                    'collected_by_name' => $updatedParcel->collected_by_name,
+                    'apartment_number' => $updatedParcel->apartment?->apartment_number,
+                    'courier_company' => $updatedParcel->courier_company,
+                    'status' => 'DELIVERED',
+                    'collected_at' => $now->toIso8601String(),
+                    'checkout_staff_id' => $staffUser?->id,
+                    'checkout_staff_name' => $staffUser?->full_name ?? $staffUser?->name ?? null,
+                ],
+                actorId: $staffUser?->id,
+                triggerCooldown: false // Bàn giao liên tục, KHÔNG kích hoạt cooldown 120s
+            );
+        } catch (Throwable $e) {
+            Log::warning('Lỗi broadcast realtime checkout parcel: '.$e->getMessage());
+        }
+
+        return $updatedParcel;
+    }
+
+    /**
+     * Tra cứu bưu phẩm nhanh bằng mã PIN, mã QR hoặc mã vận đơn để đối chiếu trước khi bàn giao
+     *
+     * @return array{parcel: Parcel, can_checkout: bool}|null
+     */
+    public function lookupParcel(string $code, ?object $staffUser = null): ?array
+    {
+        $this->assertStaffAuthorized($staffUser, 'checkout');
+
+        $clean = trim($code);
+        if ($clean === '') {
+            return null;
+        }
+
+        $parcel = Parcel::query()
+            ->with([
+                'apartment:id,apartment_number,block_id',
+                'apartment.block:id,block_name,block_code',
+                'recipientUser:id,full_name,phone_number',
+                'receivedByStaff:id,full_name',
+                'checkoutStaff:id,full_name',
+            ])
+            ->where(function ($q) use ($clean) {
+                $q->where('pickup_pin_code', $clean)
+                    ->orWhere('pickup_qr_code', $clean)
+                    ->orWhere('tracking_number', $clean);
+            })
+            ->first();
+
+        if (! $parcel) {
+            return null;
+        }
+
+        $canCheckout = in_array($parcel->status, ['RECEIVED_AT_RECEPTION', 'RECEIVED'], true);
+
+        return [
+            'parcel' => $parcel,
+            'can_checkout' => $canCheckout,
+        ];
+    }
+
+    /**
+     * Tra cứu bưu phẩm bằng mã PIN nhận hàng (Sử dụng trực tiếp B-Tree Index idx_parcels_pin_code)
+     */
+    public function findParcelByPin(string $pinCode): ?Parcel
+    {
+        $cleanPin = trim($pinCode);
+        if ($cleanPin === '') {
+            return null;
+        }
+
+        return Parcel::query()
+            ->with([
+                'apartment:id,apartment_number,block_id',
+                'apartment.block:id,block_name,block_code',
+                'recipientUser:id,full_name,phone_number',
+                'receivedByStaff:id,full_name',
+            ])
+            ->where('pickup_pin_code', $cleanPin)
+            ->first();
+    }
+
+    /**
+     * Gửi thông báo nhắc nhở cư dân nhận kiện hàng gần hết hạn / quá hạn
+     *
+     * @return array{success: bool, message: string, parcel: Parcel, recipient_user_id: ?string}
+     */
+    public function remindResident(string|Parcel $parcelOrId, ?object $staffUser = null): array
+    {
+        if ($staffUser !== null) {
+            $this->assertStaffAuthorized($staffUser, 'update');
+        }
+
+        if ($parcelOrId instanceof Parcel) {
+            $parcel = $parcelOrId;
+            if (! $parcel->relationLoaded('apartment') || ! $parcel->relationLoaded('recipientUser')) {
+                $parcel->load(['apartment', 'recipientUser']);
+            }
+        } else {
+            $parcel = Parcel::with(['apartment', 'recipientUser'])->findOrFail($parcelOrId);
+        }
+
+        // Xác định cư dân nhận (ưu tiên recipient_user_id, sau đó tìm theo recipient_phone)
+        $residentUser = $parcel->recipientUser;
+        if (! $residentUser && ! empty($parcel->recipient_phone)) {
+            $residentUser = User::where('phone_number', $parcel->recipient_phone)->first();
+        }
+
+        $diffDays = $parcel->received_at ? (int) $parcel->received_at->diffInDays(now()) : 0;
+        $diffDaysText = $diffDays > 0 ? "{$diffDays} ngày" : 'hôm nay';
+
+        // 1. Tạo In-App Notification cho Cư dân nếu tìm thấy User
+        $notifId = null;
+        if ($residentUser) {
+            $notifId = (string) Str::uuid();
+            $title = $diffDays > 5
+                ? "🚨 Quá hạn nhận: Kiện hàng [{$parcel->tracking_number}]"
+                : "⚠️ Gần hết hạn nhận: Kiện hàng [{$parcel->tracking_number}]";
+
+            $body = "Kiện hàng từ {$parcel->courier_company} đã lưu giữ {$diffDaysText} tại Quầy Lễ Tân (Mã PIN: {$parcel->pickup_pin_code}). Quý cư dân vui lòng đến quầy nhận sớm.";
+
+            DB::table('user_in_app_notifications')->insert([
+                'id' => $notifId,
+                'recipient_user_id' => $residentUser->id,
+                'title' => $title,
+                'body_message' => $body,
+                'deep_link_url' => "app://parcels/{$parcel->id}",
+                'category' => 'PARCEL',
+                'is_read' => 0,
+                'created_at' => Carbon::now(),
+            ]);
+        }
+
+        // 2. Tạo In-App Notification cho Lễ Tân (hoặc staff thực hiện) để lưu vết lịch sử nhắc nhở
+        if ($staffUser) {
+            DB::table('user_in_app_notifications')->insert([
+                'id' => (string) Str::uuid(),
+                'recipient_user_id' => $staffUser->id,
+                'title' => "Đã gửi nhắc nhở kiện hàng [{$parcel->tracking_number}]",
+                'body_message' => "Đã gửi thông báo nhắc nhận bưu phẩm tới cư dân {$parcel->recipient_name} ({$parcel->apartment?->apartment_number}).",
+                'deep_link_url' => "app://parcels/{$parcel->id}",
+                'category' => 'PARCEL',
+                'is_read' => 0,
+                'created_at' => Carbon::now(),
+            ]);
+        }
+
+        // 3. Bắn Realtime SSE Event qua QuocTinRealtimeService
+        try {
+            QuocTinRealtimeService::emit(
+                module: 'parcels',
+                entity: 'parcel',
+                action: 'REMINDED',
+                entityId: $parcel->id,
+                extra: [
+                    'tracking_number' => $parcel->tracking_number,
+                    'pickup_pin_code' => $parcel->pickup_pin_code,
+                    'recipient_name' => $parcel->recipient_name,
+                    'recipient_phone' => $parcel->recipient_phone,
+                    'apartment_number' => $parcel->apartment?->apartment_number,
+                    'diff_days' => $diffDays,
+                    'reminded_at' => Carbon::now()->toIso8601String(),
+                    'reminded_by' => $staffUser?->full_name ?? 'Hệ thống Lễ tân',
+                ],
+                actorId: $staffUser?->id,
+                triggerCooldown: false
+            );
+        } catch (Throwable $e) {
+            Log::warning("Không thể phát sự kiện Realtime nhắc nhở kiện hàng {$parcel->id}: {$e->getMessage()}");
+        }
+
+        return [
+            'success' => true,
+            'message' => "Đã gửi thông báo nhắc nhở đến cư dân {$parcel->recipient_name} (".($parcel->apartment?->apartment_number ?? 'Căn hộ').') thành công.',
+            'parcel' => $parcel,
+            'recipient_user_id' => $residentUser?->id,
+        ];
+    }
+
+    /**
+     * Gửi thông báo nhắc nhở đồng loạt tất cả các kiện hàng gần hết hạn (3-5 ngày)
+     *
+     * @return array{success: bool, count: int, message: string}
+     */
+    public function remindAllExpiring(?object $staffUser = null): array
+    {
+        if ($staffUser !== null) {
+            $this->assertStaffAuthorized($staffUser, 'update');
+        }
+        $threeDaysAgo = Carbon::now()->subDays(3);
+        $fiveDaysAgo = Carbon::now()->subDays(5);
+
+        // Sử dụng cursor() kết hợp eager-load để tối ưu bộ nhớ và triệt tiêu N+1 queries khi nhắc nhở hàng loạt
+        $expiringParcels = Parcel::with(['apartment', 'recipientUser'])
+            ->whereIn('status', ['RECEIVED_AT_RECEPTION', 'RECEIVED'])
+            ->where('received_at', '<=', $threeDaysAgo)
+            ->where('received_at', '>=', $fiveDaysAgo)
+            ->cursor();
+
+        $count = 0;
+        foreach ($expiringParcels as $parcel) {
+            $this->remindResident($parcel, $staffUser);
+            $count++;
+        }
+
+        return [
+            'success' => true,
+            'count' => $count,
+            'message' => "Đã gửi thông báo nhắc nhở cho {$count} kiện hàng gần hết hạn lưu trữ.",
+        ];
     }
 }

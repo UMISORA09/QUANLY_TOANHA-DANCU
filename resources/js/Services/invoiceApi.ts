@@ -2,6 +2,8 @@
  * API Service for Invoice Management (Quản lý và Lọc trạng thái Hóa đơn)
  */
 
+import { api } from './api';
+
 export interface InvoiceItemModel {
     id: string;
     invoice_id: string;
@@ -92,7 +94,12 @@ export interface InvoiceSummaryModel {
 }
 
 const getAuthHeaders = () => {
-    const token = localStorage.getItem('auth_token') || localStorage.getItem('token') || 'smart_token_admin_demo';
+    const token =
+        api.getAuthToken() ||
+        localStorage.getItem('smart_cassavas_token') ||
+        localStorage.getItem('auth_token') ||
+        localStorage.getItem('token') ||
+        'smart_token_admin_demo';
     return {
         'Content-Type': 'application/json',
         Accept: 'application/json',
@@ -517,6 +524,101 @@ export const invoiceApi = {
     },
 
     /**
+     * Lấy thống kê KPI tổng quan hàng đợi email nhắc nợ (Chức năng 11)
+     */
+    async getDebtReminderSummary(): Promise<{
+        success: boolean;
+        data: {
+            total_reminders: number;
+            sent_count: number;
+            queued_count: number;
+            failed_count: number;
+            cancelled_count: number;
+            total_debt_reminded: number;
+            overdue_reminders_count: number;
+            unreminded_overdue_count: number;
+            success_rate: number;
+        };
+    }> {
+        const res = await fetch('/api/v1/invoices/reminders/summary', {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải thống kê nhắc nợ');
+        return json;
+    },
+
+    /**
+     * Kích hoạt quét và xếp hàng nhắc nợ tự động (Chức năng 11)
+     */
+    async autoDispatchDebtReminders(params?: {
+        overdue_only?: boolean;
+        days_before_due?: number;
+        min_days_overdue?: number;
+    }): Promise<{
+        success: boolean;
+        message: string;
+        data: {
+            dispatched_count: number;
+            overdue_only: boolean;
+            days_before_due: number;
+            min_days_overdue?: number;
+        };
+    }> {
+        const res = await fetch('/api/v1/invoices/reminders/auto-dispatch', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(params || {}),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi quét tự động nhắc nợ');
+        return json;
+    },
+
+    /**
+     * Xem trước nội dung email nhắc nợ (Chức năng 11)
+     */
+    async previewDebtReminderEmail(id: string): Promise<{
+        success: boolean;
+        data: {
+            subject: string;
+            html: string;
+            recipient_name: string;
+            recipient_email: string;
+            invoice_number: string;
+            debt_amount: number;
+        };
+    }> {
+        const res = await fetch(`/api/v1/invoices/reminders/${id}/preview`, {
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi tải bản xem trước email');
+        return json;
+    },
+
+    /**
+     * Thử lại gửi email nhắc nợ cho bản ghi lỗi (Chức năng 11)
+     */
+    async retryDebtReminder(id: string): Promise<{
+        success: boolean;
+        message: string;
+        data: any;
+    }> {
+        const res = await fetch(`/api/v1/invoices/reminders/${id}/retry`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message || 'Lỗi thử lại gửi email');
+        return json;
+    },
+
+    /**
      * Lấy toàn bộ dữ liệu Dashboard Thống kê Doanh thu (Chức năng 12)
      */
     async getRevenueAnalyticsDashboard(params?: { year?: number; period?: string }): Promise<{
@@ -692,7 +794,7 @@ export const invoiceApi = {
         if (params?.status) query.append('status', params.status);
         if (params?.report_type) query.append('report_type', params.report_type);
 
-        const res = await fetch(`/api/v1/reports/financial/preview?${query.toString()}`, {
+        const res = await fetch(`/reports/financial/preview?${query.toString()}`, {
             headers: getAuthHeaders(),
         });
 
@@ -716,7 +818,7 @@ export const invoiceApi = {
         if (params?.status) query.append('status', params.status);
         if (params?.report_type) query.append('report_type', params.report_type);
 
-        return `/api/v1/reports/financial/export-excel?${query.toString()}`;
+        return `/reports/financial/export-excel?${query.toString()}`;
     },
 
     /**
@@ -736,6 +838,6 @@ export const invoiceApi = {
         if (params?.report_type) query.append('report_type', params.report_type);
         if (params?.auto_print) query.append('auto_print', '1');
 
-        return `/api/v1/reports/financial/export-pdf?${query.toString()}`;
+        return `/reports/financial/export-pdf?${query.toString()}`;
     },
 };
