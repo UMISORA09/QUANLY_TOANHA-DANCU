@@ -276,7 +276,6 @@ class InvoiceStatusManagementTest extends TestCase
                     'remaining_balance',
                     'collection_rate',
                     'counts_by_status' => [
-                        'DRAFT',
                         'ISSUED',
                         'PARTIAL',
                         'PAID',
@@ -286,6 +285,7 @@ class InvoiceStatusManagementTest extends TestCase
                 ],
             ]);
 
+        $this->assertArrayNotHasKey('DRAFT', $response->json('data.counts_by_status'));
         $this->assertGreaterThanOrEqual(3, $response->json('data.total_invoices'));
         $this->assertGreaterThan(0, $response->json('data.paid_amount'));
         $this->assertGreaterThan(0, $response->json('data.remaining_balance'));
@@ -400,5 +400,143 @@ class InvoiceStatusManagementTest extends TestCase
         $this->invoiceOverdue->refresh();
         $this->assertEquals('CANCELLED', $this->invoiceIssued->status);
         $this->assertEquals('CANCELLED', $this->invoiceOverdue->status);
+    }
+
+    public function test_invoice_api_sanitizes_resident_pii(): void
+    {
+        $resident = User::factory()->create([
+            'email' => 'resident_pii@cassavas.com',
+            'full_name' => 'Nguyễn Văn PII',
+            'phone_number' => '0912345678',
+            'national_id_number' => '001200000099',
+            'date_of_birth' => '1995-05-20',
+            'fcm_device_token' => 'fcm-secret-token-xyz',
+            'last_login_ip' => '10.0.0.99',
+        ]);
+
+        $invoice = Invoice::create([
+            'invoice_number' => 'HD-PII-TEST-001',
+            'apartment_id' => $this->aptA101->id,
+            'resident_user_id' => $resident->id,
+            'billing_period' => '2026-11',
+            'issue_date' => '2026-11-01',
+            'due_date' => '2026-11-20',
+            'subtotal_amount' => 500000.00,
+            'tax_amount' => 50000.00,
+            'total_amount' => 550000.00,
+            'paid_amount' => 0.00,
+            'remaining_balance' => 550000.00,
+            'status' => 'ISSUED',
+        ]);
+
+        // 1. Kiểm tra qua endpoint index (/api/v1/invoices)
+        $resIndex = $this->withHeaders($this->authHeaders())
+            ->getJson("/api/v1/invoices?search={$invoice->invoice_number}");
+        $resIndex->assertStatus(200);
+
+        $invoiceData = collect($resIndex->json('data.data'))->firstWhere('id', $invoice->id);
+        $this->assertNotNull($invoiceData);
+        $this->assertArrayHasKey('resident_user', $invoiceData);
+        $this->assertEquals($resident->id, $invoiceData['resident_user']['id']);
+        $this->assertEquals('Nguyễn Văn PII', $invoiceData['resident_user']['full_name']);
+        $this->assertEquals('0912345678', $invoiceData['resident_user']['phone_number']);
+        $this->assertEquals('resident_pii@cassavas.com', $invoiceData['resident_user']['email']);
+
+        // Không được phép lộ các trường nhạy cảm
+        $this->assertArrayNotHasKey('national_id_number', $invoiceData['resident_user']);
+        $this->assertArrayNotHasKey('date_of_birth', $invoiceData['resident_user']);
+        $this->assertArrayNotHasKey('fcm_device_token', $invoiceData['resident_user']);
+        $this->assertArrayNotHasKey('last_login_ip', $invoiceData['resident_user']);
+        $this->assertArrayNotHasKey('residentUser', $invoiceData);
+
+        // 2. Kiểm tra qua endpoint show (/api/v1/invoices/{id})
+        $resShow = $this->withHeaders($this->authHeaders())
+            ->getJson("/api/v1/invoices/{$invoice->id}");
+        $resShow->assertStatus(200);
+        $showData = $resShow->json('data');
+        $this->assertArrayHasKey('resident_user', $showData);
+        $this->assertEquals('Nguyễn Văn PII', $showData['resident_user']['full_name']);
+        $this->assertArrayNotHasKey('national_id_number', $showData['resident_user']);
+        $this->assertArrayNotHasKey('date_of_birth', $showData['resident_user']);
+        $this->assertArrayNotHasKey('fcm_device_token', $showData['resident_user']);
+
+        // 3. Kiểm tra qua endpoint statement (/api/v1/invoices/{id}/statement)
+        $resStatement = $this->withHeaders($this->authHeaders())
+            ->getJson("/api/v1/invoices/{$invoice->id}/statement");
+        $resStatement->assertStatus(200);
+        $statementInvoice = $resStatement->json('data.invoice');
+        $this->assertArrayHasKey('resident_user', $statementInvoice);
+        $this->assertEquals('Nguyễn Văn PII', $statementInvoice['resident_user']['full_name']);
+        $this->assertArrayNotHasKey('national_id_number', $statementInvoice['resident_user']);
+        $this->assertArrayNotHasKey('date_of_birth', $statementInvoice['resident_user']);
+    }
+
+    public function test_bulk_cancel_partial_and_error_sanitization(): void
+    {
+        // 1. Bulk cancel một phần thành công, một phần thất bại (do hóa đơn đã thanh toán)
+        $response = $this->withHeaders($this->authHeaders())
+            ->postJson('/api/v1/invoices/bulk-cancel', [
+                'invoice_ids' => [
+                    $this->invoiceIssued->id,
+                    $this->invoicePaid->id,
+                ],
+                'reason' => 'Thử hủy một phần',
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('data.cancelled_count', 1)
+            ->assertJsonPath('data.failed_count', 1);
+
+        $this->assertStringContainsString('1/2 hóa đơn', $response->json('message'));
+        $this->assertNotEmpty($response->json('data.errors'));
+
+        // 2. Bulk cancel toàn bộ thất bại với ID không tồn tại -> ẩn exception nội bộ
+        $responseNotFound = $this->withHeaders($this->authHeaders())
+            ->postJson('/api/v1/invoices/bulk-cancel', [
+                'invoice_ids' => [
+                    '00000000-0000-0000-0000-000000000000',
+                ],
+            ]);
+
+        $responseNotFound->assertStatus(200)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('data.cancelled_count', 0)
+            ->assertJsonPath('data.failed_count', 1)
+            ->assertJsonPath('data.errors.0', 'Không tìm thấy hóa đơn.');
+
+        $this->assertStringNotContainsString('ModelNotFoundException', $responseNotFound->json('data.errors.0'));
+        $this->assertStringNotContainsString('SQLSTATE', $responseNotFound->json('data.errors.0'));
+    }
+
+    public function test_list_invoices_does_not_eager_load_items(): void
+    {
+        InvoiceItem::create([
+            'invoice_id' => $this->invoiceIssued->id,
+            'service_code' => 'MANAGEMENT_FEE',
+            'item_description' => 'Phí quản lý test',
+            'quantity' => 1,
+            'unit_name' => 'tháng',
+            'unit_price' => 200000,
+            'amount_before_tax' => 200000,
+            'vat_percentage' => 10,
+            'vat_amount' => 20000,
+            'total_line_amount' => 220000,
+        ]);
+
+        $resList = $this->withHeaders($this->authHeaders())
+            ->getJson("/api/v1/invoices?search={$this->invoiceIssued->invoice_number}");
+
+        $resList->assertStatus(200);
+        $listedInvoice = collect($resList->json('data.data'))->firstWhere('id', $this->invoiceIssued->id);
+        $this->assertNotNull($listedInvoice);
+        // Không được có quan hệ items trong list query
+        $this->assertArrayNotHasKey('items', $listedInvoice);
+
+        // Trong khi đó detail endpoint show vẫn phải trả đầy đủ items
+        $resDetail = $this->withHeaders($this->authHeaders())
+            ->getJson("/api/v1/invoices/{$this->invoiceIssued->id}");
+        $resDetail->assertStatus(200)
+            ->assertJsonPath('data.items.0.service_code', 'MANAGEMENT_FEE');
     }
 }

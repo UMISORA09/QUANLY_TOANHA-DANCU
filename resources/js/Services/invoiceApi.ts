@@ -47,7 +47,7 @@ export interface InvoiceModel {
     total_amount: number;
     paid_amount: number;
     remaining_balance: number;
-    status: 'DRAFT' | 'ISSUED' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+    status: 'ISSUED' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED';
     notes?: string;
     e_invoice_provider?: string;
     e_invoice_number?: string;
@@ -84,7 +84,6 @@ export interface InvoiceSummaryModel {
     remaining_balance: number;
     collection_rate: number;
     counts_by_status: {
-        DRAFT: number;
         ISSUED: number;
         PARTIAL: number;
         PAID: number;
