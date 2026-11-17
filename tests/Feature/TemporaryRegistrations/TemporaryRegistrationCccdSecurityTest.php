@@ -471,8 +471,9 @@ class TemporaryRegistrationCccdSecurityTest extends TestCase
         Storage::disk('public')->put('temporary_registrations/cccd/'.$file2, 'content-batch-2');
 
         // Tạo bản ghi CSDL với đường dẫn tĩnh cũ /storage/...
-        $reg = DB::table('temporary_registrations')->insertGetId([
-            'id' => (string) Str::uuid(),
+        $regId = (string) Str::uuid();
+        DB::table('temporary_registrations')->insert([
+            'id' => $regId,
             'resident_id' => $resident->id,
             'apartment_id' => $apt->id,
             'registration_type' => 'TEMPORARY_STAY',
@@ -506,7 +507,7 @@ class TemporaryRegistrationCccdSecurityTest extends TestCase
         $this->assertFalse(Storage::disk('public')->exists('temporary_registrations/cccd/'.$file2));
 
         // CSDL đã được cập nhật sang endpoint bảo mật
-        $updatedRecord = DB::table('temporary_registrations')->where('id', $reg)->first();
+        $updatedRecord = DB::table('temporary_registrations')->where('id', $regId)->first();
         $this->assertEquals('/api/v1/residents/temporary-registrations/cccd/'.$file1, $updatedRecord->identity_card_front_url);
         $this->assertEquals('/api/v1/residents/temporary-registrations/cccd/'.$file2, $updatedRecord->identity_card_back_url);
     }
