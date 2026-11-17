@@ -3,6 +3,7 @@
 namespace Tests\Feature\ResidentVisitor;
 
 use App\Models\Apartment;
+use App\Models\Role;
 use App\Models\User;
 use App\Services\QuocTinRealtimeService;
 use App\Services\ResidentVisitorService;
@@ -571,5 +572,322 @@ class ResidentVisitorTest extends TestCase
         $response->assertStatus(201);
         $this->assertTrue($response->json('success'));
         $this->assertEquals($ownerApt->id, $response->json('data.apartment_id'));
+    }
+
+    protected function createUserWithRoleForVisitorTest(string $roleCode, string $prefix): array
+    {
+        [$user, $token] = $this->createResidentUser($prefix);
+
+        $role = Role::firstOrCreate(
+            ['role_code' => $roleCode],
+            [
+                'role_name' => $roleCode,
+                'description' => 'Test role '.$roleCode,
+                'is_system_role' => in_array($roleCode, ['SUPER_ADMIN', 'ADMIN', 'BUILDING_MANAGER', 'RECEPTIONIST', 'RESIDENT'], true),
+            ]
+        );
+
+        DB::table('user_roles')->insert([
+            'id' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'is_primary' => 1,
+            'assigned_at' => now(),
+        ]);
+
+        return [$user, $token];
+    }
+
+    /**
+     * 17. BUG-M6-01 (Req 1): Cư dân truyền rõ apartment_id hợp lệ của chính mình (cư trú hoặc sở hữu) tạo QR thành công
+     */
+    public function test_17_resident_can_create_visitor_for_explicit_authorized_apartment(): void
+    {
+        $secondOwnedApt = $this->getOrCreateApartment('APT-OWNED-2-'.Str::random(4));
+        DB::table('apartment_owners')->insert([
+            'id' => (string) Str::uuid(),
+            'apartment_id' => $secondOwnedApt->id,
+            'owner_user_id' => $this->residentA->id,
+            'ownership_percentage' => 100.00,
+            'ownership_start_date' => now()->subDays(10)->toDateString(),
+            'is_current_owner' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Tạo cho căn hộ cư trú A
+        $res1 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Căn Hộ A Hợp Lệ',
+            'visitor_phone' => '0966111001',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => $this->apartmentA->id,
+        ], $this->authHeaders($this->tokenA));
+
+        $res1->assertStatus(201);
+        $this->assertEquals($this->apartmentA->id, $res1->json('data.apartment_id'));
+        $this->assertEquals('ACTIVE', $res1->json('data.qr_pass_status'));
+        $this->assertStringStartsWith('PASS_', (string) $res1->json('data.qr_access_pass_code'));
+
+        // Tạo cho căn hộ sở hữu thứ 2
+        $res2 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Căn Hộ Sở Hữu 2',
+            'visitor_phone' => '0966111002',
+            'expected_arrival_time' => Carbon::now()->addHours(3)->toIso8601String(),
+            'apartment_id' => $secondOwnedApt->id,
+        ], $this->authHeaders($this->tokenA));
+
+        $res2->assertStatus(201);
+        $this->assertEquals($secondOwnedApt->id, $res2->json('data.apartment_id'));
+        $this->assertEquals('ACTIVE', $res2->json('data.qr_pass_status'));
+    }
+
+    /**
+     * 18. BUG-M6-01 (Req 2, 5, 6): Cư dân gửi apartment_id của căn hộ người khác bị từ chối 403, không tạo QR hay event
+     */
+    public function test_18_resident_cannot_create_visitor_for_another_residents_apartment(): void
+    {
+        $visitorCountBefore = DB::table('visitor_registrations')->count();
+        $eventCountBefore = DB::table('realtime_sync_events')->count();
+
+        $response = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Xâm Nhập Căn B',
+            'visitor_phone' => '0966222001',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => $this->apartmentB->id,
+        ], $this->authHeaders($this->tokenA));
+
+        $response->assertStatus(403);
+
+        $this->assertSame($visitorCountBefore, DB::table('visitor_registrations')->count());
+        $this->assertSame($eventCountBefore, DB::table('realtime_sync_events')->count());
+        $this->assertFalse(
+            DB::table('visitor_registrations')
+                ->where('host_resident_user_id', $this->residentA->id)
+                ->where('apartment_id', $this->apartmentB->id)
+                ->where('qr_pass_status', 'ACTIVE')
+                ->exists()
+        );
+    }
+
+    /**
+     * 19. BUG-M6-01 (Req 3, 5, 6): Cư dân / tài khoản không có căn hộ cố truyền apartment_id bất kỳ bị từ chối 403, không sinh QR ACTIVE
+     */
+    public function test_19_user_without_apartment_cannot_bypass_by_passing_target_apartment_id(): void
+    {
+        [$unlinkedResident, $unlinkedToken] = $this->createUserWithRoleForVisitorTest('RESIDENT_OWNER', 'unlinked_res_');
+        [$pointerOnlyUser, $pointerToken] = $this->createResidentUser('pointer_only_');
+
+        // Tạo căn hộ chỉ trỏ current_resident_user_id nhưng không có bản ghi residents / apartment_owners hợp lệ
+        $pointerApt = $this->getOrCreateApartment('APT-PTR-'.Str::random(4));
+        DB::table('apartments')->where('id', $pointerApt->id)->update([
+            'current_resident_user_id' => $pointerOnlyUser->id,
+        ]);
+
+        $visitorCountBefore = DB::table('visitor_registrations')->count();
+        $eventCountBefore = DB::table('realtime_sync_events')->count();
+
+        // User không có căn hộ cố gắng gửi apartment_id của cư dân B
+        $res1 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Kẻ Lạ Xâm Nhập B',
+            'visitor_phone' => '0966333001',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => $this->apartmentB->id,
+        ], $this->authHeaders($unlinkedToken));
+
+        $res1->assertStatus(403);
+
+        // User truyền UUID căn hộ không tồn tại
+        $res2 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Kẻ Lạ UUID Giả',
+            'visitor_phone' => '0966333002',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => (string) Str::uuid(),
+        ], $this->authHeaders($unlinkedToken));
+
+        $res2->assertStatus(403);
+
+        // User chỉ có pointer current_resident_user_id không được phép bypass
+        $res3 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Pointer Only Bypass',
+            'visitor_phone' => '0966333003',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => $pointerApt->id,
+        ], $this->authHeaders($pointerToken));
+
+        $res3->assertStatus(403);
+
+        $this->assertSame($visitorCountBefore, DB::table('visitor_registrations')->count());
+        $this->assertSame($eventCountBefore, DB::table('realtime_sync_events')->count());
+        $this->assertSame(0, DB::table('visitor_registrations')->whereIn('host_resident_user_id', [$unlinkedResident->id, $pointerOnlyUser->id])->count());
+    }
+
+    /**
+     * 20. BUG-M6-01 (Req 4, 5, 6): Cư dân không có căn hộ hợp lệ và không truyền apartment_id bị trả lỗi, tuyệt đối không lấy căn hộ đầu tiên
+     */
+    public function test_20_user_without_valid_apartment_and_no_apartment_id_does_not_fallback_to_first_apartment(): void
+    {
+        [$unlinkedUser, $unlinkedToken] = $this->createResidentUser('no_apt_');
+        [$expiredResident, $expiredToken] = $this->createResidentUser('expired_res_');
+
+        DB::table('residents')->insert([
+            'id' => (string) Str::uuid(),
+            'user_id' => $expiredResident->id,
+            'apartment_id' => $this->apartmentA->id,
+            'resident_type' => 'TENANT',
+            'is_head_of_household' => 0,
+            'stay_start_date' => now()->subMonths(6)->toDateString(),
+            'stay_end_date' => now()->subDay()->toDateString(),
+            'is_active' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Đảm bảo DB đang có căn hộ tồn tại
+        $this->assertNotNull(DB::table('apartments')->first());
+
+        $visitorCountBefore = DB::table('visitor_registrations')->count();
+        $eventCountBefore = DB::table('realtime_sync_events')->count();
+
+        // Không có căn hộ và không truyền apartment_id -> 422
+        $res1 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Không Căn Hộ',
+            'visitor_phone' => '0966444001',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+        ], $this->authHeaders($unlinkedToken));
+
+        $res1->assertStatus(422);
+
+        // Cư dân hết hạn cư trú không truyền apartment_id -> 422, cố truyền căn hộ cũ -> 403
+        $res2 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Cư Dân Hết Hạn',
+            'visitor_phone' => '0966444002',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+        ], $this->authHeaders($expiredToken));
+
+        $res2->assertStatus(422);
+
+        $res3 = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Cư Dân Hết Hạn Cố Truyền',
+            'visitor_phone' => '0966444003',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => $this->apartmentA->id,
+        ], $this->authHeaders($expiredToken));
+
+        $res3->assertStatus(403);
+
+        $this->assertSame($visitorCountBefore, DB::table('visitor_registrations')->count());
+        $this->assertSame($eventCountBefore, DB::table('realtime_sync_events')->count());
+    }
+
+    /**
+     * 21. BUG-M6-01 (Req 7): Admin, Quản lý tòa nhà và Lễ tân vẫn tạo lượt khách cho căn hộ hợp lệ bình thường
+     */
+    public function test_21_admin_and_valid_staff_roles_can_create_visitor_for_valid_apartment(): void
+    {
+        $roles = ['SUPER_ADMIN', 'ADMIN', 'BUILDING_MANAGER', 'RECEPTIONIST'];
+
+        foreach ($roles as $idx => $roleCode) {
+            [$staffUser, $staffToken] = $this->createUserWithRoleForVisitorTest($roleCode, strtolower($roleCode).'_vis_');
+
+            $response = $this->postJson('/api/v1/resident/visitors', [
+                'visitor_name' => 'Khách Hỗ Trợ Bởi '.$roleCode,
+                'visitor_phone' => '096655500'.$idx,
+                'expected_arrival_time' => Carbon::now()->addHours(2 + $idx)->toIso8601String(),
+                'apartment_id' => $this->apartmentA->id,
+            ], $this->authHeaders($staffToken));
+
+            $response->assertStatus(201);
+            $this->assertTrue($response->json('success'));
+            $this->assertEquals($this->apartmentA->id, $response->json('data.apartment_id'));
+            $this->assertEquals('ACTIVE', $response->json('data.qr_pass_status'));
+            $this->assertEquals($staffUser->id, $response->json('data.host_resident_user_id'));
+        }
+
+        // Admin truyền apartment_id không tồn tại phải trả 422 sạch sẽ thay vì lỗi 500
+        [, $adminToken] = $this->createUserWithRoleForVisitorTest('ADMIN', 'admin_invalid_apt_');
+        $visitorCountBefore = DB::table('visitor_registrations')->count();
+
+        $invalidRes = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Căn Hộ Không Tồn Tại',
+            'visitor_phone' => '0966555999',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => (string) Str::uuid(),
+        ], $this->authHeaders($adminToken));
+
+        $invalidRes->assertStatus(422);
+        $this->assertSame($visitorCountBefore, DB::table('visitor_registrations')->count());
+    }
+
+    /**
+     * 22. BUG-M6-01 Integration: Cư dân hợp lệ tạo QR và liên thông lễ tân (lookup/check-in/check-out), cư dân ngoài căn hộ bị chặn 403
+     */
+    public function test_22_integration_valid_resident_qr_flows_through_reception_checkin_while_unassigned_resident_is_blocked(): void
+    {
+        // 1. Cư dân A được gán hợp lệ vào apartmentA -> tạo visitor QR thành công (201)
+        $createRes = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Tích Hợp Lễ Tân',
+            'visitor_phone' => '0966888111',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'visit_purpose' => 'Giao dịch cư dân hợp lệ',
+            'apartment_id' => $this->apartmentA->id,
+        ], $this->authHeaders($this->tokenA));
+
+        $createRes->assertStatus(201);
+        $regId = (string) $createRes->json('data.id');
+        $qrPassCode = (string) $createRes->json('data.qr_access_pass_code');
+        $this->assertSame($this->apartmentA->id, $createRes->json('data.apartment_id'));
+        $this->assertSame('ACTIVE', $createRes->json('data.qr_pass_status'));
+        $this->assertStringStartsWith('PASS_', $qrPassCode);
+
+        // 2. Cư dân khác (residentB) và cư dân chưa được gán căn hộ đều không thể tạo QR cho apartmentA (403)
+        [$unassignedResident, $unassignedToken] = $this->createUserWithRoleForVisitorTest('RESIDENT', 'unassigned_int_');
+        $countBefore = DB::table('visitor_registrations')->count();
+
+        $blockedResB = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Của B Xâm Nhập A',
+            'visitor_phone' => '0966888222',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => $this->apartmentA->id,
+        ], $this->authHeaders($this->tokenB));
+        $blockedResB->assertStatus(403);
+
+        $blockedUnassigned = $this->postJson('/api/v1/resident/visitors', [
+            'visitor_name' => 'Khách Của User Chưa Gán',
+            'visitor_phone' => '0966888333',
+            'expected_arrival_time' => Carbon::now()->addHours(2)->toIso8601String(),
+            'apartment_id' => $this->apartmentA->id,
+        ], $this->authHeaders($unassignedToken));
+        $blockedUnassigned->assertStatus(403);
+
+        $this->assertSame($countBefore, DB::table('visitor_registrations')->count());
+        $this->assertSame(0, DB::table('visitor_registrations')->where('host_resident_user_id', $unassignedResident->id)->count());
+
+        // 3. Luồng lễ tân tiếp nhận visitor hợp lệ (lookup -> check-in -> cập nhật USED -> check-out) vẫn hoạt động
+        [, $receptionistToken] = $this->createUserWithRoleForVisitorTest('RECEPTIONIST', 'rec_int_');
+
+        $lookupRes = $this->getJson(
+            "/api/v1/reception/visitors/lookup?code={$qrPassCode}",
+            $this->authHeaders($receptionistToken)
+        );
+        $lookupRes->assertStatus(200);
+        $this->assertSame($regId, $lookupRes->json('data.registration.id'));
+        $this->assertTrue((bool) $lookupRes->json('data.can_checkin'));
+
+        $checkinRes = $this->postJson('/api/v1/reception/visitors/check-in', [
+            'registration_id' => $regId,
+        ], $this->authHeaders($receptionistToken));
+        $checkinRes->assertStatus(200);
+
+        $detailAfterCheckin = $this->getJson(
+            "/api/v1/resident/visitors/{$regId}",
+            $this->authHeaders($this->tokenA)
+        );
+        $detailAfterCheckin->assertStatus(200);
+        $this->assertSame('USED', $detailAfterCheckin->json('data.qr_pass_status'));
+
+        $checkoutRes = $this->postJson('/api/v1/reception/visitors/check-out', [
+            'registration_id' => $regId,
+        ], $this->authHeaders($receptionistToken));
+        $checkoutRes->assertStatus(200);
     }
 }

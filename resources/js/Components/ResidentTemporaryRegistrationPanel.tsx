@@ -91,6 +91,7 @@ export const ResidentTemporaryRegistrationPanel: React.FC = () => {
   const [uploadingBack, setUploadingBack] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const showToast = (type: 'success' | 'error', text: string) => {
@@ -288,6 +289,67 @@ export const ResidentTemporaryRegistrationPanel: React.FC = () => {
       fetchData();
     } catch (err: any) {
       showToast('error', err.message || 'Không thể xóa hồ sơ.');
+    }
+  };
+
+  // Handle download / print Mẫu CT01 với Bearer token an toàn
+  const handleDownloadForm = async (item: TemporaryRegistrationItem, action: 'print' | 'download' = 'download') => {
+    let printWindow: Window | null = null;
+    if (action === 'print') {
+      // Mở cửa sổ trước khi fetch để không bị trình duyệt chặn popup do mất user-gesture context
+      try {
+        printWindow = window.open('', '_blank');
+        if (printWindow) {
+          try {
+            printWindow.opener = null;
+          } catch {
+            // Trình duyệt có thể hạn chế gán opener
+          }
+          printWindow.document.write('<!DOCTYPE html><html><head><title>Đang tải biểu mẫu CT01...</title><style>body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#475569;background:#f8fafc;}</style></head><body><p>Đang tải dữ liệu Biểu Mẫu CT01, vui lòng chờ trong giây lát...</p></body></html>');
+        }
+      } catch {
+        printWindow = null;
+      }
+    }
+
+    try {
+      setDownloadingId(item.id);
+      const blob = await api.downloadTemporaryRegistrationForm(item.id);
+
+      if (action === 'print' && printWindow && !printWindow.closed) {
+        const htmlText = await blob.text();
+        printWindow.document.open();
+        printWindow.document.write(htmlText);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          try {
+            printWindow?.print();
+          } catch {
+            // Bỏ qua nếu người dùng hủy lệnh in
+          }
+        }, 500);
+      } else {
+        // Fallback khi popup bị chặn hoặc khi người dùng chọn action 'download'
+        if (printWindow && !printWindow.closed) {
+          printWindow.close();
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bieu_mau_ct01_${item.id}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+    } catch (err: any) {
+      if (printWindow && !printWindow.closed) {
+        printWindow.close();
+      }
+      showToast('error', err.message || 'Không thể tải biểu mẫu CT01.');
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -562,15 +624,20 @@ export const ResidentTemporaryRegistrationPanel: React.FC = () => {
                     )}
 
                     {item.police_status === 'APPROVED' && (
-                      <a
-                        href={api.getTemporaryRegistrationDownloadUrl(item.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition flex items-center gap-1.5"
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadForm(item, 'print')}
+                        disabled={downloadingId === item.id}
+                        className="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition flex items-center gap-1.5 disabled:opacity-50"
+                        title="Xem và in Biểu Mẫu CT01"
                       >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Mẫu CT01</span>
-                      </a>
+                        {downloadingId === item.id ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                        ) : (
+                          <Printer className="w-3.5 h-3.5" />
+                        )}
+                        <span>{downloadingId === item.id ? 'Đang tải...' : 'Mẫu CT01'}</span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -907,15 +974,20 @@ export const ResidentTemporaryRegistrationPanel: React.FC = () => {
 
             <div className="pt-4 flex items-center justify-between border-t border-slate-100">
               {selectedItem.police_status === 'APPROVED' ? (
-                <a
-                  href={api.getTemporaryRegistrationDownloadUrl(selectedItem.id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold hover:bg-emerald-100 transition flex items-center gap-1.5"
+                <button
+                  type="button"
+                  onClick={() => handleDownloadForm(selectedItem, 'download')}
+                  disabled={downloadingId === selectedItem.id}
+                  className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold hover:bg-emerald-100 transition flex items-center gap-1.5 disabled:opacity-50"
+                  title="Tải file Biểu Mẫu CT01 về máy"
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Tải Biểu Mẫu CT01</span>
-                </a>
+                  {downloadingId === selectedItem.id ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  <span>{downloadingId === selectedItem.id ? 'Đang tải biểu mẫu...' : 'Tải Biểu Mẫu CT01'}</span>
+                </button>
               ) : (
                 <span className="text-[11px] text-slate-400">
                   Biểu mẫu CT01 sẽ khả dụng sau khi hồ sơ được phê duyệt.

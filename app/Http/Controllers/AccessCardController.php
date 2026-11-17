@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\AccessCardRequest;
+use App\Models\User;
 use App\Services\AccessCardConflictException;
 use App\Services\AccessCardNotFoundException;
 use App\Services\AccessCardService;
 use App\Services\ModuleCooldownException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class AccessCardController extends Controller
@@ -18,13 +20,13 @@ class AccessCardController extends Controller
     ) {}
 
     /**
-     * Xác thực quyền quản trị / nhân viên (Admin, BQL, Lễ Tân, Bảo Vệ)
+     * Xác thực quyền quản trị / nhân viên theo RBAC Permission Matrix
      */
-    protected function checkAuthorization(Request $request): ?JsonResponse
+    protected function checkAuthorization(Request $request, ?string $requiredPermission = null): ?JsonResponse
     {
         $user = $request->user();
 
-        if (! $user) {
+        if (! $user instanceof User) {
             return response()->json([
                 'success' => false,
                 'message' => 'Yêu cầu xác thực tài khoản.',
@@ -32,10 +34,19 @@ class AccessCardController extends Controller
             ], Response::HTTP_UNAUTHORIZED);
         }
 
-        $isAuthorized = (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
-            || (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'ADMIN', 'BUILDING_MANAGER', 'RECEPTIONIST', 'SECURITY_GUARD']));
+        if (strtoupper((string) ($user->status ?? '')) !== 'ACTIVE') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản không ở trạng thái hoạt động hoặc đã bị khóa.',
+                'error' => 'FORBIDDEN',
+            ], Response::HTTP_FORBIDDEN);
+        }
 
-        if (! $isAuthorized) {
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return null;
+        }
+
+        if (empty($requiredPermission) || ! (method_exists($user, 'hasPermission') && $user->hasPermission($requiredPermission))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Bạn không có quyền quản lý thẻ RFID để thực hiện thao tác này.',
@@ -51,7 +62,7 @@ class AccessCardController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:VIEW')) {
             return $authError;
         }
 
@@ -74,7 +85,7 @@ class AccessCardController extends Controller
      */
     public function show(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:VIEW')) {
             return $authError;
         }
 
@@ -99,7 +110,7 @@ class AccessCardController extends Controller
      */
     public function store(AccessCardRequest $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:CREATE')) {
             return $authError;
         }
 
@@ -118,6 +129,13 @@ class AccessCardController extends Controller
                 'message' => $e->getMessage(),
                 'error' => 'CONFLICT',
             ], Response::HTTP_CONFLICT);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dữ liệu thẻ RFID không hợp lệ.',
+                'error' => 'VALIDATION_ERROR',
+                'errors' => $e->errors(),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (ModuleCooldownException $e) {
             return response()->json([
                 'success' => false,
@@ -133,7 +151,7 @@ class AccessCardController extends Controller
      */
     public function update(AccessCardRequest $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:UPDATE')) {
             return $authError;
         }
 
@@ -158,6 +176,13 @@ class AccessCardController extends Controller
                 'message' => $e->getMessage(),
                 'error' => 'CONFLICT',
             ], Response::HTTP_CONFLICT);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dữ liệu thẻ RFID không hợp lệ.',
+                'error' => 'VALIDATION_ERROR',
+                'errors' => $e->errors(),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (ModuleCooldownException $e) {
             return response()->json([
                 'success' => false,
@@ -173,7 +198,7 @@ class AccessCardController extends Controller
      */
     public function toggleStatus(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:UPDATE')) {
             return $authError;
         }
 
@@ -194,6 +219,19 @@ class AccessCardController extends Controller
                 'message' => $e->getMessage(),
                 'error' => 'NOT_FOUND',
             ], Response::HTTP_NOT_FOUND);
+        } catch (AccessCardConflictException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => 'CONFLICT',
+            ], Response::HTTP_CONFLICT);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dữ liệu thẻ RFID không hợp lệ.',
+                'error' => 'VALIDATION_ERROR',
+                'errors' => $e->errors(),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (ModuleCooldownException $e) {
             return response()->json([
                 'success' => false,
@@ -209,7 +247,7 @@ class AccessCardController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:DELETE')) {
             return $authError;
         }
 
@@ -228,6 +266,19 @@ class AccessCardController extends Controller
                 'message' => $e->getMessage(),
                 'error' => 'NOT_FOUND',
             ], Response::HTTP_NOT_FOUND);
+        } catch (AccessCardConflictException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => 'CONFLICT',
+            ], Response::HTTP_CONFLICT);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dữ liệu thẻ RFID không hợp lệ.',
+                'error' => 'VALIDATION_ERROR',
+                'errors' => $e->errors(),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (ModuleCooldownException $e) {
             return response()->json([
                 'success' => false,
@@ -243,7 +294,7 @@ class AccessCardController extends Controller
      */
     public function apartments(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:VIEW')) {
             return $authError;
         }
 
@@ -258,7 +309,7 @@ class AccessCardController extends Controller
      */
     public function residents(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAuthorization($request)) {
+        if ($authError = $this->checkAuthorization($request, 'RFID:VIEW')) {
             return $authError;
         }
 

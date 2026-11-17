@@ -2,9 +2,14 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Resident;
+use App\Models\User;
+use App\Models\Vehicle;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class VehicleRequest extends FormRequest
@@ -18,13 +23,19 @@ class VehicleRequest extends FormRequest
     }
 
     /**
-     * Chuẩn hóa dữ liệu trước khi kiểm tra (Trim và viết hoa biển số)
+     * Chuẩn hóa dữ liệu trước khi kiểm tra (Trim và viết hoa biển số / loại phương tiện)
      */
     protected function prepareForValidation(): void
     {
         if ($this->has('license_plate') && is_string($this->input('license_plate'))) {
             $this->merge([
                 'license_plate' => strtoupper(trim($this->input('license_plate'))),
+            ]);
+        }
+
+        if ($this->has('vehicle_category') && is_string($this->input('vehicle_category'))) {
+            $this->merge([
+                'vehicle_category' => strtoupper(trim($this->input('vehicle_category'))),
             ]);
         }
     }
@@ -55,7 +66,6 @@ class VehicleRequest extends FormRequest
                 'registration_certificate_number' => 'nullable|string|max:80',
                 'vehicle_photo_url' => 'nullable|string|max:500',
                 'registration_cert_photo_url' => 'nullable|string|max:500',
-                'monthly_parking_fee' => 'nullable|numeric|min:0',
                 'has_electric_charging_subscription' => 'nullable|boolean',
                 'is_active' => 'nullable|boolean',
             ];
@@ -77,7 +87,6 @@ class VehicleRequest extends FormRequest
             'registration_certificate_number' => 'nullable|string|max:80',
             'vehicle_photo_url' => 'nullable|string|max:500',
             'registration_cert_photo_url' => 'nullable|string|max:500',
-            'monthly_parking_fee' => 'nullable|numeric|min:0',
             'has_electric_charging_subscription' => 'nullable|boolean',
             'is_active' => 'nullable|boolean',
         ];
@@ -106,9 +115,79 @@ class VehicleRequest extends FormRequest
             'registration_certificate_number.max' => 'Số cà-vẹt xe không được vượt quá 80 ký tự.',
             'vehicle_photo_url.max' => 'Đường dẫn ảnh xe không được vượt quá 500 ký tự.',
             'registration_cert_photo_url.max' => 'Đường dẫn ảnh cà-vẹt không được vượt quá 500 ký tự.',
-            'monthly_parking_fee.numeric' => 'Phí gửi xe hàng tháng phải là số tiền hợp lệ.',
-            'monthly_parking_fee.min' => 'Phí gửi xe hàng tháng không được nhỏ hơn 0.',
         ];
+    }
+
+    /**
+     * Xác thực nâng cao mối quan hệ hợp lệ giữa Chủ xe và Căn hộ
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function ($validator) {
+            $apartmentId = $this->input('apartment_id');
+            $ownerUserId = $this->input('owner_user_id');
+            $isUpdate = $this->isMethod('put') || $this->isMethod('patch');
+            $vehicleId = $this->route('id') ?? $this->route('vehicle') ?? $this->input('id');
+
+            if ($isUpdate && $vehicleId) {
+                $vehicle = Vehicle::find($vehicleId);
+                if ($vehicle) {
+                    $apartmentId = $apartmentId ?: $vehicle->apartment_id;
+                    $ownerUserId = $ownerUserId ?: $vehicle->owner_user_id;
+                }
+            }
+
+            if (! $apartmentId || ! $ownerUserId) {
+                return;
+            }
+
+            // 1. Xác minh tài khoản người dùng tồn tại và đang hoạt động (ACTIVE)
+            $ownerUser = User::find($ownerUserId);
+            if (! $ownerUser || strtoupper((string) ($ownerUser->status ?? '')) !== 'ACTIVE') {
+                $validator->errors()->add(
+                    'owner_user_id',
+                    'Chủ phương tiện không tồn tại hoặc tài khoản không ở trạng thái hoạt động.'
+                );
+
+                return;
+            }
+
+            // 2. Xác minh người đó có quan hệ cư trú hợp lệ với apartment_id
+            $today = now()->toDateString();
+            $isValidResident = Resident::where('user_id', $ownerUserId)
+                ->where('apartment_id', $apartmentId)
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->where(function ($query) use ($today) {
+                    $query->whereNull('stay_end_date')
+                        ->orWhere('stay_end_date', '>=', $today);
+                })
+                ->exists();
+
+            $isCurrentOwner = false;
+            try {
+                if (Schema::hasTable('apartment_owners')) {
+                    $ownerQuery = DB::table('apartment_owners')
+                        ->where('apartment_id', $apartmentId)
+                        ->where('owner_user_id', $ownerUserId)
+                        ->where('is_current_owner', 1);
+
+                    if (Schema::hasColumn('apartment_owners', 'deleted_at')) {
+                        $ownerQuery->whereNull('deleted_at');
+                    }
+
+                    $isCurrentOwner = $ownerQuery->exists();
+                }
+            } catch (\Throwable) {
+            }
+
+            if (! $isValidResident && ! $isCurrentOwner) {
+                $validator->errors()->add(
+                    'owner_user_id',
+                    'Chủ phương tiện được chọn không phải là cư dân đang cư trú hợp lệ hoặc chủ sở hữu của căn hộ này.'
+                );
+            }
+        });
     }
 
     /**

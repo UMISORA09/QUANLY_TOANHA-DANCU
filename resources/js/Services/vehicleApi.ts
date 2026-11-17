@@ -17,6 +17,9 @@ export interface VehicleItem {
   is_active: boolean;
   approved_by?: string | null;
   approved_at?: string | null;
+  rejection_reason?: string | null;
+  rejected_by?: string | null;
+  rejected_at?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -32,6 +35,10 @@ export interface VehicleItem {
     phone_number?: string;
   };
   approver?: {
+    id: string;
+    full_name: string;
+  };
+  rejecter?: {
     id: string;
     full_name: string;
   };
@@ -356,6 +363,16 @@ class VehicleApiService {
 
     const endpoint = `/vehicles/meta/residents${query.toString() ? `?${query.toString()}` : ''}`;
     return this.request(endpoint, options);
+  }
+
+  /**
+   * Từ chối đăng ký phương tiện kèm lý do
+   */
+  async rejectVehicle(id: string, reason: string): Promise<{ success: boolean; message: string; data: VehicleItem }> {
+    return this.request(`/vehicles/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   }
 }
 

@@ -72,9 +72,7 @@ export function can(permission: string): boolean {
   if (cleanPerm === 'SPECIAL') {
     return (
       permissions.includes('SPECIAL') ||
-      permissions.includes('SYSTEM:SPECIAL') ||
-      permissions.includes('USER:SPECIAL') ||
-      permissions.some((p) => p.endsWith(':SPECIAL'))
+      permissions.includes('SYSTEM:SPECIAL')
     );
   }
 
@@ -127,9 +125,7 @@ export function usePermission() {
       if (cleanPerm === 'SPECIAL') {
         return (
           state.permissions.includes('SPECIAL') ||
-          state.permissions.includes('SYSTEM:SPECIAL') ||
-          state.permissions.includes('USER:SPECIAL') ||
-          state.permissions.some((p) => p.endsWith(':SPECIAL'))
+          state.permissions.includes('SYSTEM:SPECIAL')
         );
       }
       return state.permissions.includes(cleanPerm);

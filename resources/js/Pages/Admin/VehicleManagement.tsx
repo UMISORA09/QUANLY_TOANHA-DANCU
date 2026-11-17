@@ -39,6 +39,7 @@ import vehicleApi, {
   VehiclePricingConfig,
   VehicleDetailResponse
 } from '../../Services/vehicleApi';
+import { usePermission } from '../../Hooks/usePermission';
 import { useRealtimeSync, useModuleCooldown, emitLocalRealtimeEvent } from '../../Hooks/useRealtimeSync';
 import { CooldownBanner } from '../../Components/Realtime/CooldownBanner';
 import { CustomSelect, SelectOption } from '../../Components/Common/CustomSelect';
@@ -670,6 +671,15 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
   const [syncingInvoice, setSyncingInvoice] = useState<boolean>(false);
 
+  // Phân quyền RBAC & State từ chối đăng ký phương tiện (BUG-M4-04)
+  const { can, isSuperAdmin } = usePermission();
+  const canApprove = isSuperAdmin || can('VEHICLE:APPROVE');
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState<boolean>(false);
+  const [vehicleToReject, setVehicleToReject] = useState<VehicleItem | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string>('');
+  const [rejectionError, setRejectionError] = useState<string | null>(null);
+  const [rejectingVehicle, setRejectingVehicle] = useState<boolean>(false);
+
   // Form State cho Create & Edit
   const [formApartmentId, setFormApartmentId] = useState<string>('');
   const [formOwnerUserId, setFormOwnerUserId] = useState<string>('');
@@ -1016,6 +1026,51 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
       }
     } catch (err: any) {
       setAlert({ type: 'error', message: err.message });
+    }
+  };
+
+  // Mở modal từ chối đăng ký phương tiện
+  const handleOpenRejectModal = (vehicle: VehicleItem) => {
+    setVehicleToReject(vehicle);
+    setRejectionReason('');
+    setRejectionError(null);
+    setIsRejectModalOpen(true);
+  };
+
+  // Xác nhận từ chối đăng ký phương tiện
+  const handleConfirmReject = async () => {
+    if (!vehicleToReject) return;
+    const trimmed = rejectionReason.trim();
+    if (!trimmed) {
+      setRejectionError('Vui lòng nhập lý do từ chối đăng ký phương tiện.');
+      return;
+    }
+    if (trimmed.length < 3) {
+      setRejectionError('Lý do từ chối phải có ít nhất 3 ký tự.');
+      return;
+    }
+    if (trimmed.length > 1000) {
+      setRejectionError('Lý do từ chối không được vượt quá 1000 ký tự.');
+      return;
+    }
+
+    setRejectingVehicle(true);
+    setRejectionError(null);
+    try {
+      const res = await vehicleApi.rejectVehicle(vehicleToReject.id, trimmed);
+      if (res.success) {
+        setAlert({
+          type: 'success',
+          message: `Đã từ chối đăng ký phương tiện [${vehicleToReject.license_plate}].`,
+        });
+        setIsRejectModalOpen(false);
+        setVehicleToReject(null);
+        fetchVehicles();
+      }
+    } catch (err: any) {
+      setRejectionError(err.message || 'Có lỗi xảy ra khi từ chối phương tiện.');
+    } finally {
+      setRejectingVehicle(false);
     }
   };
 
@@ -1397,14 +1452,44 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                             <span>Đã duyệt</span>
                           </div>
-                        ) : (
-                          <button
-                            onClick={() => handleApprove(v)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+                        ) : v.rejected_at ? (
+                          <div
+                            className="inline-flex items-center gap-1 text-[11px] text-rose-700 font-semibold cursor-help"
+                            title={`Lý do từ chối: ${v.rejection_reason || 'Không có lý do'}`}
                           >
-                            <Clock className="w-3 h-3 text-amber-600" />
-                            <span>Chờ duyệt</span>
-                          </button>
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Từ chối</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5">
+                            {canApprove ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApprove(v)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+                                  title="Phê duyệt phương tiện"
+                                >
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  <span>Duyệt</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRejectModal(v)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition"
+                                  title="Từ chối đăng ký phương tiện"
+                                >
+                                  <X className="w-3 h-3 text-rose-600" />
+                                  <span>Từ chối</span>
+                                </button>
+                              </>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                <span>Chờ duyệt</span>
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
 
@@ -1876,6 +1961,24 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                         {detailData?.vehicle.approver?.full_name || 'Chưa duyệt'}
                       </span>
                     </div>
+
+                    {detailData?.vehicle.rejected_at && (
+                      <div className="col-span-2 p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800">
+                          <AlertCircle className="w-4 h-4 text-rose-600" />
+                          <span>Phương tiện đã bị từ chối đăng ký</span>
+                        </div>
+                        <div className="text-xs text-rose-700">
+                          <span className="font-semibold">Lý do: </span>
+                          {detailData.vehicle.rejection_reason || 'Không có lý do cụ thể'}
+                        </div>
+                        {detailData.vehicle.rejecter && (
+                          <div className="text-[11px] text-rose-600">
+                            Người từ chối: {detailData.vehicle.rejecter.full_name}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Lịch sử mục phí hóa đơn đã ghi nhận */}
@@ -2062,6 +2165,116 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   <Trash2 className="w-3.5 h-3.5" />
                 )}
                 <span>Xác nhận xóa</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal từ chối đăng ký phương tiện (BUG-M4-04) */}
+      {isRejectModalOpen && vehicleToReject && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-rose-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-100 text-rose-600 rounded-xl">
+                  <XCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Từ chối đăng ký phương tiện</h3>
+                  <p className="text-[11px] text-slate-500">Nhập lý do từ chối để cập nhật hồ sơ và thông báo cho cư dân</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRejectModalOpen(false);
+                  setVehicleToReject(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg p-1.5 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 text-xs">
+              {/* Tóm tắt phương tiện */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Biển số xe:</span>
+                  <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-300">
+                    {vehicleToReject.license_plate}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Căn hộ:</span>
+                  <span className="font-semibold text-slate-800">{vehicleToReject.apartment?.apartment_number || 'N/A'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Chủ xe:</span>
+                  <span className="font-semibold text-slate-800">{vehicleToReject.owner?.full_name || 'N/A'}</span>
+                </div>
+              </div>
+
+              {/* Input lý do từ chối */}
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-700">
+                  Lý do từ chối <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => {
+                    setRejectionReason(e.target.value);
+                    if (rejectionError) setRejectionError(null);
+                  }}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="Ví dụ: Giấy tờ cà-vẹt xe không khớp tên chủ hộ, hoặc ảnh chụp không rõ biển số..."
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 outline-none transition custom-scrollbar resize-none"
+                />
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Tối thiểu 3 ký tự</span>
+                  <span>{rejectionReason.length}/1000</span>
+                </div>
+              </div>
+
+              {/* Lỗi validation */}
+              {rejectionError && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{rejectionError}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3.5 bg-slate-50 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRejectModalOpen(false);
+                  setVehicleToReject(null);
+                }}
+                disabled={rejectingVehicle}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                disabled={rejectingVehicle}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition disabled:opacity-50 shadow-xs hover:shadow"
+              >
+                {rejectingVehicle ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <XCircle className="w-3.5 h-3.5" />
+                )}
+                <span>Xác nhận từ chối</span>
               </button>
             </div>
           </div>

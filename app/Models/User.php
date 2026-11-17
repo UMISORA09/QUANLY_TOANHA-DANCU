@@ -108,8 +108,8 @@ class User extends Authenticatable
         $roleList = is_array($roles) ? $roles : [$roles];
 
         $userRoleCodes = $this->relationLoaded('roles')
-            ? $this->roles->pluck('role_code')->toArray()
-            : $this->roles()->pluck('role_code')->toArray();
+            ? $this->roles->whereNull('deleted_at')->pluck('role_code')->toArray()
+            : $this->roles()->whereNull('roles.deleted_at')->pluck('role_code')->toArray();
 
         foreach ($roleList as $r) {
             if (in_array(strtoupper(trim($r)), $userRoleCodes, true)) {
@@ -146,11 +146,16 @@ class User extends Authenticatable
         }
 
         // Nếu người dùng có vai trò tùy chỉnh riêng (CUSTOM_USER_...), lấy chính xác các quyền từ vai trò riêng đó
-        $customRole = $this->roles()->where('role_code', 'LIKE', 'CUSTOM_USER_%')->first();
+        $customRole = $this->roles()
+            ->whereNull('roles.deleted_at')
+            ->where('role_code', 'LIKE', 'CUSTOM_USER_%')
+            ->first();
         if ($customRole) {
             $permissions = Permission::query()
                 ->join('role_permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->join('roles', 'role_permissions.role_id', '=', 'roles.id')
                 ->where('role_permissions.role_id', $customRole->id)
+                ->whereNull('roles.deleted_at')
                 ->pluck('permissions.permission_code')
                 ->unique()
                 ->values()
@@ -165,7 +170,9 @@ class User extends Authenticatable
         $permissions = Permission::query()
             ->join('role_permissions', 'permissions.id', '=', 'role_permissions.permission_id')
             ->join('user_roles', 'role_permissions.role_id', '=', 'user_roles.role_id')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
             ->where('user_roles.user_id', $this->id)
+            ->whereNull('roles.deleted_at')
             ->pluck('permissions.permission_code')
             ->unique()
             ->values()

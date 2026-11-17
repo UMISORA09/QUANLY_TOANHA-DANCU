@@ -36,6 +36,8 @@ class ParcelNotificationTest extends TestCase
 
     protected ?User $receptionist = null;
 
+    protected ?string $receptionistToken = null;
+
     protected ReceptionParcelService $receptionService;
 
     protected WebPushService $pushService;
@@ -51,6 +53,7 @@ class ParcelNotificationTest extends TestCase
         $this->apartment = $this->createTestApartment('APT-NOTIF-'.Str::random(4));
         $this->resident = $this->createTestResident($this->apartment);
         $this->receptionist = $this->createTestStaff('RECEPTIONIST');
+        $this->receptionistToken = $this->issueTestBearerToken($this->receptionist);
     }
 
     protected function createTestApartment(string $code): Apartment
@@ -139,10 +142,50 @@ class ParcelNotificationTest extends TestCase
         }
 
         DB::table('user_roles')->insert([
+            'id' => (string) Str::uuid(),
             'user_id' => $user->id,
             'role_id' => $roleId,
+            'is_primary' => 1,
             'assigned_at' => now(),
         ]);
+
+        $permissions = [
+            'PARCEL:VIEW',
+            'PARCEL:CREATE',
+            'PARCEL:RECEIVE',
+            'PARCEL:CHECKOUT',
+            'PARCEL:UPDATE',
+            'PARCEL:DELETE',
+            'RECEPTION:OPERATE',
+        ];
+
+        foreach ($permissions as $permCode) {
+            $permId = DB::table('permissions')->where('permission_code', $permCode)->value('id');
+            if (! $permId) {
+                $permId = (string) Str::uuid();
+                DB::table('permissions')->insert([
+                    'id' => $permId,
+                    'module' => 'PARCEL',
+                    'permission_code' => $permCode,
+                    'permission_name' => $permCode,
+                    'created_at' => now(),
+                ]);
+            }
+
+            $alreadyAssigned = DB::table('role_permissions')
+                ->where('role_id', $roleId)
+                ->where('permission_id', $permId)
+                ->exists();
+
+            if (! $alreadyAssigned) {
+                DB::table('role_permissions')->insert([
+                    'id' => (string) Str::uuid(),
+                    'role_id' => $roleId,
+                    'permission_id' => $permId,
+                    'created_at' => now(),
+                ]);
+            }
+        }
 
         return $user;
     }
@@ -762,7 +805,7 @@ class ParcelNotificationTest extends TestCase
     {
         Queue::fake();
 
-        $response = $this->actingAs($this->receptionist)->postJson('/api/v1/reception/parcels', [
+        $response = $this->withToken($this->receptionistToken)->postJson('/api/v1/reception/parcels', [
             'tracking_number' => 'RESP_SPEED_'.Str::random(6),
             'courier_company' => 'Shopee',
             'apartment_id' => $this->apartment->id,
@@ -789,7 +832,7 @@ class ParcelNotificationTest extends TestCase
 
         $trackingNumber = 'COMMIT_FIRST_'.Str::random(6);
 
-        $this->actingAs($this->receptionist)->postJson('/api/v1/reception/parcels', [
+        $this->withToken($this->receptionistToken)->postJson('/api/v1/reception/parcels', [
             'tracking_number' => $trackingNumber,
             'courier_company' => 'ViettelPost',
             'apartment_id' => $this->apartment->id,

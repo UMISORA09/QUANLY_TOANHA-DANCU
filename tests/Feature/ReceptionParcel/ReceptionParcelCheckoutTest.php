@@ -30,6 +30,14 @@ class ReceptionParcelCheckoutTest extends TestCase
         $this->apartment = $this->getOrCreateApartment('APT-CHK-101');
     }
 
+    public function actingAs($user, $driver = null)
+    {
+        $token = $this->issueTestBearerToken($user);
+        $this->withHeader('Authorization', 'Bearer '.$token);
+
+        return parent::actingAs($user, $driver);
+    }
+
     protected function getOrCreateApartment(string $code): Apartment
     {
         $blockId = DB::table('blocks')->value('id');

@@ -19,9 +19,13 @@ class ResidentCreateTest extends TestCase
      */
     protected function createAdminUser(): array
     {
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         $user = User::create([
             'username' => 'adm_crt_'.Str::random(8),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'adm_crt_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Admin Test User',
@@ -62,9 +66,13 @@ class ResidentCreateTest extends TestCase
      */
     protected function createNormalUser(): array
     {
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         $user = User::create([
             'username' => 'norm_usr_'.Str::random(8),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'norm_usr_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Normal Resident User',
@@ -105,9 +113,13 @@ class ResidentCreateTest extends TestCase
      */
     protected function createCandidateUser(string $name = 'Nguyen Van Candidate'): User
     {
+        do {
+            $phone = '09'.rand(10000000, 99999999);
+        } while (DB::table('users')->where('phone_number', $phone)->exists());
+
         return User::create([
             'username' => 'cand_'.Str::random(8),
-            'phone_number' => '09'.rand(10000000, 99999999),
+            'phone_number' => $phone,
             'email' => 'cand_'.Str::random(8).'@cassavas.vn',
             'password_hash' => Hash::make('password123'),
             'full_name' => $name,
@@ -122,12 +134,17 @@ class ResidentCreateTest extends TestCase
     {
         $block = DB::table('blocks')->first();
         $floor = DB::table('floors')->first();
+        $blockId = $block->id ?? (string) Str::uuid();
+
+        do {
+            $aptNum = substr($code.'-'.rand(1000, 9999).'-'.Str::upper(Str::random(4)), 0, 30);
+        } while (DB::table('apartments')->where('block_id', $blockId)->where('apartment_number', $aptNum)->exists());
 
         return Apartment::create([
             'id' => (string) Str::uuid(),
-            'block_id' => $block->id ?? (string) Str::uuid(),
+            'block_id' => $blockId,
             'floor_id' => $floor->id ?? (string) Str::uuid(),
-            'apartment_number' => $code.'-'.rand(1000, 9999),
+            'apartment_number' => $aptNum,
             'room_type' => '2_BEDROOM',
             'gross_floor_area_sqm' => 75.0,
             'net_usable_area_sqm' => 68.0,
@@ -538,9 +555,20 @@ class ResidentCreateTest extends TestCase
         echo 'Response body: '.json_encode($body, JSON_UNESCAPED_UNICODE).PHP_EOL;
         echo '============================================================'.PHP_EOL;
 
-        // Kiểm tra xem database constraint uq_resident_apt có chặn duplicate không
-        // Nếu MySQL chặn: response sẽ là 500 do QueryException Duplicate Entry (hoặc 409/422 nếu có catch)
-        $this->assertTrue(in_array($status, [409, 422, 500], true), "Actual HTTP status: {$status}");
+        // Sau khi sửa BUG-M2-02, nhân khẩu đã soft-delete được khôi phục thành công với HTTP 201 Created
+        $this->assertSame(201, $status, 'Sau khi sửa BUG-M2-02, phải trả về 201 và khôi phục nhân khẩu.');
+        $response->assertJson([
+            'success' => true,
+            'message' => 'Thêm cư dân vào căn hộ thành công.',
+        ]);
+
+        // Xác nhận bản ghi cũ được khôi phục, deleted_at = null
+        $refreshedResident = Resident::find($resident->id);
+        $this->assertNotNull($refreshedResident, 'Bản ghi cũ phải được khôi phục và tìm thấy qua find()');
+        $this->assertNull($refreshedResident->deleted_at, 'Trường deleted_at phải được set về null');
+
+        // Xác nhận ID bản ghi không thay đổi và tổng số bản ghi vẫn bằng 1
+        $this->assertEquals($resident->id, $response->json('data.id'), 'ID bản ghi trả về phải trùng với ID bản ghi cũ');
 
         // Tổng số record (bao gồm trashed) không được vượt quá 1 nếu unique constraint chặn, hoặc báo cáo chính xác
         $totalRecordsIncludingTrashed = Resident::withTrashed()

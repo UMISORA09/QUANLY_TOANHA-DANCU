@@ -2254,6 +2254,33 @@ class ApiService {
     return `${API_BASE_URL}/residents/temporary-registrations/${id}/download`;
   }
 
+  async downloadTemporaryRegistrationForm(id: string): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/residents/temporary-registrations/${id}/download`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${this.getToken() || ''}`,
+      },
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Không thể tải biểu mẫu CT01.';
+      try {
+        const errorData = await response.json();
+        if (errorData?.message) {
+          errorMessage = errorData.message;
+        }
+      } catch {
+        const text = await response.text().catch(() => '');
+        if (text) {
+          errorMessage = text;
+        }
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.blob();
+  }
+
   // ================= CẤP PHÁT TÀI KHOẢN TỰ ĐỘNG =================
   async getProvisionedAccounts(params: { search?: string; status?: string; limit?: number; page?: number } = {}) {
     const query = new URLSearchParams();

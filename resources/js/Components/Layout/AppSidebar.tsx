@@ -60,21 +60,67 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
   const rawItems = customItems || config.items;
   const menuItems = rawItems.filter((item) => {
+    // 1. Phân quyền RBAC (Roles & Permissions)
     if (item.id === 'roles') {
       return can('ROLE:VIEW|USER:VIEW');
     }
+    // 2. Tiện ích tòa nhà (Amenities)
     if (item.id === 'amenities') {
       return role === 'resident' || can('AMENITY:VIEW');
     }
+    // 3. Thu phí & Hóa đơn (Billing / Invoices)
     if (item.id === 'billing') {
-      return can('INVOICE:VIEW');
+      return role === 'resident' || can('INVOICE:VIEW');
     }
+    // 4. Phản ánh & Sự cố (Tickets)
     if (item.id === 'tickets') {
-      return can('TICKET:VIEW');
+      return role === 'resident' || can('TICKET:VIEW');
     }
+    // 5. Báo cáo & Thống kê (Reports)
     if (item.id === 'reports') {
       return can('REPORT:VIEW');
     }
+    // 6. Quản lý Chủ hộ & Nhân khẩu (Residents)
+    if (item.id === 'residents') {
+      return can('RESIDENT:VIEW|USER:VIEW');
+    }
+    // 7. Cấp phát tài khoản tự động (Account Provisioning)
+    if (item.id === 'account_provisioning') {
+      return can('USER:CREATE|USER:VIEW');
+    }
+    // 8. Đăng ký & Quản lý Tạm trú / Tạm vắng (Temporary Registrations)
+    if (item.id === 'temporary_registrations') {
+      return role === 'resident' || can('TEMP_REG:VIEW|TEMPORARY_RESIDENCE:VIEW|RESIDENT:VIEW|USER:VIEW');
+    }
+    // 9. Quản lý Xếp ca trực (Staff Schedules)
+    if (item.id === 'schedules') {
+      return can('SCHEDULE:VIEW|STAFF_SCHEDULE:VIEW|USER:VIEW');
+    }
+    // 10. Phương tiện & Bãi đỗ (Parking)
+    if (item.id === 'parking') {
+      return can('VEHICLE:VIEW');
+    }
+    // 11. Đăng ký xe & Phí HĐ (Vehicle Registration)
+    if (item.id === 'vehicle_reg') {
+      return can('VEHICLE:VIEW|VEHICLE:CREATE');
+    }
+    // 12. Giao nhận bưu phẩm (Parcels)
+    if (item.id === 'parcels') {
+      return can('PARCEL:VIEW|RECEPTION:OPERATE|USER:VIEW');
+    }
+    // 13. Chìa khóa & Thẻ từ (Access Cards / RFID Keys)
+    if (item.id === 'keys') {
+      return can('ACCESS_CARD:VIEW|RFID:VIEW|KEY:VIEW|RECEPTION:OPERATE|USER:VIEW');
+    }
+    // 14. Khách viếng thăm (Visitors)
+    if (item.id === 'visitors') {
+      return role === 'resident' || can('VISITOR:VIEW|VISITOR:CREATE');
+    }
+    // 15. Cài đặt đơn giá & Bậc thang (Pricing Configs)
+    if (item.id === 'pricing_configs') {
+      return can('PRICING:VIEW|VEHICLE:VIEW|INVOICE:VIEW');
+    }
+
     return true;
   });
   const RoleIcon = config.icon || Building2;

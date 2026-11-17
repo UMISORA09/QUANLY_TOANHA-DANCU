@@ -9,6 +9,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class VehicleService
 {
@@ -203,7 +204,7 @@ class VehicleService
     /**
      * Đăng ký phương tiện mới và tự động tích hợp đẩy phí sang Module Hóa Đơn trong DB Transaction
      */
-    public function createVehicle(array $data, ?string $adminUserId = null): array
+    public function createVehicle(array $data, ?string $adminUserId = null, bool $allowTrustedFee = true): array
     {
         QuocTinRealtimeService::assertNotInCooldown('vehicles');
 
@@ -211,11 +212,11 @@ class VehicleService
         $licensePlate = strtoupper(trim($data['license_plate']));
         $data['license_plate'] = $licensePlate;
 
-        // 2. Tự động lấy phí từ cấu hình pricing nếu chưa nhập hoặc bằng 0
+        // 2. Xác định phí từ cấu hình pricing của server; bỏ qua phí do HTTP client gửi lên
         $category = strtoupper(trim($data['vehicle_category'] ?? 'MOTORBIKE'));
         $data['vehicle_category'] = $category;
 
-        if (! isset($data['monthly_parking_fee']) || (float) $data['monthly_parking_fee'] <= 0) {
+        if (! $allowTrustedFee || ! isset($data['monthly_parking_fee']) || (float) $data['monthly_parking_fee'] <= 0) {
             $pricing = $this->getPricingForCategory($category);
             $data['monthly_parking_fee'] = $pricing['monthly_parking_fee'];
         }
@@ -271,7 +272,7 @@ class VehicleService
     /**
      * Cập nhật thông tin phương tiện
      */
-    public function updateVehicle(string $id, array $data): Vehicle
+    public function updateVehicle(string $id, array $data, bool $allowTrustedFee = true): Vehicle
     {
         QuocTinRealtimeService::assertNotInCooldown('vehicles');
 
@@ -282,13 +283,39 @@ class VehicleService
 
         $oldLicensePlate = $vehicle->license_plate;
 
+        // Bảo vệ toàn vẹn trạng thái phê duyệt và từ chối: Không cho phép cập nhật thông thường sửa đổi
+        unset(
+            $data['rejection_reason'],
+            $data['rejected_by'],
+            $data['rejected_at'],
+            $data['approved_by'],
+            $data['approved_at']
+        );
+
+        if (! $allowTrustedFee) {
+            unset($data['monthly_parking_fee']);
+        }
+
         if (! empty($data['license_plate'])) {
             $data['license_plate'] = strtoupper(trim($data['license_plate']));
         }
 
-        // Nếu thay đổi loại phương tiện mà không chỉ định phí mới -> tự cập nhật theo bảng giá
-        if (! empty($data['vehicle_category']) && $data['vehicle_category'] !== $vehicle->vehicle_category && empty($data['monthly_parking_fee'])) {
-            $pricing = $this->getPricingForCategory($data['vehicle_category']);
+        $currentCategory = strtoupper(trim((string) $vehicle->vehicle_category));
+        $targetCategory = ! empty($data['vehicle_category'])
+            ? strtoupper(trim((string) $data['vehicle_category']))
+            : $currentCategory;
+
+        if (! empty($data['vehicle_category'])) {
+            $data['vehicle_category'] = $targetCategory;
+        }
+
+        $categoryChanged = $targetCategory !== $currentCategory;
+        $needsServerFee = ($categoryChanged && (! $allowTrustedFee || ! isset($data['monthly_parking_fee']) || (float) $data['monthly_parking_fee'] <= 0))
+            || (! $allowTrustedFee && (float) $vehicle->monthly_parking_fee <= 0);
+
+        // Nếu thay đổi loại phương tiện (hoặc phí hiện tại <= 0 qua HTTP) -> tự tính lại theo biểu phí server
+        if ($needsServerFee) {
+            $pricing = $this->getPricingForCategory($targetCategory);
             $data['monthly_parking_fee'] = $pricing['monthly_parking_fee'];
         }
 
@@ -444,12 +471,17 @@ class VehicleService
     {
         QuocTinRealtimeService::assertNotInCooldown('vehicles');
 
-        $vehicle = Vehicle::find($id);
-        if (! $vehicle) {
-            throw new VehicleNotFoundException('Phương tiện không tồn tại hoặc đã bị xóa.');
-        }
+        $vehicle = DB::transaction(function () use ($id, $approvedByUserId) {
+            $vehicle = Vehicle::where('id', $id)->lockForUpdate()->first();
+            if (! $vehicle) {
+                throw new VehicleNotFoundException('Phương tiện không tồn tại hoặc đã bị xóa.');
+            }
 
-        DB::transaction(function () use ($vehicle, $approvedByUserId) {
+            // Không cho phép duyệt phương tiện đã bị từ chối
+            if ($vehicle->rejected_at !== null) {
+                throw new VehicleConflictException('Phương tiện đã bị từ chối đăng ký, không thể phê duyệt.', 409);
+            }
+
             $vehicle->approved_by = $approvedByUserId;
             $vehicle->approved_at = now();
             $vehicle->is_active = true;
@@ -457,6 +489,8 @@ class VehicleService
 
             // Tự động đẩy phí vào kỳ hóa đơn hiện tại khi duyệt xe
             $this->syncVehicleParkingFeeToInvoice($vehicle);
+
+            return $vehicle;
         });
 
         $vehicle->load(['apartment', 'owner', 'approver']);
@@ -470,6 +504,66 @@ class VehicleService
 
         QuocTinRealtimeService::emit('vehicles', 'invoice_item', 'SYNCED', $vehicle->id, [
             'apartment_id' => $vehicle->apartment_id,
+        ]);
+
+        return $vehicle;
+    }
+
+    /**
+     * Từ chối đăng ký phương tiện kèm lý do
+     */
+    public function rejectVehicle(string $id, string $reason, string $rejectedByUserId): Vehicle
+    {
+        QuocTinRealtimeService::assertNotInCooldown('vehicles');
+
+        $trimmedReason = trim($reason);
+        if ($trimmedReason === '') {
+            throw new ValidationException(
+                validator: validator([], []),
+                response: response()->json([
+                    'success' => false,
+                    'message' => 'Lý do từ chối không được để trống hoặc chỉ chứa khoảng trắng.',
+                    'error' => 'VALIDATION_ERROR',
+                    'errors' => [
+                        'reason' => ['Lý do từ chối không được để trống hoặc chỉ chứa khoảng trắng.'],
+                    ],
+                ], 422)
+            );
+        }
+
+        $vehicle = DB::transaction(function () use ($id, $trimmedReason, $rejectedByUserId) {
+            $vehicle = Vehicle::where('id', $id)->lockForUpdate()->first();
+            if (! $vehicle) {
+                throw new VehicleNotFoundException('Phương tiện không tồn tại hoặc đã bị xóa.');
+            }
+
+            // Kiểm tra toàn vẹn trạng thái: Không thể từ chối phương tiện đã được phê duyệt
+            if ($vehicle->approved_at !== null || $vehicle->approved_by !== null) {
+                throw new VehicleConflictException('Phương tiện đã được phê duyệt trước đó, không thể từ chối.', 409);
+            }
+
+            // Xử lý idempotency: Nếu đã bị từ chối trước đó
+            if ($vehicle->rejected_at !== null) {
+                throw new VehicleConflictException('Phương tiện này đã bị từ chối đăng ký trước đó.', 409);
+            }
+
+            $vehicle->rejection_reason = $trimmedReason;
+            $vehicle->rejected_by = $rejectedByUserId;
+            $vehicle->rejected_at = now();
+            $vehicle->is_active = false;
+            $vehicle->save();
+
+            return $vehicle;
+        });
+
+        $vehicle->load(['apartment', 'owner', 'approver', 'rejecter']);
+
+        QuocTinRealtimeService::emit('vehicles', 'vehicle', 'REJECTED', $vehicle->id, [
+            'apartment_id' => $vehicle->apartment_id,
+            'is_active' => false,
+            'license_plate' => $vehicle->license_plate,
+            'rejection_reason' => $trimmedReason,
+            'updated_at' => $vehicle->updated_at?->toIso8601String(),
         ]);
 
         return $vehicle;

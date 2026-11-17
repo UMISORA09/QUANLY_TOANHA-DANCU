@@ -16,7 +16,7 @@ class ReceptionVisitorController extends Controller
 
     protected function resolveAuthUser(Request $request): object
     {
-        $user = RbacService::resolveUser($request);
+        $user = $request->user() ?? RbacService::resolveUser($request);
         abort_unless($user, 401, 'Yêu cầu đăng nhập để thực hiện thao tác.');
 
         return $user;

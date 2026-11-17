@@ -358,7 +358,7 @@ class MeterReadingController extends Controller
         $uploadedFile = $request->file('file');
         $originalName = $uploadedFile->getClientOriginalName();
         $storedPath = $uploadedFile->store('meter-import-batches', 'local');
-        $fullPath = Storage::disk('local')->path($storedPath);
+        $fullPath = $storedPath ? Storage::disk('local')->path($storedPath) : $uploadedFile->getRealPath();
 
         try {
             $batch = $this->service->importFromCsv(

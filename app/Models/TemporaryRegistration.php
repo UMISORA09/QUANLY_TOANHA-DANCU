@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -39,6 +40,45 @@ class TemporaryRegistration extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Chuẩn hóa URL ảnh CCCD đảm bảo không lộ đường dẫn tĩnh công khai
+     */
+    protected function normalizeCccdUrl(?string $value): ?string
+    {
+        if (! $value) {
+            return null;
+        }
+
+        // Chuyển đổi các URL tĩnh cũ dạng /storage/temporary_registrations/cccd/... sang endpoint bảo mật
+        if (str_starts_with($value, '/storage/temporary_registrations/cccd/')) {
+            $filename = basename($value);
+
+            return '/api/v1/residents/temporary-registrations/cccd/'.$filename;
+        }
+
+        if (str_starts_with($value, 'temporary_registrations/cccd/')) {
+            $filename = basename($value);
+
+            return '/api/v1/residents/temporary-registrations/cccd/'.$filename;
+        }
+
+        return $value;
+    }
+
+    protected function identityCardFrontUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => $this->normalizeCccdUrl($value),
+        );
+    }
+
+    protected function identityCardBackUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => $this->normalizeCccdUrl($value),
+        );
     }
 
     /**

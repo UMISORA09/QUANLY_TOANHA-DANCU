@@ -548,10 +548,15 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
     }
   };
 
-  // In biểu mẫu CT01
+  // In biểu mẫu CT01 (Bảo mật: xóa opener để chống reverse tabnabbing)
   const handlePrintExport = () => {
     const printWindow = window.open('', '_blank');
     if (printWindow) {
+      try {
+        printWindow.opener = null;
+      } catch {
+        // Bỏ qua nếu trình duyệt không cho gán opener
+      }
       printWindow.document.write(exportHtmlContent);
       printWindow.document.close();
       printWindow.focus();
@@ -1842,11 +1847,12 @@ export const TemporaryRegistrationManagement: React.FC<TemporaryRegistrationMana
               </div>
             </div>
 
-            {/* Iframe preview of printable HTML */}
+            {/* Iframe preview of printable HTML (Sandboxed hạn chế tối đa: không script, không same-origin, không modal) */}
             <div className="flex-1 p-4 bg-slate-100 overflow-hidden">
               <iframe
                 srcDoc={exportHtmlContent}
                 title="Biểu Mẫu CT01 Preview"
+                sandbox=""
                 className="w-full h-[65vh] bg-white rounded-xl shadow border border-slate-200"
               />
             </div>
