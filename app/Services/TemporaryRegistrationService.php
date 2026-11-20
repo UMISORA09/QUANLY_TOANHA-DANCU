@@ -10,6 +10,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -64,14 +65,25 @@ class TemporaryRegistrationService
                 ->get();
 
             $headApartmentIds = $userResidents
-                ->filter(function ($r) use ($scopedUser) {
+                ->filter(function ($r) {
                     return (bool) $r->is_head_of_household
-                        || $r->resident_type === 'OWNER'
-                        || (method_exists($scopedUser, 'hasRole') && $scopedUser->hasRole('RESIDENT_OWNER'));
+                        || $r->resident_type === 'OWNER';
                 })
                 ->pluck('apartment_id')
                 ->unique()
                 ->toArray();
+
+            try {
+                if (Schema::hasTable('apartment_owners')) {
+                    $ownedAptIds = DB::table('apartment_owners')
+                        ->where('owner_user_id', $scopedUser->id)
+                        ->where('is_current_owner', 1)
+                        ->pluck('apartment_id')
+                        ->toArray();
+                    $headApartmentIds = array_values(array_unique(array_merge($headApartmentIds, $ownedAptIds)));
+                }
+            } catch (\Throwable) {
+            }
 
             $ownResidentIds = $userResidents->pluck('id')->unique()->toArray();
 
@@ -232,14 +244,15 @@ class TemporaryRegistrationService
      * Cập nhật thông tin hồ sơ khi trạng thái cho phép (kèm Optimistic Locking)
      *
      * @param  array<string, mixed>  $data
+     * @param  bool  $allowPoliceRef  Chỉ cho phép cập nhật police_reference_code khi được gọi bởi Quản trị viên
      *
      * @throws TemporaryRegistrationNotFoundException|TemporaryRegistrationConflictException
      */
-    public function update(string $id, array $data): TemporaryRegistration
+    public function update(string $id, array $data, bool $allowPoliceRef = false): TemporaryRegistration
     {
         QuocTinRealtimeService::assertNotInCooldown('temporary_registrations');
 
-        $updated = DB::transaction(function () use ($id, $data) {
+        $updated = DB::transaction(function () use ($id, $data, $allowPoliceRef) {
             $locked = TemporaryRegistration::where('id', $id)
                 ->lockForUpdate()
                 ->first();
@@ -269,6 +282,10 @@ class TemporaryRegistrationService
 
             // Loại bỏ các trường hệ thống không được ghi đè tự ý
             unset($data['reviewed_by'], $data['reviewed_at'], $data['police_status'], $data['resident_id'], $data['apartment_id'], $data['updated_at']);
+
+            if (! $allowPoliceRef) {
+                unset($data['police_reference_code']);
+            }
 
             // Đảm bảo updated_at luôn được tăng lên ít nhất 1 giây để bảo đảm phân biệt giữa các lần update liên tiếp trong cùng 1 giây
             $newUpdatedAt = now();
@@ -500,9 +517,9 @@ class TemporaryRegistrationService
     }
 
     /**
-     * Tải lên ảnh CCCD mặt trước hoặc mặt sau
+     * Tải lên ảnh CCCD mặt trước hoặc mặt sau và lưu an toàn vào disk local (private)
      */
-    public function uploadCccd(UploadedFile $file, string $side = 'front'): string
+    public function uploadCccd(UploadedFile $file, string $side = 'front', ?User $user = null): string
     {
         $extension = strtolower($file->getClientOriginalExtension());
         $allowed = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
@@ -520,10 +537,11 @@ class TemporaryRegistrationService
             ]);
         }
 
-        $filename = 'cccd_'.$side.'_'.Str::random(16).'.'.$extension;
-        $path = $file->storeAs('temporary_registrations/cccd', $filename, 'public');
+        $userTag = $user ? '_u'.$user->id : '';
+        $filename = 'cccd_'.$side.$userTag.'_'.Str::random(16).'.'.$extension;
+        $path = $file->storeAs('temporary_registrations/cccd', $filename, 'local');
 
-        return '/storage/'.$path;
+        return '/api/v1/residents/temporary-registrations/cccd/'.$filename;
     }
 
     /**
@@ -567,12 +585,41 @@ class TemporaryRegistrationService
         $startDate = $registration->start_date ? $registration->start_date->format('d/m/Y') : '';
         $endDate = $registration->end_date ? $registration->end_date->format('d/m/Y') : '';
 
+        // BUG-M3-01: Escape toàn bộ dữ liệu người dùng và biểu mẫu trước khi nội suy vào template HTML để ngăn Stored XSS
+        $e = static fn (?string $value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        $safeRegId = $e($regId);
+        $safePoliceRef = $e($policeRef);
+        $safePoliceStatus = $e($policeStatus);
+        $safeReason = nl2br($e($reason));
+        $safeNotes = nl2br($e($notes));
+
+        $safeUserFullName = $e($userFullName);
+        $safeUserDob = $e($userDob);
+        $safeUserGender = $e($userGender);
+        $safeUserNationalId = $e($userNationalId);
+        $safeUserPhone = $e($userPhone);
+        $safeUserEmail = $e($userEmail);
+        $safeResidentOccupation = $e($residentOccupation);
+        $safeAptNumber = $e($aptNumber);
+        $safeResidentType = $e($residentType);
+        $safeIsHeadText = $e($isHeadText);
+
+        $safeReviewerName = $e($reviewerName);
+        $safeReviewerEmail = $e($reviewerEmail);
+        $safeReviewedAt = $e($reviewedAt);
+
+        $safeTypeName = $e($typeName);
+        $safeCreatedDate = $e($createdDate);
+        $safeStartDate = $e($startDate);
+        $safeEndDate = $e($endDate);
+
         $printableHtml = <<<HTML
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Biểu Mẫu CT01 - {$typeName} - {$userFullName}</title>
+    <title>Biểu Mẫu CT01 - {$safeTypeName} - {$safeUserFullName}</title>
     <style>
         @page { size: A4; margin: 20mm; }
         body { font-family: 'Times New Roman', Times, serif; font-size: 13pt; line-height: 1.5; color: #111; margin: 0; padding: 20px; }
@@ -596,7 +643,7 @@ class TemporaryRegistrationService
 </head>
 <body>
     <div class="no-print" style="margin-bottom: 20px; padding: 12px; background: #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: bold; font-family: sans-serif;">Biểu Mẫu CT01 Xuất Gửi Công An (Hồ sơ: {$regId})</span>
+        <span style="font-weight: bold; font-family: sans-serif;">Biểu Mẫu CT01 Xuất Gửi Công An (Hồ sơ: {$safeRegId})</span>
         <button onclick="window.print()" style="padding: 8px 16px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">In Biểu Mẫu (Print / Save as PDF)</button>
     </div>
 
@@ -605,50 +652,50 @@ class TemporaryRegistrationService
             <td style="width: 45%;">
                 <strong>BAN QUẢN LÝ TÒA NHÀ</strong><br>
                 <strong>SMART CASSAVAS APARTMENT</strong><br>
-                <span style="font-size: 11pt;">Số hồ sơ: {$regId}</span><br>
-                <span style="font-size: 11pt;">Mã tiếp nhận CA: <strong>{$policeRef}</strong></span>
+                <span style="font-size: 11pt;">Số hồ sơ: {$safeRegId}</span><br>
+                <span style="font-size: 11pt;">Mã tiếp nhận CA: <strong>{$safePoliceRef}</strong></span>
             </td>
             <td style="width: 55%;">
                 <span class="motto">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</span><br>
                 <span class="motto-sub">Độc lập - Tự do - Hạnh phúc</span><br>
-                <span style="font-size: 11pt; font-style: italic; display: inline-block; margin-top: 5px;">..., ngày {$createdDate}</span>
+                <span style="font-size: 11pt; font-style: italic; display: inline-block; margin-top: 5px;">..., ngày {$safeCreatedDate}</span>
             </td>
         </tr>
     </table>
 
     <div class="title">TỜ KHAI THAY ĐỔI THÔNG TIN CƯ TRÚ</div>
-    <div class="subtitle">(Dùng cho thông báo {$typeName} gửi Cơ quan Công an xã/phường)</div>
+    <div class="subtitle">(Dùng cho thông báo {$safeTypeName} gửi Cơ quan Công an xã/phường)</div>
 
     <div style="text-align: center; margin-bottom: 20px; font-weight: bold;">
         Kính gửi: CÔNG AN PHƯỜNG / XÃ ĐỊA BÀN QUẢN LÝ
     </div>
 
     <div class="section-title">I. THÔNG TIN NGƯỜI KÊ KHAI (CƯ DÂN)</div>
-    <div class="info-row"><span class="info-label">1. Họ và tên:</span> <span style="text-transform: uppercase; font-weight: bold;">{$userFullName}</span></div>
+    <div class="info-row"><span class="info-label">1. Họ và tên:</span> <span style="text-transform: uppercase; font-weight: bold;">{$safeUserFullName}</span></div>
     <div class="info-row">
-        <span class="info-label">2. Ngày, tháng, năm sinh:</span> {$userDob} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-        <span class="info-label">3. Giới tính:</span> {$userGender}
+        <span class="info-label">2. Ngày, tháng, năm sinh:</span> {$safeUserDob} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span class="info-label">3. Giới tính:</span> {$safeUserGender}
     </div>
-    <div class="info-row"><span class="info-label">4. Số ĐDCN / CCCD / CMND:</span> <strong>{$userNationalId}</strong></div>
-    <div class="info-row"><span class="info-label">5. Số điện thoại liên hệ:</span> {$userPhone} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="info-label">Email:</span> {$userEmail}</div>
-    <div class="info-row"><span class="info-label">6. Nghề nghiệp:</span> {$residentOccupation}</div>
+    <div class="info-row"><span class="info-label">4. Số ĐDCN / CCCD / CMND:</span> <strong>{$safeUserNationalId}</strong></div>
+    <div class="info-row"><span class="info-label">5. Số điện thoại liên hệ:</span> {$safeUserPhone} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="info-label">Email:</span> {$safeUserEmail}</div>
+    <div class="info-row"><span class="info-label">6. Nghề nghiệp:</span> {$safeResidentOccupation}</div>
 
     <div class="section-title">II. THÔNG TIN NƠI CƯ TRÚ VÀ CĂN HỘ TÒA NHÀ</div>
-    <div class="info-row"><span class="info-label">1. Địa chỉ căn hộ:</span> Căn hộ số <strong>{$aptNumber}</strong>, Chung cư Smart Cassavas</div>
-    <div class="info-row"><span class="info-label">2. Loại cư dân:</span> {$residentType} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="info-label">Chủ hộ:</span> {$isHeadText}</div>
+    <div class="info-row"><span class="info-label">1. Địa chỉ căn hộ:</span> Căn hộ số <strong>{$safeAptNumber}</strong>, Chung cư Smart Cassavas</div>
+    <div class="info-row"><span class="info-label">2. Loại cư dân:</span> {$safeResidentType} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="info-label">Chủ hộ:</span> {$safeIsHeadText}</div>
 
     <div class="section-title">III. NỘI DUNG ĐỀ NGHỊ THAY ĐỔI CƯ TRÚ</div>
-    <div class="info-row"><span class="info-label">1. Hình thức đăng ký:</span> <strong>{$typeName}</strong></div>
-    <div class="info-row"><span class="info-label">2. Thời hạn:</span> Từ ngày <strong>{$startDate}</strong> đến ngày <strong>{$endDate}</strong></div>
-    <div class="info-row"><span class="info-label">3. Lý do:</span> {$reason}</div>
-    <div class="info-row"><span class="info-label">4. Ghi chú tiếp nhận:</span> {$notes}</div>
+    <div class="info-row"><span class="info-label">1. Hình thức đăng ký:</span> <strong>{$safeTypeName}</strong></div>
+    <div class="info-row"><span class="info-label">2. Thời hạn:</span> Từ ngày <strong>{$safeStartDate}</strong> đến ngày <strong>{$safeEndDate}</strong></div>
+    <div class="info-row"><span class="info-label">3. Lý do:</span> {$safeReason}</div>
+    <div class="info-row"><span class="info-label">4. Ghi chú tiếp nhận:</span> {$safeNotes}</div>
 
     <div class="stamp-box">
         <strong>XÁC NHẬN CỦA BAN QUẢN LÝ TÒA NHÀ:</strong><br>
         Hồ sơ đã được thẩm tra thông tin hợp lệ bởi Ban Quản Lý Chung cư.<br>
-        - Trạng thái xử lý: <strong>{$policeStatus}</strong><br>
-        - Cán bộ duyệt: <strong>{$reviewerName} ({$reviewerEmail})</strong><br>
-        - Thời gian phê duyệt: <strong>{$reviewedAt}</strong>
+        - Trạng thái xử lý: <strong>{$safePoliceStatus}</strong><br>
+        - Cán bộ duyệt: <strong>{$safeReviewerName} ({$safeReviewerEmail})</strong><br>
+        - Thời gian phê duyệt: <strong>{$safeReviewedAt}</strong>
     </div>
 
     <table class="signature-table">
@@ -657,13 +704,13 @@ class TemporaryRegistrationService
                 <strong>Ý KIẾN CỦA CHỦ HỘ / CƯ DÂN</strong><br>
                 <span style="font-size: 11pt; font-style: italic;">(Ký, ghi rõ họ tên)</span>
                 <div style="height: 70px;"></div>
-                <strong>{$userFullName}</strong>
+                <strong>{$safeUserFullName}</strong>
             </td>
             <td>
                 <strong>ĐẠI DIỆN BAN QUẢN LÝ TÒA NHÀ</strong><br>
                 <span style="font-size: 11pt; font-style: italic;">(Ký, đóng dấu xác nhận)</span>
                 <div style="height: 70px;"></div>
-                <strong>{$reviewerName}</strong>
+                <strong>{$safeReviewerName}</strong>
             </td>
         </tr>
     </table>

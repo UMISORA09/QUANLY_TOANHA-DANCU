@@ -6,13 +6,16 @@ use App\Http\Requests\AccountProvisioningRequest;
 use App\Models\User;
 use App\Services\AccountProvisioningAlreadyActiveException;
 use App\Services\AccountProvisioningDuplicateException;
+use App\Services\AccountProvisioningForbiddenException;
 use App\Services\AccountProvisioningInvalidTokenException;
 use App\Services\AccountProvisioningNotFoundException;
 use App\Services\AccountProvisioningRateLimitException;
 use App\Services\AccountProvisioningService;
+use App\Services\AccountProvisioningValidationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 class AccountProvisioningController extends Controller
@@ -22,13 +25,39 @@ class AccountProvisioningController extends Controller
     ) {}
 
     /**
-     * Kiểm tra quyền quản trị của người dùng
+     * Trả về phản hồi JSON lỗi 403 Forbidden chuẩn hóa.
      */
-    protected function checkAdminAuthorization(Request $request): ?JsonResponse
+    protected function forbiddenResponse(string $message): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'error' => 'FORBIDDEN',
+        ], Response::HTTP_FORBIDDEN);
+    }
+
+    /**
+     * Trả về phản hồi JSON lỗi 422 Validation Error chuẩn hóa.
+     */
+    protected function validationErrorResponse(string $message): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'error' => 'VALIDATION_ERROR',
+        ], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    /**
+     * Kiểm tra quyền quản trị và quyền thao tác theo hành động của người dùng.
+     *
+     * @param  string|array<int, string>  $requiredPermissions
+     */
+    protected function checkAdminAuthorization(Request $request, array|string $requiredPermissions = ['USER:CREATE']): ?JsonResponse
     {
         $user = $request->user();
 
-        if (! $user) {
+        if (! $user instanceof User) {
             return response()->json([
                 'success' => false,
                 'message' => 'Yêu cầu xác thực tài khoản.',
@@ -36,16 +65,12 @@ class AccountProvisioningController extends Controller
             ], Response::HTTP_UNAUTHORIZED);
         }
 
-        $isAdmin = (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
-            || (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'BUILDING_MANAGER', 'ADMIN']))
-            || (method_exists($user, 'hasPermission') && $user->hasPermission('USER:CREATE'));
+        if (! $this->service->isUserRecordActive($user)) {
+            return $this->forbiddenResponse('Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.');
+        }
 
-        if (! $isAdmin) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không có quyền thực hiện thao tác cấp phát tài khoản.',
-                'error' => 'FORBIDDEN',
-            ], Response::HTTP_FORBIDDEN);
+        if (! $this->service->canAccessProvisioningAction($user, $requiredPermissions)) {
+            return $this->forbiddenResponse('Bạn không có quyền thực hiện thao tác cấp phát tài khoản.');
         }
 
         return null;
@@ -56,7 +81,7 @@ class AccountProvisioningController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:VIEW'])) {
             return $authError;
         }
 
@@ -86,12 +111,13 @@ class AccountProvisioningController extends Controller
      */
     public function store(AccountProvisioningRequest $request): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:CREATE'])) {
             return $authError;
         }
 
         try {
             $actor = $request->user();
+            $this->service->assertAuthorizedForPayload($actor, $request->all(), null);
             $result = $this->service->provisionAccount($request->validated(), $actor);
 
             return response()->json([
@@ -100,6 +126,10 @@ class AccountProvisioningController extends Controller
                 'data' => $result['user'],
                 'activation' => $result['activation'],
             ], Response::HTTP_CREATED);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
+        } catch (AccountProvisioningValidationException $e) {
+            return $this->validationErrorResponse($e->getMessage());
         } catch (AccountProvisioningDuplicateException $e) {
             return response()->json([
                 'success' => false,
@@ -120,7 +150,7 @@ class AccountProvisioningController extends Controller
      */
     public function resendActivation(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:CREATE', 'USER:UPDATE'])) {
             return $authError;
         }
 
@@ -139,6 +169,8 @@ class AccountProvisioningController extends Controller
                 'message' => 'Không tìm thấy tài khoản người dùng tương ứng.',
                 'error' => 'NOT_FOUND',
             ], Response::HTTP_NOT_FOUND);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
         } catch (AccountProvisioningAlreadyActiveException $e) {
             return response()->json([
                 'success' => false,
@@ -165,6 +197,12 @@ class AccountProvisioningController extends Controller
      */
     public function activate(Request $request): JsonResponse
     {
+        try {
+            $this->service->assertNoSpoofedPrivilegeFields($request->all(), true);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
+        }
+
         $validated = $request->validate([
             'id' => ['nullable', 'string'],
             'email' => ['required', 'string', 'email'],
@@ -220,14 +258,30 @@ class AccountProvisioningController extends Controller
     }
 
     /**
-     * Kiểm tra trạng thái liên kết kích hoạt (phục vụ hiển thị UI xác nhận lần 2)
+     * Kiểm tra trạng thái liên kết kích hoạt (phục vụ hiển thị UI xác nhận lần 2, không làm lộ PII/account enumeration).
      */
     public function checkStatus(Request $request): JsonResponse
     {
-        $email = strtolower(trim((string) $request->query('email', '')));
-        $userId = $request->query('id');
+        $rateLimitKey = 'account-provisioning-status:'.hash('sha256', (string) $request->ip());
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 20)) {
+            $retryAfter = max(1, RateLimiter::availableIn($rateLimitKey));
 
-        if (! $email && ! $userId) {
+            return response()->json([
+                'success' => false,
+                'status' => 'TOO_MANY_REQUESTS',
+                'message' => 'Quá nhiều yêu cầu kiểm tra trạng thái. Vui lòng thử lại sau.',
+            ], Response::HTTP_TOO_MANY_REQUESTS, [
+                'Retry-After' => (string) $retryAfter,
+            ]);
+        }
+
+        RateLimiter::hit($rateLimitKey, 60);
+
+        $email = strtolower(trim((string) $request->query('email', '')));
+        $userId = trim((string) $request->query('id', ''));
+        $token = trim((string) $request->query('token', ''));
+
+        if ($email === '' && $userId === '') {
             return response()->json([
                 'success' => false,
                 'status' => 'INVALID_PARAMS',
@@ -235,21 +289,27 @@ class AccountProvisioningController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        $query = User::query();
-        if ($userId) {
-            $query->where('id', $userId);
-        }
-        if ($email) {
-            $query->where('email', $email);
-        }
-        $user = $query->first();
+        $neutralPayload = [
+            'success' => true,
+            'status' => 'PENDING_ACTIVATION',
+            'is_activated' => false,
+            'message' => 'Tài khoản đang chờ thiết lập mật khẩu.',
+        ];
 
+        if ($email === '') {
+            return response()->json($neutralPayload, Response::HTTP_OK);
+        }
+
+        $user = User::query()->where('email', $email)->first();
         if (! $user) {
-            return response()->json([
-                'success' => false,
-                'status' => 'NOT_FOUND',
-                'message' => 'Không tìm thấy tài khoản người dùng tương ứng.',
-            ], Response::HTTP_NOT_FOUND);
+            return response()->json($neutralPayload, Response::HTTP_OK);
+        }
+
+        $hasMatchingId = $userId !== '' && hash_equals((string) $user->id, $userId);
+        $hasValidToken = $token !== '' && $this->service->hasValidActivationToken($email, $token);
+
+        if (! $hasMatchingId && ! $hasValidToken) {
+            return response()->json($neutralPayload, Response::HTTP_OK);
         }
 
         $isActivated = ($user->status === 'ACTIVE');
@@ -258,9 +318,6 @@ class AccountProvisioningController extends Controller
             'success' => true,
             'status' => $isActivated ? 'ALREADY_ACTIVE' : 'PENDING_ACTIVATION',
             'is_activated' => $isActivated,
-            'username' => $user->username,
-            'full_name' => $user->full_name,
-            'email' => $user->email,
             'message' => $isActivated
                 ? 'Đã kích hoạt tài khoản bạn vui lòng đăng nhập.'
                 : 'Tài khoản đang chờ thiết lập mật khẩu.',
@@ -272,7 +329,7 @@ class AccountProvisioningController extends Controller
      */
     public function show(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:VIEW'])) {
             return $authError;
         }
 
@@ -296,8 +353,21 @@ class AccountProvisioningController extends Controller
      */
     public function update(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:UPDATE'])) {
             return $authError;
+        }
+
+        try {
+            $actor = $request->user();
+            $targetUser = User::find($id);
+
+            if ($targetUser && $this->service->userIsSuperAdmin($targetUser) && ! $this->service->isActiveSuperAdmin($actor)) {
+                return $this->forbiddenResponse('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền chỉnh sửa tài khoản SUPER_ADMIN.');
+            }
+
+            $this->service->assertAuthorizedForPayload($actor, $request->all(), $targetUser);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
         }
 
         $validated = $request->validate([
@@ -317,6 +387,10 @@ class AccountProvisioningController extends Controller
                 'message' => 'Cập nhật thông tin tài khoản thành công.',
                 'data' => $user,
             ], Response::HTTP_OK);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
+        } catch (AccountProvisioningValidationException $e) {
+            return $this->validationErrorResponse($e->getMessage());
         } catch (AccountProvisioningDuplicateException $e) {
             return response()->json([
                 'success' => false,
@@ -343,7 +417,7 @@ class AccountProvisioningController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:DELETE'])) {
             return $authError;
         }
 
@@ -354,6 +428,10 @@ class AccountProvisioningController extends Controller
                 'success' => true,
                 'message' => 'Đã xóa tài khoản thành công.',
             ], Response::HTTP_OK);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
+        } catch (AccountProvisioningValidationException $e) {
+            return $this->validationErrorResponse($e->getMessage());
         } catch (ModelNotFoundException) {
             return response()->json([
                 'success' => false,
@@ -374,7 +452,7 @@ class AccountProvisioningController extends Controller
      */
     public function toggleLock(Request $request, string $id): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:UPDATE'])) {
             return $authError;
         }
 
@@ -389,6 +467,10 @@ class AccountProvisioningController extends Controller
                 'data' => $user,
                 'is_locked' => $isLocked,
             ], Response::HTTP_OK);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
+        } catch (AccountProvisioningValidationException $e) {
+            return $this->validationErrorResponse($e->getMessage());
         } catch (ModelNotFoundException) {
             return response()->json([
                 'success' => false,
@@ -409,7 +491,7 @@ class AccountProvisioningController extends Controller
      */
     public function batchResend(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:CREATE', 'USER:UPDATE'])) {
             return $authError;
         }
 
@@ -435,8 +517,24 @@ class AccountProvisioningController extends Controller
      */
     public function import(Request $request): JsonResponse
     {
-        if ($authError = $this->checkAdminAuthorization($request)) {
+        if ($authError = $this->checkAdminAuthorization($request, ['USER:CREATE'])) {
             return $authError;
+        }
+
+        try {
+            $actor = $request->user();
+            $this->service->assertNoSpoofedPrivilegeFields($request->all());
+
+            $rawRecords = $request->input('records');
+            if (is_array($rawRecords)) {
+                foreach ($rawRecords as $row) {
+                    if (is_array($row)) {
+                        $this->service->assertAuthorizedForPayload($actor, $row, null);
+                    }
+                }
+            }
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
         }
 
         $validated = $request->validate([
@@ -457,6 +555,10 @@ class AccountProvisioningController extends Controller
                 'message' => "Nhập danh sách thành công {$result['success_count']}/{$result['total']} tài khoản.",
                 'data' => $result,
             ], Response::HTTP_OK);
+        } catch (AccountProvisioningForbiddenException $e) {
+            return $this->forbiddenResponse($e->getMessage());
+        } catch (AccountProvisioningValidationException $e) {
+            return $this->validationErrorResponse($e->getMessage());
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,

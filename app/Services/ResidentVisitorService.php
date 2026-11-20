@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +10,124 @@ use Illuminate\Validation\ValidationException;
 
 class ResidentVisitorService
 {
+    /**
+     * Các vai trò quản trị / vận hành được phép thao tác liên căn hộ.
+     *
+     * @var array<int, string>
+     */
+    private const ADMIN_STAFF_ROLES = [
+        'SUPER_ADMIN',
+        'SUPER_ADMI',
+        'ADMIN',
+        'BUILDING_MANAGER',
+        'MANAGER',
+        'STAFF',
+        'RECEPTIONIST',
+    ];
+
+    /**
+     * Kiểm tra người dùng có phải là Quản trị viên cấp cao (SUPER_ADMIN / ADMIN).
+     */
+    protected function isSystemAdmin(object $user): bool
+    {
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return true;
+        }
+
+        if (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN'])) {
+            return true;
+        }
+
+        if (! isset($user->id)) {
+            return false;
+        }
+
+        return DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->where('user_roles.user_id', $user->id)
+            ->whereNull('roles.deleted_at')
+            ->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN'])
+            ->exists();
+    }
+
+    /**
+     * Kiểm tra người dùng có vai trò quản trị / ban quản lý / lễ tân / nhân viên vận hành.
+     */
+    protected function isAdminOrStaff(object $user): bool
+    {
+        if (method_exists($user, 'hasRole') && $user->hasRole(self::ADMIN_STAFF_ROLES)) {
+            return true;
+        }
+
+        if (! isset($user->id)) {
+            return false;
+        }
+
+        return DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->where('user_roles.user_id', $user->id)
+            ->whereNull('roles.deleted_at')
+            ->whereIn('roles.role_code', self::ADMIN_STAFF_ROLES)
+            ->exists();
+    }
+
+    /**
+     * Kiểm tra người dùng có quyền quản trị/nhân viên với permission cụ thể.
+     * SUPER_ADMIN / ADMIN được bypass toàn quyền.
+     * Các vai trò nhân viên vận hành (STAFF, RECEPTIONIST, ...) bắt buộc phải có permission $permissionCode trong RBAC.
+     */
+    protected function isAuthorizedAdminOrStaff(object $user, string $permissionCode): bool
+    {
+        if ($this->isSystemAdmin($user)) {
+            return true;
+        }
+
+        if (! $this->isAdminOrStaff($user)) {
+            return false;
+        }
+
+        return RbacService::hasPermission($user, $permissionCode);
+    }
+
+    /**
+     * Xác thực và xác định căn hộ tiếp đón hợp lệ cho thao tác tạo lượt khách.
+     */
+    protected function resolveAuthorizedApartmentId(object $user, mixed $requestedApartmentId): string
+    {
+        $requested = is_string($requestedApartmentId)
+            ? trim($requestedApartmentId)
+            : ($requestedApartmentId !== null ? (string) $requestedApartmentId : '');
+
+        if ($requested !== '') {
+            if ($this->isAdminOrStaff($user)) {
+                $apartmentExists = DB::table('apartments')
+                    ->where('id', $requested)
+                    ->whereNull('deleted_at')
+                    ->exists();
+
+                if (! $apartmentExists) {
+                    abort(422, 'Căn hộ được chọn không tồn tại hoặc đã ngừng hoạt động.');
+                }
+
+                return $requested;
+            }
+
+            $authorizedApartmentIds = QuocTinRealtimeService::getAuthorizedApartmentIds($user);
+            if (! in_array($requested, $authorizedApartmentIds, true)) {
+                abort(403, 'Bạn không có quyền đăng ký khách cho căn hộ này.');
+            }
+
+            return $requested;
+        }
+
+        $authorizedApartmentIds = QuocTinRealtimeService::getAuthorizedApartmentIds($user);
+        if (! empty($authorizedApartmentIds)) {
+            return (string) $authorizedApartmentIds[0];
+        }
+
+        abort(422, 'Không thể xác định căn hộ tiếp đón cho tài khoản cư dân này.');
+    }
+
     /**
      * Lấy danh sách lượt khai báo khách của chính cư dân (kèm tìm kiếm, bộ lọc, phân trang và thống kê)
      *
@@ -22,53 +139,15 @@ class ResidentVisitorService
     {
         $userId = $user->id;
 
-        // 1. Kiểm tra vai trò của người dùng (Admin / Ban quản lý / Lễ tân / Nhân viên)
-        $isAdminOrStaff = false;
-        if ($user instanceof User) {
-            $isAdminOrStaff = $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']);
-        } else {
-            $isAdminOrStaff = DB::table('user_roles')
-                ->join('roles', 'user_roles.role_id', '=', 'roles.id')
-                ->where('user_roles.user_id', $userId)
-                ->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])
-                ->exists();
-        }
+        // 1. Kiểm tra quyền của người dùng (Admin hoặc Nhân viên có quyền VISITOR:VIEW)
+        $isAdminOrStaff = $this->isAuthorizedAdminOrStaff($user, 'VISITOR:VIEW');
 
         // Scope lọc dữ liệu:
-        // - Quản trị viên / Ban quản lý: Lấy toàn bộ dữ liệu lượt khách từ database
-        // - Cư dân: Xem lượt của chính mình hoặc các lượt khách của căn hộ mà mình đang cư trú
+        // - Quản trị viên / Ban quản lý / Lễ tân: Lấy toàn bộ dữ liệu lượt khách từ database
+        // - Cư dân: Thống nhất chỉ xem danh sách lượt khai báo do chính mình tạo (BUG-M6-03: loại bỏ $hasOwn mâu thuẫn rò rỉ dữ liệu cùng căn hộ)
         $applyScope = function ($q) use ($userId, $isAdminOrStaff) {
             if ($isAdminOrStaff) {
                 return;
-            }
-
-            $hasOwn = DB::table('visitor_registrations')
-                ->where('host_resident_user_id', $userId)
-                ->exists();
-
-            if ($hasOwn) {
-                $q->where('visitor_registrations.host_resident_user_id', $userId);
-
-                return;
-            }
-
-            $apartmentIds = DB::table('residents')
-                ->where('user_id', $userId)
-                ->where('is_active', 1)
-                ->whereNull('deleted_at')
-                ->pluck('apartment_id')
-                ->toArray();
-
-            if (! empty($apartmentIds)) {
-                $hasApt = DB::table('visitor_registrations')
-                    ->whereIn('apartment_id', $apartmentIds)
-                    ->exists();
-
-                if ($hasApt) {
-                    $q->whereIn('visitor_registrations.apartment_id', $apartmentIds);
-
-                    return;
-                }
             }
 
             $q->where('visitor_registrations.host_resident_user_id', $userId);
@@ -201,12 +280,11 @@ class ResidentVisitorService
             abort(404, 'Lượt khai báo khách không tồn tại.');
         }
 
-        // Kiểm tra quyền sở hữu hoặc quản trị viên
+        // Kiểm tra quyền sở hữu hoặc quản trị viên / nhân viên có quyền VISITOR:VIEW
         $isOwner = $item->host_resident_user_id === $user->id;
-        $isAdmin = (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']))
-            || DB::table('user_roles')->join('roles', 'user_roles.role_id', '=', 'roles.id')->where('user_roles.user_id', $user->id)->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])->exists();
+        $isAuthorized = $isOwner || $this->isAuthorizedAdminOrStaff($user, 'VISITOR:VIEW');
 
-        if (! $isOwner && ! $isAdmin) {
+        if (! $isAuthorized) {
             abort(403, 'Bạn không có quyền truy cập thông tin lượt khai báo khách này.');
         }
 
@@ -237,95 +315,16 @@ class ResidentVisitorService
     {
         $userId = $user->id;
 
-        // 1. Xác định căn hộ đón tiếp hợp lệ của cư dân
-        $apartmentId = $data['apartment_id'] ?? null;
-        if (! $apartmentId) {
-            $resident = DB::table('residents')
-                ->where('user_id', $userId)
-                ->where('is_active', 1)
-                ->whereNull('deleted_at')
-                ->first();
-
-            $apartmentId = $resident ? $resident->apartment_id : null;
-
-            if (! $apartmentId) {
-                // Thử tìm trong bảng apartment_owners thông qua owner_user_id
-                $ownedApt = DB::table('apartment_owners')
-                    ->where('owner_user_id', $userId)
-                    ->where('is_current_owner', 1)
-                    ->first();
-                $apartmentId = $ownedApt ? $ownedApt->apartment_id : null;
-            }
-
-            if (! $apartmentId) {
-                // Thử tìm trong bảng apartments thông qua current_resident_user_id
-                $curResApt = DB::table('apartments')
-                    ->where('current_resident_user_id', $userId)
-                    ->whereNull('deleted_at')
-                    ->first();
-                $apartmentId = $curResApt ? $curResApt->id : null;
-            }
-
-            if (! $apartmentId) {
-                // Fallback căn hộ mặc định đầu tiên nếu chưa gán
-                $firstApt = DB::table('apartments')->first();
-                $apartmentId = $firstApt ? $firstApt->id : null;
-            }
-        } else {
-            // Xác minh cư dân có quyền đối với căn hộ này
-            $hasAccess = DB::table('residents')
-                ->where('user_id', $userId)
-                ->where('apartment_id', $apartmentId)
-                ->where('is_active', 1)
-                ->whereNull('deleted_at')
-                ->exists() ||
-                DB::table('apartment_owners')
-                    ->where('owner_user_id', $userId)
-                    ->where('apartment_id', $apartmentId)
-                    ->where('is_current_owner', 1)
-                    ->exists() ||
-                DB::table('apartments')
-                    ->where('id', $apartmentId)
-                    ->where('current_resident_user_id', $userId)
-                    ->whereNull('deleted_at')
-                    ->exists() ||
-                (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN')));
-
-            if (! $hasAccess) {
-                // Tự động gán về căn hộ hợp lệ của cư dân
-                $resident = DB::table('residents')
-                    ->where('user_id', $userId)
-                    ->where('is_active', 1)
-                    ->whereNull('deleted_at')
-                    ->first();
-                if ($resident) {
-                    $apartmentId = $resident->apartment_id;
-                } else {
-                    $ownedApt = DB::table('apartment_owners')
-                        ->where('owner_user_id', $userId)
-                        ->where('is_current_owner', 1)
-                        ->first();
-                    if ($ownedApt) {
-                        $apartmentId = $ownedApt->apartment_id;
-                    } else {
-                        $curResApt = DB::table('apartments')
-                            ->where('current_resident_user_id', $userId)
-                            ->whereNull('deleted_at')
-                            ->first();
-                        if ($curResApt) {
-                            $apartmentId = $curResApt->id;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (! $apartmentId) {
-            abort(422, 'Không thể xác định căn hộ tiếp đón cho tài khoản cư dân này.');
-        }
+        // 1. Xác định và xác thực quyền truy cập căn hộ đón tiếp
+        $apartmentId = $this->resolveAuthorizedApartmentId($user, $data['apartment_id'] ?? null);
 
         // 2. Chống tạo trùng lặp với cùng số điện thoại và thời gian dự kiến đến
         $expectedArrival = Carbon::parse($data['expected_arrival_time']);
+        if ($expectedArrival->lt(Carbon::now()->subMinutes(15))) {
+            throw ValidationException::withMessages([
+                'expected_arrival_time' => ['Thời gian dự kiến đến không thể ở trong quá khứ.'],
+            ]);
+        }
         $visitorPhone = trim($data['visitor_phone'] ?? '');
 
         if ($visitorPhone !== '') {
@@ -450,11 +449,10 @@ class ResidentVisitorService
             abort(404, 'Lượt khai báo khách không tồn tại.');
         }
 
-        // Kiểm tra quyền sở hữu hoặc quản trị viên
+        // Kiểm tra quyền sở hữu hoặc quản trị viên / nhân viên có quyền VISITOR:UPDATE
         $isOwner = $item->host_resident_user_id === $user->id;
-        $isAdmin = (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']))
-            || DB::table('user_roles')->join('roles', 'user_roles.role_id', '=', 'roles.id')->where('user_roles.user_id', $user->id)->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])->exists();
-        if (! $isOwner && ! $isAdmin) {
+        $isAuthorized = $isOwner || $this->isAuthorizedAdminOrStaff($user, 'VISITOR:UPDATE');
+        if (! $isAuthorized) {
             abort(403, 'Bạn không có quyền chỉnh sửa lượt khai báo này.');
         }
 
@@ -468,7 +466,7 @@ class ResidentVisitorService
             ->exists();
 
         if ($alreadyCheckedIn) {
-            abort(422, 'Khách đã được tiếp nhận tại quầy lễ tân / bảo vệ, không thể chỉnh sửa thông tin.');
+            abort(422, 'Khách đã được tiếp nhận tại quầy lễ tân / bảo vệ, không thể chỉnh sửa thông tin hành chính. Vui lòng sử dụng tính năng gia hạn giờ rời đi.');
         }
 
         // Kiểm tra Concurrency / Cooldown theo phạm vi BẢN GHI (Record-level Cooldown)
@@ -477,9 +475,17 @@ class ResidentVisitorService
             abort(409, 'Lượt khai báo này vừa được chỉnh sửa bởi một phiên khác. Vui lòng chờ trước khi thao tác tiếp.');
         }
 
-        $expectedArrival = ! empty($data['expected_arrival_time'])
-            ? Carbon::parse($data['expected_arrival_time'])
-            : Carbon::parse($item->expected_arrival_time);
+        if (! empty($data['expected_arrival_time'])) {
+            $newArrival = Carbon::parse($data['expected_arrival_time']);
+            if ($newArrival->lt(Carbon::now()->subMinutes(15))) {
+                throw ValidationException::withMessages([
+                    'expected_arrival_time' => ['Thời gian dự kiến đến không thể ở trong quá khứ.'],
+                ]);
+            }
+            $expectedArrival = $newArrival;
+        } else {
+            $expectedArrival = Carbon::parse($item->expected_arrival_time);
+        }
 
         $expectedDeparture = isset($data['expected_departure_time'])
             ? ($data['expected_departure_time'] ? Carbon::parse($data['expected_departure_time']) : null)
@@ -571,11 +577,10 @@ class ResidentVisitorService
             abort(404, 'Lượt khai báo khách không tồn tại.');
         }
 
-        // Kiểm tra quyền sở hữu hoặc quản trị viên
+        // Kiểm tra quyền sở hữu hoặc quản trị viên / nhân viên có quyền VISITOR:DELETE
         $isOwner = $item->host_resident_user_id === $user->id;
-        $isAdmin = (method_exists($user, 'hasRole') && $user->hasRole(['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST']))
-            || DB::table('user_roles')->join('roles', 'user_roles.role_id', '=', 'roles.id')->where('user_roles.user_id', $user->id)->whereIn('roles.role_code', ['SUPER_ADMIN', 'SUPER_ADMI', 'ADMIN', 'BUILDING_MANAGER', 'MANAGER', 'STAFF', 'RECEPTIONIST'])->exists();
-        if (! $isOwner && ! $isAdmin) {
+        $isAuthorized = $isOwner || $this->isAuthorizedAdminOrStaff($user, 'VISITOR:DELETE');
+        if (! $isAuthorized) {
             abort(403, 'Bạn không có quyền hủy lượt khai báo này.');
         }
 
@@ -625,6 +630,99 @@ class ResidentVisitorService
             'success' => true,
             'message' => 'Đã hủy lượt khai báo khách thành công.',
             'data' => $cancelled,
+        ];
+    }
+
+    /**
+     * Gia hạn giờ rời dự kiến sau khi đã check-in hoặc trong quá trình lưu trú.
+     *
+     * @param  object  $user  Tài khoản cư dân hoặc nhân viên
+     * @param  string  $id  ID lượt khai báo
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function extendDeparture(object $user, string $id, array $data): array
+    {
+        $item = DB::table('visitor_registrations')->where('id', $id)->first();
+        if (! $item) {
+            abort(404, 'Lượt khai báo khách không tồn tại.');
+        }
+
+        $isOwner = $item->host_resident_user_id === $user->id;
+        $isAuthorized = $isOwner || $this->isAuthorizedAdminOrStaff($user, 'VISITOR:UPDATE');
+        if (! $isAuthorized) {
+            abort(403, 'Bạn không có quyền gia hạn thời gian cho lượt khai báo này.');
+        }
+
+        if (in_array($item->qr_pass_status, ['CANCELLED', 'EXPIRED'], true)) {
+            abort(422, "Lượt khai báo ở trạng thái '{$item->qr_pass_status}' không thể gia hạn thời gian rời đi.");
+        }
+
+        if (empty($data['expected_departure_time'])) {
+            throw ValidationException::withMessages([
+                'expected_departure_time' => ['Vui lòng cung cấp thời gian dự kiến rời đi mới.'],
+            ]);
+        }
+
+        $newDeparture = Carbon::parse($data['expected_departure_time']);
+        $arrival = Carbon::parse($item->expected_arrival_time);
+
+        if ($newDeparture->lte(Carbon::now()->subMinutes(5))) {
+            throw ValidationException::withMessages([
+                'expected_departure_time' => ['Thời gian dự kiến rời đi mới phải ở trong tương lai.'],
+            ]);
+        }
+
+        if ($newDeparture->lte($arrival)) {
+            throw ValidationException::withMessages([
+                'expected_departure_time' => ['Thời gian dự kiến rời đi mới phải sau thời gian dự kiến đến.'],
+            ]);
+        }
+
+        if ($item->expected_departure_time && $newDeparture->lte(Carbon::parse($item->expected_departure_time))) {
+            throw ValidationException::withMessages([
+                'expected_departure_time' => ['Thời gian gia hạn mới phải sau thời gian dự kiến rời đi đã đăng ký trước đó.'],
+            ]);
+        }
+
+        $now = Carbon::now();
+
+        DB::transaction(function () use ($id, $newDeparture, $now) {
+            DB::table('visitor_registrations')->where('id', $id)->update([
+                'expected_departure_time' => $newDeparture,
+                'updated_at' => $now,
+            ]);
+        });
+
+        QuocTinRealtimeService::emit(
+            'visitors',
+            'visitor_registration',
+            'EXTENDED',
+            $id,
+            [
+                'host_resident_user_id' => $item->host_resident_user_id,
+                'apartment_id' => $item->apartment_id,
+                'new_departure_time' => $newDeparture->toIso8601String(),
+            ],
+            $user->id,
+            false
+        );
+
+        $updated = DB::table('visitor_registrations')
+            ->leftJoin('apartments', 'visitor_registrations.apartment_id', '=', 'apartments.id')
+            ->leftJoin('blocks', 'apartments.block_id', '=', 'blocks.id')
+            ->where('visitor_registrations.id', $id)
+            ->select([
+                'visitor_registrations.*',
+                'apartments.apartment_number',
+                'blocks.block_name',
+            ])
+            ->first();
+
+        return [
+            'success' => true,
+            'message' => 'Gia hạn thời gian dự kiến rời đi thành công.',
+            'data' => $updated,
         ];
     }
 }

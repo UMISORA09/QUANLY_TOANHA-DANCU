@@ -145,4 +145,22 @@ class ResidentVisitorController extends Controller
 
         return response()->json($result);
     }
+
+    /**
+     * POST /api/v1/resident/visitors/{id}/extend
+     * Gia hạn giờ rời dự kiến sau khi đã check-in hoặc trong quá trình lưu trú
+     */
+    public function extendDeparture(Request $request, string $id): JsonResponse
+    {
+        $user = $this->resolveAuthUser($request);
+
+        $validated = Validator::make($this->getRequestData($request), [
+            'expected_departure_time' => 'required|date',
+            'reason' => 'nullable|string|max:255',
+        ])->validate();
+
+        $result = $this->visitorService->extendDeparture($user, $id, $validated);
+
+        return response()->json($result);
+    }
 }

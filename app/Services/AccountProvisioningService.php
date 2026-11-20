@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -18,6 +19,8 @@ class AccountProvisioningNotFoundException extends \RuntimeException {}
 class AccountProvisioningInvalidTokenException extends \RuntimeException {}
 class AccountProvisioningRateLimitException extends \RuntimeException {}
 class AccountProvisioningAlreadyActiveException extends \RuntimeException {}
+class AccountProvisioningForbiddenException extends \RuntimeException {}
+class AccountProvisioningValidationException extends \RuntimeException {}
 
 class AccountProvisioningService
 {
@@ -30,6 +33,72 @@ class AccountProvisioningService
      * Thời gian chờ giữa 2 lần gửi lại email kích hoạt (giây)
      */
     protected const RESEND_COOLDOWN_SECONDS = 60;
+
+    /**
+     * Các mã vai trò quản trị tối cao của hệ thống.
+     *
+     * @var array<int, string>
+     */
+    protected const SUPER_ADMIN_ROLE_CODES = [
+        'SUPER_ADMIN',
+        'SUPER_ADMI',
+    ];
+
+    /**
+     * Các mã vai trò quản trị đặc quyền cao chỉ SUPER_ADMIN mới được phép gán.
+     *
+     * @var array<int, string>
+     */
+    protected const RESTRICTED_ADMIN_ROLE_CODES = [
+        'SUPER_ADMIN',
+        'SUPER_ADMI',
+        'ADMIN',
+    ];
+
+    /**
+     * Tiền tố vai trò phân quyền riêng gắn theo từng tài khoản.
+     */
+    protected const CUSTOM_USER_ROLE_PREFIX = 'CUSTOM_USER_';
+
+    /**
+     * Danh sách quyền đặc thù hệ thống không cho phép tài khoản dưới SUPER_ADMIN cấp gián tiếp qua vai trò.
+     *
+     * @var array<int, string>
+     */
+    protected const RESTRICTED_ROLE_PERMISSIONS = [
+        'SPECIAL',
+        'SYSTEM:SPECIAL',
+        'SYSTEM:CREATE',
+        'SYSTEM:UPDATE',
+        'SYSTEM:DELETE',
+        'ROLE:ASSIGN_PERMISSION',
+        'ROLE:CREATE',
+        'ROLE:UPDATE',
+        'ROLE:DELETE',
+        'PERMISSION:CREATE',
+        'PERMISSION:UPDATE',
+        'PERMISSION:DELETE',
+    ];
+
+    /**
+     * Danh sách key payload giả mạo vai trò/quyền hạn không hợp lệ qua Account Provisioning.
+     *
+     * @var array<int, string>
+     */
+    protected const SPOOFED_PRIVILEGE_KEYS = [
+        'role',
+        'role_code',
+        'role_codes',
+        'role_id',
+        'role_ids',
+        'primary_role',
+        'permissions',
+        'permission_codes',
+        'is_super_admin',
+        'extra_preferences',
+        'provisioned_by',
+        'status',
+    ];
 
     /**
      * Sinh username ngẫu nhiên duy nhất cho người dùng
@@ -106,6 +175,9 @@ class AccountProvisioningService
     {
         QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
 
+        $this->assertNoSpoofedPrivilegeFields($data);
+        $resolvedRoles = $this->resolveAndAuthorizeRequestedRoles($data['roles'] ?? null, $actor, null, true);
+
         $email = strtolower(trim((string) ($data['email'] ?? '')));
         $phoneNumber = trim((string) ($data['phone_number'] ?? ''));
         $fullName = trim((string) ($data['full_name'] ?? ''));
@@ -114,14 +186,13 @@ class AccountProvisioningService
             : null;
         $gender = $data['gender'] ?? 'OTHER';
         $dob = $data['date_of_birth'] ?? null;
-        $roleCodes = $data['roles'] ?? ['RESIDENT_OWNER'];
 
         // 1. Sinh mật khẩu ngẫu nhiên & hash TRƯỚC KHI mở transaction để không block CSDL bằng CPU bcrypt
         $temporaryPlainPassword = $this->generateSecurePassword(16);
         $passwordHash = Hash::make($temporaryPlainPassword);
         $plainToken = Str::random(64);
 
-        $dbResult = DB::transaction(function () use ($email, $phoneNumber, $fullName, $nationalId, $gender, $dob, $roleCodes, $actor, $passwordHash, $plainToken) {
+        $dbResult = DB::transaction(function () use ($email, $phoneNumber, $fullName, $nationalId, $gender, $dob, $resolvedRoles, $actor, $passwordHash, $plainToken) {
             // Kiểm tra trùng lặp email bằng index seek
             $emailExists = User::withTrashed()->where('email', $email)->exists();
             if ($emailExists) {
@@ -169,8 +240,10 @@ class AccountProvisioningService
                 ],
             ]);
 
-            // 4. Gán vai trò cho người dùng
-            $this->assignRoles($user, $roleCodes, $actor);
+            // 4. Gán vai trò đã xác thực quyền hạn cho người dùng
+            if ($resolvedRoles !== null) {
+                $this->syncResolvedRoles($user, $resolvedRoles, $actor, false);
+            }
 
             // 5. Tạo token kích hoạt và lưu vào bảng password_reset_tokens
             $this->storeActivationToken($email, $plainToken);
@@ -223,6 +296,10 @@ class AccountProvisioningService
     public function resendActivation(string $userId, ?User $actor = null): array
     {
         $user = User::findOrFail($userId);
+
+        if ($this->userIsSuperAdmin($user) && ! $this->isActiveSuperAdmin($actor)) {
+            throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền thao tác với tài khoản SUPER_ADMIN.');
+        }
 
         if ($user->status === 'ACTIVE') {
             throw new AccountProvisioningAlreadyActiveException('Tài khoản này đã được kích hoạt thành công trước đó.');
@@ -315,8 +392,8 @@ class AccountProvisioningService
             throw new AccountProvisioningInvalidTokenException('Liên kết kích hoạt đã hết hạn (quá 48 giờ). Vui lòng liên hệ Ban Quản Lý để nhận liên kết mới.');
         }
 
-        // Xác thực token mã hóa
-        $isTokenValid = Hash::check($token, $record->token) || hash_equals($record->token, $token);
+        // Xác thực token mã hóa (chỉ chấp nhận plain token khớp bcrypt hash, không chấp nhận raw hash)
+        $isTokenValid = is_string($record->token) && $record->token !== '' && Hash::check($token, $record->token);
         if (! $isTokenValid) {
             throw new AccountProvisioningInvalidTokenException('Mã kích hoạt không chính xác.');
         }
@@ -347,6 +424,31 @@ class AccountProvisioningService
             'username' => $user->username,
             'activated_at' => $now->toIso8601String(),
         ];
+    }
+
+    /**
+     * Kiểm tra token kích hoạt còn hiệu lực và khớp với bản băm lưu trong CSDL (không chấp nhận raw hash).
+     */
+    public function hasValidActivationToken(string $email, string $token): bool
+    {
+        $email = strtolower(trim($email));
+        $token = trim($token);
+
+        if ($email === '' || $token === '') {
+            return false;
+        }
+
+        $record = DB::table('password_reset_tokens')->where('email', $email)->first();
+        if (! $record || ! is_string($record->token) || $record->token === '') {
+            return false;
+        }
+
+        $tokenCreatedAt = Carbon::parse($record->created_at);
+        if ($tokenCreatedAt->addHours(self::ACTIVATION_EXPIRY_HOURS)->isPast()) {
+            return false;
+        }
+
+        return Hash::check($token, $record->token);
     }
 
     /**
@@ -420,21 +522,423 @@ class AccountProvisioningService
     }
 
     /**
-     * Gán vai trò cho người dùng
-     *
-     * @param  array<string>  $roleCodes
+     * Kiểm tra tài khoản người dùng đang ở trạng thái ACTIVE và chưa bị xóa mềm.
      */
-    protected function assignRoles(User $user, array $roleCodes, ?User $actor = null): void
+    public function isUserRecordActive(?User $user): bool
     {
-        $roles = Role::whereIn('role_code', $roleCodes)->get();
+        if (! $user || empty($user->id)) {
+            return false;
+        }
 
+        return DB::table('users')
+            ->where('id', $user->id)
+            ->where('status', 'ACTIVE')
+            ->whereNull('deleted_at')
+            ->exists();
+    }
+
+    /**
+     * Lấy danh sách mã vai trò hiện tại từ CSDL cho một tài khoản bất kỳ (bỏ qua role đã xóa mềm).
+     *
+     * @return array<int, string>
+     */
+    public function getUserRoleCodesFromDatabase(User $user): array
+    {
+        if (empty($user->id)) {
+            return [];
+        }
+
+        return DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->where('user_roles.user_id', $user->id)
+            ->whereNull('roles.deleted_at')
+            ->pluck('roles.role_code')
+            ->map(fn ($code): string => strtoupper(trim((string) $code)))
+            ->filter(fn (string $code): bool => $code !== '')
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Kiểm tra người thực hiện có phải SUPER_ADMIN đang hoạt động hợp lệ trong CSDL hay không.
+     */
+    public function isActiveSuperAdmin(?User $actor): bool
+    {
+        if (! $this->isUserRecordActive($actor)) {
+            return false;
+        }
+
+        /** @var User $actor */
+        $roleCodes = $this->getUserRoleCodesFromDatabase($actor);
+
+        foreach (self::SUPER_ADMIN_ROLE_CODES as $superCode) {
+            if (in_array($superCode, $roleCodes, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Kiểm tra một tài khoản đích có mang vai trò SUPER_ADMIN hay không.
+     */
+    public function userIsSuperAdmin(User $user): bool
+    {
+        $roleCodes = $this->getUserRoleCodesFromDatabase($user);
+
+        foreach (self::SUPER_ADMIN_ROLE_CODES as $superCode) {
+            if (in_array($superCode, $roleCodes, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Đếm số lượng tài khoản SUPER_ADMIN đang ACTIVE trong hệ thống.
+     */
+    protected function countActiveSuperAdmins(): int
+    {
+        return (int) DB::table('user_roles')
+            ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+            ->join('users', 'user_roles.user_id', '=', 'users.id')
+            ->whereIn('roles.role_code', self::SUPER_ADMIN_ROLE_CODES)
+            ->where('users.status', 'ACTIVE')
+            ->whereNull('users.deleted_at')
+            ->whereNull('roles.deleted_at')
+            ->distinct('users.id')
+            ->count('users.id');
+    }
+
+    /**
+     * Kiểm tra người dùng có quyền thực thi endpoint Account Provisioning hay không.
+     *
+     * @param  string|array<int, string>  $requiredPermissions
+     */
+    public function canAccessProvisioningAction(?User $user, array|string $requiredPermissions): bool
+    {
+        if (! $this->isUserRecordActive($user)) {
+            return false;
+        }
+
+        if ($this->isActiveSuperAdmin($user)) {
+            return true;
+        }
+
+        /** @var User $user */
+        $roleCodes = $this->getUserRoleCodesFromDatabase($user);
+        $perms = is_array($requiredPermissions) ? $requiredPermissions : [$requiredPermissions];
+
+        $hasCustomRole = collect($roleCodes)->contains(
+            fn (string $code): bool => str_starts_with($code, self::CUSTOM_USER_ROLE_PREFIX)
+        );
+
+        // Nếu chưa phân quyền riêng CUSTOM_USER_%, giữ nguyên luồng hợp lệ của ADMIN / BUILDING_MANAGER (trừ DELETE đòi hỏi USER:DELETE)
+        if (! $hasCustomRole) {
+            $normalizedPerms = array_map(fn ($p): string => strtoupper(trim((string) $p)), $perms);
+            $isDeleteAction = in_array('USER:DELETE', $normalizedPerms, true) && count($normalizedPerms) === 1;
+
+            if (! $isDeleteAction && (in_array('BUILDING_MANAGER', $roleCodes, true) || in_array('ADMIN', $roleCodes, true))) {
+                return true;
+            }
+        }
+
+        $user->clearPermissionCache();
+        foreach ($perms as $perm) {
+            if (method_exists($user, 'hasPermission') && $user->hasPermission((string) $perm)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Kiểm tra tài khoản thực hiện có quyền phân vai trò quản lý vận hành (không bao gồm SUPER_ADMIN).
+     */
+    protected function actorCanAssignOperationalRoles(?User $actor): bool
+    {
+        if ($this->isActiveSuperAdmin($actor)) {
+            return true;
+        }
+
+        if (! $this->isUserRecordActive($actor)) {
+            return false;
+        }
+
+        /** @var User $actor */
+        $roleCodes = $this->getUserRoleCodesFromDatabase($actor);
+        $hasCustomRole = collect($roleCodes)->contains(
+            fn (string $code): bool => str_starts_with($code, self::CUSTOM_USER_ROLE_PREFIX)
+        );
+
+        if (! $hasCustomRole && (in_array('BUILDING_MANAGER', $roleCodes, true) || in_array('ADMIN', $roleCodes, true))) {
+            return true;
+        }
+
+        $actor->clearPermissionCache();
+
+        return $actor->hasPermission('USER:ASSIGN_ROLE') || $actor->hasPermission('USER:UPDATE');
+    }
+
+    /**
+     * Từ chối các trường giả mạo vai trò/quyền hạn trong request payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function assertNoSpoofedPrivilegeFields(array $payload, bool $rejectRolesKey = false): void
+    {
+        $keysToBlock = self::SPOOFED_PRIVILEGE_KEYS;
+        if ($rejectRolesKey) {
+            $keysToBlock[] = 'roles';
+        }
+
+        foreach ($keysToBlock as $key) {
+            if (! array_key_exists($key, $payload)) {
+                continue;
+            }
+
+            $value = $payload[$key];
+            $hasNonEmptyValue = $value !== null && $value !== '' && $value !== [] && $value !== false;
+            if ($hasNonEmptyValue) {
+                throw new AccountProvisioningForbiddenException(
+                    "Không được phép giả mạo hoặc truyền trường đặc quyền '{$key}' trong yêu cầu này."
+                );
+            }
+        }
+    }
+
+    /**
+     * Trích xuất danh sách token vai trò thô từ input (hỗ trợ cả array hoặc string phân cách dấu phẩy).
+     *
+     * @return array<int, string>
+     */
+    protected function extractRawRoleTokens(mixed $rawRoles): array
+    {
+        if (is_string($rawRoles)) {
+            $parts = preg_split('/[,;|]+/', $rawRoles) ?: [];
+
+            return array_values(array_filter(array_map(fn (string $part): string => trim($part), $parts), fn (string $v): bool => $v !== ''));
+        }
+
+        if (! is_array($rawRoles)) {
+            return [];
+        }
+
+        $tokens = [];
+        foreach ($rawRoles as $item) {
+            if (is_string($item) || is_int($item) || is_float($item)) {
+                $trimmed = trim((string) $item);
+                if ($trimmed !== '') {
+                    $tokens[] = $trimmed;
+                }
+            }
+        }
+
+        return $tokens;
+    }
+
+    /**
+     * Kiểm tra tập hợp Role model có chứa bất kỳ quyền hạn đặc biệt nào trong danh sách chỉ định hay không.
+     *
+     * @param  Collection<int, Role>  $roles
+     * @param  array<int, string>  $permissionCodesToCheck
+     */
+    protected function rolesContainAnyPermission(Collection $roles, array $permissionCodesToCheck): bool
+    {
         if ($roles->isEmpty()) {
-            // Mặc định gán vai trò RESIDENT nếu không tìm thấy
+            return false;
+        }
+
+        $roleIds = $roles->pluck('id')->all();
+
+        return DB::table('role_permissions')
+            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
+            ->whereIn('role_permissions.role_id', $roleIds)
+            ->whereIn('permissions.permission_code', $permissionCodesToCheck)
+            ->exists();
+    }
+
+    /**
+     * Kiểm tra quyền hạn đối với payload trước khi chạy validation/DB write để tránh rò rỉ hoặc leo thang đặc quyền.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function assertAuthorizedForPayload(?User $actor, array $payload, ?User $targetUser = null): void
+    {
+        $this->assertNoSpoofedPrivilegeFields($payload);
+
+        if (! array_key_exists('roles', $payload) || $payload['roles'] === null || $payload['roles'] === []) {
+            return;
+        }
+
+        $rawTokens = $this->extractRawRoleTokens($payload['roles']);
+        if (empty($rawTokens)) {
+            return;
+        }
+
+        $this->resolveAndAuthorizeRequestedRoles($rawTokens, $actor, $targetUser, false, true);
+    }
+
+    /**
+     * Xác thực quyền gán vai trò và phân giải tập Role models hợp lệ từ CSDL.
+     *
+     * @return Collection<int, Role>|null
+     */
+    protected function resolveAndAuthorizeRequestedRoles(
+        mixed $rawRoles,
+        ?User $actor = null,
+        ?User $targetUser = null,
+        bool $allowDefaultWhenEmpty = false,
+        bool $precheckOnly = false
+    ): ?Collection {
+        if ($rawRoles === null || $rawRoles === []) {
+            if (! $allowDefaultWhenEmpty) {
+                return null;
+            }
+
             $defaultRole = Role::where('role_code', 'RESIDENT_OWNER')->first()
                 ?? Role::where('role_code', 'RESIDENT')->first();
-            if ($defaultRole) {
-                $roles = collect([$defaultRole]);
+
+            return $defaultRole ? collect([$defaultRole]) : collect();
+        }
+
+        if (! is_array($rawRoles)) {
+            throw new AccountProvisioningValidationException('Danh sách vai trò (roles) phải là một mảng hợp lệ.');
+        }
+
+        $normalizedCodes = [];
+        $candidateUuids = [];
+
+        foreach ($rawRoles as $item) {
+            if (! is_string($item) && ! is_int($item) && ! is_float($item)) {
+                throw new AccountProvisioningValidationException('Mã vai trò trong danh sách roles không hợp lệ.');
             }
+
+            $trimmed = trim((string) $item);
+            if ($trimmed === '') {
+                continue;
+            }
+
+            $upper = strtoupper($trimmed);
+            if (str_starts_with($upper, self::CUSTOM_USER_ROLE_PREFIX)) {
+                throw new AccountProvisioningForbiddenException('Không được phép gán vai trò phân quyền riêng (CUSTOM_USER) thông qua Account Provisioning.');
+            }
+
+            $normalizedCodes[] = $upper;
+            if (Str::isUuid($trimmed)) {
+                $candidateUuids[] = $trimmed;
+            }
+        }
+
+        $normalizedCodes = array_values(array_unique($normalizedCodes));
+        if (empty($normalizedCodes)) {
+            if (! $allowDefaultWhenEmpty) {
+                return null;
+            }
+
+            throw new AccountProvisioningValidationException('Danh sách vai trò không chứa mã vai trò hợp lệ.');
+        }
+
+        $isActorSuperAdmin = $this->isActiveSuperAdmin($actor);
+        $isSelfUpdate = $targetUser !== null && $actor !== null && (string) $actor->id === (string) $targetUser->id;
+        $currentTargetCodes = $targetUser !== null ? $this->getUserRoleCodesFromDatabase($targetUser) : [];
+
+        $sortedRequested = $normalizedCodes;
+        sort($sortedRequested);
+        $sortedCurrent = $currentTargetCodes;
+        sort($sortedCurrent);
+        $isUnchangedSelfRoleEdit = $isSelfUpdate && ($sortedRequested === $sortedCurrent);
+
+        // Chặn tuyệt đối tài khoản dưới SUPER_ADMIN tự nâng hoặc thay đổi vai trò của chính mình
+        if ($isSelfUpdate && ! $isActorSuperAdmin && ! $isUnchangedSelfRoleEdit) {
+            throw new AccountProvisioningForbiddenException('Bạn không có quyền tự thay đổi hoặc nâng vai trò của chính mình.');
+        }
+
+        // Kiểm tra vai trò theo cả role_code và UUID (ngăn chặn kỹ thuật gửi UUID của vai trò SUPER_ADMIN để vượt qua kiểm tra chuỗi)
+        $rolesMatchedByUuid = ! empty($candidateUuids)
+            ? Role::whereIn('id', $candidateUuids)->get()
+            : collect();
+
+        foreach ($rolesMatchedByUuid as $uuidRole) {
+            $uuidRoleCode = strtoupper((string) $uuidRole->role_code);
+            if (str_starts_with($uuidRoleCode, self::CUSTOM_USER_ROLE_PREFIX)) {
+                throw new AccountProvisioningForbiddenException('Không được phép gán vai trò phân quyền riêng (CUSTOM_USER) thông qua Account Provisioning.');
+            }
+            if (in_array($uuidRoleCode, self::RESTRICTED_ADMIN_ROLE_CODES, true) && ! $isActorSuperAdmin) {
+                throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền cấp hoặc gán vai trò quản trị tối cao.');
+            }
+        }
+
+        if ($rolesMatchedByUuid->isNotEmpty() && ! $isActorSuperAdmin && $this->rolesContainAnyPermission($rolesMatchedByUuid, self::RESTRICTED_ROLE_PERMISSIONS)) {
+            throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền gán vai trò mang đặc quyền hệ thống.');
+        }
+
+        $resolvedRoles = Role::whereIn('role_code', $normalizedCodes)->get();
+
+        // Chặn nâng hoặc gán SUPER_ADMIN / SUPER_ADMI / ADMIN cho tài khoản không phải SUPER_ADMIN
+        if (! $isActorSuperAdmin) {
+            foreach ($normalizedCodes as $code) {
+                if (in_array($code, self::SUPER_ADMIN_ROLE_CODES, true)) {
+                    throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền cấp hoặc gán vai trò SUPER_ADMIN.');
+                }
+
+                if (in_array($code, self::RESTRICTED_ADMIN_ROLE_CODES, true) && ! ($isUnchangedSelfRoleEdit && in_array($code, $currentTargetCodes, true))) {
+                    throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền cấp hoặc gán vai trò quản trị tối cao.');
+                }
+            }
+
+            if ($this->rolesContainAnyPermission($resolvedRoles, self::RESTRICTED_ROLE_PERMISSIONS)) {
+                throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền gán vai trò chứa đặc quyền hệ thống.');
+            }
+
+            if (! $this->actorCanAssignOperationalRoles($actor)) {
+                $isManagementRole = collect($normalizedCodes)->contains(
+                    fn (string $code): bool => in_array($code, ['BUILDING_MANAGER', 'MANAGER'], true)
+                );
+
+                if ($isManagementRole || $this->rolesContainAnyPermission($resolvedRoles, ['USER:VIEW', 'USER:CREATE', 'USER:UPDATE', 'USER:DELETE', 'USER:ASSIGN_ROLE'])) {
+                    throw new AccountProvisioningForbiddenException('Bạn không có quyền gán vai trò quản lý hoặc vai trò có quyền quản trị tài khoản.');
+                }
+            }
+        }
+
+        if ($precheckOnly) {
+            return $resolvedRoles;
+        }
+
+        // Khi caller truyền rõ danh sách roles, tất cả mã vai trò phải tồn tại hợp lệ trong CSDL (không fallback âm thầm)
+        $resolvedUpperCodes = $resolvedRoles
+            ->pluck('role_code')
+            ->map(fn ($code): string => strtoupper(trim((string) $code)))
+            ->toArray();
+
+        $missingCodes = array_diff($normalizedCodes, $resolvedUpperCodes);
+        if (! empty($missingCodes)) {
+            throw new AccountProvisioningValidationException(
+                'Vai trò không tồn tại hoặc không hợp lệ: '.implode(', ', $missingCodes)
+            );
+        }
+
+        if ($isUnchangedSelfRoleEdit) {
+            return null;
+        }
+
+        return $resolvedRoles;
+    }
+
+    /**
+     * Ghi nhận danh sách Role đã được kiểm tra quyền hạn vào bảng user_roles.
+     *
+     * @param  Collection<int, Role>  $roles
+     */
+    protected function syncResolvedRoles(User $user, Collection $roles, ?User $actor = null, bool $replaceExisting = false): void
+    {
+        if ($replaceExisting) {
+            DB::table('user_roles')->where('user_id', $user->id)->delete();
         }
 
         $batch = [];
@@ -455,6 +959,23 @@ class AccountProvisioningService
         if (! empty($batch)) {
             DB::table('user_roles')->insertOrIgnore($batch);
         }
+
+        $user->clearPermissionCache();
+        $user->unsetRelation('roles');
+    }
+
+    /**
+     * Gán vai trò cho người dùng (không fallback sang RESIDENT_OWNER nếu role không hợp lệ)
+     *
+     * @param  array<string>  $roleCodes
+     */
+    public function assignRoles(User $user, array $roleCodes, ?User $actor = null): void
+    {
+        $roles = $this->resolveAndAuthorizeRequestedRoles($roleCodes, $actor, $user, false);
+
+        if ($roles !== null && $roles->isNotEmpty()) {
+            $this->syncResolvedRoles($user, $roles, $actor, false);
+        }
     }
 
     /**
@@ -466,13 +987,40 @@ class AccountProvisioningService
     {
         QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
 
+        $this->assertNoSpoofedPrivilegeFields($data);
+
         $user = User::findOrFail($userId);
 
+        $targetIsSuperAdmin = $this->userIsSuperAdmin($user);
+        $actorIsSuperAdmin = $this->isActiveSuperAdmin($actor);
+
+        if ($targetIsSuperAdmin && ! $actorIsSuperAdmin) {
+            throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền chỉnh sửa tài khoản SUPER_ADMIN.');
+        }
+
+        $rolesToAssign = null;
+        if (array_key_exists('roles', $data)) {
+            $rolesToAssign = $this->resolveAndAuthorizeRequestedRoles($data['roles'], $actor, $user, false);
+
+            // Chống hạ quyền SUPER_ADMIN cuối cùng đang hoạt động trong hệ thống
+            if ($targetIsSuperAdmin && $rolesToAssign !== null) {
+                $newRoleCodes = $rolesToAssign
+                    ->pluck('role_code')
+                    ->map(fn ($c): string => strtoupper(trim((string) $c)))
+                    ->toArray();
+
+                $stillHasSuperAdmin = ! empty(array_intersect($newRoleCodes, self::SUPER_ADMIN_ROLE_CODES));
+                if (! $stillHasSuperAdmin && $this->isUserRecordActive($user) && $this->countActiveSuperAdmins() <= 1) {
+                    throw new AccountProvisioningValidationException('Không thể hạ quyền Quản trị viên cấp cao cuối cùng trong hệ thống.');
+                }
+            }
+        }
+
         if (! empty($data['full_name'])) {
-            $user->full_name = trim($data['full_name']);
+            $user->full_name = trim((string) $data['full_name']);
         }
         if (! empty($data['phone_number'])) {
-            $phoneNumber = trim($data['phone_number']);
+            $phoneNumber = trim((string) $data['phone_number']);
             $exists = User::where('phone_number', $phoneNumber)->where('id', '!=', $user->id)->exists();
             if ($exists) {
                 throw new AccountProvisioningDuplicateException("Số điện thoại '{$phoneNumber}' đã được sử dụng bởi tài khoản khác.");
@@ -493,13 +1041,16 @@ class AccountProvisioningService
             $user->gender = $data['gender'];
         }
 
-        $user->save();
+        DB::transaction(function () use ($user, $rolesToAssign, $actor): void {
+            $user->save();
 
-        if (isset($data['roles']) && is_array($data['roles']) && count($data['roles']) > 0) {
-            DB::table('user_roles')->where('user_id', $user->id)->delete();
-            $this->assignRoles($user, $data['roles'], $actor);
-        }
+            if ($rolesToAssign !== null) {
+                $this->syncResolvedRoles($user, $rolesToAssign, $actor, true);
+            }
+        });
 
+        $user->clearPermissionCache();
+        $user->unsetRelation('roles');
         $user->load('roles:id,role_code,role_name');
 
         QuocTinRealtimeService::emit('account-provisioning', 'user', 'UPDATED', $user->id, [
@@ -518,13 +1069,30 @@ class AccountProvisioningService
 
         $user = User::findOrFail($userId);
 
-        // Xóa token kích hoạt liên quan
-        DB::table('password_reset_tokens')->where('email', $user->email)->delete();
+        if ($actor && (string) $actor->id === (string) $user->id) {
+            throw new AccountProvisioningValidationException('Bạn không thể tự xóa tài khoản của chính mình.');
+        }
 
-        // Thu hồi các phiên đăng nhập đang hoạt động
-        DB::table('user_sessions')->where('user_id', $user->id)->update(['is_revoked' => 1]);
+        if ($this->userIsSuperAdmin($user)) {
+            if (! $this->isActiveSuperAdmin($actor)) {
+                throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền xóa tài khoản SUPER_ADMIN.');
+            }
 
-        $deleted = (bool) $user->delete();
+            if ($this->isUserRecordActive($user) && $this->countActiveSuperAdmins() <= 1) {
+                throw new AccountProvisioningValidationException('Không thể xóa Quản trị viên cấp cao cuối cùng trong hệ thống.');
+            }
+        }
+
+        $deleted = DB::transaction(function () use ($user): bool {
+            // Xóa token kích hoạt liên quan
+            DB::table('password_reset_tokens')->where('email', $user->email)->delete();
+
+            // Thu hồi các phiên đăng nhập đang hoạt động
+            DB::table('user_sessions')->where('user_id', $user->id)->update(['is_revoked' => 1]);
+
+            return (bool) $user->delete();
+        });
+
         if ($deleted) {
             QuocTinRealtimeService::emit('account-provisioning', 'user', 'DELETED', $userId);
         }
@@ -540,6 +1108,20 @@ class AccountProvisioningService
         QuocTinRealtimeService::assertNotInCooldown('account_provisioning');
 
         $user = User::findOrFail($userId);
+
+        if ($actor && (string) $actor->id === (string) $user->id) {
+            throw new AccountProvisioningValidationException('Bạn không thể tự khóa tài khoản của chính mình.');
+        }
+
+        if ($this->userIsSuperAdmin($user)) {
+            if (! $this->isActiveSuperAdmin($actor)) {
+                throw new AccountProvisioningForbiddenException('Chỉ Quản trị viên cấp cao (SUPER_ADMIN) mới có quyền khóa hoặc mở khóa tài khoản SUPER_ADMIN.');
+            }
+
+            if ($user->status !== 'LOCKED' && $this->isUserRecordActive($user) && $this->countActiveSuperAdmins() <= 1) {
+                throw new AccountProvisioningValidationException('Không thể khóa Quản trị viên cấp cao cuối cùng đang hoạt động.');
+            }
+        }
 
         $extra = $user->extra_preferences ?? [];
         $provisioning = $extra['provisioning'] ?? [];
@@ -573,15 +1155,24 @@ class AccountProvisioningService
     public function batchResendActivation(?User $actor = null): array
     {
         $pendingUsers = User::where('status', 'PENDING_ACTIVATION')->get();
+        $actorIsSuperAdmin = $this->isActiveSuperAdmin($actor);
         $sentCount = 0;
         $skippedCount = 0;
         $errors = [];
 
         foreach ($pendingUsers as $user) {
+            if (! $actorIsSuperAdmin && $this->userIsSuperAdmin($user)) {
+                $skippedCount++;
+
+                continue;
+            }
+
             try {
                 $this->resendActivation($user->id, $actor);
                 $sentCount++;
             } catch (AccountProvisioningRateLimitException $e) {
+                $skippedCount++;
+            } catch (AccountProvisioningForbiddenException $e) {
                 $skippedCount++;
             } catch (\Throwable $e) {
                 $errors[] = "Tài khoản {$user->email}: ".$e->getMessage();
@@ -604,6 +1195,13 @@ class AccountProvisioningService
      */
     public function importAccounts(array $records, ?User $actor = null): array
     {
+        // Kiểm tra quyền và giả mạo payload trên toàn bộ danh sách TRƯỚC KHI tạo bất kỳ tài khoản nào
+        foreach ($records as $row) {
+            if (is_array($row)) {
+                $this->assertAuthorizedForPayload($actor, $row, null);
+            }
+        }
+
         $results = [];
         $successCount = 0;
         $failedCount = 0;
@@ -612,8 +1210,16 @@ class AccountProvisioningService
         foreach ($records as $index => $row) {
             $rowNum = $index + 1;
             try {
-                if (empty($row['full_name']) || empty($row['email']) || empty($row['phone_number'])) {
+                if (! is_array($row) || empty($row['full_name']) || empty($row['email']) || empty($row['phone_number'])) {
                     throw new \InvalidArgumentException("Dòng {$rowNum}: Thiếu Họ tên, Email hoặc Số điện thoại.");
+                }
+
+                $parsedRoles = ['RECEPTIONIST'];
+                if (array_key_exists('roles', $row) && $row['roles'] !== null && $row['roles'] !== '' && $row['roles'] !== []) {
+                    $parsedRoles = $this->extractRawRoleTokens($row['roles']);
+                    if (empty($parsedRoles)) {
+                        throw new AccountProvisioningValidationException("Dòng {$rowNum}: Danh sách vai trò không hợp lệ.");
+                    }
                 }
 
                 $res = $this->provisionAccount([
@@ -622,11 +1228,13 @@ class AccountProvisioningService
                     'phone_number' => trim((string) $row['phone_number']),
                     'national_id_number' => ! empty($row['national_id_number']) ? trim((string) $row['national_id_number']) : null,
                     'gender' => ! empty($row['gender']) ? $row['gender'] : 'MALE',
-                    'roles' => ! empty($row['roles']) ? (is_array($row['roles']) ? $row['roles'] : [trim((string) $row['roles'])]) : ['RECEPTIONIST'],
+                    'roles' => $parsedRoles,
                 ], $actor);
 
                 $results[] = $res['user'];
                 $successCount++;
+            } catch (AccountProvisioningForbiddenException $e) {
+                throw $e;
             } catch (\Throwable $e) {
                 $failedCount++;
                 $errors[] = "Dòng {$rowNum} (".($row['email'] ?? 'N/A').'): '.$e->getMessage();

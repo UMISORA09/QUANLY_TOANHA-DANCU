@@ -3,10 +3,13 @@
 namespace App\Services;
 
 use App\Models\AccessCard;
+use App\Models\Resident;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class AccessCardService
 {
@@ -142,7 +145,11 @@ class AccessCardService
         $data['card_type'] = strtoupper(trim((string) ($data['card_type'] ?? 'RESIDENT_ALL_ACCESS')));
         $data['status'] = strtoupper(trim((string) ($data['status'] ?? 'ACTIVE')));
         $data['issued_date'] = $data['issued_date'] ?? date('Y-m-d');
+        $data['expiry_date'] = ! empty($data['expiry_date']) ? $data['expiry_date'] : null;
         $data['deposit_fee'] = isset($data['deposit_fee']) ? (float) $data['deposit_fee'] : 50000.00;
+
+        // Ràng buộc toàn vẹn quan hệ căn hộ và kiểm tra thời hạn thẻ (BUG-M5-04)
+        $this->validateCardIntegrity($data);
 
         $card = DB::transaction(function () use ($data) {
             try {
@@ -169,7 +176,7 @@ class AccessCardService
             'status' => $card->status,
             'assigned_apartment_id' => $card->assigned_apartment_id,
             'assigned_user_id' => $card->assigned_user_id,
-        ], $actorId ? (int) $actorId : null, false);
+        ], $actorId ? (string) $actorId : null, false);
 
         return $card;
     }
@@ -197,6 +204,9 @@ class AccessCardService
             $data['status'] = strtoupper(trim((string) $data['status']));
         }
 
+        // Ràng buộc toàn vẹn quan hệ căn hộ và kiểm tra thời hạn thẻ khi cập nhật (BUG-M5-04)
+        $this->validateCardIntegrity($data, $card);
+
         DB::transaction(function () use ($card, $data) {
             try {
                 $card->update($data);
@@ -221,7 +231,7 @@ class AccessCardService
             'status' => $fresh->status,
             'assigned_apartment_id' => $fresh->assigned_apartment_id,
             'assigned_user_id' => $fresh->assigned_user_id,
-        ], $actorId ? (int) $actorId : null, false);
+        ], $actorId ? (string) $actorId : null, false);
 
         return $fresh;
     }
@@ -231,30 +241,42 @@ class AccessCardService
      */
     public function toggleStatus(string $id, ?string $actorId = null): AccessCard
     {
-        $card = AccessCard::find($id);
-        if (! $card) {
-            throw new AccessCardNotFoundException("Thẻ RFID có ID '{$id}' không tồn tại trong hệ thống.");
-        }
+        $actorId = $actorId ? (string) $actorId : null;
 
-        $newStatus = ($card->status === 'ACTIVE') ? 'LOCKED_TEMPORARY' : 'ACTIVE';
+        $fresh = DB::transaction(function () use ($id) {
+            $card = AccessCard::where('id', $id)->lockForUpdate()->first();
+            if (! $card) {
+                throw new AccessCardNotFoundException("Thẻ RFID có ID '{$id}' không tồn tại trong hệ thống.");
+            }
 
-        DB::transaction(function () use ($card, $newStatus) {
+            // Chỉ cho phép chuyển đổi trạng thái giữa ACTIVE và LOCKED_TEMPORARY
+            if (in_array($card->status, ['REVOKED', 'LOST_REPORTED', 'LOCKED'], true)) {
+                $statusLabels = [
+                    'REVOKED' => 'đã bị thu hồi vĩnh viễn (REVOKED)',
+                    'LOST_REPORTED' => 'đã được báo mất (LOST_REPORTED)',
+                    'LOCKED' => 'đang ở trạng thái khóa cố định (LOCKED)',
+                ];
+                $label = $statusLabels[$card->status] ?? "ở trạng thái {$card->status}";
+                throw new AccessCardConflictException("Thẻ RFID {$label}, không thể thực hiện chuyển đổi trạng thái nhanh.");
+            }
+
+            $newStatus = ($card->status === 'ACTIVE') ? 'LOCKED_TEMPORARY' : 'ACTIVE';
             $card->update(['status' => $newStatus]);
-        });
 
-        $fresh = $card->fresh([
-            'assignedUser:id,full_name,email,phone_number',
-            'assignedApartment:id,apartment_number,block_id,status',
-            'assignedVehicle:id,license_plate,vehicle_category,model',
-        ]);
+            return $card->fresh([
+                'assignedUser:id,full_name,email,phone_number',
+                'assignedApartment:id,apartment_number,block_id,status',
+                'assignedVehicle:id,license_plate,vehicle_category,model',
+            ]);
+        });
 
         QuocTinRealtimeService::emit('rfid_cards', 'rfid_card', 'STATUS_CHANGED', $fresh->id, [
             'card_uid' => $fresh->card_uid,
             'card_number' => $fresh->card_number,
             'card_type' => $fresh->card_type,
-            'status' => $newStatus,
-            'is_active' => ($newStatus === 'ACTIVE'),
-        ], $actorId ? (int) $actorId : null, false);
+            'status' => $fresh->status,
+            'is_active' => ($fresh->status === 'ACTIVE'),
+        ], $actorId, false);
 
         return $fresh;
     }
@@ -293,7 +315,7 @@ class AccessCardService
             'status' => 'REVOKED',
             'is_revoked' => $hasLogs,
             'action' => $action,
-        ], $actorId ? (int) $actorId : null, false);
+        ], $actorId ? (string) $actorId : null, false);
 
         return [
             'success' => true,
@@ -347,5 +369,128 @@ class AccessCardService
                 ->get()
                 ->toArray();
         });
+    }
+
+    /**
+     * Ràng buộc toàn vẹn quan hệ giữa căn hộ, cư dân, phương tiện và thời hạn thẻ (BUG-M5-04)
+     *
+     * @throws ValidationException
+     */
+    public function validateCardIntegrity(array $data, ?AccessCard $existingCard = null): void
+    {
+        $apartmentId = array_key_exists('assigned_apartment_id', $data)
+            ? $data['assigned_apartment_id']
+            : $existingCard?->assigned_apartment_id;
+
+        $userId = array_key_exists('assigned_user_id', $data)
+            ? $data['assigned_user_id']
+            : $existingCard?->assigned_user_id;
+
+        $vehicleId = array_key_exists('assigned_vehicle_id', $data)
+            ? $data['assigned_vehicle_id']
+            : $existingCard?->assigned_vehicle_id;
+
+        $issuedDate = array_key_exists('issued_date', $data)
+            ? $data['issued_date']
+            : ($existingCard ? $existingCard->issued_date?->format('Y-m-d') : date('Y-m-d'));
+
+        $expiryDate = array_key_exists('expiry_date', $data)
+            ? $data['expiry_date']
+            : ($existingCard ? $existingCard->expiry_date?->format('Y-m-d') : null);
+
+        // 1. Kiểm tra ngày hết hạn >= ngày cấp (nếu có cả 2 ngày)
+        if (! empty($issuedDate) && ! empty($expiryDate)) {
+            if (strtotime((string) $expiryDate) < strtotime((string) $issuedDate)) {
+                throw ValidationException::withMessages([
+                    'expiry_date' => 'Ngày hết hạn thẻ phải lớn hơn hoặc bằng ngày cấp phát.',
+                ]);
+            }
+        }
+
+        // 2. Kiểm tra tồn tại và quan hệ của assigned_user_id với assigned_apartment_id
+        if (! empty($userId)) {
+            $userExists = DB::table('users')->where('id', $userId)->whereNull('deleted_at')->exists();
+            if (! $userExists) {
+                throw ValidationException::withMessages([
+                    'assigned_user_id' => 'Cư dân được chọn không tồn tại.',
+                ]);
+            }
+
+            if (! empty($apartmentId) && ! $this->userBelongsToApartment($userId, $apartmentId)) {
+                throw ValidationException::withMessages([
+                    'assigned_user_id' => 'Cư dân được chọn không thuộc căn hộ này hoặc không có quan hệ cư trú hợp lệ.',
+                ]);
+            }
+        }
+
+        // 3. Kiểm tra tồn tại và quan hệ của assigned_vehicle_id với assigned_apartment_id
+        if (! empty($vehicleId)) {
+            $vehicle = DB::table('vehicles')->where('id', $vehicleId)->whereNull('deleted_at')->first();
+            if (! $vehicle) {
+                throw ValidationException::withMessages([
+                    'assigned_vehicle_id' => 'Phương tiện được chọn không tồn tại.',
+                ]);
+            }
+
+            if (empty($apartmentId)) {
+                throw ValidationException::withMessages([
+                    'assigned_apartment_id' => 'Vui lòng chọn căn hộ trực thuộc của phương tiện khi gán xe cho thẻ RFID.',
+                ]);
+            }
+
+            if ((string) $vehicle->apartment_id !== (string) $apartmentId) {
+                throw ValidationException::withMessages([
+                    'assigned_vehicle_id' => 'Phương tiện được chọn không thuộc căn hộ này.',
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Xác thực người dùng có quan hệ hợp lệ với căn hộ (cư dân active, chủ sở hữu, hoặc đại diện căn hộ)
+     */
+    public function userBelongsToApartment(string $userId, string $apartmentId): bool
+    {
+        $today = now()->toDateString();
+
+        // 1. Cư dân đang hoạt động trong căn hộ
+        $isResident = Resident::where('user_id', $userId)
+            ->where('apartment_id', $apartmentId)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->where(function ($query) use ($today) {
+                $query->whereNull('stay_end_date')
+                    ->orWhere('stay_end_date', '>=', $today);
+            })
+            ->exists();
+
+        if ($isResident) {
+            return true;
+        }
+
+        // 2. Chủ hộ / Chủ sở hữu trong apartment_owners
+        try {
+            if (Schema::hasTable('apartment_owners')) {
+                $ownerQuery = DB::table('apartment_owners')
+                    ->where('apartment_id', $apartmentId)
+                    ->where('owner_user_id', $userId)
+                    ->where('is_current_owner', 1);
+
+                if (Schema::hasColumn('apartment_owners', 'deleted_at')) {
+                    $ownerQuery->whereNull('deleted_at');
+                }
+
+                if ($ownerQuery->exists()) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        // 3. Cư dân đại diện hiện tại trong bảng apartments
+        return DB::table('apartments')
+            ->where('id', $apartmentId)
+            ->where('current_resident_user_id', $userId)
+            ->exists();
     }
 }

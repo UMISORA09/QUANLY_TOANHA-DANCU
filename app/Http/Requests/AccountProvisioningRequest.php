@@ -2,6 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\User;
+use App\Services\AccountProvisioningForbiddenException;
+use App\Services\AccountProvisioningService;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -10,11 +13,45 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AccountProvisioningRequest extends FormRequest
 {
+    protected ?string $authorizationErrorMessage = null;
+
+    protected bool $unauthenticated = false;
+
     /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
+        $user = $this->user();
+        if (! $user instanceof User) {
+            $this->unauthenticated = true;
+
+            return false;
+        }
+
+        /** @var AccountProvisioningService $service */
+        $service = app(AccountProvisioningService::class);
+
+        if (! $service->isUserRecordActive($user)) {
+            $this->authorizationErrorMessage = 'Tài khoản người dùng đã bị khóa hoặc tạm ngưng hoạt động.';
+
+            return false;
+        }
+
+        if (! $service->canAccessProvisioningAction($user, ['USER:CREATE'])) {
+            $this->authorizationErrorMessage = 'Bạn không có quyền thực hiện thao tác cấp phát tài khoản.';
+
+            return false;
+        }
+
+        try {
+            $service->assertAuthorizedForPayload($user, $this->all(), null);
+        } catch (AccountProvisioningForbiddenException $e) {
+            $this->authorizationErrorMessage = $e->getMessage();
+
+            return false;
+        }
+
         return true;
     }
 
@@ -60,6 +97,26 @@ class AccountProvisioningRequest extends FormRequest
             'gender.in' => 'Giới tính không hợp lệ (MALE, FEMALE, OTHER).',
             'date_of_birth.date' => 'Ngày sinh không đúng định dạng ngày tháng.',
         ];
+    }
+
+    /**
+     * Handle a failed authorization attempt.
+     */
+    protected function failedAuthorization(): void
+    {
+        if ($this->unauthenticated) {
+            throw new HttpResponseException(response()->json([
+                'success' => false,
+                'message' => 'Yêu cầu xác thực tài khoản.',
+                'error' => 'UNAUTHORIZED',
+            ], Response::HTTP_UNAUTHORIZED));
+        }
+
+        throw new HttpResponseException(response()->json([
+            'success' => false,
+            'message' => $this->authorizationErrorMessage ?? 'Bạn không có quyền thực hiện thao tác cấp phát tài khoản.',
+            'error' => 'FORBIDDEN',
+        ], Response::HTTP_FORBIDDEN));
     }
 
     /**

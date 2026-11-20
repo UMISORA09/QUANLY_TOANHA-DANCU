@@ -215,20 +215,22 @@ Route::post('/api/v1/amenity-payments/sepay/ipn', [AmenityBookingPaymentControll
 Route::get('/api/management/overview', [ManagementDashboardController::class, 'overview']);
 
 // API Reception Portal
-Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview']);
+Route::get('/api/v1/reception/overview', [ReceptionPortalController::class, 'overview'])->middleware('auth.bearer:strict');
 
 // API Reception Dashboard (Module #13: Giám sát Bưu phẩm tồn đọng & Lượng khách trong tòa nhà)
-Route::get('/api/v1/reception/dashboard', [ReceptionDashboardController::class, 'index']);
-Route::get('/api/reception/dashboard', [ReceptionDashboardController::class, 'index']);
+Route::middleware('auth.bearer:strict')->group(function () {
+    Route::get('/api/v1/reception/dashboard', [ReceptionDashboardController::class, 'index']);
+    Route::get('/api/reception/dashboard', [ReceptionDashboardController::class, 'index']);
 
-// API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
-Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
-Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
-Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
-Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
+    // API Reception Visitors (Module #8: Tra cứu & Check-in / Check-out Khách viếng thăm)
+    Route::get('/api/v1/reception/visitors', [ReceptionVisitorController::class, 'index']);
+    Route::get('/api/v1/reception/visitors/lookup', [ReceptionVisitorController::class, 'lookup']);
+    Route::post('/api/v1/reception/visitors/check-in', [ReceptionVisitorController::class, 'checkIn']);
+    Route::post('/api/v1/reception/visitors/check-out', [ReceptionVisitorController::class, 'checkOut']);
+});
 
 // API Reception Parcels (Module #9: Tiếp nhận Kiện hàng Bưu phẩm & Module #11: Bàn giao & Check-out)
-Route::middleware('auth.bearer')->group(function () {
+Route::middleware('auth.bearer:strict')->group(function () {
     Route::get('/api/v1/reception/parcels', [ReceptionParcelController::class, 'index']);
     Route::get('/api/v1/reception/parcels/lookup', [ReceptionParcelController::class, 'lookup']);
     Route::post('/api/v1/reception/parcels/check-out', [ReceptionParcelController::class, 'checkOut']);
@@ -366,14 +368,17 @@ Route::prefix('api/resident')->middleware('auth.bearer:strict')->group(function 
     Route::delete('tickets/{id}/attachments/{attachmentId}', [ResidentTicketController::class, 'removeAttachment']);
 });
 
-// API Resident Visitors (Module #7: Khai báo khách viếng thăm của cư dân)
-Route::get('/api/v1/resident/visitors', [ResidentVisitorController::class, 'index']);
-Route::post('/api/v1/resident/visitors', [ResidentVisitorController::class, 'store']);
-Route::get('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'show']);
-Route::put('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
-Route::patch('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
-Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController::class, 'cancel']);
-Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
+// API Resident Visitors (Module #6: Khai báo khách viếng thăm của cư dân)
+Route::middleware('auth.bearer:strict')->group(function () {
+    Route::get('/api/v1/resident/visitors', [ResidentVisitorController::class, 'index']);
+    Route::post('/api/v1/resident/visitors', [ResidentVisitorController::class, 'store']);
+    Route::get('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'show']);
+    Route::put('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+    Route::patch('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'update']);
+    Route::post('/api/v1/resident/visitors/{id}/cancel', [ResidentVisitorController::class, 'cancel']);
+    Route::delete('/api/v1/resident/visitors/{id}', [ResidentVisitorController::class, 'cancel']);
+    Route::post('/api/v1/resident/visitors/{id}/extend', [ResidentVisitorController::class, 'extendDeparture']);
+});
 
 Route::post('/api/v1/resident/invoices/{id}/pay', [ResidentPortalController::class, 'payInvoice'])->middleware(['auth.bearer:strict', 'throttle:10,1']);
 
@@ -574,12 +579,16 @@ Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:temporary_registra
     Route::post('residents/temporary-registrations/{id}/reject', [TemporaryRegistrationController::class, 'reject']);
     Route::post('residents/temporary-registrations/{id}/submit-police', [TemporaryRegistrationController::class, 'submitToPolice']);
     Route::post('residents/temporary-registrations/upload-cccd', [TemporaryRegistrationController::class, 'uploadCccd']);
+    Route::get('residents/temporary-registrations/cccd/{filename}', [TemporaryRegistrationController::class, 'showCccd']);
+    Route::get('residents/temporary-registrations/{id}/cccd/{side}', [TemporaryRegistrationController::class, 'downloadCccd']);
     Route::get('residents/temporary-registrations/{id}/export', [TemporaryRegistrationController::class, 'exportForm']);
     Route::get('residents/temporary-registrations/{id}/download', [TemporaryRegistrationController::class, 'downloadForm']);
 
     // Direct / Alias routes
     Route::get('temporary-registrations', [TemporaryRegistrationController::class, 'index']);
     Route::post('temporary-registrations', [TemporaryRegistrationController::class, 'store']);
+    Route::get('temporary-registrations/cccd/{filename}', [TemporaryRegistrationController::class, 'showCccd']);
+    Route::get('temporary-registrations/{id}/cccd/{side}', [TemporaryRegistrationController::class, 'downloadCccd']);
     Route::get('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'show']);
     Route::put('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
     Route::patch('temporary-registrations/{id}', [TemporaryRegistrationController::class, 'update']);
@@ -645,6 +654,7 @@ Route::prefix('api/v1')->middleware(['auth.bearer', 'cooldown:vehicles'])->group
     Route::delete('vehicles/{id}', [VehicleController::class, 'destroy']);
     Route::patch('vehicles/{id}/toggle-active', [VehicleController::class, 'toggleActive']);
     Route::post('vehicles/{id}/approve', [VehicleController::class, 'approve']);
+    Route::post('vehicles/{id}/reject', [VehicleController::class, 'reject']);
     Route::post('vehicles/{id}/sync-invoice', [VehicleController::class, 'syncInvoice']);
 });
 Route::get('vehicles/pricing-config', [ServicePricingController::class, 'pricingConfig'])->middleware(['auth.bearer']);

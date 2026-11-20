@@ -3,6 +3,7 @@
 namespace Tests\Feature\Vehicles;
 
 use App\Models\Apartment;
+use App\Models\Resident;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -56,6 +57,16 @@ class VehicleManagementTest extends TestCase
             'password_hash' => Hash::make('password123'),
             'full_name' => 'Nguyễn Chủ Xe '.Str::random(4),
             'status' => 'ACTIVE',
+        ]);
+
+        Resident::create([
+            'apartment_id' => $this->testApartment->id,
+            'user_id' => $this->testOwner->id,
+            'resident_type' => 'OWNER',
+            'is_head_of_household' => true,
+            'stay_start_date' => now()->subMonths(6)->toDateString(),
+            'stay_end_date' => null,
+            'is_active' => true,
         ]);
     }
 
@@ -621,7 +632,6 @@ class VehicleManagementTest extends TestCase
         $newPlate = '29A-'.rand(10000, 99999);
         $updatePayload = [
             'license_plate' => $newPlate,
-            'monthly_parking_fee' => 150000.00,
         ];
 
         $response = $this->withHeaders($this->authHeaders())
@@ -633,9 +643,16 @@ class VehicleManagementTest extends TestCase
                 'data' => [
                     'id' => $vehicleId,
                     'license_plate' => $newPlate,
-                    'monthly_parking_fee' => 150000.00,
+                    'monthly_parking_fee' => 120000.00,
                 ],
             ]);
+
+        $updatedVehicle = DB::table('vehicles')
+            ->where('id', $vehicleId)
+            ->first();
+
+        $this->assertNotNull($updatedVehicle);
+        $this->assertEquals(120000.00, (float) $updatedVehicle->monthly_parking_fee);
 
         $currentPeriod = Carbon::now()->format('Y-m');
         $invoice = DB::table('invoices')
@@ -651,7 +668,7 @@ class VehicleManagementTest extends TestCase
             ->first();
 
         $this->assertNotNull($item);
-        $this->assertEquals(150000.00, (float) $item->unit_price);
-        $this->assertEquals(165000.00, (float) $item->total_line_amount); // 150k + 10% VAT
+        $this->assertEquals(120000.00, (float) $item->unit_price);
+        $this->assertEquals(132000.00, (float) $item->total_line_amount); // 120k + 10% VAT
     }
 }

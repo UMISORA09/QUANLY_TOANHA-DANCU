@@ -1988,12 +1988,14 @@ export const RfidManagement: React.FC<RfidManagementProps> = ({
                           {/* Toggle Active / Lock Button */}
                           <button
                             onClick={() => handleToggleStatus(card)}
-                            disabled={actionLoading || card.status === 'REVOKED'}
+                            disabled={actionLoading || card.status === 'REVOKED' || card.status === 'LOST_REPORTED' || card.status === 'LOCKED'}
                             className={`p-1.5 rounded-lg transition ${card.status === 'ACTIVE'
                               ? 'text-slate-600 hover:text-amber-600 hover:bg-amber-50'
                               : 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50'
                               }`}
-                            title={card.status === 'ACTIVE' ? 'Tạm khóa thẻ tức thì' : 'Mở kích hoạt thẻ'}
+                            title={card.status === 'REVOKED' || card.status === 'LOST_REPORTED' || card.status === 'LOCKED'
+                              ? 'Thẻ đã thu hồi/báo mất/khóa cố định, không thể chuyển đổi trạng thái'
+                              : (card.status === 'ACTIVE' ? 'Tạm khóa thẻ tức thì' : 'Mở kích hoạt thẻ')}
                           >
                             {card.status === 'ACTIVE' ? (
                               <Lock className="w-4 h-4" />

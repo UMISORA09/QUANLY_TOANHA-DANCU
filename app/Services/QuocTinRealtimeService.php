@@ -325,6 +325,18 @@ class QuocTinRealtimeService
             return false;
         }
 
+        // Đối với kênh bưu phẩm quoc-tin.parcels:
+        // Chỉ SUPER_ADMIN / SUPER_ADMI được bypass;
+        // Mọi nhân viên khác (kể cả ADMIN) bắt buộc phải thỏa mãn: là nhân viên vận hành và có quyền PARCEL:VIEW
+        if ($channel === 'quoc-tin.parcels') {
+            if ((method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
+                || (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('SUPER_ADMI')))) {
+                return true;
+            }
+
+            return self::isStaffUser($user) && RbacService::hasPermission($user, 'PARCEL:VIEW');
+        }
+
         // Super Admin & Admin have access to all channels
         if (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN'))) {
             return true;
@@ -364,8 +376,7 @@ class QuocTinRealtimeService
                     || RbacService::hasPermission($user, 'RECEPTION:OPERATE')),
 
             'quoc-tin.parcels' => self::isStaffUser($user)
-                && (RbacService::hasPermission($user, 'PARCEL:VIEW')
-                    || RbacService::hasPermission($user, 'RECEPTION:OPERATE')),
+                && RbacService::hasPermission($user, 'PARCEL:VIEW'),
 
             'quoc-tin.schedules', 'quoc-tin.staff_schedules' => self::isStaffUser($user)
                 && (RbacService::hasPermission($user, 'SCHEDULE:VIEW')
@@ -389,7 +400,26 @@ class QuocTinRealtimeService
             return false;
         }
 
-        // Super Admin & Admin có quyền tất cả các kênh SSE
+        // Đối với kênh bưu phẩm quoc-tin.parcels:
+        // - SUPER_ADMIN / SUPER_ADMI: được bypass theo cơ chế Super Admin
+        // - Nhân viên (kể cả ADMIN): bắt buộc phải có quyền PARCEL:VIEW (RECEPTION:OPERATE không được thay thế)
+        // - Cư dân: bắt buộc phải có căn hộ hợp lệ (dữ liệu sau đó được filterEventsForResident cô lập)
+        if ($channel === 'quoc-tin.parcels') {
+            if ((method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin())
+                || (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('SUPER_ADMI')))) {
+                return true;
+            }
+
+            if (self::isStaffUser($user)) {
+                return RbacService::hasPermission($user, 'PARCEL:VIEW');
+            }
+
+            $allowedAptIds = self::getAuthorizedApartmentIds($user);
+
+            return ! empty($allowedAptIds);
+        }
+
+        // Super Admin & Admin có quyền tất cả các kênh SSE khác
         if (method_exists($user, 'hasRole') && ($user->hasRole('SUPER_ADMIN') || $user->hasRole('ADMIN'))) {
             return true;
         }
@@ -404,8 +434,8 @@ class QuocTinRealtimeService
         }
 
         // Nếu là cư dân: chỉ cho phép các module được phê duyệt cho cư dân
-        // Với parcels và visitors: bắt buộc phải có ít nhất một căn hộ hợp lệ và còn thời hạn
-        if ($channel === 'quoc-tin.parcels' || $channel === 'quoc-tin.visitors') {
+        // Với visitors: bắt buộc phải có ít nhất một căn hộ hợp lệ và còn thời hạn
+        if ($channel === 'quoc-tin.visitors') {
             $allowedAptIds = self::getAuthorizedApartmentIds($user);
 
             return ! empty($allowedAptIds);
@@ -519,6 +549,10 @@ class QuocTinRealtimeService
             'secret',
             'remember_token',
             'refresh_token_hash',
+            'pickup_pin_code',
+            'pickup_qr_code',
+            'pin_code',
+            'qr_code',
         ])->toArray();
 
         $eventData = array_merge([
@@ -598,9 +632,126 @@ class QuocTinRealtimeService
     }
 
     /**
+     * Các module nội bộ không bao giờ được phát tán cho cư dân.
+     *
+     * @var array<int, string>
+     */
+    private const RESIDENT_BLOCKED_MODULES = [
+        'rfid_cards',
+        'schedules',
+        'rbac',
+        'account_provisioning',
+    ];
+
+    /**
+     * Các module phạm vi căn hộ hỗ trợ tra cứu trực tiếp apartment_id theo entity_id khi payload thiếu apartment_id.
+     *
+     * @var array<string, string>
+     */
+    private const RESIDENT_TABLE_LOOKUP_MODULES = [
+        'parcels' => 'parcels',
+        'vehicles' => 'vehicles',
+        'residents' => 'residents',
+        'temporary_registrations' => 'temporary_registrations',
+    ];
+
+    /**
+     * Chuẩn hóa ID dạng chuỗi an toàn từ giá trị payload bất kỳ.
+     */
+    private static function extractScalarId(mixed $value): string
+    {
+        if (! is_scalar($value) || is_bool($value)) {
+            return '';
+        }
+
+        return trim((string) $value);
+    }
+
+    /**
+     * Trích xuất apartment_id từ event payload.
+     * Trả về '' nếu thiếu hoàn toàn hoặc null (đủ điều kiện tra cứu DB theo entity_id),
+     * hoặc null nếu trường apartment_id tồn tại nhưng chứa giá trị không hợp lệ.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private static function extractEventApartmentId(array $event): ?string
+    {
+        if (! array_key_exists('apartment_id', $event) || $event['apartment_id'] === null) {
+            return '';
+        }
+
+        if (! is_scalar($event['apartment_id']) || is_bool($event['apartment_id'])) {
+            return null;
+        }
+
+        $trimmed = trim((string) $event['apartment_id']);
+
+        return $trimmed !== '' ? $trimmed : null;
+    }
+
+    /**
+     * Xác định tên module chuẩn hóa cho event cư dân (trả về '' nếu bị chặn hoặc không nhất quán).
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private static function resolveResidentEventModule(array $event): string
+    {
+        $rawModule = self::extractScalarId($event['module'] ?? null);
+        $rawChannel = self::extractScalarId($event['channel'] ?? null);
+
+        $moduleCanon = $rawModule !== '' ? self::normalizeModuleName($rawModule) : '';
+        $channelCanon = '';
+        if ($rawChannel !== '') {
+            $stripped = str_starts_with(strtolower($rawChannel), 'quoc-tin.')
+                ? substr($rawChannel, strlen('quoc-tin.'))
+                : $rawChannel;
+            $channelCanon = self::normalizeModuleName($stripped);
+        }
+
+        if (
+            in_array($moduleCanon, self::RESIDENT_BLOCKED_MODULES, true)
+            || in_array($channelCanon, self::RESIDENT_BLOCKED_MODULES, true)
+        ) {
+            return '';
+        }
+
+        // Chặn payload giả mạo/mâu thuẫn giữa channel và module
+        if ($moduleCanon !== '' && $channelCanon !== '' && $moduleCanon !== $channelCanon) {
+            return '';
+        }
+
+        return $moduleCanon !== '' ? $moduleCanon : $channelCanon;
+    }
+
+    /**
+     * Tra cứu hàng loạt apartment_id từ bảng CSDL theo danh sách ID bản ghi.
+     *
+     * @param  array<int, string>  $ids
+     * @return array<string, string>
+     */
+    private static function batchLookupApartmentIds(string $table, array $ids): array
+    {
+        $uniqueIds = array_values(array_unique(array_filter($ids, fn (string $id): bool => $id !== '')));
+        if (empty($uniqueIds)) {
+            return [];
+        }
+
+        try {
+            return DB::table($table)
+                ->whereIn('id', $uniqueIds)
+                ->pluck('apartment_id', 'id')
+                ->filter(fn (mixed $val): bool => $val !== null && trim((string) $val) !== '')
+                ->map(fn (mixed $val): string => trim((string) $val))
+                ->toArray();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
      * Lọc sự kiện realtime cho cư dân ở tầng server-side:
      * Chỉ cho phép nhận các sự kiện thuộc những căn hộ mà cư dân được phân quyền.
-     * Ngăn chặn tuyệt đối việc rò rỉ bưu phẩm, khách, RFID và lịch trực của người khác.
+     * Ngăn chặn tuyệt đối việc rò rỉ bưu phẩm, khách, phương tiện, nhân khẩu, tạm trú/tạm vắng, RFID và lịch trực của người khác.
      *
      * @param  array<int, array<string, mixed>>  $events
      * @return array<int, array<string, mixed>>
@@ -612,125 +763,93 @@ class QuocTinRealtimeService
         }
 
         $allowedApartmentIds = self::getAuthorizedApartmentIds($user);
+        if (empty($allowedApartmentIds)) {
+            return [];
+        }
 
         // 1. Thu thập các entity_id cần tra cứu apartment_id trong batch để tránh N+1 query
-        $missingParcelEntityIds = [];
+        $missingTableIds = array_fill_keys(array_keys(self::RESIDENT_TABLE_LOOKUP_MODULES), []);
         $missingVisitorRegIds = [];
         $missingVisitorCheckinLogIds = [];
 
         foreach ($events as $ev) {
-            $channel = $ev['channel'] ?? '';
-            $module = $ev['module'] ?? '';
+            if (! is_array($ev)) {
+                continue;
+            }
 
-            if ($channel === 'quoc-tin.parcels' || $module === 'parcels') {
-                if (empty($ev['apartment_id']) && ! empty($ev['entity_id'])) {
-                    $missingParcelEntityIds[] = (string) $ev['entity_id'];
+            $module = self::resolveResidentEventModule($ev);
+            if ($module === '') {
+                continue;
+            }
+
+            $rawAptId = self::extractEventApartmentId($ev);
+            if ($rawAptId !== '') {
+                continue;
+            }
+
+            $entityId = self::extractScalarId($ev['entity_id'] ?? null);
+
+            if (isset($missingTableIds[$module])) {
+                if ($entityId !== '') {
+                    $missingTableIds[$module][] = $entityId;
                 }
-            } elseif ($channel === 'quoc-tin.visitors' || $module === 'visitors') {
-                if (empty($ev['apartment_id'])) {
-                    if (! empty($ev['registration_id'])) {
-                        $missingVisitorRegIds[] = (string) $ev['registration_id'];
-                    } elseif (($ev['entity'] ?? '') === 'visitor_registration' && ! empty($ev['entity_id'])) {
-                        $missingVisitorRegIds[] = (string) $ev['entity_id'];
-                    } elseif (($ev['entity'] ?? '') === 'visitor_checkin' && ! empty($ev['entity_id'])) {
-                        $missingVisitorCheckinLogIds[] = (string) $ev['entity_id'];
-                    }
+            } elseif ($module === 'visitors') {
+                $registrationId = self::extractScalarId($ev['registration_id'] ?? null);
+                $entityType = self::extractScalarId($ev['entity'] ?? null);
+
+                if ($registrationId !== '') {
+                    $missingVisitorRegIds[] = $registrationId;
+                } elseif ($entityType === 'visitor_registration' && $entityId !== '') {
+                    $missingVisitorRegIds[] = $entityId;
+                } elseif ($entityType === 'visitor_checkin' && $entityId !== '') {
+                    $missingVisitorCheckinLogIds[] = $entityId;
                 }
             }
         }
 
         // 2. Tra cứu hàng loạt (Batch query)
-        $parcelAptMap = [];
-        if (! empty($missingParcelEntityIds)) {
-            try {
-                $parcelAptMap = DB::table('parcels')
-                    ->whereIn('id', array_unique($missingParcelEntityIds))
-                    ->pluck('apartment_id', 'id')
-                    ->map(fn ($val) => (string) $val)
-                    ->toArray();
-            } catch (\Throwable) {
-                $parcelAptMap = [];
-            }
+        $tableAptMaps = [];
+        foreach (self::RESIDENT_TABLE_LOOKUP_MODULES as $moduleKey => $tableName) {
+            $tableAptMaps[$moduleKey] = self::batchLookupApartmentIds($tableName, $missingTableIds[$moduleKey]);
         }
 
-        $visitorAptMap = [];
-        if (! empty($missingVisitorRegIds)) {
-            try {
-                $regMap = DB::table('visitor_registrations')
-                    ->whereIn('id', array_unique($missingVisitorRegIds))
-                    ->pluck('apartment_id', 'id')
-                    ->map(fn ($val) => (string) $val)
-                    ->toArray();
-                $visitorAptMap += $regMap;
-            } catch (\Throwable) {
-                // ignore
-            }
-        }
+        $visitorAptMap = self::batchLookupApartmentIds('visitor_registrations', $missingVisitorRegIds)
+            + self::batchLookupApartmentIds('visitor_checkin_logs', $missingVisitorCheckinLogIds);
 
-        if (! empty($missingVisitorCheckinLogIds)) {
-            try {
-                $checkinMap = DB::table('visitor_checkin_logs')
-                    ->whereIn('id', array_unique($missingVisitorCheckinLogIds))
-                    ->pluck('apartment_id', 'id')
-                    ->map(fn ($val) => (string) $val)
-                    ->toArray();
-                $visitorAptMap += $checkinMap;
-            } catch (\Throwable) {
-                // ignore
-            }
-        }
-
-        // 3. Lọc sự kiện theo từng loại module/kênh
+        // 3. Lọc sự kiện theo từng loại module/kênh (fail-closed: không xác định được hoặc ngoài quyền -> bỏ qua)
         $filtered = [];
         foreach ($events as $ev) {
-            $channel = $ev['channel'] ?? '';
-            $module = $ev['module'] ?? '';
-
-            // Không bao giờ để lộ RFID, Lịch trực nhân viên, RBAC hoặc Account Provisioning cho cư dân
-            if (
-                $channel === 'quoc-tin.rfid-cards' || $module === 'rfid_cards'
-                || $channel === 'quoc-tin.schedules' || $module === 'schedules'
-                || $channel === 'quoc-tin.rbac' || $module === 'rbac'
-                || $channel === 'quoc-tin.account-provisioning' || $module === 'account_provisioning'
-            ) {
+            if (! is_array($ev)) {
                 continue;
             }
 
-            // Lọc bưu phẩm (Parcels)
-            if ($channel === 'quoc-tin.parcels' || $module === 'parcels') {
-                if (empty($allowedApartmentIds)) {
-                    continue;
-                }
-
-                $aptId = (string) ($ev['apartment_id'] ?? ($parcelAptMap[(string) ($ev['entity_id'] ?? '')] ?? ''));
-                if ($aptId === '' || ! in_array($aptId, $allowedApartmentIds, true)) {
-                    continue;
-                }
-
-                $ev['apartment_id'] = $aptId;
-                $filtered[] = $ev;
-
+            $module = self::resolveResidentEventModule($ev);
+            if ($module === '' || (! isset($tableAptMaps[$module]) && $module !== 'visitors')) {
+                // Fail-closed với mọi module bị chặn hoặc chưa được phép phát cho cư dân
                 continue;
             }
 
-            // Lọc khách đến thăm (Visitors)
-            if ($channel === 'quoc-tin.visitors' || $module === 'visitors') {
-                if (empty($allowedApartmentIds)) {
-                    continue;
-                }
-
-                $aptId = (string) ($ev['apartment_id'] ?? ($visitorAptMap[(string) ($ev['registration_id'] ?? '')] ?? ($visitorAptMap[(string) ($ev['entity_id'] ?? '')] ?? '')));
-                if ($aptId === '' || ! in_array($aptId, $allowedApartmentIds, true)) {
-                    continue;
-                }
-
-                $ev['apartment_id'] = $aptId;
-                $filtered[] = $ev;
-
+            $aptId = self::extractEventApartmentId($ev);
+            if ($aptId === null) {
                 continue;
             }
 
-            // Các kênh cư dân khác (vehicles, residents, temporary-registrations)
+            if ($aptId === '') {
+                $entityId = self::extractScalarId($ev['entity_id'] ?? null);
+                if (isset($tableAptMaps[$module])) {
+                    $aptId = $entityId !== '' ? ($tableAptMaps[$module][$entityId] ?? '') : '';
+                } else {
+                    $registrationId = self::extractScalarId($ev['registration_id'] ?? null);
+                    $lookupKey = $registrationId !== '' ? $registrationId : $entityId;
+                    $aptId = $lookupKey !== '' ? ($visitorAptMap[$lookupKey] ?? '') : '';
+                }
+            }
+
+            if ($aptId === '' || ! in_array($aptId, $allowedApartmentIds, true)) {
+                continue;
+            }
+
+            $ev['apartment_id'] = $aptId;
             $filtered[] = $ev;
         }
 
